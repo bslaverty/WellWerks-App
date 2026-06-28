@@ -12,6 +12,13 @@ class RoundReading {
     this.scp = '',
     this.separatorPressure = '',
     this.differentialPressure = '',
+    this.gasTemp = '',
+    this.wellheadTemp = '',
+    this.waterTemp = '',
+    this.ecdTemp = '',
+    this.propRate = '',
+    this.biocideRate = '',
+    this.choke = '',
     this.notes = '',
   });
 
@@ -27,6 +34,13 @@ class RoundReading {
   final String scp;
   final String separatorPressure;
   final String differentialPressure;
+  final String gasTemp;
+  final String wellheadTemp;
+  final String waterTemp;
+  final String ecdTemp;
+  final String propRate;
+  final String biocideRate;
+  final String choke;
   final String notes;
 
   Map<String, dynamic> toJson() => {
@@ -42,6 +56,13 @@ class RoundReading {
         'scp': scp,
         'separatorPressure': separatorPressure,
         'differentialPressure': differentialPressure,
+        'gasTemp': gasTemp,
+        'wellheadTemp': wellheadTemp,
+        'waterTemp': waterTemp,
+        'ecdTemp': ecdTemp,
+        'propRate': propRate,
+        'biocideRate': biocideRate,
+        'choke': choke,
         'notes': notes,
       };
 
@@ -58,6 +79,13 @@ class RoundReading {
         scp: json['scp'] as String? ?? '',
         separatorPressure: json['separatorPressure'] as String? ?? '',
         differentialPressure: json['differentialPressure'] as String? ?? '',
+        gasTemp: json['gasTemp'] as String? ?? '',
+        wellheadTemp: json['wellheadTemp'] as String? ?? '',
+        waterTemp: json['waterTemp'] as String? ?? '',
+        ecdTemp: json['ecdTemp'] as String? ?? '',
+        propRate: json['propRate'] as String? ?? '',
+        biocideRate: json['biocideRate'] as String? ?? '',
+        choke: json['choke'] as String? ?? '',
         notes: json['notes'] as String? ?? '',
       );
 }

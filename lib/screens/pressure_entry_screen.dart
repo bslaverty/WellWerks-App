@@ -25,6 +25,13 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   final _scp = TextEditingController();
   final _sp = TextEditingController();
   final _diff = TextEditingController();
+  final _gasTemp = TextEditingController();
+  final _whTemp = TextEditingController();
+  final _waterTemp = TextEditingController();
+  final _ecdTemp = TextEditingController();
+  final _prop = TextEditingController();
+  final _biocide = TextEditingController();
+  final _choke = TextEditingController();
   final _notes = TextEditingController();
   RoundReading? _last;
 
@@ -55,12 +62,46 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       scp: _scp.text.trim(),
       separatorPressure: _sp.text.trim(),
       differentialPressure: _diff.text.trim(),
+      gasTemp: _gasTemp.text.trim(),
+      wellheadTemp: _whTemp.text.trim(),
+      waterTemp: _waterTemp.text.trim(),
+      ecdTemp: _ecdTemp.text.trim(),
+      propRate: _prop.text.trim(),
+      biocideRate: _biocide.text.trim(),
+      choke: _choke.text.trim(),
       notes: _notes.text.trim(),
     );
     await _storage.saveReading(reading);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Round reading saved')));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Round saved')));
     Navigator.of(context).pop();
+  }
+
+  @override
+  void dispose() {
+    for (final controller in [
+      _round,
+      _oil,
+      _water,
+      _gas,
+      _tbg,
+      _csg,
+      _icp,
+      _scp,
+      _sp,
+      _diff,
+      _gasTemp,
+      _whTemp,
+      _waterTemp,
+      _ecdTemp,
+      _prop,
+      _biocide,
+      _choke,
+      _notes,
+    ]) {
+      controller.dispose();
+    }
+    super.dispose();
   }
 
   Widget _field(String label, TextEditingController controller, {String? previous}) {
@@ -68,19 +109,64 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       label: label,
       controller: controller,
       helperText: previous == null || previous.isEmpty ? null : 'Previous: $previous',
+      onChanged: (_) => setState(() {}),
+    );
+  }
+
+  Widget _textField(String label, TextEditingController controller, {String? previous}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: TextField(
+        controller: controller,
+        textInputAction: TextInputAction.next,
+        decoration: InputDecoration(
+          labelText: label,
+          helperText: previous == null || previous.isEmpty ? null : 'Previous: $previous',
+        ),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final missing = <String>[
+      if (_oil.text.trim().isEmpty) 'Oil',
+      if (_water.text.trim().isEmpty) 'Water',
+      if (_gas.text.trim().isEmpty) 'Gas',
+      if (_csg.text.trim().isEmpty) 'CSG',
+    ];
+
     return Scaffold(
       appBar: const AppHeader(title: 'Quick Round', showBack: true),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: FilledButton.icon(
+            onPressed: _save,
+            icon: const Icon(Icons.check_circle),
+            label: const Text('Finish Round'),
+          ),
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
           TextField(
             controller: _round,
+            textInputAction: TextInputAction.next,
             decoration: const InputDecoration(labelText: 'Round / Update Time', helperText: 'Example: 6:00 AM, 9:00 AM, Noon'),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 14),
+          Card(
+            color: missing.isEmpty ? const Color(0xFF12351F) : const Color(0xFF3A3115),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                missing.isEmpty ? '✅ Report ready from this round' : 'Missing for basic report: ${missing.join(', ')}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
           ),
           const SizedBox(height: 18),
           const _BlockTitle('Production'),
@@ -94,6 +180,16 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           _field('SCP', _scp, previous: _last?.scp),
           _field('Separator Pressure', _sp, previous: _last?.separatorPressure),
           _field('Differential', _diff, previous: _last?.differentialPressure),
+          const _BlockTitle('Choke'),
+          _textField('Choke', _choke, previous: _last?.choke),
+          const _BlockTitle('Temperatures'),
+          _field('Gas Temp (°)', _gasTemp, previous: _last?.gasTemp),
+          _field('WH Temp (°)', _whTemp, previous: _last?.wellheadTemp),
+          _field('H2O Temp (°)', _waterTemp, previous: _last?.waterTemp),
+          _field('ECD Temp (°)', _ecdTemp, previous: _last?.ecdTemp),
+          const _BlockTitle('Chemicals'),
+          _field('Prop (gal/hr)', _prop, previous: _last?.propRate),
+          _field('Biocide (gal/day)', _biocide, previous: _last?.biocideRate),
           const _BlockTitle('Notes'),
           TextField(
             controller: _notes,
@@ -101,12 +197,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
             keyboardType: TextInputType.multiline,
             decoration: const InputDecoration(labelText: 'Notes / comments'),
           ),
-          const SizedBox(height: 18),
-          FilledButton.icon(
-            onPressed: _save,
-            icon: const Icon(Icons.save),
-            label: const Text('Finish Round'),
-          ),
+          const SizedBox(height: 80),
         ],
       ),
     );

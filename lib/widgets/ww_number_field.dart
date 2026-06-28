@@ -9,6 +9,7 @@ class WwNumberField extends StatelessWidget {
   final bool allowDecimal;
   final bool allowNegative;
   final TextInputAction textInputAction;
+  final ValueChanged<String>? onChanged;
 
   const WwNumberField({
     super.key,
@@ -19,6 +20,7 @@ class WwNumberField extends StatelessWidget {
     this.allowDecimal = true,
     this.allowNegative = false,
     this.textInputAction = TextInputAction.next,
+    this.onChanged,
   });
 
   @override
@@ -27,6 +29,7 @@ class WwNumberField extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 14),
       child: TextField(
         controller: controller,
+        onChanged: onChanged,
         keyboardType: TextInputType.numberWithOptions(
           decimal: allowDecimal,
           signed: allowNegative,
@@ -59,6 +62,7 @@ class WwGaugeField extends StatelessWidget {
   final TextEditingController controller;
   final String? helperText;
   final TextInputAction textInputAction;
+  final ValueChanged<String>? onChanged;
 
   const WwGaugeField({
     super.key,
@@ -66,6 +70,7 @@ class WwGaugeField extends StatelessWidget {
     required this.controller,
     this.helperText,
     this.textInputAction = TextInputAction.next,
+    this.onChanged,
   });
 
   @override
@@ -74,6 +79,7 @@ class WwGaugeField extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 14),
       child: TextField(
         controller: controller,
+        onChanged: onChanged,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         textInputAction: textInputAction,
         inputFormatters: [

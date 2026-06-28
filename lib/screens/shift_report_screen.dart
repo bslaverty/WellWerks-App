@@ -33,6 +33,9 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     setState(() {
       _latest = readings.isEmpty ? null : readings.first;
       _loading = false;
+      if ((_choke.text.trim().isEmpty) && (_latest?.choke.trim().isNotEmpty ?? false)) {
+        _choke.text = _latest!.choke.trim();
+      }
     });
   }
 
@@ -47,7 +50,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     if (r == null) return ['No round saved yet'];
     final missing = <String>[];
     if (_wellName.text.trim().isEmpty) missing.add('Well name');
-    if (_choke.text.trim().isEmpty) missing.add('Choke');
+    if (_currentChoke.trim().isEmpty || _currentChoke == 'N/A') missing.add('Choke');
     if (r.casingPressure.trim().isEmpty) missing.add('CSG');
     if (r.waterRate.trim().isEmpty) missing.add('Water/hr');
     if (r.oilRate.trim().isEmpty) missing.add('Oil/hr');
@@ -58,6 +61,9 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       if (r.scp.trim().isEmpty) missing.add('SCP');
       if (r.separatorPressure.trim().isEmpty) missing.add('SP');
       if (r.differentialPressure.trim().isEmpty) missing.add('Diff');
+      if (r.gasTemp.trim().isEmpty) missing.add('Gas temp');
+      if (r.wellheadTemp.trim().isEmpty) missing.add('WH temp');
+      if (r.waterTemp.trim().isEmpty) missing.add('H2O temp');
     }
     return missing;
   }
@@ -67,10 +73,16 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     return text.isEmpty ? fallback : text;
   }
 
+  String get _currentChoke {
+    final typed = _choke.text.trim();
+    if (typed.isNotEmpty) return typed;
+    return _latest?.choke.trim().isNotEmpty == true ? _latest!.choke.trim() : 'N/A';
+  }
+
   String _buildReport() {
     final r = _latest;
     final well = _wellName.text.trim().isEmpty ? 'Well Name' : _wellName.text.trim();
-    final choke = _choke.text.trim().isEmpty ? 'N/A' : _choke.text.trim();
+    final choke = _currentChoke;
     if (r == null) return 'No round saved yet. Enter a Quick Round first.';
 
     if (_company == 'Continental') {
@@ -86,7 +98,13 @@ H2O- ${_v(r.waterRate)} bbls/hr
 Oil- ${_v(r.oilRate)} bbls/hr
 Sales RT - ${_v(r.gasRate)} mcf/d
 Diff - ${_v(r.differentialPressure)}”
-SP - ${_v(r.separatorPressure)} psi${r.notes.trim().isEmpty ? '' : '\n\nNotes- ${r.notes.trim()}'}''';
+SP - ${_v(r.separatorPressure)} psi
+Gas TMP - ${_v(r.gasTemp)}°
+WH TMP- ${_v(r.wellheadTemp)}°
+H2O TMP- ${_v(r.waterTemp)}°
+Prop- ${_v(r.propRate)} gal/hr
+Biocide- ${_v(r.biocideRate)} gal/day
+ECD Temp- ${_v(r.ecdTemp)}°${r.notes.trim().isEmpty ? '' : '\n\nNotes- ${r.notes.trim()}'}''';
     }
 
     return '''$well

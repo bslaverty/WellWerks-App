@@ -71,29 +71,35 @@ class _ActiveShiftScreenState extends State<ActiveShiftScreen> {
                     Expanded(child: _StatusTile(label: 'Gas', value: _value(latest?.gasRate ?? '', '—'), unit: 'MCFD')),
                     Expanded(child: _StatusTile(label: 'CSG', value: _value(latest?.casingPressure ?? '', '—'), unit: 'psi')),
                   ]),
+                  const SizedBox(height: 12),
+                  _Line(label: 'Choke', value: _value(latest?.choke ?? '', '—')),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 16),
-          Card(
-            color: const Color(0xFF17181A),
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Pressures', style: TextStyle(color: Color(0xFFCDA56A), fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 12),
-                  _Line(label: 'TBG', value: _value(latest?.tubingPressure ?? '', '—')),
-                  _Line(label: 'CSG', value: _value(latest?.casingPressure ?? '', '—')),
-                  _Line(label: 'ICP', value: _value(latest?.icp ?? '', '—')),
-                  _Line(label: 'SCP', value: _value(latest?.scp ?? '', '—')),
-                  _Line(label: 'SP', value: _value(latest?.separatorPressure ?? '', '—')),
-                  _Line(label: 'Diff', value: _value(latest?.differentialPressure ?? '', '—')),
-                ],
-              ),
-            ),
+          _InfoCard(
+            title: 'Pressures',
+            children: [
+              _Line(label: 'TBG', value: _value(latest?.tubingPressure ?? '', '—')),
+              _Line(label: 'CSG', value: _value(latest?.casingPressure ?? '', '—')),
+              _Line(label: 'ICP', value: _value(latest?.icp ?? '', '—')),
+              _Line(label: 'SCP', value: _value(latest?.scp ?? '', '—')),
+              _Line(label: 'SP', value: _value(latest?.separatorPressure ?? '', '—')),
+              _Line(label: 'Diff', value: _value(latest?.differentialPressure ?? '', '—')),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _InfoCard(
+            title: 'Temps & Chemicals',
+            children: [
+              _Line(label: 'Gas TMP', value: _value(latest?.gasTemp ?? '', '—')),
+              _Line(label: 'WH TMP', value: _value(latest?.wellheadTemp ?? '', '—')),
+              _Line(label: 'H2O TMP', value: _value(latest?.waterTemp ?? '', '—')),
+              _Line(label: 'ECD TMP', value: _value(latest?.ecdTemp ?? '', '—')),
+              _Line(label: 'Prop', value: _value(latest?.propRate ?? '', '—')),
+              _Line(label: 'Biocide', value: _value(latest?.biocideRate ?? '', '—')),
+            ],
           ),
           const SizedBox(height: 16),
           const Text('Round History', style: TextStyle(color: Color(0xFFCDA56A), fontSize: 18, fontWeight: FontWeight.bold)),
@@ -109,6 +115,30 @@ class _ActiveShiftScreenState extends State<ActiveShiftScreen> {
               )),
           const SizedBox(height: 90),
         ],
+      ),
+    );
+  }
+}
+
+class _InfoCard extends StatelessWidget {
+  final String title;
+  final List<Widget> children;
+  const _InfoCard({required this.title, required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: const Color(0xFF17181A),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(color: Color(0xFFCDA56A), fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            ...children,
+          ],
+        ),
       ),
     );
   }
