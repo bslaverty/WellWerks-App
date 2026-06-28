@@ -8,6 +8,8 @@ import 'production_tank_screen.dart';
 import 'production_inventory_screen.dart';
 import 'equipment_screen.dart';
 import 'jsa_screen.dart';
+import 'active_shift_screen.dart';
+import 'pressure_entry_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -30,6 +32,9 @@ class HomeScreen extends StatelessWidget {
             Chip(label: Text('Shift Report')),
             Chip(label: Text('Sand Chart')),
           ]),
+          const SectionTitle('⚡ Shift'),
+          ToolCard(icon: Icons.dashboard_customize, title: 'Active Shift', subtitle: 'Current readings, pressure entry, and round history', onTap: () => open(context, const ActiveShiftScreen())),
+          ToolCard(icon: Icons.add_circle, title: 'Quick Round', subtitle: 'Enter production and pressure readings once', onTap: () => open(context, const PressureEntryScreen())),
           const SectionTitle('🌊 Flowback'),
           ToolCard(icon: Icons.speed, title: 'FS3 Rate', subtitle: 'Use FS3 tank chart', onTap: () => open(context, const RateCalculatorScreen(tankName: 'FS3'))),
           ToolCard(icon: Icons.speed, title: 'SandX Rate', subtitle: 'Use SandX tank chart', onTap: () => open(context, const RateCalculatorScreen(tankName: 'SandX'))),
