@@ -7,6 +7,7 @@ import '../models/round_reading.dart';
 import '../services/job_storage_service.dart';
 import '../services/report_profile_service.dart';
 import '../services/round_storage_service.dart';
+import '../services/report_field_formatter.dart';
 import '../widgets/app_header.dart';
 import 'report_template_screen.dart';
 
@@ -124,46 +125,14 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     return '';
   }
 
-  String _formattedLine(ReportField field) {
+  String _formattedLine(ReportField field, {bool email = false}) {
     final value = _fieldValue(field.key);
-    if (value.isEmpty || (value == 'N/A' && !field.required)) return '';
-    switch (field.key) {
-      case 'tbg':
-        return 'TBG- $value psi';
-      case 'csg':
-        return 'CSG- $value psi';
-      case 'icp':
-        return 'ICP- $value psi';
-      case 'scp':
-        return 'SCP- $value psi';
-      case 'choke':
-        return _company == 'Mach Energy' ? 'Choke $value' : 'Chk- $value';
-      case 'waterRate':
-        return _company == 'Mach Energy' ? 'Water/hr $value bbls/hr' : 'H2O- $value bbls/hr';
-      case 'oilRate':
-        return _company == 'Mach Energy' ? 'Oil $value bbls/hr' : 'Oil- $value bbls/hr';
-      case 'gasRate':
-        return _company == 'Mach Energy' ? '$value 24/hr gas rate' : 'Sales RT - $value mcf/d';
-      case 'diff':
-        return 'Diff - $value”';
-      case 'sp':
-        return 'SP - $value psi';
-      case 'gasTemp':
-        return 'Gas TMP - $value°';
-      case 'whTemp':
-        return 'WH TMP- $value°';
-      case 'waterTemp':
-        return 'H2O TMP- $value°';
-      case 'prop':
-        return 'Prop- $value gal/hr';
-      case 'biocide':
-        return 'Biocide- $value gal/day';
-      case 'ecdTemp':
-        return 'ECD Temp- $value°';
-      case 'notes':
-        return value.isEmpty ? '' : 'Notes- $value';
-    }
-    return '${field.label}- $value';
+    return ReportFieldFormatter.line(
+      field: field,
+      value: value,
+      company: _company,
+      email: email,
+    );
   }
 
   List<String> get _missing {
@@ -178,23 +147,32 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     return missing;
   }
 
-  String _buildReport() {
+  List<ReportField> get _includedFields =>
+      _activeProfile.fields.where((f) => f.included).toList();
+
+  String _buildReport({bool email = false}) {
     final r = _latest;
     final well = _wellName.text.trim().isEmpty ? 'Well Name' : _wellName.text.trim();
     if (r == null) return 'No round saved yet. Enter a Quick Round first.';
 
-    final lines = <String>[well, _timeLabel, ''];
-    for (final field in _activeProfile.fields.where((f) => f.included)) {
-      final line = _formattedLine(field);
+    final lines = <String>[
+      email ? 'Well: $well' : well,
+      email ? 'Update: $_timeLabel' : _timeLabel,
+      '',
+    ];
+    for (final field in _includedFields) {
+      final line = _formattedLine(field, email: email);
       if (line.trim().isNotEmpty) lines.add(line);
     }
     return lines.join('\n');
   }
 
-  Future<void> _copy() async {
-    await Clipboard.setData(ClipboardData(text: _buildReport()));
+  Future<void> _copy({bool email = false}) async {
+    await Clipboard.setData(ClipboardData(text: _buildReport(email: email)));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report copied')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(email ? 'Email report copied' : 'iMessage report copied')),
+    );
   }
 
   @override
@@ -270,6 +248,16 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Text(
+                      'Smart units are applied automatically. Empty optional fields are hidden from the copied report.',
+                      style: TextStyle(color: Colors.grey.shade300),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 const Text('Preview', style: TextStyle(color: Color(0xFFCDA56A), fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 Card(
@@ -278,7 +266,15 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
                     child: SelectableText(report, style: const TextStyle(height: 1.35)),
                   ),
                 ),
-                FilledButton.icon(onPressed: _copy, icon: const Icon(Icons.copy), label: const Text('Copy Report')),
+                FilledButton.icon(onPressed: () => _copy(), icon: const Icon(Icons.sms), label: const Text('Copy for iMessage')),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(onPressed: () => _copy(email: true), icon: const Icon(Icons.email), label: const Text('Copy for Email')),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: _buildReport()));
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PDF export foundation ready - report text copied for now')));
+                }, icon: const Icon(Icons.picture_as_pdf), label: const Text('Export PDF (coming soon)')),
               ],
             ),
     );
