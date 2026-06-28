@@ -38,6 +38,26 @@ margin:-18px -18px 12px -18px;
 font-size:18px;font-weight:bold;color:#cda56a;cursor:pointer}
 .homeBtn:hover{background:#222}
 
+.appHeader{position:sticky;top:0;z-index:50;display:grid;grid-template-columns:80px 1fr 80px;align-items:center;padding:calc(env(safe-area-inset-top) + 10px) 14px 12px;background:#0d0d0f;border-bottom:1px solid #232323}
+.appLogo{display:flex;align-items:center;justify-content:center;gap:10px;color:#cda56a;font-size:24px;font-weight:800;letter-spacing:.3px}
+.appLogo img{width:38px;height:38px;border-radius:10px}
+.homeTop{background:#111;border:2px solid #cda56a;color:white;border-radius:12px;padding:10px 12px;font-size:16px;font-weight:bold;width:auto}
+.header,.topBar,.tab{display:none!important}
+.sectionTitle{margin:24px 0 12px;color:#cda56a;font-size:18px;font-weight:800;text-transform:uppercase;letter-spacing:.8px}
+.toolRow{display:flex;align-items:center;justify-content:space-between;background:#17181a;border:1px solid #333;border-radius:16px;padding:18px;margin-bottom:12px;color:white;font-weight:bold;cursor:pointer}
+.toolRow span:first-child{color:#cda56a}
+.quickGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.quickBtn{background:#111;border:1px solid #333;border-radius:14px;padding:14px;text-align:center;color:#cda56a;font-weight:bold;cursor:pointer}
+.inventoryGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:12px}
+.statBox{background:#111;border:1px solid #333;border-radius:14px;padding:14px;text-align:center}
+.statBox b{display:block;color:#cda56a;margin-bottom:8px}
+.meter{height:14px;background:#0b0b0c;border-radius:999px;overflow:hidden;border:1px solid #333;margin:10px 0}
+.meterFill{height:100%;background:#cda56a;width:0%}
+.statusText{font-weight:bold;margin-top:6px}
+.alertGood{color:#55d980}.alertNear{color:#ffd45d}.alertHigh{color:#ff9b3d}.alertFull{color:#ff5c5c}
+.smallNote{color:#bbb;font-size:13px;line-height:1.35}
+.fieldRow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
 </style>
 
 <link rel="manifest" href="manifest.json">
@@ -53,9 +73,7 @@ font-size:18px;font-weight:bold;color:#cda56a;cursor:pointer}
     </head>
 <body>
 
-<div class="header">WellWerks TOOLBOX</div>
-
-<div class="topBar"><div class="logoArea"></div><button class="homeBtnTop" onclick="showPage('home')">🏠 Home</button></div>
+<div class="appHeader"><button class="homeTop" onclick="showPage('home')">🏠 Home</button><div class="appLogo"><img src="app-icon.png" alt="WellWerks"><span>WellWerks</span></div><div></div></div>
 <div class="tab" onclick="showPage('rate')">Rate Calculator</div>
 <div class="tab" onclick="showPage('bottomsup')">Bottoms Up Calculator</div>
 <div class="tab" onclick="showPage('gasaccum')">Gas Accum Calculator</div>
@@ -67,18 +85,42 @@ font-size:18px;font-weight:bold;color:#cda56a;cursor:pointer}
 
 <div id="home" class="page activePage">
 <div class="card">
-<div class="chartHeader">WellWerks Toolbox</div>
-<p>Select a tool:</p>
-<div class="homeGrid">
-<div class="homeBtn" onclick="showPage('rate')">Rate Calculator</div>
-<div class="homeBtn" onclick="showPage('bottomsup')">Bottoms Up</div>
-<div class="homeBtn" onclick="showPage('gasaccum')">Gas Accum</div>
-<div class="homeBtn" onclick="showPage('multiplecalc')">Multiple Choke</div>
-<div class="homeBtn" onclick="showPage('conversioncalc')">Conversions</div>
-<div class="homeBtn" onclick="showPage('chlorides')">Chlorides</div>
-<div class="homeBtn" onclick="showPage('jsa')">JSA</div>
-<div class="homeBtn" onclick="showPage('sheet0')">Charts</div>
+<div class="chartHeader">WellWerks</div>
+
+<div class="sectionTitle">⭐ Favorites</div>
+<div class="quickGrid">
+<div class="quickBtn" onclick="showPage('rate');document.getElementById('calcType').value='fs3';toggleProdFactor();">FS3</div>
+<div class="quickBtn" onclick="showPage('gasaccum')">Gas</div>
+<div class="quickBtn" onclick="showPage('shiftreport')">Report</div>
 </div>
+
+<div class="sectionTitle">🌊 Flowback</div>
+<div class="toolRow" onclick="showPage('rate');document.getElementById('calcType').value='fs3';toggleProdFactor();"><span>📈 FS3 Rate</span><span>›</span></div>
+<div class="toolRow" onclick="showPage('rate');document.getElementById('calcType').value='sandx';toggleProdFactor();"><span>📈 SandX Rate</span><span>›</span></div>
+<div class="toolRow" onclick="showPage('rate');document.getElementById('calcType').value='flowback';toggleProdFactor();"><span>📈 Flowback Tank Rate</span><span>›</span></div>
+<div class="toolRow" onclick="showPage('bottomsup')"><span>🛢 Bottoms Up</span><span>›</span></div>
+<div class="toolRow" onclick="showPage('multiplecalc')"><span>⚙️ Multiple Choke</span><span>›</span></div>
+<div class="toolRow" onclick="showPage('chlorides')"><span>💧 Chlorides</span><span>›</span></div>
+
+<div class="sectionTitle">🛢 Production</div>
+<div class="toolRow" onclick="showPage('gasaccum')"><span>🔥 Gas Accum</span><span>›</span></div>
+<div class="toolRow" onclick="showPage('rate');document.getElementById('calcType').value='production400';toggleProdFactor();"><span>🛢 Production Tank</span><span>›</span></div>
+<div class="toolRow" onclick="showPage('productioninventory')"><span>📊 Production Inventory</span><span>›</span></div>
+
+<div class="sectionTitle">📚 Charts</div>
+<div class="toolRow" onclick="showPage('sheet3')"><span>🟨 Sand Chart</span><span>›</span></div>
+<div class="toolRow" onclick="showPage('sheet4')"><span>🔩 Flange Chart</span><span>›</span></div>
+<div class="toolRow" onclick="showPage('sheet0')"><span>📚 Orifice Chart</span><span>›</span></div>
+<div class="toolRow" onclick="showPage('sheet1')"><span>📚 Coefficients</span><span>›</span></div>
+<div class="toolRow" onclick="showPage('sheet2')"><span>📚 Tubing Chart</span><span>›</span></div>
+
+<div class="sectionTitle">📋 Reports</div>
+<div class="toolRow" onclick="showPage('shiftreport')"><span>📋 Shift Report</span><span>›</span></div>
+<div class="toolRow" onclick="showPage('equipmentstatus')"><span>🏭 Equipment Status</span><span>›</span></div>
+
+<div class="sectionTitle">🧰 Tools</div>
+<div class="toolRow" onclick="showPage('conversioncalc')"><span>📐 Conversions</span><span>›</span></div>
+<div class="toolRow" onclick="showPage('jsa')"><span>📋 JSA</span><span>›</span></div>
 </div>
 </div>
 
@@ -86,10 +128,15 @@ font-size:18px;font-weight:bold;color:#cda56a;cursor:pointer}
 <div class="card">
 <h2>Rate Calculator</h2>
 
-<select id="calcType">
+<select id="calcType" onchange="toggleProdFactor()">
 <option value="fs3">FS3 Calculator</option>
 <option value="sandx">SandX Calculator</option><option value="flowback">Flowback Tank Calculator</option><option value="production400">Production Tank (400 BBL)</option>
 </select>
+
+<div id="prodFactorWrap" style="display:none">
+<label style="display:block;margin:8px 0;color:#cda56a;font-weight:bold;">Tank Factor (BBL/In)</label><input type="number" id="prodTankFactor" value="1.67" step="0.01">
+<p class="smallNote">Use the tank's actual BBL/In value. Default: 1.67.</p>
+</div>
 
 <label style="display:block;margin:8px 0;color:#cda56a;font-weight:bold;">Top Gauge Inches</label><input type="number" id="topInch" value="12">
 <label style="display:block;margin:8px 0;color:#cda56a;font-weight:bold;">Top Gauge Fraction / Decimal</label><input type="number" id="topFrac" value="0.5" step="0.01">
@@ -168,7 +215,66 @@ font-size:18px;font-weight:bold;color:#cda56a;cursor:pointer}
 </div>
 </div>
 
-    <div id="sheet0" class="page">
+    
+<div id="productioninventory" class="page">
+<div class="card">
+<div class="chartHeader">Production Inventory</div>
+
+<div class="sectionTitle">🛢 Oil</div>
+<div class="fieldRow">
+<div><label>Starting Oil On Location</label><input type="number" id="oilStart" value="0" oninput="calcInventory()"></div>
+<div><label>Oil Produced</label><input type="number" id="oilProduced" value="0" oninput="calcInventory()"></div>
+<div><label>Oil Hauled</label><input type="number" id="oilHauled" value="0" oninput="calcInventory()"></div>
+<div><label>Oil Pumped</label><input type="number" id="oilPumped" value="0" oninput="calcInventory()"></div>
+<div><label>Oil Tank Capacity</label><input type="number" id="oilCapacity" value="400" oninput="calcInventory()"></div>
+<div><label>Oil Rate (BBL/hr)</label><input type="number" id="oilRateInv" value="0" oninput="calcInventory()"></div>
+</div>
+<div class="result"><label>Oil On Location</label><div class="resultValue" id="oilOnLoc">0 BBL</div><div class="meter"><div class="meterFill" id="oilMeter"></div></div><div id="oilStatus" class="statusText">Normal</div><div class="smallNote" id="oilTimeFull"></div></div>
+
+<div class="sectionTitle">💧 Water</div>
+<div class="fieldRow">
+<div><label>Starting Water On Location</label><input type="number" id="waterStart" value="0" oninput="calcInventory()"></div>
+<div><label>Water Produced</label><input type="number" id="waterProduced" value="0" oninput="calcInventory()"></div>
+<div><label>Water Hauled</label><input type="number" id="waterHauled" value="0" oninput="calcInventory()"></div>
+<div><label>Water Pumped</label><input type="number" id="waterPumped" value="0" oninput="calcInventory()"></div>
+<div><label>Water Tank Capacity</label><input type="number" id="waterCapacity" value="500" oninput="calcInventory()"></div>
+<div><label>Water Rate (BBL/hr)</label><input type="number" id="waterRateInv" value="0" oninput="calcInventory()"></div>
+</div>
+<div class="result"><label>Water On Location</label><div class="resultValue" id="waterOnLoc">0 BBL</div><div class="meter"><div class="meterFill" id="waterMeter"></div></div><div id="waterStatus" class="statusText">Normal</div><div class="smallNote" id="waterTimeFull"></div></div>
+
+<div class="smallNote">Formula: On Location = Starting + Produced - Hauled - Pumped. Near Full starts at 75%.</div>
+</div>
+</div>
+
+<div id="equipmentstatus" class="page">
+<div class="card">
+<div class="chartHeader">Equipment Status</div>
+<p class="smallNote">Track bypassed/offline equipment and copy a quick office update.</p>
+<div id="equipmentList"></div>
+<button onclick="copyEquipmentReport()">Copy Equipment Update</button>
+<div class="result"><label>Preview</label><pre id="equipmentPreview" style="white-space:pre-wrap;text-align:left;color:white;font-family:Arial">--</pre></div>
+</div>
+</div>
+
+<div id="shiftreport" class="page">
+<div class="card">
+<div class="chartHeader">Shift Report</div>
+<label>Company Profile</label><select id="reportProfile"><option>Mach Energy</option><option>Continental</option><option>Custom</option></select>
+<label>Report Time</label><input id="reportTime" value="6AM UPDATE">
+<label>Well Name</label><input id="reportWell" placeholder="Well name">
+<label>Choke</label><input id="reportChoke" placeholder="30/64 adj">
+<label>CSG</label><input id="reportCsg" placeholder="1442 psi">
+<label>Water/hr</label><input id="reportWater" placeholder="21 bbls/hr">
+<label>Oil/hr</label><input id="reportOil" placeholder="55 bbls/hr">
+<label>Gas Rate</label><input id="reportGas" placeholder="3538 mcf/d">
+<label>Sand / Prop</label><input id="reportSand" placeholder=".10 gal/hr">
+<button onclick="buildShiftReport()">Build Report</button>
+<button onclick="copyShiftReport()">Copy Report</button>
+<div class="result"><label>Preview</label><pre id="shiftPreview" style="white-space:pre-wrap;text-align:left;color:white;font-family:Arial">--</pre></div>
+</div>
+</div>
+
+<div id="sheet0" class="page">
     <div class="card">
     <div class="chartHeader">Orifice</div>
     <div class="tableWrap">
@@ -300,7 +406,7 @@ let bottom=Number(document.getElementById('bottomInch').value)+Number(document.g
 let mins=Number(document.getElementById('minutes').value)||1;
 let diff;
 if(type==='production400'){
-diff=(top-bottom)*1.67;
+diff=(top-bottom)*(Number(document.getElementById('prodTankFactor').value)||1.67);
 }else{
 let data=getData(type);
 diff=interpolate(data,top)-interpolate(data,bottom);
@@ -359,7 +465,75 @@ function clearGasAccum(){
  calcGasAccum();
 }
 
-renderGasAccum();document.addEventListener('change',e=>{if(e.target.id==='gasUnit')calcGasAccum();});
+
+function toggleProdFactor(){
+ const el=document.getElementById('prodFactorWrap');
+ if(!el)return;
+ el.style.display=document.getElementById('calcType').value==='production400'?'block':'none';
+}
+
+function num(id){return Number(document.getElementById(id)?.value)||0;}
+function inventoryStatus(percent){
+ if(percent>=95)return ['Full / Action Needed','alertFull'];
+ if(percent>=90)return ['High','alertHigh'];
+ if(percent>=75)return ['Near Full','alertNear'];
+ return ['Normal','alertGood'];
+}
+function timeToFull(current, capacity, rate){
+ const remaining=capacity-current;
+ if(!rate||rate<=0||remaining<=0)return '';
+ const hrs=remaining/rate;
+ const h=Math.floor(hrs), m=Math.round((hrs-h)*60);
+ return 'Estimated time to full: '+h+' hr '+m+' min';
+}
+function updateInventory(kind){
+ const start=num(kind+'Start'), prod=num(kind+'Produced'), hauled=num(kind+'Hauled'), pumped=num(kind+'Pumped'), cap=num(kind+'Capacity'), rate=num(kind+'RateInv');
+ const on=start+prod-hauled-pumped;
+ const pct=cap>0?Math.max(0,Math.min(100,(on/cap)*100)):0;
+ document.getElementById(kind+'OnLoc').textContent=on.toFixed(1)+' BBL';
+ document.getElementById(kind+'Meter').style.width=pct+'%';
+ const [label,cls]=inventoryStatus(pct);
+ const st=document.getElementById(kind+'Status');
+ st.textContent=label+' ('+pct.toFixed(0)+'%)';
+ st.className='statusText '+cls;
+ document.getElementById(kind+'TimeFull').textContent=timeToFull(on,cap,rate);
+ if(on<0){st.textContent='Check entries: inventory is negative';st.className='statusText alertFull';}
+}
+function calcInventory(){updateInventory('oil');updateInventory('water');}
+
+const equipmentItems=['Sand Separator #1','Sand Separator #2','Sand Separator #3','Sand Separator #4','Plug Catcher','Choke Manifold','Line Heater','Test Unit','ECD','VRU','Separator','Transfer Pump','Flare'];
+function renderEquipment(){
+ const list=document.getElementById('equipmentList'); if(!list)return;
+ list.innerHTML=equipmentItems.map((name,i)=>`<div class="toolRow"><span>${name}</span><select id="eq${i}" onchange="buildEquipmentReport()"><option>Online</option><option>Bypassed</option><option>Offline</option><option>Standby</option><option>Maintenance</option><option>Plugged</option><option>Isolated</option></select><input id="eqReason${i}" placeholder="Reason / notes" oninput="buildEquipmentReport()"></div>`).join('');
+ buildEquipmentReport();
+}
+function buildEquipmentReport(){
+ let bypassed=[], offline=[];
+ equipmentItems.forEach((name,i)=>{
+  const status=document.getElementById('eq'+i)?.value; const reason=document.getElementById('eqReason'+i)?.value;
+  if(status==='Bypassed')bypassed.push(`${name} — Bypassed${reason?' ('+reason+')':''}`);
+  if(status==='Offline')offline.push(`${name} — Offline${reason?' ('+reason+')':''}`);
+ });
+ let txt='Equipment Status Update\n\n';
+ txt+='Bypassed\n'+(bypassed.length?bypassed.map(x=>'- '+x).join('\n'):'- None')+'\n\n';
+ txt+='Offline\n'+(offline.length?offline.map(x=>'- '+x).join('\n'):'- None');
+ const prev=document.getElementById('equipmentPreview'); if(prev)prev.textContent=txt;
+ return txt;
+}
+function copyEquipmentReport(){navigator.clipboard?.writeText(buildEquipmentReport());}
+
+function buildShiftReport(){
+ const well=document.getElementById('reportWell').value||'Well Name';
+ const time=document.getElementById('reportTime').value||'UPDATE';
+ const txt=`${well}\n${time}\n\nChk- ${document.getElementById('reportChoke').value||''}\nCSG- ${document.getElementById('reportCsg').value||''}\nH2O- ${document.getElementById('reportWater').value||''}\nOil- ${document.getElementById('reportOil').value||''}\nSales RT - ${document.getElementById('reportGas').value||''}\nSand/Prop- ${document.getElementById('reportSand').value||''}`;
+ document.getElementById('shiftPreview').textContent=txt; return txt;
+}
+function copyShiftReport(){navigator.clipboard?.writeText(buildShiftReport());}
+
+renderGasAccum();
+toggleProdFactor();
+calcInventory();
+renderEquipment();document.addEventListener('change',e=>{if(e.target.id==='gasUnit')calcGasAccum();});
 </script>
 
 
