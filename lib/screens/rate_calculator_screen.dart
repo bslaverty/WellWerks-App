@@ -44,6 +44,16 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     return double.tryParse(clean) ?? 0;
   }
 
+  void clearInputs() {
+    setState(() {
+      top.clear();
+      bottom.clear();
+      minutes.clear();
+      result = null;
+      error = null;
+    });
+  }
+
   void calculate() {
     final m = double.tryParse(minutes.text) ?? 0;
     if (top.text.trim().isEmpty || bottom.text.trim().isEmpty || minutes.text.trim().isEmpty) {
@@ -87,11 +97,13 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
           style: TextStyle(color: Colors.white70),
         ),
         const SizedBox(height: 14),
-        WwGaugeField(label: 'Top Gauge', controller: top),
+        WwGaugeField(label: 'Top Gauge', controller: top, autofocus: true),
         WwGaugeField(label: 'Bottom Gauge', controller: bottom),
         WwNumberField(label: 'Minutes', controller: minutes, allowDecimal: true, textInputAction: TextInputAction.done),
         const SizedBox(height: 4),
         FilledButton(onPressed: calculate, child: const Text('Calculate')),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(onPressed: clearInputs, icon: const Icon(Icons.clear), child: const Text('Clear')), 
         if (error != null)
           Card(
             color: const Color(0xFF3A1E1E),

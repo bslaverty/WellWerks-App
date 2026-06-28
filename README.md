@@ -1,19 +1,12 @@
 # WellWerks Flutter
 
-Flutter foundation for the WellWerks oilfield toolbox app.
+Flutter starter for WellWerks oilfield toolbox.
 
-## Current update
-
-- Numeric fields now request the phone number keypad.
-- Rate calculators start blank instead of using pre-filled/sample values.
-- Gauge fields still allow entries like `12 3/8`.
-- Production Tank keeps default Tank Factor at `1.67 BBL/In`, with other fields blank.
-- Added Shift Report screen that pulls the latest Quick Round reading and formats Mach Energy / Continental previews for copy to iMessage.
-- Production Inventory supports oil/water produced, hauled, pumped, optional capacity, and 75% near-full alert logic.
-
-## Run locally
-
-```bash
-flutter pub get
-flutter run
-```
+## This update
+- Auto-focus on first working input for calculators and Quick Round.
+- Clear buttons for rate calculators, Gas Accum, Production Tank, and Quick Round.
+- Quick Round Copy Stable Values: copies choke, chemical rates, and notes only. Fresh readings stay blank.
+- Active Shift Quick Actions bottom sheet.
+- Active Shift attention cards for missing production/pressure values.
+- Searchable Home toolbox.
+- Choke picker remains 0/64 through 128/64 with adj/pos style.

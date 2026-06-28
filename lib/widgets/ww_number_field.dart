@@ -10,6 +10,8 @@ class WwNumberField extends StatelessWidget {
   final bool allowNegative;
   final TextInputAction textInputAction;
   final ValueChanged<String>? onChanged;
+  final bool autofocus;
+  final FocusNode? focusNode;
 
   const WwNumberField({
     super.key,
@@ -21,6 +23,8 @@ class WwNumberField extends StatelessWidget {
     this.allowNegative = false,
     this.textInputAction = TextInputAction.next,
     this.onChanged,
+    this.autofocus = false,
+    this.focusNode,
   });
 
   @override
@@ -29,6 +33,8 @@ class WwNumberField extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 14),
       child: TextField(
         controller: controller,
+        focusNode: focusNode,
+        autofocus: autofocus,
         onChanged: onChanged,
         keyboardType: TextInputType.numberWithOptions(
           decimal: allowDecimal,
@@ -63,6 +69,8 @@ class WwGaugeField extends StatelessWidget {
   final String? helperText;
   final TextInputAction textInputAction;
   final ValueChanged<String>? onChanged;
+  final bool autofocus;
+  final FocusNode? focusNode;
 
   const WwGaugeField({
     super.key,
@@ -71,6 +79,8 @@ class WwGaugeField extends StatelessWidget {
     this.helperText,
     this.textInputAction = TextInputAction.next,
     this.onChanged,
+    this.autofocus = false,
+    this.focusNode,
   });
 
   @override
@@ -79,6 +89,8 @@ class WwGaugeField extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 14),
       child: TextField(
         controller: controller,
+        focusNode: focusNode,
+        autofocus: autofocus,
         onChanged: onChanged,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         textInputAction: textInputAction,

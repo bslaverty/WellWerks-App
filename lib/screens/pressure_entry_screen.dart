@@ -48,6 +48,50 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     setState(() => _last = readings.first);
   }
 
+
+  void _clearRound() {
+    setState(() {
+      for (final controller in [
+        _oil,
+        _water,
+        _gas,
+        _tbg,
+        _csg,
+        _icp,
+        _scp,
+        _sp,
+        _diff,
+        _gasTemp,
+        _whTemp,
+        _waterTemp,
+        _ecdTemp,
+        _prop,
+        _biocide,
+        _notes,
+      ]) {
+        controller.clear();
+      }
+      _chokeSize = null;
+      _chokeStyle = 'adj';
+    });
+  }
+
+  void _copyStableValues() {
+    final last = _last;
+    if (last == null) return;
+    setState(() {
+      _prop.text = last.propRate;
+      _biocide.text = last.biocideRate;
+      _notes.text = last.notes;
+      final rawChoke = last.choke.replaceAll('/64', '').trim();
+      _chokeSize = int.tryParse(rawChoke);
+      _chokeStyle = last.chokeStyle.trim().isEmpty ? 'adj' : last.chokeStyle.trim();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Stable values copied. Fresh readings still stay blank.')),
+    );
+  }
+
   Future<void> _save() async {
     final now = DateTime.now();
     final reading = RoundReading(
@@ -110,6 +154,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       label: label,
       controller: controller,
       helperText: previous == null || previous.isEmpty ? null : 'Previous: $previous',
+      autofocus: label == 'Oil (BBL/hr)',
       onChanged: (_) => setState(() {}),
     );
   }
@@ -213,6 +258,20 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
               ),
             ),
           ),
+          if (_last != null) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _copyStableValues,
+              icon: const Icon(Icons.copy),
+              label: const Text('Copy Stable Values'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _clearRound,
+              icon: const Icon(Icons.clear),
+              label: const Text('Clear Round'),
+            ),
+          ],
           const SizedBox(height: 18),
           const _BlockTitle('Production'),
           _field('Oil (BBL/hr)', _oil, previous: _last?.oilRate),
