@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../services/report_profile_service.dart';
-import '../services/report_field_formatter.dart';
 import '../widgets/app_header.dart';
 
 class ReportTemplateScreen extends StatefulWidget {
@@ -92,19 +91,7 @@ class _ReportTemplateScreenState extends State<ReportTemplateScreen> {
                           child: Row(
                             children: [
                               const Icon(Icons.drag_handle),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(field.label, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                    if (ReportFieldFormatter.unitFor(field.key).isNotEmpty)
-                                      Text(
-                                        ReportFieldFormatter.unitFor(field.key),
-                                        style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                      ),
-                                  ],
-                                ),
-                              ),
+                              Expanded(child: Text(field.label, style: const TextStyle(fontWeight: FontWeight.bold))),
                               Column(children: [
                                 const Text('Include', style: TextStyle(fontSize: 11)),
                                 Switch(value: field.included, onChanged: (v) => _toggleIncluded(index, v)),

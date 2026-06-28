@@ -7,7 +7,6 @@ import '../models/round_reading.dart';
 import '../services/job_storage_service.dart';
 import '../services/report_profile_service.dart';
 import '../services/round_storage_service.dart';
-import '../services/report_field_formatter.dart';
 import '../widgets/app_header.dart';
 import 'report_template_screen.dart';
 
@@ -24,7 +23,6 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   final _profiles = ReportProfileService();
   final _wellName = TextEditingController();
   final _choke = TextEditingController();
-  String _chokeStyle = 'adj';
   String _company = 'Mach Energy';
   RoundReading? _latest;
   JobSetup? _job;
@@ -54,7 +52,6 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       if ((_choke.text.trim().isEmpty) && (_latest?.choke.trim().isNotEmpty ?? false)) {
         _choke.text = _latest!.choke.trim();
       }
-      _chokeStyle = _latest?.chokeStyle ?? 'adj';
     });
   }
 
@@ -76,11 +73,15 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
 
   String get _currentChoke {
     final typed = _choke.text.trim();
-    final size = typed.isNotEmpty
-        ? typed
-        : (_latest?.choke.trim().isNotEmpty == true ? _latest!.choke.trim() : 'N/A');
-    if (size == 'N/A') return size;
-    return '$size $_chokeStyle';
+    if (typed.isNotEmpty) return typed;
+    final saved = _latest?.choke.trim() ?? '';
+    if (saved.isEmpty) return 'N/A';
+    final savedLower = saved.toLowerCase();
+    final style = _latest?.chokeStyle.trim() ?? '';
+    if (style.isEmpty || savedLower.contains(' adj') || savedLower.contains(' pos')) {
+      return saved;
+    }
+    return '$saved $style';
   }
 
   String _fieldValue(String key) {
@@ -125,14 +126,46 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     return '';
   }
 
-  String _formattedLine(ReportField field, {bool email = false}) {
+  String _formattedLine(ReportField field) {
     final value = _fieldValue(field.key);
-    return ReportFieldFormatter.line(
-      field: field,
-      value: value,
-      company: _company,
-      email: email,
-    );
+    if (value.isEmpty || value == 'N/A' && !field.required) return '';
+    switch (field.key) {
+      case 'tbg':
+        return 'TBG- $value';
+      case 'csg':
+        return 'CSG- $value psi';
+      case 'icp':
+        return 'ICP- $value psi';
+      case 'scp':
+        return 'SCP- $value psi';
+      case 'choke':
+        return _company == 'Mach Energy' ? 'Choke $value' : 'Chk- $value';
+      case 'waterRate':
+        return _company == 'Mach Energy' ? 'Water/hr $value' : 'H2O- $value bbls/hr';
+      case 'oilRate':
+        return _company == 'Mach Energy' ? 'Oil $value' : 'Oil- $value bbls/hr';
+      case 'gasRate':
+        return _company == 'Mach Energy' ? '$value 24/hr gas rate' : 'Sales RT - $value mcf/d';
+      case 'diff':
+        return 'Diff - $value”';
+      case 'sp':
+        return 'SP - $value psi';
+      case 'gasTemp':
+        return 'Gas TMP - $value°';
+      case 'whTemp':
+        return 'WH TMP- $value°';
+      case 'waterTemp':
+        return 'H2O TMP- $value°';
+      case 'prop':
+        return 'Prop- $value gal/hr';
+      case 'biocide':
+        return 'Biocide- $value gal/day';
+      case 'ecdTemp':
+        return 'ECD Temp- $value°';
+      case 'notes':
+        return value.isEmpty ? '' : 'Notes- $value';
+    }
+    return '${field.label}- $value';
   }
 
   List<String> get _missing {
@@ -147,32 +180,23 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     return missing;
   }
 
-  List<ReportField> get _includedFields =>
-      _activeProfile.fields.where((f) => f.included).toList();
-
-  String _buildReport({bool email = false}) {
+  String _buildReport() {
     final r = _latest;
     final well = _wellName.text.trim().isEmpty ? 'Well Name' : _wellName.text.trim();
     if (r == null) return 'No round saved yet. Enter a Quick Round first.';
 
-    final lines = <String>[
-      email ? 'Well: $well' : well,
-      email ? 'Update: $_timeLabel' : _timeLabel,
-      '',
-    ];
-    for (final field in _includedFields) {
-      final line = _formattedLine(field, email: email);
+    final lines = <String>[well, _timeLabel, ''];
+    for (final field in _activeProfile.fields.where((f) => f.included)) {
+      final line = _formattedLine(field);
       if (line.trim().isNotEmpty) lines.add(line);
     }
     return lines.join('\n');
   }
 
-  Future<void> _copy({bool email = false}) async {
-    await Clipboard.setData(ClipboardData(text: _buildReport(email: email)));
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: _buildReport()));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(email ? 'Email report copied' : 'iMessage report copied')),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report copied')));
   }
 
   @override
@@ -225,17 +249,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
                 const SizedBox(height: 12),
                 TextField(controller: _wellName, decoration: const InputDecoration(labelText: 'Well Name'), onChanged: (_) => setState(() {})),
                 const SizedBox(height: 12),
-                TextField(controller: _choke, keyboardType: TextInputType.text, decoration: const InputDecoration(labelText: 'Choke Size Override'), onChanged: (_) => setState(() {})),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: _chokeStyle,
-                  decoration: const InputDecoration(labelText: 'Choke Style'),
-                  items: const [
-                    DropdownMenuItem(value: 'adj', child: Text('adj - Adjustable')),
-                    DropdownMenuItem(value: 'pos', child: Text('pos - Positive')),
-                  ],
-                  onChanged: (value) => setState(() => _chokeStyle = value ?? 'adj'),
-                ),
+                TextField(controller: _choke, keyboardType: TextInputType.text, decoration: const InputDecoration(labelText: 'Choke Override'), onChanged: (_) => setState(() {})),
                 const SizedBox(height: 16),
                 Card(
                   color: missing.isEmpty ? const Color(0xFF12351F) : const Color(0xFF3A3115),
@@ -248,16 +262,6 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Text(
-                      'Smart units are applied automatically. Empty optional fields are hidden from the copied report.',
-                      style: TextStyle(color: Colors.grey.shade300),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
                 const Text('Preview', style: TextStyle(color: Color(0xFFCDA56A), fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 Card(
@@ -266,15 +270,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
                     child: SelectableText(report, style: const TextStyle(height: 1.35)),
                   ),
                 ),
-                FilledButton.icon(onPressed: () => _copy(), icon: const Icon(Icons.sms), label: const Text('Copy for iMessage')),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(onPressed: () => _copy(email: true), icon: const Icon(Icons.email), label: const Text('Copy for Email')),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(onPressed: () async {
-                  await Clipboard.setData(ClipboardData(text: _buildReport()));
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PDF export foundation ready - report text copied for now')));
-                }, icon: const Icon(Icons.picture_as_pdf), label: const Text('Export PDF (coming soon)')),
+                FilledButton.icon(onPressed: _copy, icon: const Icon(Icons.copy), label: const Text('Copy Report')),
               ],
             ),
     );

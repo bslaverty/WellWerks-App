@@ -19,7 +19,7 @@ class RoundReading {
     this.propRate = '',
     this.biocideRate = '',
     this.choke = '',
-    this.chokeStyle = 'adj',
+    this.chokeStyle = '',
     this.notes = '',
   });
 
@@ -89,7 +89,7 @@ class RoundReading {
         propRate: json['propRate'] as String? ?? '',
         biocideRate: json['biocideRate'] as String? ?? '',
         choke: json['choke'] as String? ?? '',
-        chokeStyle: json['chokeStyle'] as String? ?? 'adj',
+        chokeStyle: json['chokeStyle'] as String? ?? '',
         notes: json['notes'] as String? ?? '',
       );
 }

@@ -36,6 +36,15 @@ class _ActiveShiftScreenState extends State<ActiveShiftScreen> {
 
   String _value(String value, String fallback) => value.trim().isEmpty ? fallback : value.trim();
 
+  String _chokeValue(RoundReading? reading) {
+    if (reading == null || reading.choke.trim().isEmpty) return '—';
+    final saved = reading.choke.trim();
+    final lower = saved.toLowerCase();
+    final style = reading.chokeStyle.trim();
+    if (style.isEmpty || lower.contains(' adj') || lower.contains(' pos')) return saved;
+    return '$saved $style';
+  }
+
   @override
   Widget build(BuildContext context) {
     final latest = _readings.isEmpty ? null : _readings.first;
@@ -72,7 +81,7 @@ class _ActiveShiftScreenState extends State<ActiveShiftScreen> {
                     Expanded(child: _StatusTile(label: 'CSG', value: _value(latest?.casingPressure ?? '', '—'), unit: 'psi')),
                   ]),
                   const SizedBox(height: 12),
-                  _Line(label: 'Choke', value: latest == null || latest.choke.trim().isEmpty ? '—' : '${latest.choke} ${latest.chokeStyle}'),
+                  _Line(label: 'Choke', value: _chokeValue(latest)),
                 ],
               ),
             ),
