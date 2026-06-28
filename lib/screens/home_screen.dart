@@ -11,6 +11,8 @@ import 'jsa_screen.dart';
 import 'active_shift_screen.dart';
 import 'pressure_entry_screen.dart';
 import 'shift_report_screen.dart';
+import 'job_setup_screen.dart';
+import 'report_template_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -34,6 +36,7 @@ class HomeScreen extends StatelessWidget {
             Chip(label: Text('Sand Chart')),
           ]),
           const SectionTitle('⚡ Shift'),
+          ToolCard(icon: Icons.work, title: 'New Job Setup', subtitle: 'Company, wells, equipment, tanks, report times', onTap: () => open(context, const JobSetupScreen())),
           ToolCard(icon: Icons.dashboard_customize, title: 'Active Shift', subtitle: 'Current readings, pressure entry, and round history', onTap: () => open(context, const ActiveShiftScreen())),
           ToolCard(icon: Icons.add_circle, title: 'Quick Round', subtitle: 'Enter production and pressure readings once', onTap: () => open(context, const PressureEntryScreen())),
           const SectionTitle('🌊 Flowback'),
@@ -53,6 +56,7 @@ class HomeScreen extends StatelessWidget {
           ToolCard(icon: Icons.table_chart, title: 'Tank Charts', subtitle: 'FS3, SandX, Flowback', onTap: () {}),
           const SectionTitle('📋 Reports'),
           ToolCard(icon: Icons.message, title: 'Shift Report', subtitle: 'Mach, Continental, Custom', onTap: () => open(context, const ShiftReportScreen())),
+          ToolCard(icon: Icons.edit_note, title: 'Report Builder', subtitle: 'Pick fields, required fields, and order for Custom', onTap: () => open(context, const ReportTemplateScreen())),
           ToolCard(icon: Icons.precision_manufacturing, title: 'Equipment Status', subtitle: 'Bypassed/offline update', onTap: () => open(context, const EquipmentScreen())),
           const SectionTitle('🧰 Tools'),
           ToolCard(icon: Icons.assignment, title: 'JSA', subtitle: 'Dropdowns, employee rows, signatures', onTap: () => open(context, const JsaScreen())),

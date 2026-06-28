@@ -72,7 +72,7 @@ class _ActiveShiftScreenState extends State<ActiveShiftScreen> {
                     Expanded(child: _StatusTile(label: 'CSG', value: _value(latest?.casingPressure ?? '', '—'), unit: 'psi')),
                   ]),
                   const SizedBox(height: 12),
-                  _Line(label: 'Choke', value: _value(latest?.choke ?? '', '—')),
+                  _Line(label: 'Choke', value: latest == null || latest.choke.trim().isEmpty ? '—' : '${latest.choke} ${latest.chokeStyle}'),
                 ],
               ),
             ),

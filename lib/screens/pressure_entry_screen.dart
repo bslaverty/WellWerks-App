@@ -32,6 +32,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   final _prop = TextEditingController();
   final _biocide = TextEditingController();
   final _choke = TextEditingController();
+  String _chokeStyle = 'adj';
   final _notes = TextEditingController();
   RoundReading? _last;
 
@@ -69,6 +70,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       propRate: _prop.text.trim(),
       biocideRate: _biocide.text.trim(),
       choke: _choke.text.trim(),
+      chokeStyle: _chokeStyle,
       notes: _notes.text.trim(),
     );
     await _storage.saveReading(reading);
@@ -181,7 +183,17 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           _field('Separator Pressure', _sp, previous: _last?.separatorPressure),
           _field('Differential', _diff, previous: _last?.differentialPressure),
           const _BlockTitle('Choke'),
-          _textField('Choke', _choke, previous: _last?.choke),
+          _textField('Choke Size', _choke, previous: _last?.choke),
+          DropdownButtonFormField<String>(
+            value: _chokeStyle,
+            decoration: const InputDecoration(labelText: 'Choke Style'),
+            items: const [
+              DropdownMenuItem(value: 'adj', child: Text('adj - Adjustable')),
+              DropdownMenuItem(value: 'pos', child: Text('pos - Positive')),
+            ],
+            onChanged: (value) => setState(() => _chokeStyle = value ?? 'adj'),
+          ),
+          const SizedBox(height: 14),
           const _BlockTitle('Temperatures'),
           _field('Gas Temp (°)', _gasTemp, previous: _last?.gasTemp),
           _field('WH Temp (°)', _whTemp, previous: _last?.wellheadTemp),

@@ -19,6 +19,7 @@ class RoundReading {
     this.propRate = '',
     this.biocideRate = '',
     this.choke = '',
+    this.chokeStyle = 'adj',
     this.notes = '',
   });
 
@@ -41,6 +42,7 @@ class RoundReading {
   final String propRate;
   final String biocideRate;
   final String choke;
+  final String chokeStyle;
   final String notes;
 
   Map<String, dynamic> toJson() => {
@@ -63,6 +65,7 @@ class RoundReading {
         'propRate': propRate,
         'biocideRate': biocideRate,
         'choke': choke,
+        'chokeStyle': chokeStyle,
         'notes': notes,
       };
 
@@ -86,6 +89,7 @@ class RoundReading {
         propRate: json['propRate'] as String? ?? '',
         biocideRate: json['biocideRate'] as String? ?? '',
         choke: json['choke'] as String? ?? '',
+        chokeStyle: json['chokeStyle'] as String? ?? 'adj',
         notes: json['notes'] as String? ?? '',
       );
 }
