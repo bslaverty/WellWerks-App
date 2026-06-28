@@ -10,6 +10,7 @@ import 'equipment_screen.dart';
 import 'jsa_screen.dart';
 import 'active_shift_screen.dart';
 import 'pressure_entry_screen.dart';
+import 'shift_report_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -51,7 +52,7 @@ class HomeScreen extends StatelessWidget {
           ToolCard(icon: Icons.settings_input_component, title: 'Flange Chart', subtitle: 'Reference chart', onTap: () {}),
           ToolCard(icon: Icons.table_chart, title: 'Tank Charts', subtitle: 'FS3, SandX, Flowback', onTap: () {}),
           const SectionTitle('📋 Reports'),
-          ToolCard(icon: Icons.message, title: 'Shift Report', subtitle: 'Mach, Continental, Custom', onTap: () {}),
+          ToolCard(icon: Icons.message, title: 'Shift Report', subtitle: 'Mach, Continental, Custom', onTap: () => open(context, const ShiftReportScreen())),
           ToolCard(icon: Icons.precision_manufacturing, title: 'Equipment Status', subtitle: 'Bypassed/offline update', onTap: () => open(context, const EquipmentScreen())),
           const SectionTitle('🧰 Tools'),
           ToolCard(icon: Icons.assignment, title: 'JSA', subtitle: 'Dropdowns, employee rows, signatures', onTap: () => open(context, const JsaScreen())),

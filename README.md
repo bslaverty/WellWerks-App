@@ -2,17 +2,17 @@
 
 Flutter foundation for the WellWerks oilfield toolbox app.
 
-## Includes
-- Toolbox home screen
-- Flowback, Production, Charts, Reports, Equipment, Tools sections
-- FS3/SandX/Flowback rate calculators scaffolded
-- Gas Accum calculator
-- Production Tank calculator with editable Tank Factor (default 1.67 BBL/in)
-- Production Inventory screen with produced/hauled/pumped/on-location totals
-- Equipment Status screen with bypass/offline/online states
-- JSA screen scaffold with dropdowns, employee rows, and signature placeholder
+## Current update
 
-## Run
+- Numeric fields now request the phone number keypad.
+- Rate calculators start blank instead of using pre-filled/sample values.
+- Gauge fields still allow entries like `12 3/8`.
+- Production Tank keeps default Tank Factor at `1.67 BBL/In`, with other fields blank.
+- Added Shift Report screen that pulls the latest Quick Round reading and formats Mach Energy / Continental previews for copy to iMessage.
+- Production Inventory supports oil/water produced, hauled, pumped, optional capacity, and 75% near-full alert logic.
+
+## Run locally
+
 ```bash
 flutter pub get
 flutter run

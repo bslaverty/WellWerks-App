@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/round_reading.dart';
 import '../services/round_storage_service.dart';
 import '../widgets/app_header.dart';
+import '../widgets/ww_number_field.dart';
 
 class PressureEntryScreen extends StatefulWidget {
   const PressureEntryScreen({super.key});
@@ -62,17 +63,11 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     Navigator.of(context).pop();
   }
 
-  Widget _field(String label, TextEditingController controller, {String? previous, TextInputType keyboardType = TextInputType.number}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: TextField(
-        controller: controller,
-        keyboardType: keyboardType,
-        decoration: InputDecoration(
-          labelText: label,
-          helperText: previous == null || previous.isEmpty ? null : 'Previous: $previous',
-        ),
-      ),
+  Widget _field(String label, TextEditingController controller, {String? previous}) {
+    return WwNumberField(
+      label: label,
+      controller: controller,
+      helperText: previous == null || previous.isEmpty ? null : 'Previous: $previous',
     );
   }
 
