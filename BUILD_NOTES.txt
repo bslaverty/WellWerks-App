@@ -1,0 +1,11 @@
+WellWerks-App master build
+- Restores Layouts module on home screen
+- Keeps Equipment Layout Designer naming
+- Includes Layout Designer features from recent builds: inventory, multi-select, alignment, spacing, undo/redo, draw iron mode
+- Includes Flutter syntax fixes for current SDK
+
+Run:
+  cd ~/Downloads/WellWerks-App
+  export PATH="$HOME/Documents/flutter/bin:$PATH"
+  flutter pub get
+  flutter run
