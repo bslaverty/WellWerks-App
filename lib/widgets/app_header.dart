@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../screens/settings_screen.dart';
+
 class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final bool showBack;
@@ -14,6 +16,16 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
     this.trailingActions,
   });
 
+  void _openSettings(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    );
+  }
+
+  void _goHome(BuildContext context) {
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppBar(
@@ -26,9 +38,7 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
             )
           : IconButton(
               icon: const Icon(Icons.home),
-              onPressed: () {
-                Navigator.of(context).popUntil((route) => route.isFirst);
-              },
+              onPressed: () => _goHome(context),
             ),
       title: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -47,15 +57,18 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
       centerTitle: true,
       actions: trailingActions ??
           [
-            if (showHomeAction)
+            if (showBack || showHomeAction)
               IconButton(
                 icon: const Icon(Icons.home),
-                onPressed: () {
-                  Navigator.of(context).popUntil((route) => route.isFirst);
-                },
+                onPressed: () => _goHome(context),
               )
             else
-              const SizedBox(width: 56),
+              const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.settings),
+              tooltip: 'Settings',
+              onPressed: () => _openSettings(context),
+            ),
           ],
     );
   }

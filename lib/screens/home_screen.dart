@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
 import '../widgets/app_header.dart';
 import '../widgets/tool_card.dart';
 import '../models/job_setup.dart';
@@ -65,38 +67,83 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadRecovery();
   }
 
-  Widget _recoveryCard(BuildContext context, JobSetup job) {
+  String _startedText(JobSetup job) {
+    final startedAt = job.startedAt;
+    if (startedAt != null) {
+      return DateFormat('MM/dd/yyyy h:mm a').format(startedAt);
+    }
+    final date = job.dateStarted.trim();
+    return date.isEmpty ? '-' : date;
+  }
+
+  Widget _activeJobCard(BuildContext context, JobSetup job) {
     return Card(
       color: const Color(0xFF17130E),
       margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Active Job Recovery',
-              style: TextStyle(
-                color: Color(0xFFCDA56A),
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Active Job',
+                    style: TextStyle(
+                      color: Color(0xFFCDA56A),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCDA56A),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Text(
+                    'ACTIVE',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             Text(
               job.company.trim().isEmpty ? 'Job in progress' : job.company,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
             ),
-            const SizedBox(height: 10),
-            _recoveryLine('Customer', job.customer),
-            _recoveryLine('Pad', job.padName),
-            _recoveryLine('Well', job.primaryWell),
-            _recoveryLine('Shift', job.shift),
-            _recoveryLine('Last Open', _moduleLabel(_lastModule)),
+            const SizedBox(height: 12),
+            _infoLine('Company', job.company),
+            _infoLine('Pad', job.padName),
+            _infoLine('Well', job.primaryWell),
+            _infoLine('Shift', job.shift),
+            _infoLine('Started', _startedText(job)),
+            _infoLine('Status', 'Active'),
+            if (_lastModule.trim().isNotEmpty) ...[
+              const SizedBox(height: 4),
+              _infoLine('Continue To', _moduleLabel(_lastModule)),
+            ],
             const SizedBox(height: 18),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(56),
+                  textStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
                 onPressed: () => _continueActiveJob(context),
                 icon: const Icon(Icons.play_arrow),
                 label: const Text('Continue Active Job'),
@@ -108,14 +155,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _recoveryLine(String label, String value) {
+  Widget _infoLine(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 90,
+            width: 96,
             child: Text(
               label,
               style: const TextStyle(
@@ -208,6 +255,11 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppHeader(
         showBack: false,
         trailingActions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: () => open(context, const SettingsScreen()),
+          ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
             onSelected: (value) {
@@ -243,7 +295,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          if (_activeJob != null) _recoveryCard(context, _activeJob!),
+          if (_activeJob != null) _activeJobCard(context, _activeJob!),
           const Padding(
             padding: EdgeInsets.only(bottom: 14),
             child: Text(
