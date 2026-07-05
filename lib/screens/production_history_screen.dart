@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../models/job_history.dart';
+import '../models/job_setup.dart';
 import '../services/job_history_service.dart';
+import '../services/job_storage_service.dart';
 import '../widgets/app_header.dart';
 
 class ProductionHistoryScreen extends StatefulWidget {
@@ -14,13 +15,10 @@ class ProductionHistoryScreen extends StatefulWidget {
 }
 
 class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
-  final _service = JobHistoryService();
-  final _company = TextEditingController();
-  final _pad = TextEditingController();
-  final _well = TextEditingController();
-  final _date = TextEditingController();
+  final _historyService = JobHistoryService();
+  final _jobStorage = JobStorageService();
 
-  List<ArchivedJob> _history = [];
+  List<_HistoryJobCardData> _jobs = const [];
   bool _loading = true;
 
   @override
@@ -29,51 +27,171 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
     _load();
   }
 
-  @override
-  void dispose() {
-    _company.dispose();
-    _pad.dispose();
-    _well.dispose();
-    _date.dispose();
-    super.dispose();
-  }
-
   Future<void> _load() async {
-    final history = await _service.loadHistory();
+    final activeJob = await _jobStorage.loadActiveJob();
+    final lastEndedJob = await _jobStorage.loadLastEndedJob();
+    final history = await _historyService.loadHistory();
+    final jobs = _buildJobs(
+      activeJob: activeJob,
+      lastEndedJob: lastEndedJob,
+      archivedJobs: history,
+    );
     if (!mounted) return;
     setState(() {
-      _history = history;
+      _jobs = jobs;
       _loading = false;
     });
   }
 
-  bool _matches(ArchivedJob item) {
-    final companyQuery = _company.text.trim().toLowerCase();
-    final padQuery = _pad.text.trim().toLowerCase();
-    final wellQuery = _well.text.trim().toLowerCase();
-    final dateQuery = _date.text.trim().toLowerCase();
+  List<_HistoryJobCardData> _buildJobs({
+    required JobSetup? activeJob,
+    required JobSetup? lastEndedJob,
+    required List<ArchivedJob> archivedJobs,
+  }) {
+    final jobsByKey = <String, _HistoryJobCardData>{};
 
-    final companyMatch = companyQuery.isEmpty ||
-        item.company.toLowerCase().contains(companyQuery);
-    final padMatch =
-        padQuery.isEmpty || item.padName.toLowerCase().contains(padQuery);
-    final wellMatch = wellQuery.isEmpty ||
-        item.wells.any((well) => well.toLowerCase().contains(wellQuery));
-    final dateMatch = dateQuery.isEmpty ||
-        item.dateRangeStart.toLowerCase().contains(dateQuery) ||
-        item.dateRangeEnd.toLowerCase().contains(dateQuery) ||
-        item.shifts
-            .any((shift) => shift.date.toLowerCase().contains(dateQuery));
-    return companyMatch && padMatch && wellMatch && dateMatch;
+    void addJob(_HistoryJobCardData job) {
+      final existing = jobsByKey[job.identityKey];
+      if (existing == null || job.priority > existing.priority) {
+        jobsByKey[job.identityKey] = job;
+      }
+    }
+
+    if (activeJob != null) {
+      addJob(_HistoryJobCardData.fromActiveJob(activeJob));
+    }
+
+    if (lastEndedJob != null) {
+      addJob(_HistoryJobCardData.fromEndedJob(lastEndedJob));
+    }
+
+    for (final archived in archivedJobs) {
+      addJob(_HistoryJobCardData.fromArchivedJob(archived));
+    }
+
+    final jobs = jobsByKey.values.toList()
+      ..sort((a, b) {
+        if (a.isActive != b.isActive) {
+          return a.isActive ? -1 : 1;
+        }
+        return b.sortAt.compareTo(a.sortAt);
+      });
+    return jobs;
   }
 
-  Widget _searchField(String label, TextEditingController controller) {
+  Widget _emptyState() {
+    return const Card(
+      child: Padding(
+        padding: EdgeInsets.all(18),
+        child: Text(
+          'No jobs yet. Start a job or archive a completed job to build local History.',
+          style: TextStyle(color: Colors.white70),
+        ),
+      ),
+    );
+  }
+
+  Widget _jobCard(_HistoryJobCardData job) {
+    final statusColor =
+        job.isActive ? const Color(0xFFCDA56A) : const Color(0xFF5E646C);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      color: job.isActive ? const Color(0xFF17130E) : null,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => _HistoryJobDetailPlaceholderScreen(job: job),
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          job.company.isEmpty ? 'Job' : job.company,
+                          style: const TextStyle(
+                            color: Color(0xFFCDA56A),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        if (job.customer.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'Customer: ${job.customer}',
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: job.isActive ? statusColor : Colors.transparent,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: statusColor),
+                    ),
+                    child: Text(
+                      job.statusLabel,
+                      style: TextStyle(
+                        color: job.isActive ? Colors.black : statusColor,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _infoLine('Pad', job.pad),
+              _infoLine('Well', job.well),
+              _infoLine('Shift', job.shift),
+              _infoLine('Date Started', job.dateStarted),
+              const SizedBox(height: 10),
+              const Align(
+                alignment: Alignment.centerRight,
+                child: Icon(Icons.chevron_right, color: Colors.white54),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _infoLine(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: TextField(
-        controller: controller,
-        onChanged: (_) => setState(() {}),
-        decoration: InputDecoration(labelText: label),
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(value.isEmpty ? '-' : value),
+          ),
+        ],
       ),
     );
   }
@@ -87,275 +205,43 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
       );
     }
 
-    final filtered = _history.where(_matches).toList();
-
     return Scaffold(
       appBar: const AppHeader(title: 'History', showBack: true),
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                children: [
-                  _searchField('Search Company', _company),
-                  _searchField('Search Pad', _pad),
-                  _searchField('Search Well', _well),
-                  _searchField('Search Date', _date),
-                ],
-              ),
-            ),
-          ),
-          if (filtered.isEmpty)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Text(
-                  'No archived jobs yet. Use Archive Current Job / Shift in Production Inventory to save a local snapshot.',
-                  style: TextStyle(color: Colors.white70),
-                ),
-              ),
-            ),
-          for (final job in filtered)
-            Card(
-              margin: const EdgeInsets.only(bottom: 16),
-              child: ListTile(
-                title: Text(
-                  job.company.isEmpty ? 'Archived Job' : job.company,
-                  style: const TextStyle(
-                    color: Color(0xFFCDA56A),
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                subtitle: Text(
-                  [
-                    job.padName,
-                    '${job.dateRangeStart}${job.dateRangeEnd.isNotEmpty && job.dateRangeEnd != job.dateRangeStart ? ' → ${job.dateRangeEnd}' : ''}',
-                    '${job.shifts.length} shift(s)',
-                  ].where((item) => item.trim().isNotEmpty).join(' • '),
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () async {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ArchivedJobDetailScreen(job: job),
-                    ),
-                  );
-                  await _load();
-                },
-              ),
-            ),
+          if (_jobs.isEmpty) _emptyState(),
+          for (final job in _jobs) _jobCard(job),
         ],
       ),
     );
   }
 }
 
-class ArchivedJobDetailScreen extends StatelessWidget {
-  const ArchivedJobDetailScreen({super.key, required this.job});
+class _HistoryJobDetailPlaceholderScreen extends StatelessWidget {
+  const _HistoryJobDetailPlaceholderScreen({required this.job});
 
-  final ArchivedJob job;
+  final _HistoryJobCardData job;
 
-  Future<void> _copy(BuildContext context, String value, String label) async {
-    await Clipboard.setData(ClipboardData(text: value));
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$label copied.')),
-    );
-  }
-
-  Future<void> _delete(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Delete History Item?'),
-            content: const Text(
-              'This removes the archived job from local History only.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Delete'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-    if (!confirmed) return;
-    await JobHistoryService().deleteArchivedJob(job.id);
-    if (!context.mounted) return;
-    Navigator.of(context).pop();
-  }
-
-  Future<void> _duplicate(BuildContext context) async {
-    await JobHistoryService().duplicateArchivedJobToActive(job);
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Archived job duplicated into active job.')),
-    );
-  }
-
-  Widget _sectionLabel(String label) {
+  Widget _detailRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Color(0xFFCDA56A),
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-
-  Widget _jobHeaderCard() {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _sectionLabel('Job Header'),
-            Text('Company: ${job.company.isEmpty ? '-' : job.company}'),
-            Text('Pad: ${job.padName.isEmpty ? '-' : job.padName}'),
-            Text(
-              'Date Range: ${job.dateRangeStart.isEmpty ? '-' : job.dateRangeStart}${job.dateRangeEnd.isNotEmpty && job.dateRangeEnd != job.dateRangeStart ? ' → ${job.dateRangeEnd}' : ''}',
-            ),
-            Text('Wells: ${job.wells.isEmpty ? '-' : job.wells.join(', ')}'),
-            if (job.jobSetup != null && job.jobSetup!.crew.trim().isNotEmpty)
-              Text('Crew: ${job.jobSetup!.crew}'),
-            if (job.layoutSummary != null)
-              Text(
-                'Layout Summary: ${job.layoutSummary!.name.isEmpty ? 'Saved Layout' : job.layoutSummary!.name} • ${job.layoutSummary!.itemCount} item(s)',
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _shiftCard(BuildContext context, ArchivedShiftEntry shift) {
-    final production = shift.productionShift;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: ExpansionTile(
-        title: Text(
-          shift.date.isEmpty
-              ? shift.archivedAt.toIso8601String().split('T').first
-              : shift.date,
-          style: const TextStyle(
-            color: Color(0xFFCDA56A),
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        subtitle: Text(
-          '${production.savedRows.length} report row(s) • ${production.hourlyChecks.length} quick round entr${production.hourlyChecks.length == 1 ? 'y' : 'ies'}',
-        ),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _copy(
-                    context,
-                    shift.productionReportText,
-                    'Archived Production Report',
-                  ),
-                  icon: const Icon(Icons.copy),
-                  label: const Text('Copy Archived Production Report'),
-                ),
+          SizedBox(
+            width: 110,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w600,
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: shift.textUpdates.isEmpty
-                      ? null
-                      : () => _copy(
-                            context,
-                            shift.textUpdates
-                                .map((item) => item.content)
-                                .join('\n\n'),
-                            'Archived Text Update',
-                          ),
-                  icon: const Icon(Icons.copy_all),
-                  label: const Text('Copy Archived Text Update'),
-                ),
-              ),
-            ],
+            ),
           ),
-          const SizedBox(height: 12),
-          _sectionLabel('Starting Inventory'),
-          Text(
-              'Date: ${production.header.date.isEmpty ? '-' : production.header.date}'),
-          Text(
-              'Company: ${production.header.company.isEmpty ? '-' : production.header.company}'),
-          Text(
-              'Pad: ${production.header.pad.isEmpty ? '-' : production.header.pad}'),
-          Text('Wells: ${production.header.wells.join(', ')}'),
-          for (final tank in production.inventory.waterTanks)
-            Text(
-                'Water Tank: ${tank.name} • ${tank.gaugeEntry.entryText()} • ${tank.bblPerInch} BBL/in'),
-          for (final tank in production.inventory.oilTanks)
-            Text(
-                'Oil Tank: ${tank.name} • ${tank.gaugeEntry.entryText()} • ${tank.bblPerInch} BBL/in'),
-          Text(
-              'Starting Gas Accum: ${production.inventory.startingGasAccum.isEmpty ? '-' : production.inventory.startingGasAccum}'),
-          const SizedBox(height: 12),
-          _sectionLabel('Quick Round Entries'),
-          if (production.hourlyChecks.isEmpty)
-            const Text(
-              'No quick round entries archived.',
-              style: TextStyle(color: Colors.white70),
-            ),
-          for (final check in production.hourlyChecks)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text(
-                '${check.time} • ${check.well} • CHK ${check.choke.isEmpty ? '-' : check.choke} • TBG ${check.tbg.isEmpty ? '-' : check.tbg} • CSG ${check.csg.isEmpty ? '-' : check.csg}',
-              ),
-            ),
-          const SizedBox(height: 12),
-          _sectionLabel('Production Report'),
-          SelectableText(shift.productionReportText),
-          const SizedBox(height: 12),
-          _sectionLabel('Text Updates'),
-          if (shift.textUpdates.isEmpty)
-            const Text(
-              'No archived text updates.',
-              style: TextStyle(color: Colors.white70),
-            ),
-          for (final update in shift.textUpdates)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: SelectableText(update.content),
-            ),
-          const SizedBox(height: 12),
-          _sectionLabel('JSA Summary'),
-          if (shift.jsaDraft == null)
-            const Text(
-              'No JSA archived for this shift.',
-              style: TextStyle(color: Colors.white70),
-            )
-          else ...[
-            Text(
-                'Company: ${shift.jsaDraft!.company.isEmpty ? '-' : shift.jsaDraft!.company}'),
-            Text(
-                'Location: ${shift.jsaDraft!.location.isEmpty ? '-' : shift.jsaDraft!.location}'),
-            Text(
-                'Well: ${shift.jsaDraft!.wellName.isEmpty ? '-' : shift.jsaDraft!.wellName}'),
-            Text(
-                'Task: ${shift.jsaDraft!.tasks.isEmpty ? (shift.jsaDraft!.task.isEmpty ? '-' : shift.jsaDraft!.task) : shift.jsaDraft!.tasks.join(', ')}'),
-            Text('Employees: ${shift.jsaDraft!.employees.length}'),
-            if (shift.jsaDraft!.notes.trim().isNotEmpty)
-              Text('Notes: ${shift.jsaDraft!.notes}'),
-          ],
+          Expanded(
+            child: Text(value.isEmpty ? '-' : value),
+          ),
         ],
       ),
     );
@@ -364,34 +250,150 @@ class ArchivedJobDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const AppHeader(title: 'Archived Job', showBack: true),
+      appBar: const AppHeader(title: 'Job Detail', showBack: true),
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          _jobHeaderCard(),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: () => _duplicate(context),
-                  icon: const Icon(Icons.copy_all),
-                  label: const Text('Duplicate Into Active Job'),
-                ),
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Full job detail is coming in the next task. This placeholder confirms History navigation is wired.',
+                style: TextStyle(color: Colors.white70),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _delete(context),
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('Delete History Item'),
-                ),
-              ),
-            ],
+            ),
           ),
-          const SizedBox(height: 16),
-          for (final shift in job.shifts) _shiftCard(context, shift),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    job.company.isEmpty ? 'Job' : job.company,
+                    style: const TextStyle(
+                      color: Color(0xFFCDA56A),
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _detailRow('Status', job.statusLabel),
+                  if (job.customer.isNotEmpty)
+                    _detailRow('Customer', job.customer),
+                  _detailRow('Pad', job.pad),
+                  _detailRow('Well', job.well),
+                  _detailRow('Shift', job.shift),
+                  _detailRow('Date Started', job.dateStarted),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
+  }
+}
+
+class _HistoryJobCardData {
+  const _HistoryJobCardData({
+    required this.identityKey,
+    required this.company,
+    required this.customer,
+    required this.pad,
+    required this.well,
+    required this.shift,
+    required this.dateStarted,
+    required this.statusLabel,
+    required this.isActive,
+    required this.priority,
+    required this.sortAt,
+  });
+
+  final String identityKey;
+  final String company;
+  final String customer;
+  final String pad;
+  final String well;
+  final String shift;
+  final String dateStarted;
+  final String statusLabel;
+  final bool isActive;
+  final int priority;
+  final DateTime sortAt;
+
+  factory _HistoryJobCardData.fromActiveJob(JobSetup job) {
+    final startedAt = job.startedAt ?? DateTime.now();
+    return _HistoryJobCardData(
+      identityKey: _identityKeyForJob(job),
+      company: job.company.trim(),
+      customer: job.customer.trim(),
+      pad: job.padName.trim(),
+      well: job.primaryWell.trim(),
+      shift: job.shift.trim(),
+      dateStarted: job.dateStarted.trim(),
+      statusLabel: 'Active',
+      isActive: true,
+      priority: 3,
+      sortAt: startedAt,
+    );
+  }
+
+  factory _HistoryJobCardData.fromEndedJob(JobSetup job) {
+    final endedAt = job.endedAt ?? job.startedAt ?? DateTime.now();
+    return _HistoryJobCardData(
+      identityKey: _identityKeyForJob(job),
+      company: job.company.trim(),
+      customer: job.customer.trim(),
+      pad: job.padName.trim(),
+      well: job.primaryWell.trim(),
+      shift: job.shift.trim(),
+      dateStarted: job.dateStarted.trim(),
+      statusLabel: 'Ended',
+      isActive: false,
+      priority: 2,
+      sortAt: endedAt,
+    );
+  }
+
+  factory _HistoryJobCardData.fromArchivedJob(ArchivedJob job) {
+    final setup = job.jobSetup;
+    return _HistoryJobCardData(
+      identityKey: _identityKeyForArchivedJob(job),
+      company: (setup?.company.trim().isNotEmpty ?? false)
+          ? setup!.company.trim()
+          : job.company.trim(),
+      customer: setup?.customer.trim() ?? '',
+      pad: (setup?.padName.trim().isNotEmpty ?? false)
+          ? setup!.padName.trim()
+          : job.padName.trim(),
+      well: setup?.primaryWell.trim().isNotEmpty == true
+          ? setup!.primaryWell.trim()
+          : (job.wells.isEmpty ? '' : job.wells.first.trim()),
+      shift: setup?.shift.trim() ?? '',
+      dateStarted: setup?.dateStarted.trim().isNotEmpty == true
+          ? setup!.dateStarted.trim()
+          : job.dateRangeStart.trim(),
+      statusLabel: 'Ended',
+      isActive: false,
+      priority: 1,
+      sortAt: job.updatedAt,
+    );
+  }
+
+  static String _identityKeyForJob(JobSetup job) {
+    if (job.id.trim().isNotEmpty) {
+      return 'job:${job.id.trim()}';
+    }
+    return 'fallback:${job.company.trim().toLowerCase()}|${job.padName.trim().toLowerCase()}|${job.primaryWell.trim().toLowerCase()}|${job.dateStarted.trim().toLowerCase()}';
+  }
+
+  static String _identityKeyForArchivedJob(ArchivedJob job) {
+    final setup = job.jobSetup;
+    if (setup != null && setup.id.trim().isNotEmpty) {
+      return 'job:${setup.id.trim()}';
+    }
+    final well = job.wells.isEmpty ? '' : job.wells.first.trim().toLowerCase();
+    return 'fallback:${job.company.trim().toLowerCase()}|${job.padName.trim().toLowerCase()}|$well|${job.dateRangeStart.trim().toLowerCase()}';
   }
 }
