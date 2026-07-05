@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'about_support_screen.dart';
 import '../services/app_settings_service.dart';
 import '../widgets/app_header.dart';
 
@@ -206,6 +207,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
+                    'About & Support',
+                    style: TextStyle(
+                      color: Color(0xFFCDA56A),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _settingsNavTile(
+                    icon: Icons.info_outline,
+                    title: 'About WellWerks',
+                    subtitle: 'App info, version, and local-only data notice',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const AboutScreen()),
+                      );
+                    },
+                  ),
+                  _settingsNavTile(
+                    icon: Icons.support_agent,
+                    title: 'Support',
+                    subtitle: 'Contact, feedback, bug report, and app info',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                            builder: (_) => const SupportScreen()),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
                     'Optional Report Sections',
                     style: TextStyle(
                       color: Color(0xFFCDA56A),
@@ -322,6 +363,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _settingsNavTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ListTile(
+        leading: Icon(icon, color: const Color(0xFFCDA56A)),
+        title: Text(title),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.chevron_right),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        onTap: onTap,
       ),
     );
   }
