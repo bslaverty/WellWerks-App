@@ -15,6 +15,8 @@ class JobHistoryService {
   static const _layoutKey = 'wellwerks_layout_designer_v2';
   static const _layoutLegacyKey = 'wellwerks_layout_designer_v1';
 
+  JobHistoryService();
+
   final ProductionShiftService _shiftService = ProductionShiftService();
   final JobStorageService _jobStorage = JobStorageService();
   final JsaStorageService _jsaStorage = JsaStorageService();
@@ -40,8 +42,37 @@ class JobHistoryService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _historyKey,
-      jsonEncode(history.map((item) => item.toJson()).toList()),
+      jsonEncode(history.take(200).map((item) => item.toJson()).toList()),
     );
+  }
+
+  Future<ArchivedJob?> loadArchivedJob(String id) async {
+    final history = await loadHistory();
+    for (final item in history) {
+      if (item.id == id) {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  Future<List<ArchivedJob>> searchHistory({
+    String company = '',
+    String pad = '',
+    String well = '',
+    String date = '',
+  }) async {
+    final history = await loadHistory();
+    return history
+        .where(
+          (item) => item.matchesSearch(
+            company: company,
+            pad: pad,
+            well: well,
+            date: date,
+          ),
+        )
+        .toList();
   }
 
   Future<ArchivedJob?> archiveCurrentJobOrShift() async {
@@ -146,6 +177,7 @@ class JobHistoryService {
       return ArchivedLayoutSummary(
         name: data['name'] as String? ?? 'Saved Layout',
         itemCount: items.length,
+        layoutData: data,
       );
     } catch (_) {
       return null;

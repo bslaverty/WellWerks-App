@@ -6,21 +6,31 @@ class ArchivedLayoutSummary {
   const ArchivedLayoutSummary({
     required this.name,
     required this.itemCount,
+    this.layoutData,
   });
 
   final String name;
   final int itemCount;
+  final Map<String, dynamic>? layoutData;
+
+  bool get hasLayoutData => layoutData != null && layoutData!.isNotEmpty;
 
   factory ArchivedLayoutSummary.fromJson(Map<String, dynamic> json) {
     return ArchivedLayoutSummary(
       name: json['name'] as String? ?? '',
       itemCount: json['itemCount'] as int? ?? 0,
+      layoutData: json['layoutData'] is Map
+          ? Map<String, dynamic>.from(
+              json['layoutData'] as Map<dynamic, dynamic>,
+            )
+          : null,
     );
   }
 
   Map<String, dynamic> toJson() => {
         'name': name,
         'itemCount': itemCount,
+        'layoutData': layoutData,
       };
 }
 
@@ -128,6 +138,31 @@ class ArchivedJob {
   final ArchivedLayoutSummary? layoutSummary;
   final List<ArchivedShiftEntry> shifts;
   final DateTime updatedAt;
+
+  bool matchesSearch({
+    String company = '',
+    String pad = '',
+    String well = '',
+    String date = '',
+  }) {
+    final companyQuery = company.trim().toLowerCase();
+    final padQuery = pad.trim().toLowerCase();
+    final wellQuery = well.trim().toLowerCase();
+    final dateQuery = date.trim().toLowerCase();
+
+    final companyMatch = companyQuery.isEmpty ||
+        this.company.toLowerCase().contains(companyQuery);
+    final padMatch =
+        padQuery.isEmpty || padName.toLowerCase().contains(padQuery);
+    final wellMatch = wellQuery.isEmpty ||
+        wells.any((item) => item.toLowerCase().contains(wellQuery));
+    final dateMatch = dateQuery.isEmpty ||
+        dateRangeStart.toLowerCase().contains(dateQuery) ||
+        dateRangeEnd.toLowerCase().contains(dateQuery) ||
+        shifts.any((item) => item.date.toLowerCase().contains(dateQuery));
+
+    return companyMatch && padMatch && wellMatch && dateMatch;
+  }
 
   factory ArchivedJob.fromJson(Map<String, dynamic> json) {
     return ArchivedJob(
