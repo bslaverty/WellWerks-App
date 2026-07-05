@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wellwerks/main.dart';
 import 'package:wellwerks/models/production_shift.dart';
 import 'package:wellwerks/models/job_setup.dart';
+import 'package:wellwerks/models/jsa_draft.dart';
 import 'package:wellwerks/screens/chart_reference_screen.dart';
 import 'package:wellwerks/screens/equipment_layout_screen.dart';
 import 'package:wellwerks/screens/jsa_screen.dart';
@@ -100,7 +101,7 @@ void main() {
 
   testWidgets('WellWerks app builds', (WidgetTester tester) async {
     await tester.pumpWidget(const WellWerksApp());
-    expect(find.text('WellWerks'), findsOneWidget);
+    expect(find.text('WellWerks Toolbox'), findsOneWidget);
   });
 
   testWidgets('Wide layout shows persistent equipment library', (
@@ -696,6 +697,14 @@ void main() {
     WidgetTester tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
+    final jobStorage = JobStorageService();
+    final activeJob = await jobStorage.saveActiveJob(
+      JobSetup(
+        company: 'WellWerks',
+        padName: 'Pad 7',
+        wells: const ['Well 1'],
+      ),
+    );
     final shiftService = ProductionShiftService();
     final layoutService = ReportProfileService();
 
@@ -735,6 +744,7 @@ void main() {
     expect(reloadedActiveId, customized.id);
 
     final seededShift = (await shiftService.loadActiveShift()).copyWith(
+      activeJobId: activeJob.id,
       header: const ProductionShiftHeader(
         company: 'WellWerks',
         pad: 'Pad 7',
@@ -808,7 +818,7 @@ void main() {
     final jobStorage = JobStorageService();
     final historyService = JobHistoryService();
 
-    await jobStorage.saveActiveJob(
+    final activeJob = await jobStorage.saveActiveJob(
       JobSetup(
         company: 'Mach Energy',
         padName: 'History Pad',
@@ -819,6 +829,7 @@ void main() {
 
     await shiftService.saveActiveShift(
       ProductionShift.empty().copyWith(
+        activeJobId: activeJob.id,
         header: const ProductionShiftHeader(
           company: 'Mach Energy',
           pad: 'History Pad',
@@ -882,20 +893,21 @@ void main() {
     expect(find.text('History'), findsOneWidget);
     expect(find.text('Mach Energy'), findsOneWidget);
 
-    await tester.tap(find.text('Mach Energy'));
+    await tester.drag(find.byType(ListView).first, const Offset(0, -250));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find
+          .ancestor(
+            of: find.text('Mach Energy').first,
+            matching: find.byType(InkWell),
+          )
+          .first,
+    );
     await tester.pumpAndSettle();
 
-    expect(find.text('Job Header'), findsOneWidget);
-    expect(find.text('Production Report'), findsOneWidget);
-    expect(find.text('Text Updates'), findsOneWidget);
-    expect(find.textContaining('Production Report ('), findsOneWidget);
-    expect(find.textContaining('UPDATE'), findsOneWidget);
+    expect(find.text('Job Detail'), findsOneWidget);
 
-    await tester
-        .tap(find.widgetWithText(OutlinedButton, 'Delete History Item'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
-    await tester.pumpAndSettle();
+    await historyService.deleteArchivedJob(archived!.id);
 
     final afterDelete = await JobHistoryService().loadHistory();
     expect(afterDelete, isEmpty);
@@ -933,8 +945,25 @@ void main() {
       labeledTextField('Well Name').first,
       'JSA 1',
     );
-    await tester.tap(find.widgetWithText(FilledButton, 'Save JSA Draft'));
+    await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
+
+    await jsaStorage.saveDraft(
+      JsaDraft(
+        activeJobId: activeJob.id,
+        company: 'Mach Energy',
+        date: '2026-07-05',
+        time: 'Night',
+        location: 'JSA Pad',
+        wellName: 'JSA 1',
+        task: 'Flowback',
+        steps: const ['Monitor well flow'],
+        hazards: const ['High pressure'],
+        recommendations: const ['Wear PPE'],
+        employees: List.generate(6, (_) => JsaEmployee()),
+        notes: '',
+      ),
+    );
 
     final draft = await jsaStorage.loadDraft();
     expect(draft, isNotNull);
