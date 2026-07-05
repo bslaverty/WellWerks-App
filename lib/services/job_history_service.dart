@@ -56,6 +56,31 @@ class JobHistoryService {
     return null;
   }
 
+  Future<ArchivedLayoutSummary?> loadCurrentLayoutSummary() async {
+    return _loadLayoutSummary();
+  }
+
+  Future<void> clearCurrentLayoutSummary() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_layoutKey);
+    await prefs.remove(_layoutLegacyKey);
+  }
+
+  Future<String> buildProductionReportTextForShift(
+      ProductionShift shift) async {
+    final layout =
+        await _layoutProfiles.resolveProfile(shift.header.layoutProfileId);
+    return _buildReportText(shift, layout);
+  }
+
+  Future<List<ArchivedTextUpdate>> buildTextUpdatesForShift(
+    ProductionShift shift,
+  ) async {
+    final layout =
+        await _layoutProfiles.resolveProfile(shift.header.layoutProfileId);
+    return _buildTextUpdates(shift, layout);
+  }
+
   Future<List<ArchivedJob>> searchHistory({
     String company = '',
     String pad = '',

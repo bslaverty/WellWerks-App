@@ -51,6 +51,7 @@ class JobStorageService {
 
   Future<JobSetup> duplicateJobForNewJob(JobSetup job) async {
     final duplicated = job.copyWith(
+      id: '',
       status: 'active',
       startedAt: DateTime.now(),
       endedAt: null,
@@ -67,6 +68,11 @@ class JobStorageService {
   Future<void> clearActiveJob() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_activeJobKey);
+  }
+
+  Future<void> clearLastEndedJob() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_lastEndedJobKey);
   }
 
   JobSetup _normalizeActiveJob(JobSetup job) {
