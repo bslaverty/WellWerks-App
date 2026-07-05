@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -266,6 +268,46 @@ void main() {
         reason: 'Expected icon for ${entry.key} to render on canvas.',
       );
     }
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Layout designer saves under the current active job', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+
+    final jobStorage = JobStorageService();
+    final activeJob = await jobStorage.saveActiveJob(
+      JobSetup(
+        company: 'Mach Energy',
+        padName: 'Layout Pad',
+        wells: const ['Layout 1'],
+        shift: 'Day',
+      ),
+    );
+
+    await tester.binding.setSurfaceSize(const Size(1200, 1500));
+    await tester.pumpWidget(const MaterialApp(home: EquipmentLayoutScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Active Job'), findsOneWidget);
+    expect(find.textContaining('Pad: Layout Pad'), findsOneWidget);
+    expect(find.textContaining('Well: Layout 1'), findsOneWidget);
+    expect(find.textContaining('Shift: Day'), findsOneWidget);
+
+    await tester.tap(find.text('Tools / Menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save / Load / Clear'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save Rig-Up').first);
+    await tester.pumpAndSettle();
+
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString('wellwerks_layout_designer_v2');
+    expect(saved, isNotNull);
+    final payload = jsonDecode(saved!) as Map<String, dynamic>;
+    expect(payload['activeJobId'], activeJob.id);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });

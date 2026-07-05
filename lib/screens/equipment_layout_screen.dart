@@ -12,6 +12,9 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../models/job_setup.dart';
+import '../services/job_storage_service.dart';
 import '../widgets/app_header.dart';
 
 class EquipmentLayoutScreen extends StatefulWidget {
@@ -56,6 +59,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   final _preparedBy = TextEditingController();
   final _notes = TextEditingController();
   bool _showSideLibrary = true;
+  final _jobStorage = JobStorageService();
+  JobSetup? _activeJob;
 
   static const _gold = Color(0xFFCDA56A);
   static const _bg = Color(0xFF101113);
@@ -604,6 +609,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
         'name': _layoutName.text.trim().isEmpty
             ? 'New Layout'
             : _layoutName.text.trim(),
+        'activeJobId': _activeJob?.id ?? '',
         'company': _company.text.trim(),
         'padName': _jobLocation.text.trim(),
         'wellName': _jobLocation.text.trim(),
@@ -647,6 +653,92 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       _selectedId = null;
       _selectedIds.clear();
     });
+  }
+
+  Widget _activeJobBanner() {
+    final activeJob = _activeJob;
+    if (activeJob == null) {
+      return const Card(
+        margin: EdgeInsets.fromLTRB(12, 12, 12, 0),
+        child: Padding(
+          padding: EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Active Job',
+                style: TextStyle(
+                  color: Color(0xFFCDA56A),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'No active job found. Start a job first so saved layout drawings can attach to the current job.',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Active Job',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              activeJob.company.trim().isEmpty
+                  ? 'No company entered'
+                  : activeJob.company,
+              style: const TextStyle(
+                color: Color(0xFFCDA56A),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                _jobChip('Pad', activeJob.padName),
+                _jobChip('Well', activeJob.primaryWell),
+                _jobChip('Shift', activeJob.shift),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _jobChip(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFFCDA56A).withValues(alpha: 0.35),
+        ),
+      ),
+      child: Text(
+        '$label: ${value.trim().isEmpty ? 'Not entered' : value.trim()}',
+        style:
+            const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+      ),
+    );
   }
 
   Future<Map<String, dynamic>> _savedLayouts(SharedPreferences prefs) async {
@@ -834,12 +926,38 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   }
 
   Future<void> _loadLayout() async {
+    final activeJob = await _jobStorage.loadActiveJob();
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('wellwerks_layout_designer_v2') ??
         prefs.getString('wellwerks_layout_designer_v1');
-    if (raw == null || raw.isEmpty) return;
+    _activeJob = activeJob;
+    if (raw == null || raw.isEmpty) {
+      if (!mounted || activeJob == null) return;
+      setState(() {
+        if (_company.text.trim().isEmpty) {
+          _company.text = activeJob.company;
+        }
+        if (_jobLocation.text.trim().isEmpty) {
+          _jobLocation.text = activeJob.padName.isNotEmpty
+              ? activeJob.padName
+              : activeJob.primaryWell;
+        }
+      });
+      return;
+    }
     try {
       _applyPayload(jsonDecode(raw) as Map<String, dynamic>);
+      if (!mounted || activeJob == null) return;
+      setState(() {
+        if (_company.text.trim().isEmpty) {
+          _company.text = activeJob.company;
+        }
+        if (_jobLocation.text.trim().isEmpty) {
+          _jobLocation.text = activeJob.padName.isNotEmpty
+              ? activeJob.padName
+              : activeJob.primaryWell;
+        }
+      });
     } catch (_) {}
   }
 
@@ -3527,6 +3645,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       appBar: const AppHeader(title: 'Layout Designer', showBack: true),
       body: Column(
         children: [
+          _activeJobBanner(),
           _toolbar(isWide: isWide),
           if (_drawIronMode) _ironDrawControls(),
           if (_selectedIds.isNotEmpty) _selectionQuickActionsBar(),
