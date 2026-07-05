@@ -273,6 +273,16 @@ void main() {
   ) async {
     SharedPreferences.setMockInitialValues({});
     final service = ProductionShiftService();
+    final jobStorage = JobStorageService();
+
+    await jobStorage.saveActiveJob(
+      JobSetup(
+        company: 'Continental Resources',
+        padName: 'Bow Pad',
+        wells: const ['Bow 21-3'],
+        shift: 'Day',
+      ),
+    );
 
     await tester.binding.setSurfaceSize(const Size(900, 7000));
     await tester
@@ -295,6 +305,11 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: PressureEntryScreen()));
     await tester.pumpAndSettle();
 
+    expect(find.text('Active Job'), findsOneWidget);
+    expect(find.textContaining('Continental Resources'), findsWidgets);
+    expect(find.textContaining('Pad: Bow Pad'), findsOneWidget);
+    expect(find.textContaining('Well: Bow 21-3'), findsOneWidget);
+    expect(find.textContaining('Shift: Day'), findsOneWidget);
     expect(find.text('Shift Baseline'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(FilledButton, 'Build Round').first);
@@ -358,6 +373,8 @@ void main() {
     await tester.pumpAndSettle();
 
     final savedShift = await service.loadActiveShift();
+    final activeJob = await jobStorage.loadActiveJob();
+    expect(savedShift.activeJobId, activeJob?.id ?? '');
     expect(savedShift.savedRows.length, 2);
     expect(savedShift.savedRows[0].time, '6 AM');
     expect(savedShift.savedRows[1].time, '7 AM');

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/job_setup.dart';
 import '../models/production_shift.dart';
 import '../models/round_reading.dart';
+import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/round_storage_service.dart';
 import '../widgets/app_header.dart';
@@ -19,10 +21,12 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   static const _legacyInventoryKey = 'wellwerks_quick_round_start_inventory_v1';
 
   final _service = ProductionShiftService();
+  final _jobStorage = JobStorageService();
   final _roundStorage = RoundStorageService();
   bool _loading = true;
 
   late ProductionShift _shift;
+  JobSetup? _activeJob;
   final List<_HourlyCheckControllers> _controllers = [];
 
   static const List<String> _roundTimes = [
@@ -69,7 +73,13 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   Future<void> _load() async {
     var shift = await _service.loadActiveShift();
     shift = await _migrateLegacyInventory(shift);
+    final activeJob = await _jobStorage.loadActiveJob();
+    if (activeJob != null && shift.activeJobId != activeJob.id) {
+      shift = shift.copyWith(activeJobId: activeJob.id);
+      await _service.saveActiveShift(shift);
+    }
     _shift = shift;
+    _activeJob = activeJob;
     _rebuildControllers();
     if (!mounted) return;
     setState(() => _loading = false);
@@ -184,9 +194,20 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   Future<void> _persistShift() async {
+    await _refreshActiveJobReference();
     final checks = _controllers.map((item) => item.toCheck()).toList();
     _shift = _shift.copyWith(hourlyChecks: checks);
     await _service.saveActiveShift(_shift);
+  }
+
+  Future<void> _refreshActiveJobReference() async {
+    final activeJob = await _jobStorage.loadActiveJob();
+    _activeJob = activeJob;
+    final activeJobId = activeJob?.id ?? '';
+    if (_shift.activeJobId == activeJobId) {
+      return;
+    }
+    _shift = _shift.copyWith(activeJobId: activeJobId);
   }
 
   double _n(String value) => ProductionMath.parse(value);
@@ -253,7 +274,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   Future<void> _buildRound() async {
+    await _refreshActiveJobReference();
     final updated = _shift.copyWith(
+      activeJobId: _activeJob?.id ?? '',
       hourlyChecks: _buildBlankChecks(),
       savedRows: const [],
       clearSelectedTextHour: true,
@@ -288,7 +311,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         false;
     if (!confirmed) return;
 
+    await _refreshActiveJobReference();
     _shift = _shift.copyWith(
+      activeJobId: _activeJob?.id ?? '',
       hourlyChecks: const [],
       savedRows: const [],
       clearSelectedTextHour: true,
@@ -478,6 +503,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       ..sort((a, b) => a.hourIndex.compareTo(b.hourIndex));
 
     _shift = _shift.copyWith(
+      activeJobId: _activeJob?.id ?? '',
       hourlyChecks: _controllers.map((item) => item.toCheck()).toList(),
       savedRows: updatedRows,
       selectedTextHour: _shift.selectedTextHour ?? index,
@@ -627,6 +653,55 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         _n(inventory.oilPumpedBeforeRound),
       ),
     ]);
+  }
+
+  Widget _activeJobBanner() {
+    final activeJob = _activeJob;
+    if (activeJob == null) {
+      return _section('Active Job', const [
+        Text(
+          'No active job found. Start a job first to link Quick Round entries, but Quick Round will still work as it does today.',
+          style: TextStyle(color: Colors.white70),
+        ),
+      ]);
+    }
+
+    return _section('Active Job', [
+      Text(
+        activeJob.company.trim().isEmpty
+            ? 'No company entered'
+            : activeJob.company,
+        style: const TextStyle(
+            color: Color(0xFFCDA56A), fontWeight: FontWeight.w700),
+      ),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 10,
+        runSpacing: 8,
+        children: [
+          _jobChip('Pad', activeJob.padName),
+          _jobChip('Well', activeJob.primaryWell),
+          _jobChip('Shift', activeJob.shift),
+        ],
+      ),
+    ]);
+  }
+
+  Widget _jobChip(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(12),
+        border:
+            Border.all(color: const Color(0xFFCDA56A).withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        '$label: ${value.trim().isEmpty ? 'Not entered' : value.trim()}',
+        style:
+            const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+      ),
+    );
   }
 
   Widget _hourlyCard(int index) {
@@ -873,6 +948,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
+          _activeJobBanner(),
           _section('Round Setup', [
             DropdownButtonFormField<String>(
               initialValue: _shift.roundStartTime,

@@ -2,6 +2,7 @@ class ProductionShift {
   const ProductionShift({
     required this.header,
     required this.inventory,
+    required this.activeJobId,
     required this.roundStartTime,
     required this.checkCount,
     required this.hourlyChecks,
@@ -14,6 +15,7 @@ class ProductionShift {
     return ProductionShift(
       header: const ProductionShiftHeader(),
       inventory: ProductionInventoryBaseline.empty(),
+      activeJobId: '',
       roundStartTime: '6 AM',
       checkCount: 12,
       hourlyChecks: const [],
@@ -35,6 +37,7 @@ class ProductionShift {
           (json['inventory'] as Map?) ?? const <String, dynamic>{},
         ),
       ),
+      activeJobId: json['activeJobId'] as String? ?? '',
       roundStartTime: json['roundStartTime'] as String? ?? '6 AM',
       checkCount: json['checkCount'] as int? ?? 12,
       hourlyChecks: ((json['hourlyChecks'] as List?) ?? const [])
@@ -53,6 +56,7 @@ class ProductionShift {
 
   final ProductionShiftHeader header;
   final ProductionInventoryBaseline inventory;
+  final String activeJobId;
   final String roundStartTime;
   final int checkCount;
   final List<ProductionHourlyCheck> hourlyChecks;
@@ -63,6 +67,7 @@ class ProductionShift {
   ProductionShift copyWith({
     ProductionShiftHeader? header,
     ProductionInventoryBaseline? inventory,
+    String? activeJobId,
     String? roundStartTime,
     int? checkCount,
     List<ProductionHourlyCheck>? hourlyChecks,
@@ -74,6 +79,7 @@ class ProductionShift {
     return ProductionShift(
       header: header ?? this.header,
       inventory: inventory ?? this.inventory,
+      activeJobId: activeJobId ?? this.activeJobId,
       roundStartTime: roundStartTime ?? this.roundStartTime,
       checkCount: checkCount ?? this.checkCount,
       hourlyChecks: hourlyChecks ?? this.hourlyChecks,
@@ -89,6 +95,7 @@ class ProductionShift {
     return {
       'header': header.toJson(),
       'inventory': inventory.toJson(),
+      'activeJobId': activeJobId,
       'roundStartTime': roundStartTime,
       'checkCount': checkCount,
       'hourlyChecks': hourlyChecks.map((item) => item.toJson()).toList(),

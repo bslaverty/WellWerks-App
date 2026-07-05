@@ -2,6 +2,7 @@ class JobSetup {
   static const _unset = Object();
 
   JobSetup({
+    this.id = '',
     this.company = 'Mach Energy',
     this.customer = '',
     this.padName = '',
@@ -39,6 +40,7 @@ class JobSetup {
     ],
   });
 
+  final String id;
   final String company;
   final String customer;
   final String padName;
@@ -75,6 +77,7 @@ class JobSetup {
   bool get isEnded => status == 'ended';
 
   JobSetup copyWith({
+    String? id,
     String? company,
     String? customer,
     String? padName,
@@ -106,6 +109,7 @@ class JobSetup {
     List<String>? reportTimes,
   }) {
     return JobSetup(
+      id: id ?? this.id,
       company: company ?? this.company,
       customer: customer ?? this.customer,
       padName: padName ?? this.padName,
@@ -140,6 +144,7 @@ class JobSetup {
 
   Map<String, dynamic> toJson() => {
         'company': company,
+        'id': id,
         'customer': customer,
         'padName': padName,
         'notes': notes,
@@ -171,6 +176,7 @@ class JobSetup {
       };
 
   factory JobSetup.fromJson(Map<String, dynamic> json) => JobSetup(
+        id: json['id'] as String? ?? '',
         company: json['company'] as String? ?? 'Mach Energy',
         customer: json['customer'] as String? ?? '',
         padName: json['padName'] as String? ?? '',

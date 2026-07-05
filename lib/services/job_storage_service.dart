@@ -70,9 +70,14 @@ class JobStorageService {
   }
 
   JobSetup _normalizeActiveJob(JobSetup job) {
+    final startedAt = job.startedAt ?? DateTime.now();
+    final id = job.id.trim().isEmpty
+        ? startedAt.microsecondsSinceEpoch.toString()
+        : job.id;
     return job.copyWith(
+      id: id,
       status: 'active',
-      startedAt: job.startedAt ?? DateTime.now(),
+      startedAt: startedAt,
       endedAt: null,
     );
   }
