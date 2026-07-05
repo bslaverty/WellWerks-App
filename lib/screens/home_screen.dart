@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../widgets/app_header.dart';
 import '../widgets/tool_card.dart';
+import '../models/job_setup.dart';
+import '../services/job_storage_service.dart';
+import '../services/recovery_state_service.dart';
 import 'module_menu_screen.dart';
 import 'rate_calculator_menu_screen.dart';
 import 'equipment_layout_screen.dart';
@@ -20,11 +23,154 @@ import 'settings_screen.dart';
 import 'about_support_screen.dart';
 import 'job_setup_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
-  void open(BuildContext context, Widget screen) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final _jobStorage = JobStorageService();
+  final _recoveryState = RecoveryStateService();
+
+  JobSetup? _activeJob;
+  String _lastModule = '';
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecovery();
+  }
+
+  Future<void> _loadRecovery() async {
+    final activeJob = await _jobStorage.loadActiveJob();
+    final lastActiveJobId = await _jobStorage.loadLastActiveJobId();
+    final snapshot = await _recoveryState.loadSnapshot(
+      lastActiveJobId: lastActiveJobId,
+    );
+    if (!mounted) return;
+    setState(() {
+      _activeJob = activeJob != null && snapshot.lastActiveJobId == activeJob.id
+          ? activeJob
+          : activeJob;
+      _lastModule = snapshot.lastModule;
+      _loading = false;
+    });
+  }
+
+  Future<void> open(BuildContext context, Widget screen) async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+    await _loadRecovery();
+  }
+
+  Widget _recoveryCard(BuildContext context, JobSetup job) {
+    return Card(
+      color: const Color(0xFF17130E),
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Active Job Recovery',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              job.company.trim().isEmpty ? 'Job in progress' : job.company,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 10),
+            _recoveryLine('Customer', job.customer),
+            _recoveryLine('Pad', job.padName),
+            _recoveryLine('Well', job.primaryWell),
+            _recoveryLine('Shift', job.shift),
+            _recoveryLine('Last Open', _moduleLabel(_lastModule)),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => _continueActiveJob(context),
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Continue Active Job'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _recoveryLine(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(value.trim().isEmpty ? '-' : value.trim()),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _moduleLabel(String value) {
+    switch (value) {
+      case RecoveryModules.quickRound:
+        return 'Quick Round';
+      case RecoveryModules.productionReport:
+        return 'Production Report';
+      case RecoveryModules.textUpdate:
+        return 'Text Update';
+      case RecoveryModules.jsa:
+        return 'JSA';
+      case RecoveryModules.layoutDesigner:
+        return 'Layout Designer';
+      case RecoveryModules.history:
+        return 'History';
+      default:
+        return 'Quick Round';
+    }
+  }
+
+  Future<void> _continueActiveJob(BuildContext context) async {
+    Widget screen;
+    switch (_lastModule) {
+      case RecoveryModules.productionReport:
+        screen = const ShiftReportScreen();
+        break;
+      case RecoveryModules.textUpdate:
+        screen = const TextUpdateScreen();
+        break;
+      case RecoveryModules.jsa:
+        screen = const JsaScreen();
+        break;
+      case RecoveryModules.layoutDesigner:
+        screen = const EquipmentLayoutScreen();
+        break;
+      default:
+        screen = const PressureEntryScreen();
+        break;
+    }
+    await open(context, screen);
   }
 
   Widget _moduleCard({
@@ -51,6 +197,13 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        appBar: AppHeader(showBack: false),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       appBar: AppHeader(
         showBack: false,
@@ -90,6 +243,7 @@ class HomeScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
+          if (_activeJob != null) _recoveryCard(context, _activeJob!),
           const Padding(
             padding: EdgeInsets.only(bottom: 14),
             child: Text(

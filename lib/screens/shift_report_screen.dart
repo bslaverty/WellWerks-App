@@ -6,6 +6,7 @@ import '../models/job_setup.dart';
 import '../models/production_shift.dart';
 import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
+import '../services/recovery_state_service.dart';
 import '../services/report_profile_service.dart';
 import '../widgets/app_header.dart';
 
@@ -20,6 +21,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   final _shiftService = ProductionShiftService();
   final _layoutService = ReportProfileService();
   final _jobStorage = JobStorageService();
+  final _recoveryState = RecoveryStateService();
 
   ProductionShift _shift = ProductionShift.empty();
   JobSetup? _activeJob;
@@ -29,6 +31,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   @override
   void initState() {
     super.initState();
+    _recoveryState.saveLastModule(RecoveryModules.productionReport);
     _load();
   }
 

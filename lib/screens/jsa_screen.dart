@@ -8,6 +8,7 @@ import '../models/job_setup.dart';
 import '../models/jsa_draft.dart';
 import '../services/job_storage_service.dart';
 import '../services/jsa_storage_service.dart';
+import '../services/recovery_state_service.dart';
 import '../widgets/app_header.dart';
 
 class JsaScreen extends StatefulWidget {
@@ -22,6 +23,7 @@ class _JsaScreenState extends State<JsaScreen> {
 
   final _storage = JsaStorageService();
   final _jobStorage = JobStorageService();
+  final _recoveryState = RecoveryStateService();
   final _location = TextEditingController();
   final _wellName = TextEditingController();
   final _notes = TextEditingController();
@@ -215,6 +217,7 @@ class _JsaScreenState extends State<JsaScreen> {
   @override
   void initState() {
     super.initState();
+    _recoveryState.saveLastModule(RecoveryModules.jsa);
     _loadDraft();
   }
 

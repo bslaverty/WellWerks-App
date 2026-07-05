@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/job_setup.dart';
 import '../services/job_storage_service.dart';
+import '../services/recovery_state_service.dart';
 import '../widgets/app_header.dart';
 
 class EquipmentLayoutScreen extends StatefulWidget {
@@ -60,6 +61,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   final _notes = TextEditingController();
   bool _showSideLibrary = true;
   final _jobStorage = JobStorageService();
+  final _recoveryState = RecoveryStateService();
   JobSetup? _activeJob;
 
   static const _gold = Color(0xFFCDA56A);
@@ -68,6 +70,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   @override
   void initState() {
     super.initState();
+    _recoveryState.saveLastModule(RecoveryModules.layoutDesigner);
     _loadLayout();
   }
 

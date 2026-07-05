@@ -6,6 +6,7 @@ import '../models/production_shift.dart';
 import '../models/round_reading.dart';
 import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
+import '../services/recovery_state_service.dart';
 import '../services/round_storage_service.dart';
 import '../widgets/app_header.dart';
 import '../widgets/ww_number_field.dart';
@@ -23,6 +24,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   final _service = ProductionShiftService();
   final _jobStorage = JobStorageService();
   final _roundStorage = RoundStorageService();
+  final _recoveryState = RecoveryStateService();
   bool _loading = true;
 
   late ProductionShift _shift;
@@ -59,6 +61,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   @override
   void initState() {
     super.initState();
+    _recoveryState.saveLastModule(RecoveryModules.quickRound);
     _load();
   }
 

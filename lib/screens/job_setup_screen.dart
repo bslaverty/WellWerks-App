@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -16,10 +18,12 @@ class JobSetupScreen extends StatefulWidget {
 class _JobSetupScreenState extends State<JobSetupScreen> {
   final _storage = JobStorageService();
   final _page = PageController();
+  Timer? _autoSaveTimer;
 
   int _step = 0;
   bool _loading = true;
   bool _editing = false;
+  bool _startingFreshJob = false;
   JobSetup? _activeJob;
 
   String company = 'Mach Energy';
@@ -69,7 +73,41 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   @override
   void initState() {
     super.initState();
+    _attachAutoSaveListeners();
     _load();
+  }
+
+  List<TextEditingController> get _autoSaveControllers => [
+        customer,
+        padName,
+        notes,
+        leaseName,
+        county,
+        state,
+        crew,
+        dateStarted,
+        wellEntry,
+        sandSeparators,
+        plugCatchers,
+        chokeManifolds,
+        lineHeaters,
+        testUnits,
+        ecds,
+        vrus,
+        flares,
+        transferPumps,
+        oilTanks,
+        oilTankCapacity,
+        waterTanks,
+        waterTankCapacity,
+        productionTankFactor,
+        reportTimeEntry,
+      ];
+
+  void _attachAutoSaveListeners() {
+    for (final controller in _autoSaveControllers) {
+      controller.addListener(_scheduleAutoSave);
+    }
   }
 
   Future<void> _load() async {
@@ -81,8 +119,19 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     if (!mounted) return;
     setState(() {
       _activeJob = active;
+      _startingFreshJob = false;
       _editing = false;
       _loading = false;
+    });
+  }
+
+  void _scheduleAutoSave() {
+    if (!_editing) return;
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(milliseconds: 500), () async {
+      final saved = await _storage.saveActiveJob(_buildJobFromForm());
+      if (!mounted) return;
+      _activeJob = saved;
     });
   }
 
@@ -167,6 +216,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       shift: shift,
       dateStarted: dateStarted.text.trim(),
       status: _activeJob?.status ?? 'active',
+      id: _activeJob?.id ?? '',
       startedAt: _activeJob?.startedAt,
       endedAt: _activeJob?.endedAt,
       wells: List<String>.from(wells),
@@ -214,6 +264,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     _resetFormForNewJob();
     setState(() {
       _activeJob = null;
+      _startingFreshJob = true;
       _editing = true;
       _step = 0;
     });
@@ -228,6 +279,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
 
     _applyJobToForm(active);
     setState(() {
+      _startingFreshJob = false;
       _editing = true;
       _step = 0;
     });
@@ -237,7 +289,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   Future<void> _save() async {
-    final isStartingNewJob = _activeJob == null;
+    final isStartingNewJob = _startingFreshJob || _activeJob == null;
     final job = _buildJobFromForm();
     final saved = isStartingNewJob
         ? await _storage.saveActiveJob(job)
@@ -246,6 +298,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     if (!mounted) return;
     setState(() {
       _activeJob = saved;
+      _startingFreshJob = false;
       _editing = false;
       _step = 0;
     });
@@ -293,6 +346,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     _applyJobToForm(ended);
     setState(() {
       _activeJob = null;
+      _startingFreshJob = false;
       _editing = false;
       _step = 0;
     });
@@ -316,7 +370,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
             onPressed: finish ? _save : _next,
             child: Text(
               finish
-                  ? (_activeJob == null ? 'Start Job' : 'Save Active Job')
+                  ? (_startingFreshJob ? 'Start Job' : 'Save Active Job')
                   : 'Next',
             ),
           ),
@@ -458,33 +512,12 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
 
   @override
   void dispose() {
+    _autoSaveTimer?.cancel();
     _page.dispose();
-    for (final controller in [
-      customer,
-      padName,
-      notes,
-      leaseName,
-      county,
-      state,
-      crew,
-      dateStarted,
-      wellEntry,
-      sandSeparators,
-      plugCatchers,
-      chokeManifolds,
-      lineHeaters,
-      testUnits,
-      ecds,
-      vrus,
-      flares,
-      transferPumps,
-      oilTanks,
-      oilTankCapacity,
-      waterTanks,
-      waterTankCapacity,
-      productionTankFactor,
-      reportTimeEntry,
-    ]) {
+    for (final controller in _autoSaveControllers) {
+      controller.removeListener(_scheduleAutoSave);
+    }
+    for (final controller in _autoSaveControllers) {
       controller.dispose();
     }
     super.dispose();
@@ -502,7 +535,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     return Scaffold(
       appBar: AppHeader(
         title: _editing
-            ? (_activeJob == null ? 'Start Job' : 'Edit Active Job')
+            ? (_startingFreshJob ? 'Start Job' : 'Edit Active Job')
             : (_activeJob == null ? 'Job Setup' : 'Active Job'),
         showBack: true,
       ),
@@ -539,6 +572,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                           ],
                           onChanged: (value) {
                             setState(() => company = value ?? 'Mach Energy');
+                            _scheduleAutoSave();
                           },
                         ),
                         const SizedBox(height: 14),
@@ -608,6 +642,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                           ],
                           onChanged: (value) {
                             setState(() => shift = value ?? 'Day');
+                            _scheduleAutoSave();
                           },
                         ),
                         const SizedBox(height: 12),
@@ -638,6 +673,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                                   wells.add(name);
                                   wellEntry.clear();
                                 });
+                                _scheduleAutoSave();
                               },
                               icon: const Icon(Icons.add),
                             ),
@@ -657,6 +693,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                                 icon: const Icon(Icons.delete),
                                 onPressed: () {
                                   setState(() => wells.remove(wellName));
+                                  _scheduleAutoSave();
                                 },
                               ),
                             ),
@@ -726,6 +763,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                                   reportTimes.add(time);
                                   reportTimeEntry.clear();
                                 });
+                                _scheduleAutoSave();
                               },
                               icon: const Icon(Icons.add),
                             ),
@@ -740,6 +778,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                                 icon: const Icon(Icons.delete),
                                 onPressed: () {
                                   setState(() => reportTimes.remove(time));
+                                  _scheduleAutoSave();
                                 },
                               ),
                             ),
@@ -775,6 +814,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
         label: label,
         controller: controller,
         allowDecimal: false,
+        onChanged: (_) => _scheduleAutoSave(),
       ),
     );
   }

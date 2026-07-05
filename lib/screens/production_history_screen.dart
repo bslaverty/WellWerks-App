@@ -9,6 +9,7 @@ import '../services/job_history_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/jsa_storage_service.dart';
 import '../services/production_shift_service.dart';
+import '../services/recovery_state_service.dart';
 import '../widgets/app_header.dart';
 import 'pressure_entry_screen.dart';
 
@@ -31,6 +32,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   final _jobStorage = JobStorageService();
   final _shiftService = ProductionShiftService();
   final _jsaStorage = JsaStorageService();
+  final _recoveryState = RecoveryStateService();
 
   final _companySearch = TextEditingController();
   final _customerSearch = TextEditingController();
@@ -45,6 +47,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   @override
   void initState() {
     super.initState();
+    _recoveryState.saveLastModule(RecoveryModules.history);
     _load();
   }
 
