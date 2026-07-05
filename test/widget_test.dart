@@ -6,6 +6,7 @@ import 'package:wellwerks/models/production_shift.dart';
 import 'package:wellwerks/models/job_setup.dart';
 import 'package:wellwerks/screens/chart_reference_screen.dart';
 import 'package:wellwerks/screens/equipment_layout_screen.dart';
+import 'package:wellwerks/screens/jsa_screen.dart';
 import 'package:wellwerks/screens/pressure_entry_screen.dart';
 import 'package:wellwerks/screens/production_history_screen.dart';
 import 'package:wellwerks/screens/production_inventory_screen.dart';
@@ -13,6 +14,7 @@ import 'package:wellwerks/screens/shift_report_screen.dart';
 import 'package:wellwerks/screens/text_update_screen.dart';
 import 'package:wellwerks/services/job_history_service.dart';
 import 'package:wellwerks/services/job_storage_service.dart';
+import 'package:wellwerks/services/jsa_storage_service.dart';
 import 'package:wellwerks/services/production_shift_service.dart';
 import 'package:wellwerks/services/report_profile_service.dart';
 
@@ -855,5 +857,45 @@ void main() {
 
     final afterDelete = await JobHistoryService().loadHistory();
     expect(afterDelete, isEmpty);
+  });
+
+  testWidgets('JSA saves under the current active job', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+
+    final jobStorage = JobStorageService();
+    final jsaStorage = JsaStorageService();
+    final activeJob = await jobStorage.saveActiveJob(
+      JobSetup(
+        company: 'Mach Energy',
+        padName: 'JSA Pad',
+        wells: const ['JSA 1'],
+        shift: 'Night',
+      ),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: JsaScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Active Job'), findsOneWidget);
+    expect(find.textContaining('Pad: JSA Pad'), findsOneWidget);
+    expect(find.textContaining('Well: JSA 1'), findsOneWidget);
+    expect(find.textContaining('Shift: Night'), findsOneWidget);
+
+    await tester.enterText(
+      labeledTextField('Location / Pad').first,
+      'JSA Pad',
+    );
+    await tester.enterText(
+      labeledTextField('Well Name').first,
+      'JSA 1',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Save JSA Draft'));
+    await tester.pumpAndSettle();
+
+    final draft = await jsaStorage.loadDraft();
+    expect(draft, isNotNull);
+    expect(draft!.activeJobId, activeJob.id);
   });
 }

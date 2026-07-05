@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:signature/signature.dart';
 
+import '../models/job_setup.dart';
 import '../models/jsa_draft.dart';
+import '../services/job_storage_service.dart';
 import '../services/jsa_storage_service.dart';
 import '../widgets/app_header.dart';
 
@@ -19,6 +21,7 @@ class _JsaScreenState extends State<JsaScreen> {
   static const gold = Color(0xFFCDA56A);
 
   final _storage = JsaStorageService();
+  final _jobStorage = JobStorageService();
   final _location = TextEditingController();
   final _wellName = TextEditingController();
   final _notes = TextEditingController();
@@ -35,6 +38,7 @@ class _JsaScreenState extends State<JsaScreen> {
   );
 
   String _company = 'Mach Energy';
+  JobSetup? _activeJob;
   DateTime _date = DateTime.now();
   TimeOfDay _time = TimeOfDay.now();
   final Set<String> _selectedTasks = {'Flowback'};
@@ -215,30 +219,48 @@ class _JsaScreenState extends State<JsaScreen> {
   }
 
   Future<void> _loadDraft() async {
+    final activeJob = await _jobStorage.loadActiveJob();
     final draft = await _storage.loadDraft();
-    if (draft == null || !mounted) return;
+    if (!mounted) return;
     setState(() {
-      _company = _companies.contains(draft.company) ? draft.company : 'Custom';
-      _selectedTasks
-        ..clear()
-        ..addAll(draft.tasks.where(_taskLibrary.containsKey));
-      if (_selectedTasks.isEmpty && _taskLibrary.containsKey(draft.task)) {
-        _selectedTasks.add(draft.task);
+      _activeJob = activeJob;
+      if (draft != null) {
+        _company =
+            _companies.contains(draft.company) ? draft.company : 'Custom';
+        _selectedTasks
+          ..clear()
+          ..addAll(draft.tasks.where(_taskLibrary.containsKey));
+        if (_selectedTasks.isEmpty && _taskLibrary.containsKey(draft.task)) {
+          _selectedTasks.add(draft.task);
+        }
+        if (_selectedTasks.isEmpty) _selectedTasks.add('Flowback');
+        _location.text = draft.location;
+        _wellName.text = draft.wellName;
+        _notes.text = draft.notes;
+        _date = DateTime.tryParse(draft.date) ?? DateTime.now();
+        final parts = draft.time.split(':');
+        if (parts.length >= 2) {
+          _time = TimeOfDay(
+              hour: int.tryParse(parts[0]) ?? 0,
+              minute: int.tryParse(parts[1]) ?? 0);
+        }
+        for (var i = 0; i < draft.employees.length && i < 6; i++) {
+          _employeeNames[i].text = draft.employees[i].name;
+          _employeeCompanies[i].text = draft.employees[i].company;
+        }
       }
-      if (_selectedTasks.isEmpty) _selectedTasks.add('Flowback');
-      _location.text = draft.location;
-      _wellName.text = draft.wellName;
-      _notes.text = draft.notes;
-      _date = DateTime.tryParse(draft.date) ?? DateTime.now();
-      final parts = draft.time.split(':');
-      if (parts.length >= 2) {
-        _time = TimeOfDay(
-            hour: int.tryParse(parts[0]) ?? 0,
-            minute: int.tryParse(parts[1]) ?? 0);
-      }
-      for (var i = 0; i < draft.employees.length && i < 6; i++) {
-        _employeeNames[i].text = draft.employees[i].name;
-        _employeeCompanies[i].text = draft.employees[i].company;
+      if (activeJob != null) {
+        if (_company == 'Mach Energy' || _company == 'Custom') {
+          _company = _companies.contains(activeJob.company)
+              ? activeJob.company
+              : _company;
+        }
+        if (_location.text.trim().isEmpty) {
+          _location.text = activeJob.padName;
+        }
+        if (_wellName.text.trim().isEmpty) {
+          _wellName.text = activeJob.primaryWell;
+        }
       }
     });
   }
@@ -290,6 +312,7 @@ class _JsaScreenState extends State<JsaScreen> {
       ));
     }
     return JsaDraft(
+      activeJobId: _activeJob?.id ?? '',
       company: _company,
       date: DateFormat('yyyy-MM-dd').format(_date),
       time:
@@ -312,6 +335,79 @@ class _JsaScreenState extends State<JsaScreen> {
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('JSA draft saved')));
   }
+
+  Widget _activeJobBanner() {
+    final activeJob = _activeJob;
+    if (activeJob == null) {
+      return const Card(
+        margin: EdgeInsets.only(bottom: 16),
+        child: Padding(
+          padding: EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Active Job',
+                style: TextStyle(color: gold, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'No active job found. Start a job first so this JSA can save under the current job.',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Active Job',
+              style: TextStyle(color: gold, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              activeJob.company.trim().isEmpty
+                  ? 'No company entered'
+                  : activeJob.company,
+              style: const TextStyle(color: gold, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                _jobChip('Pad', activeJob.padName),
+                _jobChip('Well', activeJob.primaryWell),
+                _jobChip('Shift', activeJob.shift),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _jobChip(String label, String value) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: gold.withValues(alpha: 0.35)),
+        ),
+        child: Text(
+          '$label: ${value.trim().isEmpty ? 'Not entered' : value.trim()}',
+          style: const TextStyle(
+              color: Colors.white70, fontWeight: FontWeight.w600),
+        ),
+      );
 
   Future<void> _exportPlaceholder() async {
     await _saveDraft();
@@ -371,6 +467,7 @@ class _JsaScreenState extends State<JsaScreen> {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
+          _activeJobBanner(),
           _section('Job Info'),
           DropdownButtonFormField<String>(
             initialValue: _company,
