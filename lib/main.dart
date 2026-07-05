@@ -11,7 +11,7 @@ class WellWerksApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'WellWerks',
+      title: 'WellWerks Toolbox',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,

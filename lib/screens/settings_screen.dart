@@ -217,7 +217,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 12),
                   _settingsNavTile(
                     icon: Icons.info_outline,
-                    title: 'About WellWerks',
+                    title: 'About WellWerks Toolbox',
                     subtitle: 'App info, version, and local-only data notice',
                     onTap: () {
                       Navigator.of(context).push(
@@ -233,6 +233,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                             builder: (_) => const SupportScreen()),
+                      );
+                    },
+                  ),
+                  _settingsNavTile(
+                    icon: Icons.privacy_tip_outlined,
+                    title: 'Privacy Policy',
+                    subtitle: 'Local storage, exports, and cloud-sync status',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const PrivacyPolicyScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  _settingsNavTile(
+                    icon: Icons.description_outlined,
+                    title: 'Terms of Use',
+                    subtitle: 'Disclaimer, responsibility, and warranty terms',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const TermsOfUseScreen(),
+                        ),
                       );
                     },
                   ),

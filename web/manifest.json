@@ -1,11 +1,11 @@
 {
-    "name": "wellwerks",
-    "short_name": "wellwerks",
+    "name": "WellWerks Toolbox",
+    "short_name": "WellWerks Toolbox",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0c0c0d",
+    "theme_color": "#0c0c0d",
+    "description": "WellWerks Toolbox: field-ready flowback and production tools for oilfield crews.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

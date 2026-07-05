@@ -10,7 +10,7 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
 
   const AppHeader({
     super.key,
-    this.title = 'WellWerks',
+    this.title = 'WellWerks Toolbox',
     this.showBack = false,
     this.showHomeAction = false,
     this.trailingActions,

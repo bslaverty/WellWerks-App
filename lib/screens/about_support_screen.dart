@@ -26,7 +26,7 @@ class AboutSupportScreen extends StatelessWidget {
           const SizedBox(height: 12),
           _NavigationTile(
             icon: Icons.info_outline,
-            title: 'About WellWerks',
+            title: 'About WellWerks Toolbox',
             subtitle: 'App summary, version, and local-data notice',
             onTap: () {
               Navigator.of(context).push(
@@ -114,7 +114,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'WellWerks',
+                    'WellWerks Toolbox',
                     style: TextStyle(
                       color: Color(0xFFCDA56A),
                       fontSize: 24,
@@ -139,7 +139,7 @@ class _AboutScreenState extends State<AboutScreen> {
             child: Padding(
               padding: EdgeInsets.all(18),
               child: Text(
-                'WellWerks keeps active jobs, history, production records, JSAs, and layouts on-device. No cloud sync is enabled in this build.',
+                'WellWerks Toolbox keeps active jobs, history, production records, JSAs, and layouts on-device. No cloud sync is enabled in this build.',
                 style: TextStyle(color: Colors.white70, fontSize: 15),
               ),
             ),
@@ -264,7 +264,7 @@ class _SupportScreenState extends State<SupportScreen> {
             title: 'Contact Support',
             subtitle: 'Copy the support email and app version details',
             onTap: () => _copy(
-              '$_supportEmail\nSubject: WellWerks Support Request\nVersion: $_versionLabel',
+              '$_supportEmail\nSubject: WellWerks Toolbox Support Request\nVersion: $_versionLabel',
               'Support request details copied.',
             ),
           ),
@@ -273,7 +273,7 @@ class _SupportScreenState extends State<SupportScreen> {
             title: 'Feedback',
             subtitle: 'Copy a feedback template with app version info',
             onTap: () => _copy(
-              '$_supportEmail\nSubject: WellWerks Feedback\nVersion: $_versionLabel',
+              '$_supportEmail\nSubject: WellWerks Toolbox Feedback\nVersion: $_versionLabel',
               'Feedback details copied.',
             ),
           ),
@@ -282,7 +282,7 @@ class _SupportScreenState extends State<SupportScreen> {
             title: 'Bug Report',
             subtitle: 'Copy a bug-report template with version details',
             onTap: () => _copy(
-              '$_supportEmail\nSubject: WellWerks Bug Report\nVersion: $_versionLabel',
+              '$_supportEmail\nSubject: WellWerks Toolbox Bug Report\nVersion: $_versionLabel',
               'Bug report details copied.',
             ),
           ),
@@ -308,6 +308,186 @@ class _SupportScreenState extends State<SupportScreen> {
                     style: TextStyle(color: Colors.white70),
                   ),
                 ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class PrivacyPolicyScreen extends StatefulWidget {
+  const PrivacyPolicyScreen({super.key});
+
+  @override
+  State<PrivacyPolicyScreen> createState() => _PrivacyPolicyScreenState();
+}
+
+class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
+  String _version = '--';
+  String _build = '--';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final info = await PackageInfo.fromPlatform();
+    if (!mounted) return;
+    setState(() {
+      _version = info.version;
+      _build = info.buildNumber;
+    });
+  }
+
+  String get _versionLabel => _build == '--' ? _version : '$_version ($_build)';
+
+  Widget _bullet(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('• ', style: TextStyle(color: Color(0xFFCDA56A))),
+          Expanded(child: Text(text)),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: const AppHeader(title: 'Privacy Policy', showBack: true),
+      body: ListView(
+        padding: const EdgeInsets.all(18),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Privacy Overview',
+                    style: TextStyle(
+                      color: Color(0xFFCDA56A),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'WellWerks Toolbox is designed for local, on-device use.',
+                    style: TextStyle(color: Colors.white70, fontSize: 15),
+                  ),
+                  const SizedBox(height: 18),
+                  _bullet(
+                      'Data collected: job setup, active job records, production shifts, JSAs, layouts, history, and app settings stored locally on this device.'),
+                  _bullet('No cloud synchronization is enabled at this time.'),
+                  _bullet(
+                      'Exported job packages are written under the user\'s control and can be shared or saved locally.'),
+                  _bullet(
+                      'Future privacy information and website links can be added here before public release.'),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'App Details',
+                    style: TextStyle(
+                      color: Color(0xFFCDA56A),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text('Version: $_versionLabel'),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Website / privacy URL: placeholder for future release',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class TermsOfUseScreen extends StatelessWidget {
+  const TermsOfUseScreen({super.key});
+
+  Widget _bullet(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('• ', style: TextStyle(color: Color(0xFFCDA56A))),
+          Expanded(child: Text(text)),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: const AppHeader(title: 'Terms of Use', showBack: true),
+      body: ListView(
+        padding: const EdgeInsets.all(18),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Tool Disclaimer',
+                    style: TextStyle(
+                      color: Color(0xFFCDA56A),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'WellWerks Toolbox is an informational and workflow support tool. It does not replace site procedures, engineering judgment, or field supervision.',
+                    style: TextStyle(color: Colors.white70, fontSize: 15),
+                  ),
+                  const SizedBox(height: 18),
+                  _bullet(
+                      'Users remain responsible for operational decisions, calculations, and verification of field data.'),
+                  _bullet(
+                      'No warranty is provided, express or implied, to the fullest extent permitted by law.'),
+                  _bullet(
+                      'All information should be reviewed before being used for operational decisions.'),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(18),
+              child: Text(
+                '© 2026 WellWerks Toolbox',
+                style: TextStyle(color: Colors.white70, fontSize: 15),
               ),
             ),
           ),
