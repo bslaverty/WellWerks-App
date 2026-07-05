@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/job_setup.dart';
 import '../models/production_shift.dart';
+import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/report_profile_service.dart';
 import '../widgets/app_header.dart';
@@ -16,8 +18,10 @@ class TextUpdateScreen extends StatefulWidget {
 class _TextUpdateScreenState extends State<TextUpdateScreen> {
   final _shiftService = ProductionShiftService();
   final _layoutService = ReportProfileService();
+  final _jobStorage = JobStorageService();
 
   ProductionShift _shift = ProductionShift.empty();
+  JobSetup? _activeJob;
   ReportLayoutProfile _layout = ReportProfileService().defaultProfile();
   bool _loading = true;
   int? _selectedHour;
@@ -30,16 +34,41 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
 
   Future<void> _load() async {
     final shift = await _shiftService.loadActiveShift();
+    final activeJob = await _jobStorage.loadActiveJob();
     final layout =
         await _layoutService.resolveProfile(shift.header.layoutProfileId);
+    final rows = activeJob != null && shift.activeJobId == activeJob.id
+        ? shift.savedRows
+        : const <ProductionReportRow>[];
     if (!mounted) return;
     setState(() {
       _shift = shift;
+      _activeJob = activeJob;
       _layout = layout;
       _selectedHour = shift.selectedTextHour ??
-          (shift.savedRows.isEmpty ? null : shift.savedRows.first.hourIndex);
+          (rows.isEmpty ? null : rows.first.hourIndex);
       _loading = false;
     });
+  }
+
+  List<ProductionReportRow> get _activeJobRows {
+    final activeJob = _activeJob;
+    if (activeJob == null) {
+      return const [];
+    }
+    if (_shift.activeJobId != activeJob.id) {
+      return const [];
+    }
+    return _shift.savedRows;
+  }
+
+  bool get _hasActiveJob => _activeJob != null;
+
+  String get _emptyStateMessage {
+    if (!_hasActiveJob) {
+      return 'No active job found. Start a job first, then save a Quick Round hour before using Text Update.';
+    }
+    return 'No saved Production Report rows for the current active job yet.\n\nGo to Quick Round, save an hour, then return here.';
   }
 
   String _fmt(double value) {
@@ -68,13 +97,14 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   }
 
   ProductionReportRow? get _selectedRow {
-    if (_shift.savedRows.isEmpty) return null;
+    final rows = _activeJobRows;
+    if (rows.isEmpty) return null;
     final selectedHour = _selectedHour;
-    if (selectedHour == null) return _shift.savedRows.first;
-    for (final row in _shift.savedRows) {
+    if (selectedHour == null) return rows.first;
+    for (final row in rows) {
       if (row.hourIndex == selectedHour) return row;
     }
-    return _shift.savedRows.first;
+    return rows.first;
   }
 
   String _lineFor(ProductionReportRow row, String key) {
@@ -135,7 +165,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   String get _preview {
     final row = _selectedRow;
     if (row == null) {
-      return 'No saved Production Report rows yet.\n\nGo to Quick Round, save an hour, then return here.';
+      return _emptyStateMessage;
     }
 
     final pad =
@@ -215,6 +245,58 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     );
   }
 
+  Widget _activeJobBanner() {
+    final activeJob = _activeJob;
+    if (activeJob == null) {
+      return _section('Active Job', const [
+        Text(
+          'No active job found. Start a job first to preview and copy the current Text Update safely.',
+          style: TextStyle(color: Colors.white70),
+        ),
+      ]);
+    }
+
+    return _section('Active Job', [
+      Text(
+        activeJob.company.trim().isEmpty
+            ? 'No company entered'
+            : activeJob.company,
+        style: const TextStyle(
+          color: Color(0xFFCDA56A),
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 10,
+        runSpacing: 8,
+        children: [
+          _jobChip('Pad', activeJob.padName),
+          _jobChip('Well', activeJob.primaryWell),
+          _jobChip('Shift', activeJob.shift),
+        ],
+      ),
+    ]);
+  }
+
+  Widget _jobChip(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFFCDA56A).withValues(alpha: 0.35),
+        ),
+      ),
+      child: Text(
+        '$label: ${value.trim().isEmpty ? 'Not entered' : value.trim()}',
+        style:
+            const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -230,6 +312,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
+          _activeJobBanner(),
           _section('Text Update', [
             Text(
               'Layout: ${_layout.name}',
@@ -240,13 +323,13 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
               initialValue: selected?.hourIndex,
               decoration: const InputDecoration(labelText: 'Select Hour'),
               items: [
-                for (final row in _shift.savedRows)
+                for (final row in _activeJobRows)
                   DropdownMenuItem(
                     value: row.hourIndex,
                     child: Text('${row.time} • ${row.well}'),
                   ),
               ],
-              onChanged: _shift.savedRows.isEmpty
+              onChanged: _activeJobRows.isEmpty
                   ? null
                   : (value) async {
                       if (value == null) return;
@@ -269,7 +352,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: _shift.savedRows.isEmpty ? null : _copy,
+                onPressed: _activeJobRows.isEmpty ? null : _copy,
                 icon: const Icon(Icons.copy),
                 label: const Text('Copy Text Update'),
               ),

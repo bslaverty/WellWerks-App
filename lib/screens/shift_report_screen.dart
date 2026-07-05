@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../models/job_setup.dart';
 import '../models/production_shift.dart';
+import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/report_profile_service.dart';
 import '../widgets/app_header.dart';
@@ -17,8 +19,10 @@ class ShiftReportScreen extends StatefulWidget {
 class _ShiftReportScreenState extends State<ShiftReportScreen> {
   final _shiftService = ProductionShiftService();
   final _layoutService = ReportProfileService();
+  final _jobStorage = JobStorageService();
 
   ProductionShift _shift = ProductionShift.empty();
+  JobSetup? _activeJob;
   ReportLayoutProfile _layout = ReportProfileService().defaultProfile();
   bool _loading = true;
 
@@ -30,14 +34,36 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
 
   Future<void> _load() async {
     final shift = await _shiftService.loadActiveShift();
+    final activeJob = await _jobStorage.loadActiveJob();
     final layout =
         await _layoutService.resolveProfile(shift.header.layoutProfileId);
     if (!mounted) return;
     setState(() {
       _shift = shift;
+      _activeJob = activeJob;
       _layout = layout;
       _loading = false;
     });
+  }
+
+  List<ProductionReportRow> get _activeJobRows {
+    final activeJob = _activeJob;
+    if (activeJob == null) {
+      return const [];
+    }
+    if (_shift.activeJobId != activeJob.id) {
+      return const [];
+    }
+    return _shift.savedRows;
+  }
+
+  bool get _hasActiveJob => _activeJob != null;
+
+  String get _emptyStateMessage {
+    if (!_hasActiveJob) {
+      return 'No active job found. Start a job first, then save Quick Round hours to view a Production Report.';
+    }
+    return 'No saved Production Report rows for the current active job yet. Save hours in Quick Round first.';
   }
 
   String _fmt(double value) {
@@ -151,18 +177,19 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   }
 
   String get _reportText {
-    if (_shift.savedRows.isEmpty) {
-      return 'No saved Production Report rows yet. Save hours in Quick Round first.';
+    final rows = _activeJobRows;
+    if (rows.isEmpty) {
+      return _emptyStateMessage;
     }
 
     final lines = <String>['Production Report (${_layout.name})', ''];
-    for (final row in _shift.savedRows) {
+    for (final row in rows) {
       lines.add('${row.time} | ${row.well}');
       for (final field in _visibleColumns) {
         lines.add(
             '${_headerLabel(field.key)}: ${_valueFor(row, field.key).isEmpty ? '-' : _valueFor(row, field.key)}');
       }
-      if (row != _shift.savedRows.last) {
+      if (row != rows.last) {
         lines.add('');
       }
     }
@@ -171,13 +198,13 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
 
   String get _reportCsv {
     final headers = _visibleColumns.map((f) => _headerLabel(f.key)).toList();
-    final rows = <List<String>>[
+    final csvRows = <List<String>>[
       headers,
-      for (final row in _shift.savedRows)
+      for (final row in _activeJobRows)
         _visibleColumns.map((field) => _valueFor(row, field.key)).toList(),
     ];
 
-    return rows
+    return csvRows
         .map((row) =>
             row.map((value) => '"${value.replaceAll('"', '""')}"').join(','))
         .join('\n');
@@ -212,12 +239,13 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   DataCell _cell(String value) => DataCell(Text(value.isEmpty ? '-' : value));
 
   Widget _buildTable() {
-    if (_shift.savedRows.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
+    final rows = _activeJobRows;
+    if (rows.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
         child: Text(
-          'No saved Production Report rows yet. Save hours in Quick Round first.',
-          style: TextStyle(color: Colors.white70),
+          _emptyStateMessage,
+          style: const TextStyle(color: Colors.white70),
         ),
       );
     }
@@ -239,7 +267,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
           for (final field in _visibleColumns) _column(_headerLabel(field.key))
         ],
         rows: [
-          for (final row in _shift.savedRows)
+          for (final row in rows)
             DataRow(
               cells: [
                 for (final field in _visibleColumns)
@@ -247,6 +275,90 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
               ],
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _activeJobBanner() {
+    final activeJob = _activeJob;
+    if (activeJob == null) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Active Job',
+                style: TextStyle(
+                  color: Color(0xFFCDA56A),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'No active job found. Start a job first to view the current Production Report safely.',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Active Job',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              activeJob.company.trim().isEmpty
+                  ? 'No company entered'
+                  : activeJob.company,
+              style: const TextStyle(
+                color: Color(0xFFCDA56A),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                _jobChip('Pad', activeJob.padName),
+                _jobChip('Well', activeJob.primaryWell),
+                _jobChip('Shift', activeJob.shift),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _jobChip(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFFCDA56A).withValues(alpha: 0.35),
+        ),
+      ),
+      child: Text(
+        '$label: ${value.trim().isEmpty ? 'Not entered' : value.trim()}',
+        style:
+            const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -270,6 +382,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
+          _activeJobBanner(),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(14),
@@ -291,7 +404,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Saved hours: ${_shift.savedRows.length}',
+                    'Saved hours: ${_activeJobRows.length}',
                     style: const TextStyle(color: Colors.white70),
                   ),
                 ],
@@ -308,7 +421,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: _shift.savedRows.isEmpty ? null : _copyReport,
+              onPressed: _activeJobRows.isEmpty ? null : _copyReport,
               icon: const Icon(Icons.copy_all),
               label: const Text('Copy Production Report'),
             ),
@@ -317,7 +430,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: _shift.savedRows.isEmpty ? null : _exportReport,
+              onPressed: _activeJobRows.isEmpty ? null : _exportReport,
               icon: const Icon(Icons.share_outlined),
               label: const Text('Export Production Report'),
             ),

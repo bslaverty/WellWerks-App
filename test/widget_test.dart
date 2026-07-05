@@ -452,7 +452,17 @@ void main() {
   ) async {
     SharedPreferences.setMockInitialValues({});
     final service = ProductionShiftService();
+    final jobStorage = JobStorageService();
+    final activeJob = await jobStorage.saveActiveJob(
+      JobSetup(
+        company: 'Continental Resources',
+        padName: 'Bow Pad',
+        wells: const ['Bow 21-3'],
+        shift: 'Day',
+      ),
+    );
     final seed = (await service.loadActiveShift()).copyWith(
+      activeJobId: activeJob.id,
       header: const ProductionShiftHeader(
         company: 'Continental Resources',
         pad: 'Bow Pad',
@@ -491,6 +501,10 @@ void main() {
 
     await tester.pumpWidget(const MaterialApp(home: ShiftReportScreen()));
     await tester.pumpAndSettle();
+    expect(find.text('Active Job'), findsOneWidget);
+    expect(find.textContaining('Pad: Bow Pad'), findsOneWidget);
+    expect(find.textContaining('Well: Bow 21-3'), findsOneWidget);
+    expect(find.textContaining('Shift: Day'), findsOneWidget);
     expect(find.byType(DataTable), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
     expect(find.text('Copy Production Report'), findsOneWidget);
@@ -498,9 +512,77 @@ void main() {
 
     await tester.pumpWidget(const MaterialApp(home: TextUpdateScreen()));
     await tester.pumpAndSettle();
+    expect(find.text('Active Job'), findsOneWidget);
     expect(find.text('Select Hour'), findsOneWidget);
     expect(find.text('Copy Text Update'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
+  });
+
+  testWidgets('Production report and text update handle missing active job', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final service = ProductionShiftService();
+
+    await service.saveActiveShift(
+      ProductionShift.empty().copyWith(
+        header: const ProductionShiftHeader(
+          company: 'Mach Energy',
+          pad: 'Test Pad',
+          wells: ['Well 1'],
+        ),
+        activeJobId: 'stale-job-id',
+        savedRows: const [
+          ProductionReportRow(
+            hourIndex: 0,
+            time: '6 AM',
+            well: 'Well 1',
+            choke: '32',
+            chokeType: 'ADJ',
+            tbg: '1200',
+            csg: '900',
+            waterProduction: 25,
+            oilProduction: 40,
+            hourlyGas: 100,
+            gas24HourRate: 2400,
+            gasStatic: '100',
+            gasDifferential: '20',
+            gasTemp: '85',
+            sandRate: '.2',
+            waterGaugeText: 'Water Tank 1: 50 in',
+            oilGaugeText: 'Oil Tank 1: 30 in',
+            currentWaterBbl: 100,
+            currentOilBbl: 50,
+            currentGasAccum: 8000,
+            waterHauled: 0,
+            oilHauled: 0,
+            waterPumped: 0,
+            oilPumped: 0,
+            notes: 'Stable report.',
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: ShiftReportScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('No active job found. Start a job first'),
+        findsWidgets);
+    final copyReportButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Copy Production Report'),
+    );
+    expect(copyReportButton.onPressed, isNull);
+
+    await tester.pumpWidget(const MaterialApp(home: TextUpdateScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('No active job found. Start a job first'),
+        findsWidgets);
+    final copyTextButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Copy Text Update'),
+    );
+    expect(copyTextButton.onPressed, isNull);
   });
 
   test('Production math uses previous saved hour for 7 AM calculations', () {
