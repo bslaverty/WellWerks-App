@@ -34,7 +34,8 @@ class _BottomsUpScreenState extends State<BottomsUpScreen> {
   ];
 
   _PipeOption selectedPipe = _pipes[1];
-  final capacity = TextEditingController(text: _pipes[1].capacity.toStringAsFixed(5));
+  final capacity =
+      TextEditingController(text: _pipes[1].capacity.toStringAsFixed(5));
   final length = TextEditingController();
   final pumpRate = TextEditingController();
   final lagFactor = TextEditingController(text: '1.00');
@@ -115,7 +116,8 @@ Bottoms Up: ${mins.toStringAsFixed(2)} min ($hourMinuteText)
 Estimated Arrival: $arrivalTime''';
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bottoms Up copied')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Bottoms Up copied')));
   }
 
   @override
@@ -143,7 +145,7 @@ Estimated Arrival: $arrivalTime''';
           ),
           const SizedBox(height: 14),
           DropdownButtonFormField<_PipeOption>(
-            value: selectedPipe,
+            initialValue: selectedPipe,
             decoration: const InputDecoration(labelText: 'Pipe Size'),
             items: _pipes
                 .map((p) => DropdownMenuItem<_PipeOption>(
@@ -176,21 +178,31 @@ Estimated Arrival: $arrivalTime''';
             label: 'Lag Factor',
             controller: lagFactor,
             allowDecimal: true,
-            helperText: 'Default 1.00. Increase if you want a field safety factor.',
+            helperText:
+                'Default 1.00. Increase if you want a field safety factor.',
           ),
           const SizedBox(height: 8),
           if (volume == null || mins == null)
             const Card(
               child: Padding(
                 padding: EdgeInsets.all(16),
-                child: Text('Enter depth and pump rate in BBL/min to calculate bottoms up.', style: TextStyle(color: Colors.white70)),
+                child: Text(
+                    'Enter depth and pump rate in BBL/min to calculate bottoms up.',
+                    style: TextStyle(color: Colors.white70)),
               ),
             )
           else ...[
-            _ResultCard(label: 'Pipe Volume', value: volume.toStringAsFixed(2), unit: 'BBL'),
-            _ResultCard(label: 'Bottoms Up', value: mins.toStringAsFixed(2), unit: 'min'),
+            _ResultCard(
+                label: 'Pipe Volume',
+                value: volume.toStringAsFixed(2),
+                unit: 'BBL'),
+            _ResultCard(
+                label: 'Bottoms Up',
+                value: mins.toStringAsFixed(2),
+                unit: 'min'),
             _ResultCard(label: 'Bottoms Up', value: hourMinuteText, unit: ''),
-            _ResultCard(label: 'Estimated Arrival', value: arrivalTime, unit: ''),
+            _ResultCard(
+                label: 'Estimated Arrival', value: arrivalTime, unit: ''),
           ],
           const SizedBox(height: 8),
           FilledButton.icon(
@@ -215,7 +227,8 @@ class _ResultCard extends StatelessWidget {
   final String value;
   final String unit;
 
-  const _ResultCard({required this.label, required this.value, required this.unit});
+  const _ResultCard(
+      {required this.label, required this.value, required this.unit});
 
   @override
   Widget build(BuildContext context) {
@@ -225,11 +238,15 @@ class _ResultCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+            Text(label,
+                style: const TextStyle(color: Colors.white70, fontSize: 14)),
             const SizedBox(height: 4),
             Text(
               unit.isEmpty ? value : '$value $unit',
-              style: const TextStyle(color: Color(0xFFCDA56A), fontSize: 28, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                  color: Color(0xFFCDA56A),
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold),
             ),
           ],
         ),

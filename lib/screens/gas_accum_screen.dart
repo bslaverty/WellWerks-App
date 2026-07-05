@@ -56,7 +56,8 @@ class _GasAccumScreenState extends State<GasAccumScreen> {
             Expanded(
               child: Text(
                 'Hour $hour Gas Rate',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
             ),
             Text(
@@ -82,7 +83,7 @@ class _GasAccumScreenState extends State<GasAccumScreen> {
           ),
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(
-            value: unit,
+            initialValue: unit,
             decoration: const InputDecoration(labelText: 'Reading Unit'),
             items: const [
               DropdownMenuItem(value: 'MCF', child: Text('MCF')),
@@ -94,8 +95,11 @@ class _GasAccumScreenState extends State<GasAccumScreen> {
           for (int i = 0; i < readings.length; i++) ...[
             TextField(
               controller: readings[i],
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              textInputAction: i == readings.length - 1 ? TextInputAction.done : TextInputAction.next,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              textInputAction: i == readings.length - 1
+                  ? TextInputAction.done
+                  : TextInputAction.next,
               decoration: InputDecoration(
                 labelText: i == 0 ? 'Starting Reading' : 'Hour $i Reading',
                 suffixIcon: readings[i].text.isEmpty

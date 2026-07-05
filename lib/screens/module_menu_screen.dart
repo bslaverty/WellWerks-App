@@ -5,11 +5,13 @@ import '../widgets/tool_card.dart';
 class ModuleMenuScreen extends StatelessWidget {
   final String title;
   final List<ModuleTool> tools;
+  final bool showHomeButton;
 
   const ModuleMenuScreen({
     super.key,
     required this.title,
     required this.tools,
+    this.showHomeButton = false,
   });
 
   void _open(BuildContext context, Widget? screen, String title) {
@@ -25,7 +27,8 @@ class ModuleMenuScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppHeader(title: title, showBack: true),
+      appBar: AppHeader(
+          title: title, showBack: true, showHomeAction: showHomeButton),
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: tools

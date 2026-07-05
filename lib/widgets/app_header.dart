@@ -3,8 +3,16 @@ import 'package:flutter/material.dart';
 class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final bool showBack;
+  final bool showHomeAction;
+  final List<Widget>? trailingActions;
 
-  const AppHeader({super.key, this.title = 'WellWerks', this.showBack = false});
+  const AppHeader({
+    super.key,
+    this.title = 'WellWerks',
+    this.showBack = false,
+    this.showHomeAction = false,
+    this.trailingActions,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -26,13 +34,29 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Image.asset('assets/images/app-icon.png', width: 34, height: 34, errorBuilder: (_, __, ___) => const SizedBox()),
+          Image.asset('assets/images/app-icon.png',
+              width: 34,
+              height: 34,
+              errorBuilder: (_, __, ___) => const SizedBox()),
           const SizedBox(width: 10),
-          Text(title, style: const TextStyle(color: Color(0xFFCDA56A), fontWeight: FontWeight.w800)),
+          Text(title,
+              style: const TextStyle(
+                  color: Color(0xFFCDA56A), fontWeight: FontWeight.w800)),
         ],
       ),
       centerTitle: true,
-      actions: const [SizedBox(width: 56)],
+      actions: trailingActions ??
+          [
+            if (showHomeAction)
+              IconButton(
+                icon: const Icon(Icons.home),
+                onPressed: () {
+                  Navigator.of(context).popUntil((route) => route.isFirst);
+                },
+              )
+            else
+              const SizedBox(width: 56),
+          ],
     );
   }
 
