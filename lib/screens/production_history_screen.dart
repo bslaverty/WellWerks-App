@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/job_history.dart';
 import '../models/job_setup.dart';
 import '../models/jsa_draft.dart';
 import '../models/production_shift.dart';
+import '../services/export_service.dart';
 import '../services/job_history_service.dart';
 import '../services/job_storage_service.dart';
+import '../services/job_serializer.dart';
 import '../services/jsa_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/recovery_state_service.dart';
@@ -566,11 +569,13 @@ class _HistoryJobDetailScreen extends StatefulWidget {
 }
 
 class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
+  final _exportService = ExportService();
   final _historyService = JobHistoryService();
   final _jobStorage = JobStorageService();
   final _shiftService = ProductionShiftService();
   final _jsaStorage = JsaStorageService();
 
+  bool _exporting = false;
   bool _loading = true;
   late _HistoryJobDetailData _detail;
 
@@ -642,6 +647,65 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
     setState(() => _loading = false);
   }
 
+  Future<void> _exportJob() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final exported = await _exportService.exportJobPackage(
+        JobExportSnapshot(
+          identityKey: _detail.job.identityKey,
+          status: _detail.job.statusLabel,
+          company: _detail.job.company,
+          customer: _detail.job.customer,
+          pad: _detail.job.pad,
+          well: _detail.job.well,
+          shift: _detail.job.shift,
+          startedDisplay: _detail.job.startedDisplay,
+          endedDisplay: _detail.job.endedDisplay,
+          activeJob: _detail.job.activeJob,
+          endedJob: _detail.job.endedJob,
+          archivedJob: _detail.job.archivedJob,
+          liveShift: _detail.liveShift,
+          liveReportText: _detail.liveReportText,
+          liveTextUpdates: _detail.liveTextUpdates,
+          liveJsa: _detail.liveJsa,
+          liveLayout: _detail.liveLayout,
+          archivedShifts: _detail.archivedShifts,
+        ),
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Job Exported'),
+          content: Text(
+            'Saved locally as ${exported.fileName}.\n\nLocation:\n${exported.filePath}',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Done'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await Share.shareXFiles(
+                  [XFile(exported.filePath)],
+                  text: 'WellWerks Job Package',
+                );
+              },
+              child: const Text('Share'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _exporting = false);
+      }
+    }
+  }
+
   Widget _headerCard() {
     final job = _detail.job;
     final statusColor =
@@ -694,8 +758,8 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
             if (job.endedDisplay.isNotEmpty)
               _detailRow('Ended', job.endedDisplay),
             _detailRow('Status', job.statusLabel),
+            const SizedBox(height: 18),
             if (job.isActive) ...[
-              const SizedBox(height: 18),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -719,7 +783,22 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
                   label: const Text('Resume Job'),
                 ),
               ),
+              const SizedBox(height: 12),
             ],
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _exporting ? null : _exportJob,
+                icon: _exporting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.ios_share),
+                label: Text(_exporting ? 'Exporting...' : 'Export Job'),
+              ),
+            ),
           ],
         ),
       ),
