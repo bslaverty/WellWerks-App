@@ -48,6 +48,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   final List<_TankControllers> _oilTanks = [];
   List<ReportLayoutProfile> _layoutProfiles = const [];
   String _defaultBblPerInch = '1.67';
+  String _defaultChokeDisplay = 'ADJ';
 
   bool _loading = true;
 
@@ -90,9 +91,14 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     final activeLayoutId = await _layoutService.loadActiveProfileId();
     _setFromShift(shift);
     _defaultBblPerInch = settings.defaultBblPerInch;
+    _defaultChokeDisplay = settings.defaultChokeDisplay;
     if (_isEffectivelyEmptyShift(shift)) {
       _gaugeEntryType = settings.defaultGaugeType;
       _gasUnit = settings.defaultGasUnit;
+      _gasCalculationMethod = settings.defaultGasCalculationMethod;
+      for (var i = 0; i < _wellChokeTypes.length; i++) {
+        _wellChokeTypes[i] = settings.defaultChokeDisplay;
+      }
       for (final tank in [..._waterTanks, ..._oilTanks]) {
         tank.bblPerInch.text = settings.defaultBblPerInch;
       }
@@ -152,6 +158,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
           (well) => shift.header.wellChokeTypes[well] ?? shift.header.chokeType,
         ),
       );
+    _defaultChokeDisplay = shift.header.chokeType;
 
     for (final tank in _waterTanks) {
       tank.dispose();
@@ -178,7 +185,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
       pad: _pad.text.trim(),
       date: _date.text.trim(),
       layoutProfileId: _layoutProfileId,
-      chokeType: 'ADJ',
+      chokeType: _defaultChokeDisplay,
       wellChokeTypes: {
         for (int i = 0; i < _wellControllers.length; i++)
           _wellControllers[i].text.trim().isEmpty
@@ -351,7 +358,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
       _wellControllers.add(
         TextEditingController(text: 'Well ${_wellControllers.length + 1}'),
       );
-      _wellChokeTypes.add('ADJ');
+      _wellChokeTypes.add(_defaultChokeDisplay);
     });
   }
 
