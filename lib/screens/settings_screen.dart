@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'about_support_screen.dart';
 import '../services/app_settings_service.dart';
@@ -21,6 +22,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _chokeDisplay = 'ADJ';
   Set<String> _optionalSections =
       Set<String>.from(AppSettingsDefaults.optionalReportSections);
+  String _appVersion = '--';
+  String _appBuild = '--';
   bool _loading = true;
 
   @override
@@ -37,6 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _load() async {
     final settings = await _service.load();
+    final packageInfo = await PackageInfo.fromPlatform();
     if (!mounted) return;
     setState(() {
       _gasUnit = settings.defaultGasUnit;
@@ -46,6 +50,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _chokeDisplay = settings.defaultChokeDisplay;
       _optionalSections =
           Set<String>.from(settings.defaultOptionalReportSections);
+      _appVersion = packageInfo.version;
+      _appBuild = packageInfo.buildNumber;
       _loading = false;
     });
   }
@@ -69,6 +75,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       const SnackBar(content: Text('Settings saved.')),
     );
   }
+
+  String get _appVersionLabel =>
+      _appBuild == '--' ? _appVersion : '$_appVersion ($_appBuild)';
 
   Future<void> _confirmAndRun({
     required String title,
@@ -196,6 +205,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       setState(() => _chokeDisplay = value);
                     },
                   ),
+                ],
+              ),
+            ),
+          ),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'App Version',
+                    style: TextStyle(
+                      color: Color(0xFFCDA56A),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text('Version: $_appVersionLabel'),
                 ],
               ),
             ),
