@@ -18,6 +18,7 @@ import '../data/tank_charts.dart';
 import 'conversion_calculator_screen.dart';
 import 'settings_screen.dart';
 import 'about_support_screen.dart';
+import 'job_setup_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -57,6 +58,10 @@ class HomeScreen extends StatelessWidget {
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
             onSelected: (value) {
+              if (value == 'jobSetup') {
+                open(context, const JobSetupScreen());
+                return;
+              }
               if (value == 'settings') {
                 open(context, const SettingsScreen());
                 return;
@@ -66,6 +71,10 @@ class HomeScreen extends StatelessWidget {
               }
             },
             itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'jobSetup',
+                child: Text('Job Setup'),
+              ),
               PopupMenuItem(
                 value: 'settings',
                 child: Text('Settings'),

@@ -16,18 +16,24 @@ class JobSetupScreen extends StatefulWidget {
 class _JobSetupScreenState extends State<JobSetupScreen> {
   final _storage = JobStorageService();
   final _page = PageController();
+
   int _step = 0;
+  bool _loading = true;
+  bool _editing = false;
+  JobSetup? _activeJob;
 
   String company = 'Mach Energy';
   String shift = 'Day';
   final customer = TextEditingController();
   final padName = TextEditingController();
+  final notes = TextEditingController();
   final leaseName = TextEditingController();
   final county = TextEditingController();
   final state = TextEditingController(text: 'Oklahoma');
   final crew = TextEditingController();
   final dateStarted = TextEditingController(
-      text: DateFormat('MM/dd/yyyy').format(DateTime.now()));
+    text: DateFormat('MM/dd/yyyy').format(DateTime.now()),
+  );
   final wellEntry = TextEditingController();
   final wells = <String>[];
 
@@ -52,37 +58,117 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     '9:00 AM',
     '12:00 PM',
     '3:00 PM',
-    '6:00 PM'
+    '6:00 PM',
   ];
   final reportTimeEntry = TextEditingController();
 
-  int _i(TextEditingController c) => int.tryParse(c.text.trim()) ?? 0;
-
-  void _next() {
-    if (_step >= 5) return;
-    setState(() => _step++);
-    _page.animateToPage(_step,
-        duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+  int _i(TextEditingController controller) {
+    return int.tryParse(controller.text.trim()) ?? 0;
   }
 
-  void _backStep() {
-    if (_step == 0) return;
-    setState(() => _step--);
-    _page.animateToPage(_step,
-        duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+  @override
+  void initState() {
+    super.initState();
+    _load();
   }
 
-  Future<void> _save() async {
-    final job = JobSetup(
+  Future<void> _load() async {
+    final active = await _storage.loadActiveJob();
+    if (active != null) {
+      _applyJobToForm(active);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _activeJob = active;
+      _editing = false;
+      _loading = false;
+    });
+  }
+
+  void _applyJobToForm(JobSetup job) {
+    company = job.company;
+    shift = job.shift;
+    customer.text = job.customer;
+    padName.text = job.padName;
+    notes.text = job.notes;
+    leaseName.text = job.leaseName;
+    county.text = job.county;
+    state.text = job.state;
+    crew.text = job.crew;
+    dateStarted.text = job.dateStarted.trim().isEmpty
+        ? DateFormat('MM/dd/yyyy').format(DateTime.now())
+        : job.dateStarted;
+    wells
+      ..clear()
+      ..addAll(job.wells);
+    sandSeparators.text = job.sandSeparators.toString();
+    plugCatchers.text = job.plugCatchers.toString();
+    chokeManifolds.text = job.chokeManifolds.toString();
+    lineHeaters.text = job.lineHeaters.toString();
+    testUnits.text = job.testUnits.toString();
+    ecds.text = job.ecds.toString();
+    vrus.text = job.vrus.toString();
+    flares.text = job.flares.toString();
+    transferPumps.text = job.transferPumps.toString();
+    oilTanks.text = job.oilTanks.toString();
+    oilTankCapacity.text = job.oilTankCapacity;
+    waterTanks.text = job.waterTanks.toString();
+    waterTankCapacity.text = job.waterTankCapacity;
+    productionTankFactor.text = job.productionTankFactor;
+    reportTimes
+      ..clear()
+      ..addAll(job.reportTimes);
+  }
+
+  void _resetFormForNewJob() {
+    company = 'Mach Energy';
+    shift = 'Day';
+    customer.clear();
+    padName.clear();
+    notes.clear();
+    leaseName.clear();
+    county.clear();
+    state.text = 'Oklahoma';
+    crew.clear();
+    dateStarted.text = DateFormat('MM/dd/yyyy').format(DateTime.now());
+    wellEntry.clear();
+    wells.clear();
+    sandSeparators.text = '2';
+    plugCatchers.text = '1';
+    chokeManifolds.text = '1';
+    lineHeaters.text = '1';
+    testUnits.text = '1';
+    ecds.text = '1';
+    vrus.text = '1';
+    flares.text = '1';
+    transferPumps.text = '1';
+    oilTanks.text = '4';
+    oilTankCapacity.text = '400';
+    waterTanks.text = '6';
+    waterTankCapacity.text = '500';
+    productionTankFactor.text = '1.67';
+    reportTimeEntry.clear();
+    reportTimes
+      ..clear()
+      ..addAll(const ['6:00 AM', '9:00 AM', '12:00 PM', '3:00 PM', '6:00 PM']);
+  }
+
+  JobSetup _buildJobFromForm() {
+    return JobSetup(
       company: company,
       customer: customer.text.trim(),
       padName: padName.text.trim(),
+      notes: notes.text.trim(),
       leaseName: leaseName.text.trim(),
       county: county.text.trim(),
       state: state.text.trim(),
       crew: crew.text.trim(),
       shift: shift,
       dateStarted: dateStarted.text.trim(),
+      status: _activeJob?.status ?? 'active',
+      startedAt: _activeJob?.startedAt,
+      endedAt: _activeJob?.endedAt,
       wells: List<String>.from(wells),
       sandSeparators: _i(sandSeparators),
       plugCatchers: _i(plugCatchers),
@@ -102,33 +188,281 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           : productionTankFactor.text.trim(),
       reportTimes: List<String>.from(reportTimes),
     );
-    await _storage.saveActiveJob(job);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Job setup saved')));
-    Navigator.of(context).pop();
   }
 
-  Widget _navButtons({bool finish = false}) => Row(
-        children: [
-          if (_step > 0)
-            Expanded(
-                child: OutlinedButton(
-                    onPressed: _backStep, child: const Text('Back'))),
-          if (_step > 0) const SizedBox(width: 12),
+  void _next() {
+    if (_step >= 5) return;
+    setState(() => _step++);
+    _page.animateToPage(
+      _step,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    );
+  }
+
+  void _backStep() {
+    if (_step == 0) return;
+    setState(() => _step--);
+    _page.animateToPage(
+      _step,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    );
+  }
+
+  void _startJobSetup() {
+    _resetFormForNewJob();
+    setState(() {
+      _activeJob = null;
+      _editing = true;
+      _step = 0;
+    });
+    if (_page.hasClients) {
+      _page.jumpToPage(0);
+    }
+  }
+
+  void _editActiveJob() {
+    final active = _activeJob;
+    if (active == null) return;
+
+    _applyJobToForm(active);
+    setState(() {
+      _editing = true;
+      _step = 0;
+    });
+    if (_page.hasClients) {
+      _page.jumpToPage(0);
+    }
+  }
+
+  Future<void> _save() async {
+    final isStartingNewJob = _activeJob == null;
+    final job = _buildJobFromForm();
+    final saved = isStartingNewJob
+        ? await _storage.saveActiveJob(job)
+        : await _storage.updateActiveJob(job);
+
+    if (!mounted) return;
+    setState(() {
+      _activeJob = saved;
+      _editing = false;
+      _step = 0;
+    });
+    if (_page.hasClients) {
+      _page.jumpToPage(0);
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+            isStartingNewJob ? 'Active job started' : 'Active job updated'),
+      ),
+    );
+  }
+
+  Future<void> _confirmEndJob() async {
+    final active = _activeJob;
+    if (active == null) return;
+
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('End Active Job?'),
+            content: Text(
+              'This will mark ${active.primaryWell.isEmpty ? 'the current job' : active.primaryWell} as ended and remove it from Active Job.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('End Job'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!confirmed) return;
+
+    final ended = await _storage.endActiveJob();
+    if (!mounted || ended == null) return;
+
+    _applyJobToForm(ended);
+    setState(() {
+      _activeJob = null;
+      _editing = false;
+      _step = 0;
+    });
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Active job ended')));
+  }
+
+  Widget _navButtons({bool finish = false}) {
+    return Row(
+      children: [
+        if (_step > 0)
           Expanded(
-              child: FilledButton(
-                  onPressed: finish ? _save : _next,
-                  child: Text(finish ? 'Start Job' : 'Next'))),
+            child: OutlinedButton(
+              onPressed: _backStep,
+              child: const Text('Back'),
+            ),
+          ),
+        if (_step > 0) const SizedBox(width: 12),
+        Expanded(
+          child: FilledButton(
+            onPressed: finish ? _save : _next,
+            child: Text(
+              finish
+                  ? (_activeJob == null ? 'Start Job' : 'Save Active Job')
+                  : 'Next',
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatTimestamp(DateTime? value) {
+    if (value == null) return 'Not started';
+    return DateFormat('MM/dd/yyyy h:mm a').format(value);
+  }
+
+  String _displayValue(String value, {String fallback = 'Not entered'}) {
+    return value.trim().isEmpty ? fallback : value.trim();
+  }
+
+  Widget _buildOverviewValue(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFFCDA56A),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(fontSize: 17)),
         ],
-      );
+      ),
+    );
+  }
+
+  Widget _buildNoActiveJobView() {
+    return ListView(
+      padding: const EdgeInsets.all(18),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'No Active Job',
+                  style: TextStyle(
+                    color: Color(0xFFCDA56A),
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Start a job to keep the current company, pad, well, shift, crew, and notes active on this device.',
+                  style: TextStyle(color: Colors.white70, fontSize: 15),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _startJobSetup,
+                    icon: const Icon(Icons.play_arrow),
+                    label: const Text('Start Job'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActiveJobView(JobSetup job) {
+    return ListView(
+      padding: const EdgeInsets.all(18),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Active Job',
+                        style: TextStyle(
+                          color: Color(0xFFCDA56A),
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    Chip(label: Text(job.status.toUpperCase())),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _buildOverviewValue('Company', _displayValue(job.company)),
+                _buildOverviewValue('Customer', _displayValue(job.customer)),
+                _buildOverviewValue('Pad', _displayValue(job.padName)),
+                _buildOverviewValue('Well', _displayValue(job.primaryWell)),
+                _buildOverviewValue('Shift', _displayValue(job.shift)),
+                _buildOverviewValue('Crew', _displayValue(job.crew)),
+                _buildOverviewValue('Date', _displayValue(job.dateStarted)),
+                _buildOverviewValue('Started', _formatTimestamp(job.startedAt)),
+                _buildOverviewValue('Notes', _displayValue(job.notes)),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _editActiveJob,
+                    icon: const Icon(Icons.edit),
+                    label: const Text('Update Active Job'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _confirmEndJob,
+                    icon: const Icon(Icons.stop_circle_outlined),
+                    label: const Text('End Job'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   void dispose() {
     _page.dispose();
-    for (final c in [
+    for (final controller in [
       customer,
       padName,
+      notes,
       leaseName,
       county,
       state,
@@ -149,233 +483,325 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       waterTanks,
       waterTankCapacity,
       productionTankFactor,
-      reportTimeEntry
+      reportTimeEntry,
     ]) {
-      c.dispose();
+      controller.dispose();
     }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        appBar: AppHeader(title: 'Job Setup', showBack: true),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
-      appBar: const AppHeader(title: 'New Job', showBack: true),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
-            child: LinearProgressIndicator(value: (_step + 1) / 6),
-          ),
-          Expanded(
-            child: PageView(
-              controller: _page,
-              physics: const NeverScrollableScrollPhysics(),
-              children: [
-                _StepPage(title: '1. Company', children: [
-                  DropdownButtonFormField<String>(
-                    initialValue: company,
-                    decoration: const InputDecoration(labelText: 'Company'),
-                    items: const [
-                      DropdownMenuItem(
-                          value: 'Mach Energy', child: Text('Mach Energy')),
-                      DropdownMenuItem(
-                          value: 'Continental', child: Text('Continental')),
-                      DropdownMenuItem(value: 'Custom', child: Text('Custom')),
-                    ],
-                    onChanged: (v) =>
-                        setState(() => company = v ?? 'Mach Energy'),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                      controller: customer,
-                      decoration: const InputDecoration(
-                          labelText: 'Customer / Operator')),
-                  const SizedBox(height: 20),
-                  const Text(
-                      'This loads the matching report profile and report times.',
-                      style: TextStyle(color: Colors.white70)),
-                  const SizedBox(height: 24),
-                  _navButtons(),
-                ]),
-                _StepPage(title: '2. Job Info', children: [
-                  TextField(
-                      controller: padName,
-                      decoration: const InputDecoration(labelText: 'Pad Name')),
-                  const SizedBox(height: 12),
-                  TextField(
-                      controller: leaseName,
-                      decoration:
-                          const InputDecoration(labelText: 'Lease Name')),
-                  const SizedBox(height: 12),
-                  TextField(
-                      controller: county,
-                      decoration: const InputDecoration(labelText: 'County')),
-                  const SizedBox(height: 12),
-                  TextField(
-                      controller: state,
-                      decoration: const InputDecoration(labelText: 'State')),
-                  const SizedBox(height: 12),
-                  TextField(
-                      controller: crew,
-                      decoration: const InputDecoration(labelText: 'Crew')),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                      initialValue: shift,
-                      decoration: const InputDecoration(labelText: 'Shift'),
-                      items: const [
-                        DropdownMenuItem(value: 'Day', child: Text('Day')),
-                        DropdownMenuItem(value: 'Night', child: Text('Night'))
-                      ],
-                      onChanged: (v) => setState(() => shift = v ?? 'Day')),
-                  const SizedBox(height: 12),
-                  TextField(
-                      controller: dateStarted,
-                      decoration:
-                          const InputDecoration(labelText: 'Date Started')),
-                  const SizedBox(height: 24),
-                  _navButtons(),
-                ]),
-                _StepPage(title: '3. Wells', children: [
-                  Row(children: [
-                    Expanded(
-                        child: TextField(
-                            controller: wellEntry,
-                            decoration:
-                                const InputDecoration(labelText: 'Well Name'))),
-                    const SizedBox(width: 10),
-                    IconButton.filled(
-                      onPressed: () {
-                        final name = wellEntry.text.trim();
-                        if (name.isEmpty) return;
-                        setState(() {
-                          wells.add(name);
-                          wellEntry.clear();
-                        });
-                      },
-                      icon: const Icon(Icons.add),
-                    ),
-                  ]),
-                  const SizedBox(height: 12),
-                  if (wells.isEmpty)
-                    const Text('Add each well on this pad.',
-                        style: TextStyle(color: Colors.white70)),
-                  ...wells.map<Widget>((w) => Card(
-                        child: ListTile(
-                          title: Text(w),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete),
-                            onPressed: () => setState(() => wells.remove(w)),
-                          ),
-                        ),
-                      )),
-                  const SizedBox(height: 24),
-                  _navButtons(),
-                ]),
-                _StepPage(title: '4. Equipment', children: [
-                  _countField('Sand Separators', sandSeparators),
-                  _countField('Plug Catchers', plugCatchers),
-                  _countField('Choke Manifolds', chokeManifolds),
-                  _countField('Line Heaters', lineHeaters),
-                  _countField('Test Units', testUnits),
-                  _countField('ECDs', ecds),
-                  _countField('VRUs', vrus),
-                  _countField('Flares', flares),
-                  _countField('Transfer Pumps', transferPumps),
-                  const SizedBox(height: 24),
-                  _navButtons(),
-                ]),
-                _StepPage(title: '5. Tanks', children: [
-                  _countField('Oil Tanks', oilTanks),
-                  WwNumberField(
-                      label: 'Oil Tank Capacity', controller: oilTankCapacity),
-                  _countField('Water Tanks', waterTanks),
-                  WwNumberField(
-                      label: 'Water Tank Capacity',
-                      controller: waterTankCapacity),
-                  WwNumberField(
-                      label: 'Production Tank Factor (BBL/In)',
-                      controller: productionTankFactor,
-                      allowDecimal: true),
-                  const Text(
-                      'Default tank factor stays 1.67 unless you change it.',
-                      style: TextStyle(color: Colors.white70)),
-                  const SizedBox(height: 24),
-                  _navButtons(),
-                ]),
-                _StepPage(title: '6. Reports', children: [
-                  const Text('Edit report times for this job only.',
-                      style: TextStyle(color: Colors.white70)),
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(
-                        child: TextField(
-                            controller: reportTimeEntry,
-                            decoration: const InputDecoration(
-                                labelText: 'Add Time, ex: 7:00 AM'))),
-                    const SizedBox(width: 10),
-                    IconButton.filled(
-                        onPressed: () {
-                          final t = reportTimeEntry.text.trim();
-                          if (t.isNotEmpty) {
-                            setState(() {
-                              reportTimes.add(t);
-                              reportTimeEntry.clear();
-                            });
-                          }
-                        },
-                        icon: const Icon(Icons.add)),
-                  ]),
-                  const SizedBox(height: 12),
-                  ...reportTimes.map<Widget>((t) => Card(
-                        child: ListTile(
-                          title: Text(t),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete),
-                            onPressed: () =>
-                                setState(() => reportTimes.remove(t)),
-                          ),
-                        ),
-                      )),
-                  const SizedBox(height: 18),
-                  Card(
-                      child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Text(
-                              'Summary\n$company\n${padName.text.trim().isEmpty ? 'No pad entered' : padName.text.trim()}\n${wells.length} well(s)\n${_i(sandSeparators) + _i(plugCatchers) + _i(chokeManifolds) + _i(lineHeaters) + _i(testUnits) + _i(ecds) + _i(vrus) + _i(flares) + _i(transferPumps)} equipment item(s)\n${_i(oilTanks) + _i(waterTanks)} tank(s)'))),
-                  const SizedBox(height: 24),
-                  _navButtons(finish: true),
-                ]),
-              ],
-            ),
-          ),
-        ],
+      appBar: AppHeader(
+        title: _editing
+            ? (_activeJob == null ? 'Start Job' : 'Edit Active Job')
+            : (_activeJob == null ? 'Job Setup' : 'Active Job'),
+        showBack: true,
       ),
+      body: _editing
+          ? Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
+                  child: LinearProgressIndicator(value: (_step + 1) / 6),
+                ),
+                Expanded(
+                  child: PageView(
+                    controller: _page,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      _StepPage(title: '1. Company', children: [
+                        DropdownButtonFormField<String>(
+                          initialValue: company,
+                          decoration:
+                              const InputDecoration(labelText: 'Company'),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'Mach Energy',
+                              child: Text('Mach Energy'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Continental',
+                              child: Text('Continental'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Custom',
+                              child: Text('Custom'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            setState(() => company = value ?? 'Mach Energy');
+                          },
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: customer,
+                          decoration: const InputDecoration(
+                            labelText: 'Customer / Operator',
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'This loads the matching report profile and report times.',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                        const SizedBox(height: 24),
+                        _navButtons(),
+                      ]),
+                      _StepPage(title: '2. Job Info', children: [
+                        TextField(
+                          controller: padName,
+                          decoration:
+                              const InputDecoration(labelText: 'Pad Name'),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: notes,
+                          maxLines: 3,
+                          decoration: const InputDecoration(
+                            labelText: 'Notes (Optional)',
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: leaseName,
+                          decoration:
+                              const InputDecoration(labelText: 'Lease Name'),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: county,
+                          decoration:
+                              const InputDecoration(labelText: 'County'),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: state,
+                          decoration: const InputDecoration(labelText: 'State'),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: crew,
+                          decoration: const InputDecoration(labelText: 'Crew'),
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          initialValue: shift,
+                          decoration: const InputDecoration(labelText: 'Shift'),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'Day',
+                              child: Text('Day'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Night',
+                              child: Text('Night'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            setState(() => shift = value ?? 'Day');
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: dateStarted,
+                          decoration: const InputDecoration(labelText: 'Date'),
+                        ),
+                        const SizedBox(height: 24),
+                        _navButtons(),
+                      ]),
+                      _StepPage(title: '3. Wells', children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: wellEntry,
+                                decoration: const InputDecoration(
+                                  labelText: 'Well Name',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            IconButton.filled(
+                              onPressed: () {
+                                final name = wellEntry.text.trim();
+                                if (name.isEmpty) return;
+                                setState(() {
+                                  wells.add(name);
+                                  wellEntry.clear();
+                                });
+                              },
+                              icon: const Icon(Icons.add),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        if (wells.isEmpty)
+                          const Text(
+                            'Add each well on this pad.',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        ...wells.map<Widget>(
+                          (wellName) => Card(
+                            child: ListTile(
+                              title: Text(wellName),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete),
+                                onPressed: () {
+                                  setState(() => wells.remove(wellName));
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        _navButtons(),
+                      ]),
+                      _StepPage(title: '4. Equipment', children: [
+                        _countField('Sand Separators', sandSeparators),
+                        _countField('Plug Catchers', plugCatchers),
+                        _countField('Choke Manifolds', chokeManifolds),
+                        _countField('Line Heaters', lineHeaters),
+                        _countField('Test Units', testUnits),
+                        _countField('ECDs', ecds),
+                        _countField('VRUs', vrus),
+                        _countField('Flares', flares),
+                        _countField('Transfer Pumps', transferPumps),
+                        const SizedBox(height: 24),
+                        _navButtons(),
+                      ]),
+                      _StepPage(title: '5. Tanks', children: [
+                        _countField('Oil Tanks', oilTanks),
+                        WwNumberField(
+                          label: 'Oil Tank Capacity',
+                          controller: oilTankCapacity,
+                        ),
+                        _countField('Water Tanks', waterTanks),
+                        WwNumberField(
+                          label: 'Water Tank Capacity',
+                          controller: waterTankCapacity,
+                        ),
+                        WwNumberField(
+                          label: 'Production Tank Factor (BBL/In)',
+                          controller: productionTankFactor,
+                          allowDecimal: true,
+                        ),
+                        const Text(
+                          'Default tank factor stays 1.67 unless you change it.',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                        const SizedBox(height: 24),
+                        _navButtons(),
+                      ]),
+                      _StepPage(title: '6. Reports', children: [
+                        const Text(
+                          'Edit report times for this job only.',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: reportTimeEntry,
+                                decoration: const InputDecoration(
+                                  labelText: 'Add Time, ex: 7:00 AM',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            IconButton.filled(
+                              onPressed: () {
+                                final time = reportTimeEntry.text.trim();
+                                if (time.isEmpty) return;
+                                setState(() {
+                                  reportTimes.add(time);
+                                  reportTimeEntry.clear();
+                                });
+                              },
+                              icon: const Icon(Icons.add),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        ...reportTimes.map<Widget>(
+                          (time) => Card(
+                            child: ListTile(
+                              title: Text(time),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete),
+                                onPressed: () {
+                                  setState(() => reportTimes.remove(time));
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: Text(
+                              'Summary\n$company\n${padName.text.trim().isEmpty ? 'No pad entered' : padName.text.trim()}\n${wells.length} well(s)\n${_i(sandSeparators) + _i(plugCatchers) + _i(chokeManifolds) + _i(lineHeaters) + _i(testUnits) + _i(ecds) + _i(vrus) + _i(flares) + _i(transferPumps)} equipment item(s)\n${_i(oilTanks) + _i(waterTanks)} tank(s)',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        _navButtons(finish: true),
+                      ]),
+                    ],
+                  ),
+                ),
+              ],
+            )
+          : (_activeJob == null
+              ? _buildNoActiveJobView()
+              : _buildActiveJobView(_activeJob!)),
     );
   }
 
-  Widget _countField(String label, TextEditingController controller) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: WwNumberField(
-            label: label, controller: controller, allowDecimal: false),
-      );
+  Widget _countField(String label, TextEditingController controller) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: WwNumberField(
+        label: label,
+        controller: controller,
+        allowDecimal: false,
+      ),
+    );
+  }
 }
 
 class _StepPage extends StatelessWidget {
   const _StepPage({required this.title, required this.children});
+
   final String title;
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) => ListView(
-        padding: const EdgeInsets.all(18),
-        children: [
-          Text(title,
-              style: const TextStyle(
-                  color: Color(0xFFCDA56A),
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          ...children,
-        ],
-      );
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(18),
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Color(0xFFCDA56A),
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        ...children,
+      ],
+    );
+  }
 }
