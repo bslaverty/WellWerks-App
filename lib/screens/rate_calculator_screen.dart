@@ -3,7 +3,7 @@ import '../data/tank_charts.dart';
 import '../widgets/app_header.dart';
 import '../widgets/ww_number_field.dart';
 
-enum _GaugeTarget { start, end }
+enum _KeypadTarget { start, end, minutes }
 
 class RateCalculatorConfig {
   final String title;
@@ -55,9 +55,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   final startGauge = TextEditingController();
   final endGauge = TextEditingController();
   final minutes = TextEditingController();
-  final FocusNode minutesFocus = FocusNode();
   late final TextEditingController factor;
-  _GaugeTarget? _activeGaugeTarget;
+  _KeypadTarget? _activeKeypadTarget;
 
   static const List<String> _gaugeMainKeys = <String>[
     '7',
@@ -72,6 +71,21 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     '.',
     '0',
     '/',
+  ];
+
+  static const List<String> _minutesMainKeys = <String>[
+    '7',
+    '8',
+    '9',
+    '4',
+    '5',
+    '6',
+    '1',
+    '2',
+    '3',
+    '.',
+    '0',
+    '⌫',
   ];
 
   static const List<String> _gaugeFractionShortcuts = <String>[
@@ -94,31 +108,33 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     super.initState();
     factor = TextEditingController(
         text: (widget.config.defaultFactor ?? 1.67).toString());
-    minutesFocus.addListener(() {
-      if (minutesFocus.hasFocus && _activeGaugeTarget != null) {
-        setState(() => _activeGaugeTarget = null);
-      }
-    });
   }
 
-  TextEditingController? get _activeGaugeController {
-    switch (_activeGaugeTarget) {
-      case _GaugeTarget.start:
+  TextEditingController? get _activeKeypadController {
+    switch (_activeKeypadTarget) {
+      case _KeypadTarget.start:
         return startGauge;
-      case _GaugeTarget.end:
+      case _KeypadTarget.end:
         return endGauge;
+      case _KeypadTarget.minutes:
+        return minutes;
       case null:
         return null;
     }
   }
 
-  void _setActiveGauge(_GaugeTarget target) {
-    FocusScope.of(context).unfocus();
-    setState(() => _activeGaugeTarget = target);
+  bool get _isGaugeMode {
+    return _activeKeypadTarget == _KeypadTarget.start ||
+        _activeKeypadTarget == _KeypadTarget.end;
   }
 
-  void _insertGaugeText(String raw) {
-    final controller = _activeGaugeController;
+  void _setActiveKeypad(_KeypadTarget target) {
+    FocusScope.of(context).unfocus();
+    setState(() => _activeKeypadTarget = target);
+  }
+
+  void _insertKeypadText(String raw) {
+    final controller = _activeKeypadController;
     if (controller == null) return;
     final insertText = raw == 'Space' ? ' ' : raw;
     final selection = controller.selection;
@@ -136,8 +152,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     });
   }
 
-  void _backspaceGauge() {
-    final controller = _activeGaugeController;
+  void _backspaceKeypad() {
+    final controller = _activeKeypadController;
     if (controller == null) return;
     final text = controller.text;
     if (text.isEmpty) return;
@@ -161,14 +177,14 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     });
   }
 
-  void _clearActiveGauge() {
-    final controller = _activeGaugeController;
+  void _clearActiveInput() {
+    final controller = _activeKeypadController;
     if (controller == null) return;
     setState(controller.clear);
   }
 
-  void _closeGaugeKeypad() {
-    setState(() => _activeGaugeTarget = null);
+  void _closeKeypad() {
+    setState(() => _activeKeypadTarget = null);
   }
 
   TankChart? get chart {
@@ -223,6 +239,12 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   }
 
   void calculate() {
+    final hadKeypadOpen = _activeKeypadTarget != null;
+    FocusScope.of(context).unfocus();
+    if (hadKeypadOpen) {
+      setState(() => _activeKeypadTarget = null);
+    }
+
     final m = double.tryParse(minutes.text.trim()) ?? 0;
     if (startGauge.text.trim().isEmpty ||
         endGauge.text.trim().isEmpty ||
@@ -258,7 +280,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     startGauge.dispose();
     endGauge.dispose();
     minutes.dispose();
-    minutesFocus.dispose();
     factor.dispose();
     super.dispose();
   }
@@ -304,15 +325,18 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   }
 
   Widget _sharedGaugeKeypad() {
-    if (_activeGaugeTarget == null) return const SizedBox.shrink();
-    final activeLabel =
-        _activeGaugeTarget == _GaugeTarget.start ? 'Start Gauge' : 'End Gauge';
+    if (_activeKeypadTarget == null) return const SizedBox.shrink();
+    final activeLabel = _activeKeypadTarget == _KeypadTarget.start
+        ? 'Start Gauge'
+        : _activeKeypadTarget == _KeypadTarget.end
+            ? 'End Gauge'
+            : 'Minutes';
     return Container(
       decoration: const BoxDecoration(
         color: Color(0xFF0F1114),
         border: Border(top: BorderSide(color: Color(0xFF3A3A3A))),
       ),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       child: SafeArea(
         top: false,
         child: Column(
@@ -323,7 +347,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    'Gauge Keypad • $activeLabel',
+                    '${_isGaugeMode ? 'Gauge' : 'Number'} Keypad • $activeLabel',
                     style: const TextStyle(
                       color: Color(0xFFCDA56A),
                       fontWeight: FontWeight.w800,
@@ -331,42 +355,51 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                   ),
                 ),
                 TextButton(
-                    onPressed: _clearActiveGauge, child: const Text('Clear')),
+                    onPressed: _clearActiveInput, child: const Text('Clear')),
                 const SizedBox(width: 6),
                 FilledButton(
-                    onPressed: _closeGaugeKeypad, child: const Text('Done')),
+                    onPressed: _closeKeypad, child: const Text('Done')),
               ],
             ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                ..._gaugeFractionShortcuts.map((value) => _gaugeKeyButton(
-                      value,
+            if (_isGaugeMode) ...[
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  ..._gaugeFractionShortcuts.map((value) => _gaugeKeyButton(
+                        value,
+                        compact: true,
+                        onPressed: () => _insertKeypadText(value),
+                      )),
+                  _gaugeKeyButton('Space',
                       compact: true,
-                      onPressed: () => _insertGaugeText(value),
-                    )),
-                _gaugeKeyButton('Space',
-                    compact: true, onPressed: () => _insertGaugeText('Space')),
-                _gaugeKeyButton('⌫', compact: true, onPressed: _backspaceGauge),
-              ],
-            ),
+                      onPressed: () => _insertKeypadText('Space')),
+                ],
+              ),
+            ],
             const SizedBox(height: 8),
             GridView.builder(
-              itemCount: _gaugeMainKeys.length,
+              itemCount: _isGaugeMode
+                  ? _gaugeMainKeys.length
+                  : _minutesMainKeys.length,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,
                 mainAxisSpacing: 6,
                 crossAxisSpacing: 6,
-                childAspectRatio: 2.3,
+                childAspectRatio: 2.6,
               ),
               itemBuilder: (context, index) {
-                final key = _gaugeMainKeys[index];
+                final key = _isGaugeMode
+                    ? _gaugeMainKeys[index]
+                    : _minutesMainKeys[index];
+                if (key == '⌫') {
+                  return _gaugeKeyButton(key, onPressed: _backspaceKeypad);
+                }
                 return _gaugeKeyButton(key,
-                    onPressed: () => _insertGaugeText(key));
+                    onPressed: () => _insertKeypadText(key));
               },
             ),
           ],
@@ -398,24 +431,67 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                     label: 'Start Gauge',
                     controller: startGauge,
                     autofocus: true,
-                    active: _activeGaugeTarget == _GaugeTarget.start,
-                    onTap: () => _setActiveGauge(_GaugeTarget.start),
+                    active: _activeKeypadTarget == _KeypadTarget.start,
+                    onTap: () => _setActiveKeypad(_KeypadTarget.start),
                     onChanged: (_) => setState(() {}),
                   ),
                   WwGaugeField(
                     label: 'End Gauge',
                     controller: endGauge,
-                    active: _activeGaugeTarget == _GaugeTarget.end,
-                    onTap: () => _setActiveGauge(_GaugeTarget.end),
+                    active: _activeKeypadTarget == _KeypadTarget.end,
+                    onTap: () => _setActiveKeypad(_KeypadTarget.end),
                     onChanged: (_) => setState(() {}),
                   ),
-                  WwNumberField(
-                    label: 'Minutes',
-                    controller: minutes,
-                    allowDecimal: true,
-                    textInputAction: TextInputAction.done,
-                    focusNode: minutesFocus,
-                    onChanged: (_) => setState(() {}),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: TextField(
+                      controller: minutes,
+                      readOnly: true,
+                      showCursor: _activeKeypadTarget == _KeypadTarget.minutes,
+                      enableInteractiveSelection: false,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      decoration: InputDecoration(
+                        labelText: 'Minutes',
+                        suffixIcon: minutes.text.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: 'Clear',
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  minutes.clear();
+                                  setState(() {});
+                                },
+                              ),
+                        border: OutlineInputBorder(
+                          borderSide: BorderSide(
+                            color: _activeKeypadTarget == _KeypadTarget.minutes
+                                ? const Color(0xFFCDA56A)
+                                : const Color(0xFF4A4A4A),
+                            width: _activeKeypadTarget == _KeypadTarget.minutes
+                                ? 1.8
+                                : 1.0,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(
+                            color: _activeKeypadTarget == _KeypadTarget.minutes
+                                ? const Color(0xFFCDA56A)
+                                : const Color(0xFF4A4A4A),
+                            width: _activeKeypadTarget == _KeypadTarget.minutes
+                                ? 1.8
+                                : 1.0,
+                          ),
+                        ),
+                        focusedBorder: const OutlineInputBorder(
+                          borderSide: BorderSide(
+                            color: Color(0xFFCDA56A),
+                            width: 2.0,
+                          ),
+                        ),
+                      ),
+                      onTap: () => _setActiveKeypad(_KeypadTarget.minutes),
+                    ),
                   ),
                   const SizedBox(height: 4),
                   FilledButton(
