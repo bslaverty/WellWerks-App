@@ -802,8 +802,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
         _items.add(_LayoutItem(
           id: newId,
           type: original.type,
-          x: _snap(original.x + 24),
-          y: _snap(original.y + 24),
+          x: _snap(original.x + 42),
+          y: _snap(original.y + 42),
           width: original.width,
           height: original.height,
           properties: Map<String, String>.from(original.properties),
@@ -814,6 +814,29 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
         _selectedId = newId;
       }
     });
+    _appendHistoryEntry('Duplicated equipment');
+  }
+
+  void _duplicateSingleForQuickDrag(_LayoutItem item) {
+    _runHistoryChange(() {
+      final newId = _nextId++;
+      _items.add(_LayoutItem(
+        id: newId,
+        type: item.type,
+        x: _snap(item.x + 42),
+        y: _snap(item.y + 42),
+        width: item.width,
+        height: item.height,
+        properties: Map<String, String>.from(item.properties),
+        rotationTurns: item.rotationTurns,
+        locked: false,
+      ));
+      _selectedIds
+        ..clear()
+        ..add(newId);
+      _selectedId = newId;
+    });
+    _appendHistoryEntry('Duplicated equipment');
   }
 
   Future<void> _confirmClearLayout() async {
@@ -3757,19 +3780,46 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
         children: [
           _activeJobBanner(),
           _toolbar(isWide: isWide),
-          _primaryActionBar(isWide: isWide),
           if (_drawIronMode) _ironDrawControls(),
-          if (_selectedIds.isNotEmpty) _selectionQuickActionsBar(),
           Expanded(
-            child: Row(
-              children: [
-                SizedBox(
-                  width: _showSideLibrary ? dockWidth : 0,
-                  child: _showSideLibrary ? _sideLibraryPanel() : null,
-                ),
-                Expanded(child: _canvas()),
-              ],
-            ),
+            child: isWide
+                ? Row(
+                    children: [
+                      if (_showSideLibrary)
+                        SizedBox(
+                          width: dockWidth,
+                          child: _sideLibraryPanel(),
+                        ),
+                      Expanded(child: _canvas()),
+                    ],
+                  )
+                : Stack(
+                    children: [
+                      Positioned.fill(child: _canvas()),
+                      if (_showSideLibrary)
+                        Positioned.fill(
+                          child: GestureDetector(
+                            onTap: () =>
+                                setState(() => _showSideLibrary = false),
+                            child: Container(
+                              color: Colors.black.withValues(alpha: 0.28),
+                            ),
+                          ),
+                        ),
+                      AnimatedPositioned(
+                        duration: const Duration(milliseconds: 180),
+                        curve: Curves.easeOut,
+                        left: _showSideLibrary ? 0 : -300,
+                        top: 0,
+                        bottom: 0,
+                        width: 300,
+                        child: SafeArea(
+                          top: false,
+                          child: _sideLibraryPanel(),
+                        ),
+                      ),
+                    ],
+                  ),
           ),
         ],
       ),
@@ -3832,21 +3882,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                   ),
                 ),
               ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A1D21),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFF3A3A3A)),
-                ),
-                child: const Text(
-                  'Open',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+              IconButton(
+                onPressed: () => setState(() => _showSideLibrary = false),
+                icon: const Icon(Icons.close, color: Colors.white70),
+                tooltip: 'Close library',
               ),
             ],
           ),
@@ -4069,9 +4108,17 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
         child: Row(
           children: [
             FilledButton.icon(
-              onPressed: () => setState(() => _showSideLibrary = true),
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: const Icon(Icons.home_outlined),
+              label: const Text('Home'),
+              style: _compactFilledStyle(highlighted: true),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              onPressed: () =>
+                  setState(() => _showSideLibrary = !_showSideLibrary),
               icon: const Icon(Icons.view_sidebar_outlined),
-              label: const Text('Library'),
+              label: Text(_showSideLibrary ? 'Close Library' : 'Library'),
               style: _compactFilledStyle(highlighted: true),
             ),
             const SizedBox(width: 8),
@@ -4087,22 +4134,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
               icon: const Icon(Icons.redo),
               label: const Text('Redo'),
               style: _compactOutlineStyle(),
-            ),
-            const SizedBox(width: 8),
-            if (_selectedIds.isNotEmpty) ...[
-              OutlinedButton.icon(
-                onPressed: _clearSelection,
-                icon: const Icon(Icons.deselect),
-                label: Text('Clear Selection (${_selectedIds.length})'),
-                style: _compactOutlineStyle(highlighted: true),
-              ),
-              const SizedBox(width: 8),
-            ],
-            FilledButton.icon(
-              onPressed: _showToolsDrawer,
-              icon: const Icon(Icons.tune),
-              label: const Text('Tools / Menu'),
-              style: _compactFilledStyle(highlighted: true),
             ),
           ],
         ),
@@ -4482,6 +4513,74 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     );
   }
 
+  Widget _floatingSelectionToolbar(
+      _LayoutItem item, Size canvasSize, bool isLocked) {
+    const width = 248.0;
+    const height = 46.0;
+    final top = (item.y - 58).clamp(8.0, canvasSize.height - height - 8);
+    final left = (item.x + item.width + 12)
+        .clamp(8.0, canvasSize.width - width - 8)
+        .toDouble();
+
+    return Positioned(
+      left: left,
+      top: top,
+      child: Container(
+        width: width,
+        height: height,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F1114),
+          borderRadius: BorderRadius.circular(12),
+          border:
+              Border.all(color: const Color(0xFFCDA56A).withValues(alpha: 0.8)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.4),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: IconButton(
+                onPressed: () => _duplicateSingleForQuickDrag(item),
+                icon: const Icon(Icons.copy_outlined, color: Colors.white),
+                tooltip: 'Duplicate',
+              ),
+            ),
+            Expanded(
+              child: IconButton(
+                onPressed: _rotateSelected,
+                icon: const Icon(Icons.rotate_right, color: Colors.white),
+                tooltip: 'Rotate 90°',
+              ),
+            ),
+            Expanded(
+              child: IconButton(
+                onPressed: _toggleSelectedLock,
+                icon: Icon(
+                  isLocked ? Icons.lock_open : Icons.lock_outline,
+                  color: Colors.white,
+                ),
+                tooltip: isLocked ? 'Unlock' : 'Lock',
+              ),
+            ),
+            Expanded(
+              child: IconButton(
+                onPressed: _deleteSelected,
+                icon: const Icon(Icons.delete_outline, color: Colors.white),
+                tooltip: 'Delete',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _exportImagePreview() {
     final layoutName = _layoutName.text.trim().isEmpty
         ? 'New Layout'
@@ -4833,6 +4932,18 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                                   onTap: () => _multiSelectMode
                                       ? _toggleSelection(item.id)
                                       : _selectOnly(item.id),
+                                  onDoubleTap: () {
+                                    _selectOnly(item.id);
+                                    if (!item.locked) {
+                                      _rotateSelected();
+                                    }
+                                  },
+                                  onLongPress: () {
+                                    _selectOnly(item.id);
+                                    if (!item.locked) {
+                                      _duplicateSingleForQuickDrag(item);
+                                    }
+                                  },
                                   onPanStart: (details) =>
                                       _beginItemDrag(item, details),
                                   onPanUpdate: (details) =>
@@ -4914,6 +5025,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                                     ],
                                   ),
                                 ),
+                              ),
+                            if (_selectedItems.length == 1 &&
+                                _selectedItem != null)
+                              _floatingSelectionToolbar(
+                                _selectedItem!,
+                                canvasSize,
+                                _selectedItem!.locked,
                               ),
                           ],
                         ),
