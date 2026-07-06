@@ -51,7 +51,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   final TransformationController _canvasTransform = TransformationController();
   final GlobalKey _canvasViewportKey = GlobalKey();
   Size _viewportSize = Size.zero;
-  bool _equipmentDrawerOpen = true;
   _DrawerLibrarySection _mobileDrawerSection = _DrawerLibrarySection.equipment;
   Offset? _dragSceneStart;
   bool _dragActive = false;
@@ -67,7 +66,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   );
   final _preparedBy = TextEditingController();
   final _notes = TextEditingController();
-  bool _showSideLibrary = true;
+  bool _showSideLibrary = false;
   final _jobStorage = JobStorageService();
   final _recoveryState = RecoveryStateService();
   JobSetup? _activeJob;
@@ -149,7 +148,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   void _openEquipmentDrawer(
       {_DrawerLibrarySection section = _DrawerLibrarySection.equipment}) {
     setState(() {
-      _equipmentDrawerOpen = true;
+      _showSideLibrary = true;
       _mobileDrawerSection = section;
     });
   }
@@ -199,6 +198,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
 
   bool _isFittingType(_EquipmentType type) {
     return type == _EquipmentType.bypass ||
+        type == _EquipmentType.esdValve ||
         type.name.startsWith('elbow') ||
         type.name.startsWith('tee');
   }
@@ -3778,48 +3778,28 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       appBar: const AppHeader(title: 'Layout Designer', showBack: true),
       body: Column(
         children: [
-          _activeJobBanner(),
           _toolbar(isWide: isWide),
-          if (_drawIronMode) _ironDrawControls(),
           Expanded(
-            child: isWide
-                ? Row(
-                    children: [
-                      if (_showSideLibrary)
-                        SizedBox(
-                          width: dockWidth,
-                          child: _sideLibraryPanel(),
-                        ),
-                      Expanded(child: _canvas()),
-                    ],
-                  )
-                : Stack(
-                    children: [
-                      Positioned.fill(child: _canvas()),
-                      if (_showSideLibrary)
-                        Positioned.fill(
-                          child: GestureDetector(
-                            onTap: () =>
-                                setState(() => _showSideLibrary = false),
-                            child: Container(
-                              color: Colors.black.withValues(alpha: 0.28),
-                            ),
-                          ),
-                        ),
-                      AnimatedPositioned(
-                        duration: const Duration(milliseconds: 180),
-                        curve: Curves.easeOut,
-                        left: _showSideLibrary ? 0 : -300,
-                        top: 0,
-                        bottom: 0,
-                        width: 300,
-                        child: SafeArea(
-                          top: false,
-                          child: _sideLibraryPanel(),
-                        ),
-                      ),
-                    ],
+            child: Stack(
+              children: [
+                Positioned.fill(child: _canvas()),
+                if (isWide && _showSideLibrary)
+                  Positioned(
+                    left: 12,
+                    top: 12,
+                    bottom: 12,
+                    width: dockWidth,
+                    child: _sideLibraryPanel(),
                   ),
+                if (!isWide)
+                  Positioned(
+                    left: 10,
+                    right: 10,
+                    bottom: 12,
+                    child: _mobileEquipmentDrawer(),
+                  ),
+              ],
+            ),
           ),
         ],
       ),
@@ -3858,6 +3838,275 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
             '90° Fitting', _EquipmentType.elbowUpRight),
       ];
 
+  List<_EquipmentType> get _straightIronTypes => const [
+        _EquipmentType.ironHorizontal,
+        _EquipmentType.ironVertical,
+      ];
+
+  List<_EquipmentType> get _teeOnlyTypes => const [
+        _EquipmentType.teeUp,
+        _EquipmentType.teeRight,
+        _EquipmentType.teeDown,
+        _EquipmentType.teeLeft,
+      ];
+
+  List<_EquipmentType> get _elbowOnlyTypes => const [
+        _EquipmentType.elbowUpRight,
+        _EquipmentType.elbowRightDown,
+        _EquipmentType.elbowDownLeft,
+        _EquipmentType.elbowLeftUp,
+      ];
+
+  Widget _libraryCategoryTabs({required bool isMobile}) {
+    const tabs = <MapEntry<String, _DrawerLibrarySection>>[
+      MapEntry<String, _DrawerLibrarySection>(
+          'Equipment', _DrawerLibrarySection.equipment),
+      MapEntry<String, _DrawerLibrarySection>(
+          'Iron', _DrawerLibrarySection.iron),
+      MapEntry<String, _DrawerLibrarySection>(
+          'Tees', _DrawerLibrarySection.tees),
+      MapEntry<String, _DrawerLibrarySection>(
+          '90s', _DrawerLibrarySection.nineties),
+      MapEntry<String, _DrawerLibrarySection>(
+          'Bypass', _DrawerLibrarySection.bypass),
+      MapEntry<String, _DrawerLibrarySection>(
+          'Labels', _DrawerLibrarySection.labels),
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final tab in tabs) ...[
+            ChoiceChip(
+              selectedColor: const Color(0xFFCDA56A),
+              labelStyle: TextStyle(
+                color: _mobileDrawerSection == tab.value
+                    ? Colors.black
+                    : Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+              side: BorderSide(
+                color: _mobileDrawerSection == tab.value
+                    ? const Color(0xFFCDA56A)
+                    : const Color(0xFF4A4A4A),
+              ),
+              backgroundColor: const Color(0xFF1A1D21),
+              selected: _mobileDrawerSection == tab.value,
+              label: Text(tab.key),
+              onSelected: (_) => setState(() {
+                _mobileDrawerSection = tab.value;
+                if (tab.value == _DrawerLibrarySection.iron) {
+                  _drawIronMode = true;
+                }
+              }),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _equipmentButtonForLibrary(_EquipmentType type,
+      {required bool outlined, required bool isMobile}) {
+    return SizedBox(
+      width: isMobile ? 162 : 138,
+      child: outlined
+          ? OutlinedButton.icon(
+              onPressed: () => _addItem(type),
+              icon: Icon(type.icon),
+              label: Text(type.label, maxLines: 2),
+              style: _compactOutlineStyle(highlighted: true),
+            )
+          : FilledButton.icon(
+              onPressed: () => _addItem(type),
+              icon: Icon(type.icon),
+              label: Text(type.label, maxLines: 2),
+              style: _compactFilledStyle(highlighted: true),
+            ),
+    );
+  }
+
+  Widget _libraryCategoryBody({required bool isMobile}) {
+    List<_EquipmentType> types;
+    var outlined = false;
+    String title;
+
+    switch (_mobileDrawerSection) {
+      case _DrawerLibrarySection.equipment:
+        types = _equipmentTypes;
+        title = 'Equipment';
+        break;
+      case _DrawerLibrarySection.iron:
+        types = _straightIronTypes;
+        outlined = true;
+        title = 'Straight Iron';
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Straight Iron',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                SizedBox(
+                  width: isMobile ? 162 : 138,
+                  child: FilledButton.icon(
+                    onPressed: () => setState(() {
+                      _drawIronMode = true;
+                    }),
+                    icon: const Icon(Icons.edit_road),
+                    label: Text(_drawIronMode ? 'Draw Iron ON' : 'Draw Iron'),
+                    style: _compactFilledStyle(highlighted: _drawIronMode),
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? 162 : 138,
+                  child: OutlinedButton.icon(
+                    onPressed: () => setState(() {
+                      _drawIronMode = false;
+                      _ironStartPoint = null;
+                    }),
+                    icon: const Icon(Icons.pan_tool_alt_outlined),
+                    label: const Text('Select / Move'),
+                    style: _compactOutlineStyle(),
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? 162 : 138,
+                  child: FilledButton(
+                    onPressed: () => setState(() => _drawIronSize = '2'),
+                    style:
+                        _compactFilledStyle(highlighted: _drawIronSize == '2'),
+                    child: const Text('2" Iron'),
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? 162 : 138,
+                  child: FilledButton(
+                    onPressed: () => setState(() => _drawIronSize = '3'),
+                    style:
+                        _compactFilledStyle(highlighted: _drawIronSize == '3'),
+                    child: const Text('3" Iron'),
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? 162 : 138,
+                  child: FilledButton(
+                    onPressed: () => setState(() => _drawIronSize = '4'),
+                    style:
+                        _compactFilledStyle(highlighted: _drawIronSize == '4'),
+                    child: const Text('4" Iron'),
+                  ),
+                ),
+                for (final type in types)
+                  _equipmentButtonForLibrary(type,
+                      outlined: outlined, isMobile: isMobile),
+              ],
+            ),
+          ],
+        );
+      case _DrawerLibrarySection.tees:
+        types = _teeOnlyTypes;
+        outlined = true;
+        title = 'Tees';
+        break;
+      case _DrawerLibrarySection.nineties:
+        types = _elbowOnlyTypes;
+        outlined = true;
+        title = '90s';
+        break;
+      case _DrawerLibrarySection.bypass:
+        types = const [_EquipmentType.bypass];
+        outlined = true;
+        title = 'Bypass';
+        break;
+      case _DrawerLibrarySection.labels:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Labels',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                SizedBox(
+                  width: isMobile ? 162 : 138,
+                  child: OutlinedButton.icon(
+                    onPressed: _hasSelectedItem ? _renameSelected : null,
+                    icon: const Icon(Icons.drive_file_rename_outline),
+                    label: const Text('Rename Label'),
+                    style: _compactOutlineStyle(highlighted: true),
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? 162 : 138,
+                  child: OutlinedButton.icon(
+                    onPressed: _selectedCanHaveProperties
+                        ? _showSelectedProperties
+                        : null,
+                    icon: const Icon(Icons.edit_note),
+                    label: const Text('Properties'),
+                    style: _compactOutlineStyle(),
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? 162 : 138,
+                  child: FilledButton.icon(
+                    onPressed: () => setState(() => _showLabels = !_showLabels),
+                    icon: const Icon(Icons.label_outline),
+                    label: Text(_showLabels ? 'Labels On' : 'Labels Off'),
+                    style: _compactFilledStyle(highlighted: _showLabels),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Color(0xFFCDA56A),
+            fontWeight: FontWeight.w700,
+            fontSize: 15,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final type in types)
+              _equipmentButtonForLibrary(type,
+                  outlined: outlined, isMobile: isMobile),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _sideLibraryPanel() {
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 8, 12),
@@ -3895,62 +4144,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
             style: TextStyle(color: Colors.white70, fontSize: 12),
           ),
           const SizedBox(height: 10),
+          _libraryCategoryTabs(isMobile: false),
+          const SizedBox(height: 10),
           Expanded(
             child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Equipment',
-                    style: TextStyle(
-                      color: Color(0xFFCDA56A),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final type in _equipmentTypes)
-                        SizedBox(
-                          width: 138,
-                          child: FilledButton.icon(
-                            onPressed: () => _addItem(type),
-                            icon: Icon(type.icon),
-                            label: Text(type.label, maxLines: 2),
-                            style: _compactFilledStyle(highlighted: true),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    'Iron / Fittings',
-                    style: TextStyle(
-                      color: Color(0xFFCDA56A),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final type in _ironTypes)
-                        SizedBox(
-                          width: 138,
-                          child: OutlinedButton.icon(
-                            onPressed: () => _addItem(type),
-                            icon: Icon(type.icon),
-                            label: Text(type.label, maxLines: 2),
-                            style: _compactOutlineStyle(highlighted: true),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
+              child: _libraryCategoryBody(isMobile: false),
             ),
           ),
         ],
@@ -4097,6 +4295,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   }
 
   Widget _toolbar({required bool isWide}) {
+    final hasSelected = _hasSelectedItem;
+    final locked = _selectedItem?.locked ?? false;
+    final drawIronLabel = _drawIronMode ? 'Stop Draw Iron' : 'Start Draw Iron';
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       decoration: const BoxDecoration(
@@ -4108,17 +4309,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
         child: Row(
           children: [
             FilledButton.icon(
-              onPressed: () => Navigator.of(context).maybePop(),
-              icon: const Icon(Icons.home_outlined),
-              label: const Text('Home'),
-              style: _compactFilledStyle(highlighted: true),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.icon(
               onPressed: () =>
                   setState(() => _showSideLibrary = !_showSideLibrary),
               icon: const Icon(Icons.view_sidebar_outlined),
-              label: Text(_showSideLibrary ? 'Close Library' : 'Library'),
+              label: Text(_showSideLibrary ? 'Close Library' : 'Open Library'),
               style: _compactFilledStyle(highlighted: true),
             ),
             const SizedBox(width: 8),
@@ -4134,6 +4328,145 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
               icon: const Icon(Icons.redo),
               label: const Text('Redo'),
               style: _compactOutlineStyle(),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              onPressed: _saveRigUp,
+              icon: const Icon(Icons.save_alt),
+              label: const Text('Save'),
+              style: _compactFilledStyle(highlighted: true),
+            ),
+            const SizedBox(width: 8),
+            PopupMenuButton<String>(
+              tooltip: 'More actions',
+              onSelected: (value) {
+                switch (value) {
+                  case 'clear':
+                    _confirmClearLayout();
+                    break;
+                  case 'duplicate':
+                    _duplicateSelected();
+                    break;
+                  case 'lock':
+                    _toggleSelectedLock();
+                    break;
+                  case 'delete':
+                    _deleteSelected();
+                    break;
+                  case 'tools':
+                    _showToolsDrawer();
+                    break;
+                  case 'drawIron':
+                    setState(() {
+                      _drawIronMode = !_drawIronMode;
+                      _mobileDrawerSection = _DrawerLibrarySection.iron;
+                      if (!isWide && _drawIronMode) {
+                        _showSideLibrary = true;
+                      }
+                    });
+                    break;
+                  case 'loadRigUp':
+                    _showLoadRigUps();
+                    break;
+                  case 'loadLayout':
+                    _showLoadLayouts();
+                    break;
+                  case 'exportPdf':
+                    _exportPdf();
+                    break;
+                  case 'sharePackage':
+                    _shareRigUpPackage();
+                    break;
+                  case 'bom':
+                    _showBillOfMaterials();
+                    break;
+                  case 'templates':
+                    _showRigUpAssistant();
+                    break;
+                  case 'favorites':
+                    _showFavorites();
+                    break;
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem<String>(
+                  value: 'drawIron',
+                  child: Text(drawIronLabel),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'loadRigUp',
+                  child: Text('Load Rig-Up'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'loadLayout',
+                  child: Text('Load Layout'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'exportPdf',
+                  child: Text('Export PDF'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'sharePackage',
+                  child: Text('Share Package'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'bom',
+                  child: Text('Bill of Materials'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'templates',
+                  child: Text('Templates'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'favorites',
+                  child: Text('Favorites'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'clear',
+                  child: Text('Clear Layout'),
+                ),
+                PopupMenuItem<String>(
+                  value: 'duplicate',
+                  enabled: hasSelected,
+                  child: const Text('Duplicate Selected'),
+                ),
+                PopupMenuItem<String>(
+                  value: 'lock',
+                  enabled: hasSelected,
+                  child: Text(locked ? 'Unlock Selected' : 'Lock Selected'),
+                ),
+                PopupMenuItem<String>(
+                  value: 'delete',
+                  enabled: hasSelected,
+                  child: const Text('Delete Selected'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'tools',
+                  child: Text('More Tools'),
+                ),
+              ],
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1D21),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF4A4A4A)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.more_horiz, color: Colors.white),
+                    SizedBox(width: 6),
+                    Text(
+                      'More',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -4226,13 +4559,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   }
 
   Widget _mobileEquipmentDrawer() {
-    final activeTypes = _mobileDrawerSection == _DrawerLibrarySection.equipment
-        ? _equipmentTypes
-        : _ironTypes;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOut,
-      height: _equipmentDrawerOpen ? 268 : 52,
+      height: _showSideLibrary ? 360 : 56,
       decoration: BoxDecoration(
         color: const Color(0xFF0D0D0F),
         borderRadius: BorderRadius.circular(16),
@@ -4248,8 +4578,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       child: Column(
         children: [
           InkWell(
-            onTap: () =>
-                setState(() => _equipmentDrawerOpen = !_equipmentDrawerOpen),
+            onTap: () => setState(() => _showSideLibrary = !_showSideLibrary),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -4259,95 +4588,41 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      _equipmentDrawerOpen
-                          ? 'Equipment Drawer - stays open while you add items'
-                          : 'Add Equipment / Iron',
+                      _showSideLibrary ? 'Close Library' : 'Open Library',
                       style: const TextStyle(
                         color: Color(0xFFCDA56A),
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
-                  if (_equipmentDrawerOpen)
-                    TextButton.icon(
-                      onPressed: () =>
-                          setState(() => _equipmentDrawerOpen = false),
-                      icon: const Icon(Icons.check, size: 18),
-                      label: const Text('Done / Close'),
-                    )
-                  else
-                    const Icon(Icons.keyboard_arrow_up, color: Colors.white70),
+                  if (_showSideLibrary)
+                    TextButton(
+                      onPressed: () => setState(() => _showSideLibrary = false),
+                      child: const Text('Done'),
+                    ),
+                  IconButton(
+                    onPressed: () => setState(() => _showSideLibrary = false),
+                    icon: Icon(
+                      _showSideLibrary ? Icons.close : Icons.keyboard_arrow_up,
+                      color: Colors.white70,
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
-          if (_equipmentDrawerOpen)
+          if (_showSideLibrary)
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: FilledButton(
-                            onPressed: () => setState(() {
-                              _mobileDrawerSection =
-                                  _DrawerLibrarySection.equipment;
-                              _drawIronMode = false;
-                            }),
-                            style: _compactFilledStyle(
-                              highlighted: _mobileDrawerSection ==
-                                  _DrawerLibrarySection.equipment,
-                            ),
-                            child: const Text('Equipment'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: FilledButton(
-                            onPressed: () => setState(() {
-                              _mobileDrawerSection = _DrawerLibrarySection.iron;
-                              _drawIronMode = true;
-                            }),
-                            style: _compactFilledStyle(
-                              highlighted: _mobileDrawerSection ==
-                                  _DrawerLibrarySection.iron,
-                            ),
-                            child: const Text('Iron'),
-                          ),
-                        ),
-                      ],
-                    ),
+                    _libraryCategoryTabs(isMobile: true),
                     const SizedBox(height: 10),
                     Expanded(
                       child: SingleChildScrollView(
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            for (final type in activeTypes)
-                              SizedBox(
-                                width: 162,
-                                child: (_mobileDrawerSection ==
-                                        _DrawerLibrarySection.equipment)
-                                    ? FilledButton.icon(
-                                        onPressed: () => _addItem(type),
-                                        icon: Icon(type.icon),
-                                        label: Text(type.label, maxLines: 2),
-                                        style: _compactFilledStyle(
-                                            highlighted: true),
-                                      )
-                                    : OutlinedButton.icon(
-                                        onPressed: () => _addItem(type),
-                                        icon: Icon(type.icon),
-                                        label: Text(type.label, maxLines: 2),
-                                        style: _compactOutlineStyle(
-                                            highlighted: true),
-                                      ),
-                              ),
-                          ],
-                        ),
+                        child: _libraryCategoryBody(isMobile: true),
                       ),
                     ),
                   ],
@@ -5052,7 +5327,7 @@ enum _LayoutAlign { left, right, top, bottom, horizontalCenter, verticalCenter }
 
 enum _LayoutDistribution { horizontal, vertical }
 
-enum _DrawerLibrarySection { equipment, iron }
+enum _DrawerLibrarySection { equipment, iron, tees, nineties, bypass, labels }
 
 class _SnapCandidate {
   final int ironId;
