@@ -98,9 +98,15 @@ class ReportProfileService {
   static const String _activeProfileIdKey =
       'wellwerks_report_layout_active_profile_v2';
 
+  static const String defaultProfileId = 'default';
+  static const String continentalProfileId = 'continental_resources';
+  static const String machProfileId = 'mach_energy';
+  static const String customProfileId = 'custom';
+
   static const List<ReportField> availableFields = [
     ReportField(key: 'time', label: 'Time'),
     ReportField(key: 'well', label: 'Well'),
+    ReportField(key: 'wellName', label: 'Well Name'),
     ReportField(key: 'csg', label: 'CSG'),
     ReportField(key: 'icp', label: 'ICP'),
     ReportField(key: 'chk', label: 'CHK'),
@@ -116,35 +122,187 @@ class ReportProfileService {
     ReportField(key: 'wtrTmp', label: 'WTR TMP'),
     ReportField(key: 'flareRt', label: 'FLARE RT'),
     ReportField(key: 'flarePilotTemp', label: 'FLARE PILOT TEMP'),
+    ReportField(key: 'riserTemp', label: 'RISER TEMP'),
+    ReportField(key: 'riserPl', label: 'RISER PL'),
+    ReportField(key: 'clrFlarePilot', label: 'CLR FLARE PILOT'),
+    ReportField(key: 'clrFlareRt', label: 'CLR FLARE Rt'),
+    ReportField(key: 'clrFlareTemp', label: 'CLR FLARE TEMP'),
     ReportField(key: 'biocide', label: 'BIOCIDE'),
     ReportField(key: 'vruGasRt', label: 'VRU GAS RT'),
+    ReportField(key: 'vruSuct', label: 'VRU SUCT'),
+    ReportField(key: 'vruDisc', label: 'VRU DISC'),
     ReportField(key: 'compressorInj', label: 'COMP INJ'),
     ReportField(key: 'vruSuction', label: 'VRU SUCTION'),
     ReportField(key: 'vruDischarge', label: 'VRU DISCHARGE'),
     ReportField(key: 'notes', label: 'Notes'),
   ];
 
+  static const List<String> _continentalPresetKeys = [
+    'csg',
+    'icp',
+    'chk',
+    'bwph',
+    'boph',
+    'gasSpotRt',
+    'stat',
+    'diff',
+    'temp',
+    'prop',
+    'wht',
+    'biocide',
+    'riserTemp',
+    'riserPl',
+    'clrFlarePilot',
+    'clrFlareRt',
+    'clrFlareTemp',
+    'vruGasRt',
+    'vruSuct',
+    'vruDisc',
+    'notes',
+  ];
+
+  static const Map<String, String> _continentalLabels = {
+    'csg': 'CSG',
+    'icp': 'ICP',
+    'chk': 'CHK',
+    'bwph': 'H2O',
+    'boph': 'OIL',
+    'gasSpotRt': 'SALES Rt',
+    'stat': 'STAT',
+    'diff': 'DIFF',
+    'temp': 'TEMP',
+    'prop': 'SAND',
+    'wht': 'WHT',
+    'biocide': 'BIO',
+    'riserTemp': 'RISER TEMP',
+    'riserPl': 'RISER PL',
+    'clrFlarePilot': 'CLR FLARE PILOT',
+    'clrFlareRt': 'CLR FLARE Rt',
+    'clrFlareTemp': 'CLR FLARE TEMP',
+    'vruGasRt': 'VRU GAS RT',
+    'vruSuct': 'VRU SUCT',
+    'vruDisc': 'VRU DISC',
+    'notes': 'Notes',
+  };
+
+  static const List<String> _machPresetKeys = [
+    'wellName',
+    'chk',
+    'csg',
+    'bwph',
+    'boph',
+    'gasSpotRt',
+    'prop',
+    'notes',
+  ];
+
+  static const Map<String, String> _machLabels = {
+    'wellName': 'Well Name',
+    'chk': 'Choke',
+    'csg': 'Csg',
+    'bwph': 'Wtr/hr',
+    'boph': 'Oil',
+    'gasSpotRt': '24/hr gas rate',
+    'prop': 'Sand',
+    'notes': 'Notes',
+  };
+
   ReportLayoutProfile defaultProfile() {
     return const ReportLayoutProfile(
-      id: 'default',
+      id: defaultProfileId,
       name: 'Default',
       reportFields: availableFields,
       textFields: availableFields,
     );
   }
 
+  ReportLayoutProfile continentalProfile() {
+    final fields = _presetFields(
+      keys: _continentalPresetKeys,
+      labels: _continentalLabels,
+    );
+    return ReportLayoutProfile(
+      id: continentalProfileId,
+      name: 'Continental Resources',
+      reportFields: fields,
+      textFields: fields,
+    );
+  }
+
+  ReportLayoutProfile machProfile() {
+    final fields = _presetFields(keys: _machPresetKeys, labels: _machLabels);
+    return ReportLayoutProfile(
+      id: machProfileId,
+      name: 'Mach Energy',
+      reportFields: fields,
+      textFields: fields,
+    );
+  }
+
+  ReportLayoutProfile customProfile() {
+    return ReportLayoutProfile(
+      id: customProfileId,
+      name: 'Custom',
+      reportFields: List<ReportField>.from(availableFields),
+      textFields: List<ReportField>.from(availableFields),
+    );
+  }
+
+  List<ReportLayoutProfile> systemProfiles() {
+    return [
+      defaultProfile(),
+      continentalProfile(),
+      machProfile(),
+      customProfile(),
+    ];
+  }
+
+  bool isSystemProfileId(String id) {
+    return id == defaultProfileId ||
+        id == continentalProfileId ||
+        id == machProfileId ||
+        id == customProfileId;
+  }
+
+  List<ReportField> _presetFields({
+    required List<String> keys,
+    required Map<String, String> labels,
+  }) {
+    final byKey = {for (final field in availableFields) field.key: field};
+    final fields = <ReportField>[];
+    for (final key in keys) {
+      final base = byKey[key];
+      if (base == null) continue;
+      fields.add(ReportField(
+        key: key,
+        label: labels[key] ?? base.label,
+      ));
+    }
+    return fields;
+  }
+
   List<ReportField> _normalizeFields(List<ReportField> fields) {
-    final byKey = {for (final field in fields) field.key: field};
-    return availableFields.map((base) {
-      final existing = byKey[base.key];
-      if (existing == null) return base;
-      return ReportField(
-        key: base.key,
-        label: base.label,
-        required: existing.required,
-        included: existing.included,
-      );
-    }).toList();
+    final baseByKey = {for (final field in availableFields) field.key: field};
+    final normalized = <ReportField>[];
+    final seen = <String>{};
+
+    for (final field in fields) {
+      final base = baseByKey[field.key];
+      if (base == null || seen.contains(field.key)) continue;
+      seen.add(field.key);
+      normalized.add(ReportField(
+        key: field.key,
+        label: field.label.trim().isEmpty ? base.label : field.label,
+        required: field.required,
+        included: field.included,
+      ));
+    }
+
+    if (normalized.isNotEmpty) {
+      return normalized;
+    }
+
+    return List<ReportField>.from(availableFields);
   }
 
   Future<List<ReportLayoutProfile>> loadProfiles() async {
@@ -166,14 +324,23 @@ class ReportProfileService {
     }
 
     if (parsed.isEmpty) {
-      parsed = [defaultProfile()];
+      parsed = systemProfiles();
     }
 
-    if (!parsed.any((item) => item.id == 'default')) {
-      parsed.insert(0, defaultProfile());
+    final parsedById = {for (final profile in parsed) profile.id: profile};
+    final merged = <ReportLayoutProfile>[];
+
+    for (final preset in systemProfiles()) {
+      merged.add(parsedById[preset.id] ?? preset);
     }
 
-    final normalized = parsed
+    for (final profile in parsed) {
+      if (!isSystemProfileId(profile.id)) {
+        merged.add(profile);
+      }
+    }
+
+    final normalized = merged
         .map((profile) => profile.copyWith(
               reportFields: _normalizeFields(profile.reportFields),
               textFields: _normalizeFields(profile.textFields),
@@ -194,7 +361,7 @@ class ReportProfileService {
 
   Future<String> loadActiveProfileId() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_activeProfileIdKey) ?? 'default';
+    return prefs.getString(_activeProfileIdKey) ?? defaultProfileId;
   }
 
   Future<void> setActiveProfileId(String profileId) async {
@@ -258,6 +425,9 @@ class ReportProfileService {
   }
 
   Future<List<ReportLayoutProfile>> deleteProfile(String id) async {
+    if (isSystemProfileId(id)) {
+      return loadProfiles();
+    }
     var profiles = await loadProfiles();
     if (profiles.length <= 1) return profiles;
     profiles = profiles.where((item) => item.id != id).toList();

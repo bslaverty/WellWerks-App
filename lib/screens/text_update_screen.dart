@@ -129,6 +129,8 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         return 'TIME - ${_fmtTimeLabel(row.time)}';
       case 'well':
         return row.well;
+      case 'wellName':
+        return row.well;
       case 'csg':
         return 'CSG - ${row.csg.isEmpty ? '-' : row.csg} PSI';
       case 'icp':
@@ -161,10 +163,24 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         return 'FLARE RT - ${row.flareRate.isEmpty ? '-' : _gasString(row.flareRate)} $_gasUnitLabel';
       case 'flarePilotTemp':
         return 'FLARE PILOT TEMP - ${row.flarePilotTemp.isEmpty ? '-' : row.flarePilotTemp}°';
+      case 'riserTemp':
+        return 'RISER TEMP - ${row.wellheadTemp.isEmpty ? '-' : row.wellheadTemp}°';
+      case 'riserPl':
+        return 'RISER PL - -';
+      case 'clrFlarePilot':
+        return 'CLR FLARE PILOT - ${row.flarePilotTemp.isEmpty ? '-' : row.flarePilotTemp}°';
+      case 'clrFlareRt':
+        return 'CLR FLARE Rt - ${row.flareRate.isEmpty ? '-' : _gasString(row.flareRate)} $_gasUnitLabel';
+      case 'clrFlareTemp':
+        return 'CLR FLARE TEMP - ${row.gasTemp.isEmpty ? '-' : row.gasTemp}°';
       case 'biocide':
         return 'BIOCIDE - ${row.biocide.isEmpty ? '-' : row.biocide} GPD';
       case 'vruGasRt':
         return 'GAS RT - ${row.vruGasRate.isEmpty ? '-' : _gasString(row.vruGasRate)} $_gasUnitLabel';
+      case 'vruSuct':
+        return 'SUCT - ${row.vruSuction.isEmpty ? '-' : row.vruSuction}';
+      case 'vruDisc':
+        return 'DISC - ${row.vruDischarge.isEmpty ? '-' : row.vruDischarge}';
       case 'compressorInj':
         return 'COMP INJ - ${row.compressorInjection.isEmpty ? '-' : _gasString(row.compressorInjection)} $_gasUnitLabel';
       case 'vruSuction':
@@ -180,6 +196,8 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
 
   String _valueForProfileField(ProductionReportRow row, String key) {
     switch (key) {
+      case 'wellName':
+        return row.well.isEmpty ? '-' : row.well;
       case 'csg':
         return row.csg.isEmpty ? '-' : row.csg;
       case 'icp':
@@ -204,8 +222,26 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         return row.sandRate.isEmpty ? '-' : row.sandRate;
       case 'wht':
         return row.wellheadTemp.isEmpty ? '-' : row.wellheadTemp;
+      case 'riserTemp':
+        return row.wellheadTemp.isEmpty ? '-' : row.wellheadTemp;
+      case 'riserPl':
+        return '-';
+      case 'clrFlarePilot':
+        return row.flarePilotTemp.isEmpty ? '-' : row.flarePilotTemp;
+      case 'clrFlareRt':
+        return '${_gasString(row.flareRate)} $_gasUnitLabel';
+      case 'clrFlareTemp':
+        return row.gasTemp.isEmpty ? '-' : row.gasTemp;
       case 'biocide':
         return row.biocide.isEmpty ? '-' : row.biocide;
+      case 'vruGasRt':
+        return row.vruGasRate.isEmpty
+            ? '-'
+            : '${_gasString(row.vruGasRate)} $_gasUnitLabel';
+      case 'vruSuct':
+        return row.vruSuction.isEmpty ? '-' : row.vruSuction;
+      case 'vruDisc':
+        return row.vruDischarge.isEmpty ? '-' : row.vruDischarge;
       default:
         return '-';
     }

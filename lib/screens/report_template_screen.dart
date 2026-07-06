@@ -60,6 +60,13 @@ class _ReportTemplateScreenState extends State<ReportTemplateScreen> {
     );
   }
 
+  Future<void> _selectProfile(String profileId) async {
+    setState(() => _selectedProfileId = profileId);
+    await _service.setActiveProfileId(profileId);
+    if (!mounted) return;
+    setState(() => _activeProfileId = profileId);
+  }
+
   Future<String?> _askLayoutName(
       {required String title, String? initial}) async {
     final controller = TextEditingController(text: initial ?? '');
@@ -99,6 +106,14 @@ class _ReportTemplateScreenState extends State<ReportTemplateScreen> {
   }
 
   Future<void> _renameProfile() async {
+    if (_service.isSystemProfileId(_selectedProfile.id)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('System company profiles cannot be renamed.'),
+        ),
+      );
+      return;
+    }
     final name = await _askLayoutName(
       title: 'Rename Layout',
       initial: _selectedProfile.name,
@@ -126,6 +141,15 @@ class _ReportTemplateScreenState extends State<ReportTemplateScreen> {
   }
 
   Future<void> _deleteProfile() async {
+    if (_service.isSystemProfileId(_selectedProfile.id)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('System company profiles cannot be deleted.'),
+        ),
+      );
+      return;
+    }
+
     if (_profiles.length <= 1) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('At least one layout must remain.')),
@@ -274,8 +298,8 @@ class _ReportTemplateScreenState extends State<ReportTemplateScreen> {
                       const SizedBox(height: 10),
                       DropdownButtonFormField<String>(
                         initialValue: selected.id,
-                        decoration:
-                            const InputDecoration(labelText: 'Layout Profile'),
+                        decoration: const InputDecoration(
+                            labelText: 'Company / Profile'),
                         items: [
                           for (final profile in _profiles)
                             DropdownMenuItem(
@@ -287,9 +311,9 @@ class _ReportTemplateScreenState extends State<ReportTemplateScreen> {
                               ),
                             ),
                         ],
-                        onChanged: (value) {
+                        onChanged: (value) async {
                           if (value == null) return;
-                          setState(() => _selectedProfileId = value);
+                          await _selectProfile(value);
                         },
                       ),
                       const SizedBox(height: 10),

@@ -151,6 +151,8 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         return row.time;
       case 'well':
         return row.well;
+      case 'wellName':
+        return row.well;
       case 'csg':
         return row.csg;
       case 'icp':
@@ -181,10 +183,24 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         return _gasString(row.flareRate);
       case 'flarePilotTemp':
         return row.flarePilotTemp;
+      case 'riserTemp':
+        return row.wellheadTemp;
+      case 'riserPl':
+        return '-';
+      case 'clrFlarePilot':
+        return row.flarePilotTemp;
+      case 'clrFlareRt':
+        return _gasString(row.flareRate);
+      case 'clrFlareTemp':
+        return row.gasTemp;
       case 'biocide':
         return row.biocide;
       case 'vruGasRt':
         return _gasString(row.vruGasRate);
+      case 'vruSuct':
+        return row.vruSuction;
+      case 'vruDisc':
+        return row.vruDischarge;
       case 'compressorInj':
         return _gasString(row.compressorInjection);
       case 'vruSuction':
