@@ -27,7 +27,7 @@ class AboutSupportScreen extends StatelessWidget {
           _NavigationTile(
             icon: Icons.info_outline,
             title: 'About WellWerks Toolbox',
-            subtitle: 'App summary, version, and local-data notice',
+            subtitle: 'App summary, features, developer, and version',
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const AboutScreen()),
@@ -37,7 +37,7 @@ class AboutSupportScreen extends StatelessWidget {
           _NavigationTile(
             icon: Icons.support_agent,
             title: 'Support',
-            subtitle: 'Contact, feedback, bug reports, and app info',
+            subtitle: 'Developer contact and support details',
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const SupportScreen()),
@@ -103,7 +103,7 @@ class _AboutScreenState extends State<AboutScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const AppHeader(title: 'About', showBack: true),
+      appBar: const AppHeader(title: 'About WellWerks Toolbox', showBack: true),
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
@@ -123,13 +123,12 @@ class _AboutScreenState extends State<AboutScreen> {
                   ),
                   const SizedBox(height: 10),
                   const Text(
-                    'Field-ready flowback and production tools for oilfield crews.',
+                    'Professional Oilfield Operations Toolkit',
                     style: TextStyle(color: Colors.white70, fontSize: 16),
                   ),
                   const SizedBox(height: 18),
+                  _infoRow('Developer', 'Brendan Laverty'),
                   _infoRow('Version', _versionLabel),
-                  _infoRow('Storage', 'Local-only data on this device'),
-                  _infoRow('Copyright', '© 2026 WellWerks'),
                 ],
               ),
             ),
@@ -139,7 +138,48 @@ class _AboutScreenState extends State<AboutScreen> {
             child: Padding(
               padding: EdgeInsets.all(18),
               child: Text(
-                'WellWerks Toolbox keeps active jobs, history, production records, JSAs, and layouts on-device. No cloud sync is enabled in this build.',
+                'WellWerks Toolbox is a field-ready mobile application designed for flowback, production, and well-testing professionals.\n\nThe app combines production reporting, text updates, engineering calculators, layout design, JSA management, history, charts, and field tools into one simple, powerful application that helps crews work faster, more accurately, and more consistently.',
+                style: TextStyle(color: Colors.white70, fontSize: 15),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Features',
+                    style: TextStyle(
+                      color: Color(0xFFCDA56A),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  _FeatureBullet('Production Reports'),
+                  _FeatureBullet('Text Updates'),
+                  _FeatureBullet('Layout Designer'),
+                  _FeatureBullet('Rate Calculator'),
+                  _FeatureBullet('Bottoms Up Calculator'),
+                  _FeatureBullet('Gas Accum Calculator'),
+                  _FeatureBullet('Multiple Choke Calculator'),
+                  _FeatureBullet('Tank Charts'),
+                  _FeatureBullet('History'),
+                  _FeatureBullet('JSA'),
+                  _FeatureBullet('Field Utilities'),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(18),
+              child: Text(
+                '© 2026 Brendan Laverty\nAll Rights Reserved.',
                 style: TextStyle(color: Colors.white70, fontSize: 15),
               ),
             ),
@@ -158,7 +198,9 @@ class SupportScreen extends StatefulWidget {
 }
 
 class _SupportScreenState extends State<SupportScreen> {
-  static const _supportEmail = 'support@wellwerks.app';
+  static const _developerName = 'Brendan Laverty';
+  static const _supportEmail = 'bslaverty@gmail.com';
+  static const _supportPhone = '(405) 205-3080';
 
   String _version = '--';
   String _build = '--';
@@ -222,7 +264,7 @@ class _SupportScreenState extends State<SupportScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Support Contact',
+                    'Support',
                     style: TextStyle(
                       color: Color(0xFFCDA56A),
                       fontSize: 22,
@@ -230,60 +272,37 @@ class _SupportScreenState extends State<SupportScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
+                  _infoRow('Developer', _developerName),
+                  _infoRow('Email', _supportEmail),
+                  _infoRow('Phone', _supportPhone),
+                  const SizedBox(height: 10),
                   const Text(
-                    'For support, feedback, or bug reports, use the placeholder email below for this build.',
+                    'Questions, bug reports, feature requests, or suggestions are welcome.',
                     style: TextStyle(color: Colors.white70, fontSize: 15),
                   ),
-                  const SizedBox(height: 8),
-                  const SelectableText(
-                    _supportEmail,
-                    style: TextStyle(
-                      color: Color(0xFFCDA56A),
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => _copy(
-                        _supportEmail,
-                        'Support email copied.',
-                      ),
-                      icon: const Icon(Icons.copy),
-                      label: const Text('Copy Support Email'),
-                    ),
-                  ),
+                  const SizedBox(height: 10),
+                  _infoRow('Email', _supportEmail),
+                  _infoRow('Phone', _supportPhone),
                 ],
               ),
             ),
           ),
           _sectionTile(
-            icon: Icons.support_agent,
-            title: 'Contact Support',
-            subtitle: 'Copy the support email and app version details',
+            icon: Icons.mail_outline,
+            title: 'Copy Email',
+            subtitle: _supportEmail,
             onTap: () => _copy(
-              '$_supportEmail\nSubject: WellWerks Toolbox Support Request\nVersion: $_versionLabel',
-              'Support request details copied.',
+              _supportEmail,
+              'Support email copied.',
             ),
           ),
           _sectionTile(
-            icon: Icons.lightbulb_outline,
-            title: 'Feedback',
-            subtitle: 'Copy a feedback template with app version info',
+            icon: Icons.phone_outlined,
+            title: 'Copy Phone',
+            subtitle: _supportPhone,
             onTap: () => _copy(
-              '$_supportEmail\nSubject: WellWerks Toolbox Feedback\nVersion: $_versionLabel',
-              'Feedback details copied.',
-            ),
-          ),
-          _sectionTile(
-            icon: Icons.bug_report_outlined,
-            title: 'Bug Report',
-            subtitle: 'Copy a bug-report template with version details',
-            onTap: () => _copy(
-              '$_supportEmail\nSubject: WellWerks Toolbox Bug Report\nVersion: $_versionLabel',
-              'Bug report details copied.',
+              _supportPhone,
+              'Support phone copied.',
             ),
           ),
           Card(
@@ -302,15 +321,61 @@ class _SupportScreenState extends State<SupportScreen> {
                   ),
                   const SizedBox(height: 10),
                   Text('Version: $_versionLabel'),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'This TestFlight build stores operational data locally on-device.',
-                    style: TextStyle(color: Colors.white70),
-                  ),
                 ],
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 95,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Expanded(child: SelectableText(value)),
+        ],
+      ),
+    );
+  }
+}
+
+class _FeatureBullet extends StatelessWidget {
+  const _FeatureBullet(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 1),
+            child: Text(
+              '• ',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          Expanded(child: Text(text)),
         ],
       ),
     );
