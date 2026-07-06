@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/job_setup.dart';
 import '../models/production_shift.dart';
 import '../services/job_storage_service.dart';
+import '../services/job_profile_defaults_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/recovery_state_service.dart';
 import '../services/report_profile_service.dart';
@@ -21,6 +22,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   final _layoutService = ReportProfileService();
   final _jobStorage = JobStorageService();
   final _recoveryState = RecoveryStateService();
+  final _profileDefaults = JobProfileDefaultsService();
 
   ProductionShift _shift = ProductionShift.empty();
   JobSetup? _activeJob;
@@ -100,14 +102,25 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   }
 
   ProductionReportRow? get _selectedRow {
-    final rows = _activeJobRows;
+    final rows = _selectedRows;
     if (rows.isEmpty) return null;
-    final selectedHour = _selectedHour;
-    if (selectedHour == null) return rows.first;
-    for (final row in rows) {
-      if (row.hourIndex == selectedHour) return row;
-    }
     return rows.first;
+  }
+
+  List<int> get _availableHours {
+    final hours = <int>{};
+    for (final row in _activeJobRows) {
+      hours.add(row.hourIndex);
+    }
+    final list = hours.toList()..sort((a, b) => a.compareTo(b));
+    return list;
+  }
+
+  List<ProductionReportRow> get _selectedRows {
+    final rows = _activeJobRows;
+    if (rows.isEmpty) return const <ProductionReportRow>[];
+    final selectedHour = _selectedHour ?? rows.first.hourIndex;
+    return rows.where((row) => row.hourIndex == selectedHour).toList();
   }
 
   String _lineFor(ProductionReportRow row, String key) {
@@ -165,11 +178,172 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     }
   }
 
+  String _valueForProfileField(ProductionReportRow row, String key) {
+    switch (key) {
+      case 'csg':
+        return row.csg.isEmpty ? '-' : row.csg;
+      case 'icp':
+        return row.icp.isEmpty ? '-' : row.icp;
+      case 'chk':
+        return row.choke.trim().isEmpty
+            ? '-'
+            : '${row.choke.trim()} ${row.chokeType.toUpperCase()}';
+      case 'bwph':
+        return _fmt(row.waterProduction);
+      case 'boph':
+        return _fmt(row.oilProduction);
+      case 'gasSpotRt':
+        return '${_fmt(_baseGasToDisplay(row.gas24HourRate))} $_gasUnitLabel';
+      case 'stat':
+        return row.gasStatic.isEmpty ? '-' : row.gasStatic;
+      case 'diff':
+        return row.gasDifferential.isEmpty ? '-' : row.gasDifferential;
+      case 'temp':
+        return row.gasTemp.isEmpty ? '-' : row.gasTemp;
+      case 'prop':
+        return row.sandRate.isEmpty ? '-' : row.sandRate;
+      case 'wht':
+        return row.wellheadTemp.isEmpty ? '-' : row.wellheadTemp;
+      case 'biocide':
+        return row.biocide.isEmpty ? '-' : row.biocide;
+      default:
+        return '-';
+    }
+  }
+
+  List<ProductionReportRow> _rowsForTextPreview(
+    JobSetup activeJob,
+    List<ProductionReportRow> selectedRows,
+  ) {
+    if (selectedRows.isEmpty) return const <ProductionReportRow>[];
+    if (!activeJob.isMultiWellJob) {
+      return <ProductionReportRow>[selectedRows.first];
+    }
+
+    final byWell = <String, ProductionReportRow>{};
+    for (final row in selectedRows) {
+      byWell[row.well] = row;
+    }
+
+    final ordered = <ProductionReportRow>[];
+    for (final well in activeJob.wells) {
+      final row = byWell[well];
+      if (row != null) {
+        ordered.add(row);
+      }
+    }
+
+    for (final row in selectedRows) {
+      if (!ordered.contains(row)) {
+        ordered.add(row);
+      }
+    }
+    return ordered;
+  }
+
+  String _machTextPreview(JobSetup activeJob, List<ProductionReportRow> rows) {
+    final lines = <String>[];
+    for (var i = 0; i < rows.length; i++) {
+      final row = rows[i];
+      lines.add(row.well.trim().isEmpty ? 'Well' : row.well.trim());
+      lines.add('CHK: ${_valueForProfileField(row, 'chk')}');
+      lines.add('CSG: ${_valueForProfileField(row, 'csg')}');
+      lines.add('WTR: ${_valueForProfileField(row, 'bwph')}');
+      lines.add('OIL: ${_valueForProfileField(row, 'boph')}');
+      lines.add('GAS: ${_valueForProfileField(row, 'gasSpotRt')}');
+      lines.add('SAND: ${_valueForProfileField(row, 'prop')}');
+      if (i != rows.length - 1) {
+        lines.add('');
+      }
+    }
+    return lines.join('\n');
+  }
+
+  String _continentalTextPreview(
+    JobSetup activeJob,
+    List<ProductionReportRow> rows,
+  ) {
+    final defaults = _profileDefaults.profileForCompany(activeJob.company);
+    final activeSections = activeJob.activeEquipmentSections.isEmpty
+        ? defaults.defaultActiveSections
+        : activeJob.activeEquipmentSections;
+
+    final lines = <String>[];
+    final pad =
+        _shift.header.pad.trim().isEmpty ? '-' : _shift.header.pad.trim();
+    lines.add(pad);
+    final firstRow = rows.first;
+    lines.add('${_fmtTimeLabel(firstRow.time)} UPDATE');
+    lines.add('');
+
+    for (var i = 0; i < rows.length; i++) {
+      final row = rows[i];
+      if (activeJob.isMultiWellJob) {
+        lines.add(row.well.trim().isEmpty ? 'Well' : row.well.trim());
+      }
+      for (final key in defaults.wellFieldKeys) {
+        final label = defaults.textLabels[key] ?? key.toUpperCase();
+        lines.add('$label: ${_valueForProfileField(row, key)}');
+      }
+
+      if (activeSections.contains('RISER')) {
+        lines.add('');
+        lines.add('RISER');
+        lines.add('Temp: ${row.wellheadTemp.isEmpty ? '-' : row.wellheadTemp}');
+        lines.add('PL: -');
+      }
+
+      if (activeSections.contains('CLR FLARE')) {
+        lines.add('');
+        lines.add('CLR FLARE');
+        lines.add(
+            'Pilot: ${row.flarePilotTemp.isEmpty ? '-' : row.flarePilotTemp}');
+        lines.add(
+            'FLARE Rt: ${row.flareRate.isEmpty ? '-' : _gasString(row.flareRate)} $_gasUnitLabel');
+        lines.add('Temp: ${row.gasTemp.isEmpty ? '-' : row.gasTemp}');
+      }
+
+      if (activeSections.contains('VRU')) {
+        lines.add('');
+        lines.add('VRU');
+        lines.add(
+            'GAS RT: ${row.vruGasRate.isEmpty ? '-' : _gasString(row.vruGasRate)} $_gasUnitLabel');
+        lines.add('SUCT: ${row.vruSuction.isEmpty ? '-' : row.vruSuction}');
+        lines.add('DISC: ${row.vruDischarge.isEmpty ? '-' : row.vruDischarge}');
+      }
+
+      if (activeSections.contains('Notes')) {
+        lines.add('');
+        lines.add('Notes');
+        lines.add(row.notes.isEmpty ? '-' : row.notes);
+      }
+
+      if (i != rows.length - 1) {
+        lines.add('');
+      }
+    }
+
+    return lines.join('\n');
+  }
+
   String get _preview {
-    final row = _selectedRow;
-    if (row == null) {
+    if (_selectedRows.isEmpty) {
       return _emptyStateMessage;
     }
+
+    final activeJob = _activeJob;
+    if (activeJob != null) {
+      final previewRows = _rowsForTextPreview(activeJob, _selectedRows);
+      final company = _profileDefaults.normalizeCompany(activeJob.company);
+      if (company == JobProfileDefaultsService.companyMach) {
+        return _machTextPreview(activeJob, previewRows);
+      }
+      if (company == JobProfileDefaultsService.companyContinental) {
+        return _continentalTextPreview(activeJob, previewRows);
+      }
+    }
+
+    final row = _selectedRows.first;
 
     final pad =
         _shift.header.pad.trim().isEmpty ? '-' : _shift.header.pad.trim();
@@ -275,7 +449,12 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         runSpacing: 8,
         children: [
           _jobChip('Pad', activeJob.padName),
-          _jobChip('Well', activeJob.primaryWell),
+          _jobChip(
+              activeJob.isMultiWellJob ? 'Wells' : 'Well',
+              activeJob.isMultiWellJob
+                  ? activeJob.wells.join(', ')
+                  : activeJob.primaryWell),
+          _jobChip('Type', _profileDefaults.jobTypeLabel(activeJob.jobType)),
           _jobChip('Shift', activeJob.shift),
         ],
       ),
@@ -326,10 +505,12 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
               initialValue: selected?.hourIndex,
               decoration: const InputDecoration(labelText: 'Select Hour'),
               items: [
-                for (final row in _activeJobRows)
+                for (final hour in _availableHours)
                   DropdownMenuItem(
-                    value: row.hourIndex,
-                    child: Text('${row.time} • ${row.well}'),
+                    value: hour,
+                    child: Text(_activeJobRows
+                        .firstWhere((row) => row.hourIndex == hour)
+                        .time),
                   ),
               ],
               onChanged: _activeJobRows.isEmpty
@@ -341,6 +522,14 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
                       await _shiftService.saveActiveShift(_shift);
                     },
             ),
+            if (_activeJob?.isMultiWellJob == true)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text(
+                  'Multi-well mode: this update includes all wells saved for the selected hour.',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              ),
             const SizedBox(height: 10),
             Card(
               child: Padding(

@@ -4,6 +4,7 @@ class JobSetup {
   JobSetup({
     this.id = '',
     this.company = 'Mach Energy',
+    this.jobType = 'singleWell',
     this.customer = '',
     this.padName = '',
     this.notes = '',
@@ -17,6 +18,8 @@ class JobSetup {
     this.startedAt,
     this.endedAt,
     this.wells = const [],
+    this.wellFieldKeys = const [],
+    this.activeEquipmentSections = const [],
     this.sandSeparators = 0,
     this.plugCatchers = 0,
     this.chokeManifolds = 0,
@@ -42,6 +45,7 @@ class JobSetup {
 
   final String id;
   final String company;
+  final String jobType;
   final String customer;
   final String padName;
   final String notes;
@@ -55,6 +59,8 @@ class JobSetup {
   final DateTime? startedAt;
   final DateTime? endedAt;
   final List<String> wells;
+  final List<String> wellFieldKeys;
+  final List<String> activeEquipmentSections;
   final int sandSeparators;
   final int plugCatchers;
   final int chokeManifolds;
@@ -73,12 +79,14 @@ class JobSetup {
 
   String get primaryWell => wells.isEmpty ? '' : wells.first;
   String get well => primaryWell;
+  bool get isMultiWellJob => jobType == 'multiWellPad';
   bool get isActive => status == 'active';
   bool get isEnded => status == 'ended';
 
   JobSetup copyWith({
     String? id,
     String? company,
+    String? jobType,
     String? customer,
     String? padName,
     String? notes,
@@ -92,6 +100,8 @@ class JobSetup {
     Object? startedAt = _unset,
     Object? endedAt = _unset,
     List<String>? wells,
+    List<String>? wellFieldKeys,
+    List<String>? activeEquipmentSections,
     int? sandSeparators,
     int? plugCatchers,
     int? chokeManifolds,
@@ -111,6 +121,7 @@ class JobSetup {
     return JobSetup(
       id: id ?? this.id,
       company: company ?? this.company,
+      jobType: jobType ?? this.jobType,
       customer: customer ?? this.customer,
       padName: padName ?? this.padName,
       notes: notes ?? this.notes,
@@ -124,6 +135,9 @@ class JobSetup {
       startedAt: startedAt == _unset ? this.startedAt : startedAt as DateTime?,
       endedAt: endedAt == _unset ? this.endedAt : endedAt as DateTime?,
       wells: wells ?? this.wells,
+      wellFieldKeys: wellFieldKeys ?? this.wellFieldKeys,
+      activeEquipmentSections:
+          activeEquipmentSections ?? this.activeEquipmentSections,
       sandSeparators: sandSeparators ?? this.sandSeparators,
       plugCatchers: plugCatchers ?? this.plugCatchers,
       chokeManifolds: chokeManifolds ?? this.chokeManifolds,
@@ -147,6 +161,7 @@ class JobSetup {
         'id': id,
         'customer': customer,
         'padName': padName,
+        'jobType': jobType,
         'notes': notes,
         'leaseName': leaseName,
         'county': county,
@@ -158,6 +173,8 @@ class JobSetup {
         'startedAt': startedAt?.toIso8601String(),
         'endedAt': endedAt?.toIso8601String(),
         'wells': wells,
+        'wellFieldKeys': wellFieldKeys,
+        'activeEquipmentSections': activeEquipmentSections,
         'sandSeparators': sandSeparators,
         'plugCatchers': plugCatchers,
         'chokeManifolds': chokeManifolds,
@@ -178,6 +195,7 @@ class JobSetup {
   factory JobSetup.fromJson(Map<String, dynamic> json) => JobSetup(
         id: json['id'] as String? ?? '',
         company: json['company'] as String? ?? 'Mach Energy',
+        jobType: json['jobType'] as String? ?? 'singleWell',
         customer: json['customer'] as String? ?? '',
         padName: json['padName'] as String? ?? '',
         notes: json['notes'] as String? ?? '',
@@ -191,6 +209,11 @@ class JobSetup {
         startedAt: DateTime.tryParse(json['startedAt'] as String? ?? ''),
         endedAt: DateTime.tryParse(json['endedAt'] as String? ?? ''),
         wells: List<String>.from(json['wells'] as List? ?? const []),
+        wellFieldKeys:
+            List<String>.from(json['wellFieldKeys'] as List? ?? const []),
+        activeEquipmentSections: List<String>.from(
+          json['activeEquipmentSections'] as List? ?? const [],
+        ),
         sandSeparators: json['sandSeparators'] as int? ?? 0,
         plugCatchers: json['plugCatchers'] as int? ?? 0,
         chokeManifolds: json['chokeManifolds'] as int? ?? 0,

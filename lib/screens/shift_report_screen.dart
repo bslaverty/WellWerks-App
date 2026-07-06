@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../models/job_setup.dart';
 import '../models/production_shift.dart';
+import '../services/job_profile_defaults_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/recovery_state_service.dart';
@@ -22,6 +23,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   final _layoutService = ReportProfileService();
   final _jobStorage = JobStorageService();
   final _recoveryState = RecoveryStateService();
+  final _profileDefaults = JobProfileDefaultsService();
 
   ProductionShift _shift = ProductionShift.empty();
   JobSetup? _activeJob;
@@ -94,7 +96,24 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   List<ReportField> get _visibleColumns =>
       _layout.reportFields.where((field) => field.included).toList();
 
+  List<String> get _visibleFieldKeys {
+    final activeJob = _activeJob;
+    if (activeJob != null && activeJob.wellFieldKeys.isNotEmpty) {
+      return List<String>.from(activeJob.wellFieldKeys);
+    }
+    return _visibleColumns.map((field) => field.key).toList();
+  }
+
   String _headerLabel(String key) {
+    final activeJob = _activeJob;
+    if (activeJob != null) {
+      final defaults = _profileDefaults.profileForCompany(activeJob.company);
+      final profileLabel = defaults.reportLabels[key];
+      if (profileLabel != null && profileLabel.trim().isNotEmpty) {
+        return profileLabel;
+      }
+    }
+
     switch (key) {
       case 'gasSpotRt':
         return 'GAS SPOT RT.';
@@ -188,9 +207,9 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     final lines = <String>['Production Report (${_layout.name})', ''];
     for (final row in rows) {
       lines.add('${row.time} | ${row.well}');
-      for (final field in _visibleColumns) {
+      for (final key in _visibleFieldKeys) {
         lines.add(
-            '${_headerLabel(field.key)}: ${_valueFor(row, field.key).isEmpty ? '-' : _valueFor(row, field.key)}');
+            '${_headerLabel(key)}: ${_valueFor(row, key).isEmpty ? '-' : _valueFor(row, key)}');
       }
       if (row != rows.last) {
         lines.add('');
@@ -200,11 +219,11 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   }
 
   String get _reportCsv {
-    final headers = _visibleColumns.map((f) => _headerLabel(f.key)).toList();
+    final headers = _visibleFieldKeys.map(_headerLabel).toList();
     final csvRows = <List<String>>[
       headers,
       for (final row in _activeJobRows)
-        _visibleColumns.map((field) => _valueFor(row, field.key)).toList(),
+        _visibleFieldKeys.map((key) => _valueFor(row, key)).toList(),
     ];
 
     return csvRows
@@ -253,7 +272,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       );
     }
 
-    if (_visibleColumns.isEmpty) {
+    if (_visibleFieldKeys.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(16),
         child: Text(
@@ -267,14 +286,13 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       scrollDirection: Axis.horizontal,
       child: DataTable(
         columns: [
-          for (final field in _visibleColumns) _column(_headerLabel(field.key))
+          for (final key in _visibleFieldKeys) _column(_headerLabel(key))
         ],
         rows: [
           for (final row in rows)
             DataRow(
               cells: [
-                for (final field in _visibleColumns)
-                  _cell(_valueFor(row, field.key)),
+                for (final key in _visibleFieldKeys) _cell(_valueFor(row, key)),
               ],
             ),
         ],
@@ -338,7 +356,13 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
               runSpacing: 8,
               children: [
                 _jobChip('Pad', activeJob.padName),
-                _jobChip('Well', activeJob.primaryWell),
+                _jobChip(
+                    activeJob.isMultiWellJob ? 'Wells' : 'Well',
+                    activeJob.isMultiWellJob
+                        ? activeJob.wells.join(', ')
+                        : activeJob.primaryWell),
+                _jobChip(
+                    'Type', _profileDefaults.jobTypeLabel(activeJob.jobType)),
                 _jobChip('Shift', activeJob.shift),
               ],
             ),

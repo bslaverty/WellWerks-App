@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/job_setup.dart';
+import '../services/job_profile_defaults_service.dart';
 import '../services/job_storage_service.dart';
 import '../widgets/app_header.dart';
 import '../widgets/ww_number_field.dart';
@@ -17,6 +18,7 @@ class JobSetupScreen extends StatefulWidget {
 
 class _JobSetupScreenState extends State<JobSetupScreen> {
   final _storage = JobStorageService();
+  final _profileDefaults = JobProfileDefaultsService();
   final _page = PageController();
   Timer? _autoSaveTimer;
 
@@ -27,6 +29,9 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   JobSetup? _activeJob;
 
   String company = 'Mach Energy';
+  String jobType = JobProfileDefaultsService.jobTypeSingleWell;
+  List<String> wellFieldKeys = const [];
+  List<String> activeEquipmentSections = const [];
   String shift = 'Day';
   final customer = TextEditingController();
   final padName = TextEditingController();
@@ -136,7 +141,15 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   void _applyJobToForm(JobSetup job) {
-    company = job.company;
+    company = _profileDefaults.normalizeCompany(job.company);
+    jobType = _profileDefaults.normalizeJobType(job.jobType);
+    final defaults = _profileDefaults.profileForCompany(company);
+    wellFieldKeys = job.wellFieldKeys.isEmpty
+        ? List<String>.from(defaults.wellFieldKeys)
+        : List<String>.from(job.wellFieldKeys);
+    activeEquipmentSections = job.activeEquipmentSections.isEmpty
+        ? List<String>.from(defaults.defaultActiveSections)
+        : List<String>.from(job.activeEquipmentSections);
     shift = job.shift;
     customer.text = job.customer;
     padName.text = job.padName;
@@ -151,6 +164,10 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     wells
       ..clear()
       ..addAll(job.wells);
+    if (jobType == JobProfileDefaultsService.jobTypeSingleWell &&
+        wells.length > 1) {
+      wells.removeRange(1, wells.length);
+    }
     sandSeparators.text = job.sandSeparators.toString();
     plugCatchers.text = job.plugCatchers.toString();
     chokeManifolds.text = job.chokeManifolds.toString();
@@ -172,6 +189,10 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
 
   void _resetFormForNewJob() {
     company = 'Mach Energy';
+    jobType = JobProfileDefaultsService.jobTypeSingleWell;
+    final defaults = _profileDefaults.profileForCompany(company);
+    wellFieldKeys = List<String>.from(defaults.wellFieldKeys);
+    activeEquipmentSections = List<String>.from(defaults.defaultActiveSections);
     shift = 'Day';
     customer.clear();
     padName.clear();
@@ -204,8 +225,19 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   JobSetup _buildJobFromForm() {
+    final normalizedWells = wells
+        .map((well) => well.trim())
+        .where((well) => well.isNotEmpty)
+        .toList();
+    final safeWells = jobType == JobProfileDefaultsService.jobTypeSingleWell
+        ? (normalizedWells.isEmpty
+            ? const <String>[]
+            : <String>[normalizedWells.first])
+        : normalizedWells;
+
     return JobSetup(
       company: company,
+      jobType: jobType,
       customer: customer.text.trim(),
       padName: padName.text.trim(),
       notes: notes.text.trim(),
@@ -219,7 +251,9 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       id: _activeJob?.id ?? '',
       startedAt: _activeJob?.startedAt,
       endedAt: _activeJob?.endedAt,
-      wells: List<String>.from(wells),
+      wells: safeWells,
+      wellFieldKeys: List<String>.from(wellFieldKeys),
+      activeEquipmentSections: List<String>.from(activeEquipmentSections),
       sandSeparators: _i(sandSeparators),
       plugCatchers: _i(plugCatchers),
       chokeManifolds: _i(chokeManifolds),
@@ -450,6 +484,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   Widget _buildActiveJobView(JobSetup job) {
+    final defaults = _profileDefaults.profileForCompany(job.company);
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
@@ -476,9 +511,22 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                 ),
                 const SizedBox(height: 16),
                 _buildOverviewValue('Company', _displayValue(job.company)),
+                _buildOverviewValue(
+                  'Job Type',
+                  _profileDefaults.jobTypeLabel(job.jobType),
+                ),
                 _buildOverviewValue('Customer', _displayValue(job.customer)),
                 _buildOverviewValue('Pad', _displayValue(job.padName)),
-                _buildOverviewValue('Well', _displayValue(job.primaryWell)),
+                _buildOverviewValue(
+                  'Well(s)',
+                  job.wells.isEmpty ? 'Not entered' : job.wells.join(', '),
+                ),
+                _buildOverviewValue(
+                  'Active Sections',
+                  job.activeEquipmentSections.isEmpty
+                      ? defaults.defaultActiveSections.join(', ')
+                      : job.activeEquipmentSections.join(', '),
+                ),
                 _buildOverviewValue('Shift', _displayValue(job.shift)),
                 _buildOverviewValue('Crew', _displayValue(job.crew)),
                 _buildOverviewValue('Date', _displayValue(job.dateStarted)),
@@ -562,8 +610,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                               child: Text('Mach Energy'),
                             ),
                             DropdownMenuItem(
-                              value: 'Continental',
-                              child: Text('Continental'),
+                              value: 'Continental Resources',
+                              child: Text('Continental Resources'),
                             ),
                             DropdownMenuItem(
                               value: 'Custom',
@@ -571,7 +619,51 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                             ),
                           ],
                           onChanged: (value) {
-                            setState(() => company = value ?? 'Mach Energy');
+                            final nextCompany = _profileDefaults
+                                .normalizeCompany(value ?? 'Mach Energy');
+                            final defaults =
+                                _profileDefaults.profileForCompany(nextCompany);
+                            setState(() {
+                              company = nextCompany;
+                              wellFieldKeys =
+                                  List<String>.from(defaults.wellFieldKeys);
+                              activeEquipmentSections = List<String>.from(
+                                  defaults.defaultActiveSections);
+                            });
+                            _scheduleAutoSave();
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          initialValue: jobType,
+                          decoration:
+                              const InputDecoration(labelText: 'Job Type'),
+                          items: const [
+                            DropdownMenuItem(
+                              value:
+                                  JobProfileDefaultsService.jobTypeSingleWell,
+                              child: Text('Single Well'),
+                            ),
+                            DropdownMenuItem(
+                              value:
+                                  JobProfileDefaultsService.jobTypeMultiWellPad,
+                              child: Text('Multi-Well / Pad'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            final nextType = _profileDefaults.normalizeJobType(
+                                value ??
+                                    JobProfileDefaultsService
+                                        .jobTypeSingleWell);
+                            setState(() {
+                              jobType = nextType;
+                              if (jobType ==
+                                      JobProfileDefaultsService
+                                          .jobTypeSingleWell &&
+                                  wells.length > 1) {
+                                wells.removeRange(1, wells.length);
+                              }
+                            });
                             _scheduleAutoSave();
                           },
                         ),
@@ -584,9 +676,69 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                         ),
                         const SizedBox(height: 20),
                         const Text(
-                          'This loads the matching report profile and report times.',
+                          'Company controls default labels/sections. Job Type controls one well vs multiple wells.',
                           style: TextStyle(color: Colors.white70),
                         ),
+                        const SizedBox(height: 14),
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Well Fields',
+                            style: TextStyle(
+                              color: Color(0xFFCDA56A),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final field in wellFieldKeys)
+                              Chip(
+                                label: Text(field.toUpperCase()),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Active Equipment Sections',
+                            style: TextStyle(
+                              color: Color(0xFFCDA56A),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ..._profileDefaults
+                            .profileForCompany(company)
+                            .optionalSections
+                            .map(
+                              (section) => CheckboxListTile(
+                                value:
+                                    activeEquipmentSections.contains(section),
+                                title: Text(section),
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
+                                contentPadding: EdgeInsets.zero,
+                                onChanged: (enabled) {
+                                  setState(() {
+                                    if (enabled ?? false) {
+                                      if (!activeEquipmentSections
+                                          .contains(section)) {
+                                        activeEquipmentSections.add(section);
+                                      }
+                                    } else {
+                                      activeEquipmentSections.remove(section);
+                                    }
+                                  });
+                                  _scheduleAutoSave();
+                                },
+                              ),
+                            ),
                         const SizedBox(height: 24),
                         _navButtons(),
                       ]),
@@ -654,6 +806,23 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                         _navButtons(),
                       ]),
                       _StepPage(title: '3. Wells', children: [
+                        if (jobType ==
+                            JobProfileDefaultsService.jobTypeSingleWell)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 10),
+                            child: Text(
+                              'Single Well selected. Add one well name.',
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          )
+                        else
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 10),
+                            child: Text(
+                              'Multi-Well / Pad selected. Add all well names for this pad.',
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          ),
                         Row(
                           children: [
                             Expanded(
@@ -669,6 +838,19 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                               onPressed: () {
                                 final name = wellEntry.text.trim();
                                 if (name.isEmpty) return;
+                                if (jobType ==
+                                        JobProfileDefaultsService
+                                            .jobTypeSingleWell &&
+                                    wells.isNotEmpty) {
+                                  setState(() {
+                                    wells
+                                      ..clear()
+                                      ..add(name);
+                                    wellEntry.clear();
+                                  });
+                                  _scheduleAutoSave();
+                                  return;
+                                }
                                 setState(() {
                                   wells.add(name);
                                   wellEntry.clear();
@@ -681,9 +863,12 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                         ),
                         const SizedBox(height: 12),
                         if (wells.isEmpty)
-                          const Text(
-                            'Add each well on this pad.',
-                            style: TextStyle(color: Colors.white70),
+                          Text(
+                            jobType ==
+                                    JobProfileDefaultsService.jobTypeSingleWell
+                                ? 'Add the active well name.'
+                                : 'Add each well on this pad.',
+                            style: const TextStyle(color: Colors.white70),
                           ),
                         ...wells.map<Widget>(
                           (wellName) => Card(
@@ -789,7 +974,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                           child: Padding(
                             padding: const EdgeInsets.all(14),
                             child: Text(
-                              'Summary\n$company\n${padName.text.trim().isEmpty ? 'No pad entered' : padName.text.trim()}\n${wells.length} well(s)\n${_i(sandSeparators) + _i(plugCatchers) + _i(chokeManifolds) + _i(lineHeaters) + _i(testUnits) + _i(ecds) + _i(vrus) + _i(flares) + _i(transferPumps)} equipment item(s)\n${_i(oilTanks) + _i(waterTanks)} tank(s)',
+                              'Summary\n$company\n${_profileDefaults.jobTypeLabel(jobType)}\n${padName.text.trim().isEmpty ? 'No pad entered' : padName.text.trim()}\n${wells.length} well(s)\nSections: ${activeEquipmentSections.isEmpty ? 'None' : activeEquipmentSections.join(', ')}\n${_i(sandSeparators) + _i(plugCatchers) + _i(chokeManifolds) + _i(lineHeaters) + _i(testUnits) + _i(ecds) + _i(vrus) + _i(flares) + _i(transferPumps)} equipment item(s)\n${_i(oilTanks) + _i(waterTanks)} tank(s)',
                             ),
                           ),
                         ),
