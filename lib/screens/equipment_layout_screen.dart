@@ -49,11 +49,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   static const double _dragStartThreshold = 2.0;
   static const double _virtualCanvasMultiplier = 5.0;
   final TransformationController _canvasTransform = TransformationController();
+  final GlobalKey _canvasViewportKey = GlobalKey();
   Size _viewportSize = Size.zero;
   bool _equipmentDrawerOpen = true;
   _DrawerLibrarySection _mobileDrawerSection = _DrawerLibrarySection.equipment;
-  Offset? _dragGlobalStart;
+  Offset? _dragSceneStart;
   bool _dragActive = false;
+  int? _snapCandidateIronId;
+  Offset? _snapIndicatorScene;
   final Map<int, Offset> _dragItemStart = <int, Offset>{};
   final _layoutName = TextEditingController(text: 'New Layout');
   final _company = TextEditingController();
@@ -103,13 +106,17 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     );
   }
 
-  double get _canvasScale {
-    final matrix = _canvasTransform.value;
-    return matrix.getMaxScaleOnAxis().clamp(0.2, 10.0);
-  }
-
   Offset _scenePointFromViewport(Offset viewportPoint) {
     return _canvasTransform.toScene(viewportPoint);
+  }
+
+  Offset _scenePointFromGlobal(Offset globalPoint) {
+    final context = _canvasViewportKey.currentContext;
+    if (context == null) return globalPoint;
+    final box = context.findRenderObject();
+    if (box is! RenderBox) return globalPoint;
+    final viewportPoint = box.globalToLocal(globalPoint);
+    return _scenePointFromViewport(viewportPoint);
   }
 
   Offset _clampToCanvas(Offset point) {
@@ -185,6 +192,178 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     return _showEquipment;
   }
 
+  bool _isStraightIronType(_EquipmentType type) {
+    return type == _EquipmentType.ironHorizontal ||
+        type == _EquipmentType.ironVertical;
+  }
+
+  bool _isFittingType(_EquipmentType type) {
+    return type == _EquipmentType.bypass ||
+        type.name.startsWith('elbow') ||
+        type.name.startsWith('tee');
+  }
+
+  _LayoutItem? _findItemById(int id) {
+    for (final item in _items) {
+      if (item.id == id) return item;
+    }
+    return null;
+  }
+
+  _SnapCandidate? _nearestSnapCandidate(
+      _LayoutItem fitting, Offset desiredTopLeft) {
+    final center = Offset(desiredTopLeft.dx + fitting.width / 2,
+        desiredTopLeft.dy + fitting.height / 2);
+    const snapThreshold = 34.0;
+    _SnapCandidate? best;
+
+    for (final iron in _items) {
+      if (iron.id == fitting.id || !_isStraightIronType(iron.type)) continue;
+      final isHorizontal = iron.type == _EquipmentType.ironHorizontal;
+      final lineCenter = isHorizontal
+          ? Offset(center.dx.clamp(iron.x, iron.x + iron.width),
+              iron.y + iron.height / 2)
+          : Offset(iron.x + iron.width / 2,
+              center.dy.clamp(iron.y, iron.y + iron.height));
+
+      final orthogonalDistance = isHorizontal
+          ? (center.dy - lineCenter.dy).abs()
+          : (center.dx - lineCenter.dx).abs();
+      final alongOverflow = isHorizontal
+          ? (center.dx < iron.x
+              ? iron.x - center.dx
+              : (center.dx > iron.x + iron.width
+                  ? center.dx - (iron.x + iron.width)
+                  : 0.0))
+          : (center.dy < iron.y
+              ? iron.y - center.dy
+              : (center.dy > iron.y + iron.height
+                  ? center.dy - (iron.y + iron.height)
+                  : 0.0));
+
+      if (orthogonalDistance > snapThreshold || alongOverflow > 72.0) continue;
+
+      final score = orthogonalDistance + (alongOverflow * 0.35);
+
+      if (best == null || score < best.score) {
+        best = _SnapCandidate(
+          ironId: iron.id,
+          horizontal: isHorizontal,
+          indicator: lineCenter,
+          score: score,
+        );
+      }
+    }
+
+    return best;
+  }
+
+  Offset _applySnapToSpecificIron(_LayoutItem fitting, _LayoutItem iron,
+      {required Offset desiredTopLeft}) {
+    final canvasSize = _virtualCanvasSize;
+    final center = Offset(desiredTopLeft.dx + fitting.width / 2,
+        desiredTopLeft.dy + fitting.height / 2);
+
+    if (iron.type == _EquipmentType.ironHorizontal) {
+      final centerX = center.dx.clamp(iron.x, iron.x + iron.width);
+      final x = (centerX - fitting.width / 2)
+          .clamp(0.0, canvasSize.width - fitting.width)
+          .toDouble();
+      final y = (iron.y + (iron.height / 2) - (fitting.height / 2))
+          .clamp(0.0, canvasSize.height - fitting.height)
+          .toDouble();
+      return Offset(x, y);
+    }
+
+    final centerY = center.dy.clamp(iron.y, iron.y + iron.height);
+    final x = (iron.x + (iron.width / 2) - (fitting.width / 2))
+        .clamp(0.0, canvasSize.width - fitting.width)
+        .toDouble();
+    final y = (centerY - fitting.height / 2)
+        .clamp(0.0, canvasSize.height - fitting.height)
+        .toDouble();
+    return Offset(x, y);
+  }
+
+  Offset _resolveFittingPlacement(_LayoutItem fitting, Offset desiredTopLeft,
+      {required bool allowNewSnap}) {
+    final canvasSize = _virtualCanvasSize;
+
+    final attachedIronId = int.tryParse(fitting.properties['snapIronId'] ?? '');
+    final attachedIron =
+        attachedIronId == null ? null : _findItemById(attachedIronId);
+    if (attachedIron != null && _isStraightIronType(attachedIron.type)) {
+      final aligned = _applySnapToSpecificIron(fitting, attachedIron,
+          desiredTopLeft: desiredTopLeft);
+      _snapCandidateIronId = attachedIron.id;
+      _snapIndicatorScene = Offset(
+        attachedIron.type == _EquipmentType.ironHorizontal
+            ? (aligned.dx + fitting.width / 2)
+            : (attachedIron.x + attachedIron.width / 2),
+        attachedIron.type == _EquipmentType.ironHorizontal
+            ? (attachedIron.y + attachedIron.height / 2)
+            : (aligned.dy + fitting.height / 2),
+      );
+      return aligned;
+    }
+
+    if (!allowNewSnap) {
+      _snapCandidateIronId = null;
+      _snapIndicatorScene = null;
+      return Offset(
+        desiredTopLeft.dx.clamp(0.0, canvasSize.width - fitting.width),
+        desiredTopLeft.dy.clamp(0.0, canvasSize.height - fitting.height),
+      );
+    }
+
+    final candidate = _nearestSnapCandidate(fitting, desiredTopLeft);
+    if (candidate == null) {
+      fitting.properties.remove('snapIronId');
+      fitting.properties.remove('snapAxis');
+      _snapCandidateIronId = null;
+      _snapIndicatorScene = null;
+      return Offset(
+        desiredTopLeft.dx.clamp(0.0, canvasSize.width - fitting.width),
+        desiredTopLeft.dy.clamp(0.0, canvasSize.height - fitting.height),
+      );
+    }
+
+    fitting.properties['snapIronId'] = candidate.ironId.toString();
+    fitting.properties['snapAxis'] =
+        candidate.horizontal ? 'horizontal' : 'vertical';
+    _snapCandidateIronId = candidate.ironId;
+    _snapIndicatorScene = candidate.indicator;
+
+    final iron = _findItemById(candidate.ironId);
+    if (iron == null) {
+      return Offset(
+        desiredTopLeft.dx.clamp(0.0, canvasSize.width - fitting.width),
+        desiredTopLeft.dy.clamp(0.0, canvasSize.height - fitting.height),
+      );
+    }
+    return _applySnapToSpecificIron(fitting, iron,
+        desiredTopLeft: desiredTopLeft);
+  }
+
+  void _reflowSnappedFittings() {
+    for (final item in _items) {
+      if (!_isFittingType(item.type)) continue;
+      final ironId = int.tryParse(item.properties['snapIronId'] ?? '');
+      if (ironId == null) continue;
+      final iron = _findItemById(ironId);
+      if (iron == null || !_isStraightIronType(iron.type)) {
+        item.properties.remove('snapIronId');
+        item.properties.remove('snapAxis');
+        continue;
+      }
+
+      final aligned = _applySnapToSpecificIron(item, iron,
+          desiredTopLeft: Offset(item.x, item.y));
+      item.x = aligned.dx;
+      item.y = aligned.dy;
+    }
+  }
+
   List<_LayoutItem> get _visibleItems => _items.where(_itemIsVisible).toList();
 
   void _toggleMeasurementMode() {
@@ -207,7 +386,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   void _beginItemDrag(_LayoutItem anchor, DragStartDetails details) {
     final moving = _selectedIds.contains(anchor.id) ? _selectedItems : [anchor];
     if (moving.every((it) => it.locked)) return;
-    _dragGlobalStart = details.globalPosition;
+    _dragSceneStart = _scenePointFromGlobal(details.globalPosition);
     _dragActive = false;
     _dragItemStart
       ..clear()
@@ -218,9 +397,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     final moving = _selectedIds.contains(anchor.id) ? _selectedItems : [anchor];
     if (moving.every((it) => it.locked)) return;
 
-    final start = _dragGlobalStart;
+    final start = _dragSceneStart;
     if (start == null) return;
-    final delta = (details.globalPosition - start) / _canvasScale;
+    final scenePoint = _scenePointFromGlobal(details.globalPosition);
+    final delta = scenePoint - start;
 
     if (!_dragActive && delta.distance < _dragStartThreshold) {
       return;
@@ -233,19 +413,30 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
 
     setState(() {
       final canvasSize = _virtualCanvasSize;
+      _snapCandidateIronId = null;
+      _snapIndicatorScene = null;
       for (final it in moving) {
         if (it.locked) continue;
         final origin = _dragItemStart[it.id] ?? Offset(it.x, it.y);
-        it.x = (origin.dx + delta.dx).clamp(0.0, canvasSize.width - it.width);
-        it.y = (origin.dy + delta.dy).clamp(0.0, canvasSize.height - it.height);
+        final desired = Offset(origin.dx + delta.dx, origin.dy + delta.dy);
+        if (_isFittingType(it.type)) {
+          final placed =
+              _resolveFittingPlacement(it, desired, allowNewSnap: true);
+          it.x = placed.dx;
+          it.y = placed.dy;
+        } else {
+          it.x = desired.dx.clamp(0.0, canvasSize.width - it.width);
+          it.y = desired.dy.clamp(0.0, canvasSize.height - it.height);
+        }
       }
+      _reflowSnappedFittings();
     });
   }
 
   void _endItemDrag(_LayoutItem anchor) {
     final moving = _selectedIds.contains(anchor.id) ? _selectedItems : [anchor];
     if (moving.every((it) => it.locked)) {
-      _dragGlobalStart = null;
+      _dragSceneStart = null;
       _dragItemStart.clear();
       _dragActive = false;
       return;
@@ -256,15 +447,25 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
         final canvasSize = _virtualCanvasSize;
         for (final it in moving) {
           if (it.locked) continue;
+          if (_isFittingType(it.type) && it.properties['snapIronId'] != null) {
+            continue;
+          }
           it.x = _snap(it.x).clamp(0.0, canvasSize.width - it.width);
           it.y = _snap(it.y).clamp(0.0, canvasSize.height - it.height);
         }
+        _reflowSnappedFittings();
       });
     }
 
-    _dragGlobalStart = null;
+    _dragSceneStart = null;
     _dragItemStart.clear();
     _dragActive = false;
+    if (_snapCandidateIronId != null || _snapIndicatorScene != null) {
+      setState(() {
+        _snapCandidateIronId = null;
+        _snapIndicatorScene = null;
+      });
+    }
   }
 
   void _undoLayoutChange() {
@@ -411,6 +612,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
               .clamp(36.0, canvasSize.height - item.y);
         }
       }
+      _reflowSnappedFittings();
     });
   }
 
@@ -568,6 +770,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     if (ids.isEmpty) return;
     _runHistoryChange(() {
       _items.removeWhere((item) => ids.contains(item.id));
+      _reflowSnappedFittings();
       _selectedId = null;
       _selectedIds.clear();
     });
@@ -712,6 +915,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       _notes.text = data['notes'] as String? ?? '';
       _selectedId = null;
       _selectedIds.clear();
+      _reflowSnappedFittings();
     });
   }
 
@@ -3543,7 +3747,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isWide = MediaQuery.of(context).size.width >= 780;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth >= 780;
+    final dockWidth =
+        screenWidth >= 1200 ? 340.0 : (screenWidth >= 900 ? 300.0 : 220.0);
     return Scaffold(
       appBar: const AppHeader(title: 'Layout Designer', showBack: true),
       body: Column(
@@ -3554,35 +3761,15 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
           if (_drawIronMode) _ironDrawControls(),
           if (_selectedIds.isNotEmpty) _selectionQuickActionsBar(),
           Expanded(
-            child: isWide
-                ? Row(
-                    children: [
-                      if (_showSideLibrary)
-                        SizedBox(
-                          width: 320,
-                          child: _sideLibraryPanel(),
-                        ),
-                      Expanded(child: _canvas()),
-                    ],
-                  )
-                : Stack(
-                    children: [
-                      Positioned.fill(
-                        child: Padding(
-                          padding: EdgeInsets.only(
-                            bottom: _equipmentDrawerOpen ? 280 : 64,
-                          ),
-                          child: _canvas(),
-                        ),
-                      ),
-                      Positioned(
-                        left: 12,
-                        right: 12,
-                        bottom: 12,
-                        child: _mobileEquipmentDrawer(),
-                      ),
-                    ],
-                  ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: _showSideLibrary ? dockWidth : 0,
+                  child: _showSideLibrary ? _sideLibraryPanel() : null,
+                ),
+                Expanded(child: _canvas()),
+              ],
+            ),
           ),
         ],
       ),
@@ -3637,7 +3824,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
             children: [
               const Expanded(
                 child: Text(
-                  'Equipment Library',
+                  'Rig-Up Library',
                   style: TextStyle(
                     color: Color(0xFFCDA56A),
                     fontSize: 16,
@@ -3645,30 +3832,84 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                   ),
                 ),
               ),
-              IconButton(
-                onPressed: () => setState(() => _showSideLibrary = false),
-                icon: const Icon(Icons.chevron_left, color: Colors.white70),
-                tooltip: 'Hide library',
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1D21),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF3A3A3A)),
+                ),
+                child: const Text(
+                  'Open',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 8),
+          const Text(
+            'Tap to place multiple pieces quickly. Panel stays open while you build.',
+            style: TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          const SizedBox(height: 10),
           Expanded(
             child: SingleChildScrollView(
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  for (final entry in _quickEquipmentEntries)
-                    SizedBox(
-                      width: 140,
-                      child: FilledButton.icon(
-                        onPressed: () => _addItem(entry.value),
-                        icon: Icon(entry.value.icon),
-                        label: Text(entry.key, maxLines: 2),
-                        style: _compactFilledStyle(highlighted: true),
-                      ),
+                  const Text(
+                    'Equipment',
+                    style: TextStyle(
+                      color: Color(0xFFCDA56A),
+                      fontWeight: FontWeight.w700,
                     ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final type in _equipmentTypes)
+                        SizedBox(
+                          width: 138,
+                          child: FilledButton.icon(
+                            onPressed: () => _addItem(type),
+                            icon: Icon(type.icon),
+                            label: Text(type.label, maxLines: 2),
+                            style: _compactFilledStyle(highlighted: true),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Iron / Fittings',
+                    style: TextStyle(
+                      color: Color(0xFFCDA56A),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final type in _ironTypes)
+                        SizedBox(
+                          width: 138,
+                          child: OutlinedButton.icon(
+                            onPressed: () => _addItem(type),
+                            icon: Icon(type.icon),
+                            label: Text(type.label, maxLines: 2),
+                            style: _compactOutlineStyle(highlighted: true),
+                          ),
+                        ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -3827,15 +4068,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            if (isWide)
-              FilledButton.icon(
-                onPressed: () =>
-                    setState(() => _showSideLibrary = !_showSideLibrary),
-                icon: const Icon(Icons.view_sidebar_outlined),
-                label: Text(_showSideLibrary ? 'Hide Library' : 'Show Library'),
-                style: _compactFilledStyle(highlighted: true),
-              ),
-            if (isWide) const SizedBox(width: 8),
+            FilledButton.icon(
+              onPressed: () => setState(() => _showSideLibrary = true),
+              icon: const Icon(Icons.view_sidebar_outlined),
+              label: const Text('Library'),
+              style: _compactFilledStyle(highlighted: true),
+            ),
+            const SizedBox(width: 8),
             OutlinedButton.icon(
               onPressed: _undoStack.isNotEmpty ? _undoLayoutChange : null,
               icon: const Icon(Icons.undo),
@@ -3886,12 +4125,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
           children: [
             FilledButton.icon(
               onPressed: () {
-                if (isWide) {
-                  setState(() => _showSideLibrary = true);
-                } else {
-                  _openEquipmentDrawer(
-                      section: _DrawerLibrarySection.equipment);
-                }
+                setState(() {
+                  _showSideLibrary = true;
+                  _drawIronMode = false;
+                });
               },
               icon: const Icon(Icons.add_box_outlined),
               label: const Text('Add Equipment'),
@@ -3901,12 +4138,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
             FilledButton.icon(
               onPressed: () {
                 setState(() {
+                  _showSideLibrary = true;
                   _drawIronMode = true;
                   _ironStartPoint = null;
                 });
-                if (!isWide) {
-                  _openEquipmentDrawer(section: _DrawerLibrarySection.iron);
-                }
               },
               icon: const Icon(Icons.edit_road),
               label: const Text('Add Iron'),
@@ -4517,6 +4752,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                   final canvasSize = _virtualCanvasSize;
 
                   return GestureDetector(
+                    key: _canvasViewportKey,
                     behavior: HitTestBehavior.opaque,
                     onTapDown: (details) {
                       final scenePoint =
@@ -4551,6 +4787,26 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                                     shape: BoxShape.circle,
                                     border: Border.all(
                                         color: Colors.black, width: 2),
+                                  ),
+                                ),
+                              ),
+                            if (_snapIndicatorScene != null)
+                              Positioned(
+                                left: _snapIndicatorScene!.dx - 11,
+                                top: _snapIndicatorScene!.dy - 11,
+                                child: IgnorePointer(
+                                  child: Container(
+                                    width: 22,
+                                    height: 22,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: const Color(0xFFCDA56A)
+                                          .withValues(alpha: 0.16),
+                                      border: Border.all(
+                                        color: const Color(0xFFCDA56A),
+                                        width: 2,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -4595,6 +4851,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                                           selected:
                                               _selectedIds.contains(item.id),
                                           showLabel: _showLabels,
+                                          snapHighlight:
+                                              _snapCandidateIronId == item.id,
                                         ),
                                       ),
                                       if (_selectedIds.contains(item.id) &&
@@ -4677,6 +4935,20 @@ enum _LayoutAlign { left, right, top, bottom, horizontalCenter, verticalCenter }
 enum _LayoutDistribution { horizontal, vertical }
 
 enum _DrawerLibrarySection { equipment, iron }
+
+class _SnapCandidate {
+  final int ironId;
+  final bool horizontal;
+  final Offset indicator;
+  final double score;
+
+  const _SnapCandidate({
+    required this.ironId,
+    required this.horizontal,
+    required this.indicator,
+    required this.score,
+  });
+}
 
 enum _EquipmentType {
   wellhead,
@@ -4959,9 +5231,13 @@ class _LayoutTile extends StatelessWidget {
   final _LayoutItem item;
   final bool selected;
   final bool showLabel;
+  final bool snapHighlight;
 
   const _LayoutTile(
-      {required this.item, required this.selected, this.showLabel = true});
+      {required this.item,
+      required this.selected,
+      this.showLabel = true,
+      this.snapHighlight = false});
 
   double get _labelBottomOffset {
     return -15;
@@ -4997,20 +5273,26 @@ class _LayoutTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isIron = item.type.isIron;
+    final showSnapHighlight = snapHighlight &&
+        (item.type == _EquipmentType.ironHorizontal ||
+            item.type == _EquipmentType.ironVertical);
     return AnimatedContainer(
       duration: const Duration(milliseconds: 120),
       decoration: BoxDecoration(
         color: Colors.transparent,
         border: Border.all(
-            color: selected ? const Color(0xFFCDA56A) : Colors.transparent,
-            width: selected ? 2.5 : 1.2),
+            color: selected || showSnapHighlight
+                ? const Color(0xFFCDA56A)
+                : Colors.transparent,
+            width: selected ? 2.5 : (showSnapHighlight ? 2.0 : 1.2)),
         borderRadius: BorderRadius.circular(
             item.type == _EquipmentType.sphericalSandSep ? 999 : 14),
-        boxShadow: selected
+        boxShadow: selected || showSnapHighlight
             ? [
                 BoxShadow(
-                    color: const Color(0xFFCDA56A).withOpacity(.25),
-                    blurRadius: 12)
+                    color: const Color(0xFFCDA56A)
+                        .withOpacity(showSnapHighlight ? .4 : .25),
+                    blurRadius: showSnapHighlight ? 16 : 12)
               ]
             : null,
       ),
