@@ -1,0 +1,71 @@
+workflows:
+  ios-testflight:
+    name: iOS TestFlight
+    max_build_duration: 120
+    environment:
+      flutter: stable
+      xcode: latest
+      vars:
+        BUILD_NUMBER_FALLBACK: "1"
+    scripts:
+      - name: Get Flutter dependencies
+        script: flutter pub get
+
+      - name: Resolve version and build number
+        script: |
+          set -e
+          VERSION_LINE=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          APP_VERSION_NAME=${VERSION_LINE%%+*}
+          APP_BUILD_NUMBER=${BUILD_NUMBER:-${PROJECT_BUILD_NUMBER:-$BUILD_NUMBER_FALLBACK}}
+
+          echo "Using build-name: $APP_VERSION_NAME"
+          echo "Using build-number: $APP_BUILD_NUMBER"
+
+          echo "APP_VERSION_NAME=$APP_VERSION_NAME" >> "$CM_ENV"
+          echo "APP_BUILD_NUMBER=$APP_BUILD_NUMBER" >> "$CM_ENV"
+
+      - name: Build iOS IPA
+        script: |
+          flutter build ipa --release \
+            --build-name="$APP_VERSION_NAME" \
+            --build-number="$APP_BUILD_NUMBER"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+
+  android-release:
+    name: Android Release
+    max_build_duration: 120
+    environment:
+      flutter: stable
+      vars:
+        BUILD_NUMBER_FALLBACK: "1"
+    scripts:
+      - name: Get Flutter dependencies
+        script: flutter pub get
+
+      - name: Resolve version and build number
+        script: |
+          set -e
+          VERSION_LINE=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          APP_VERSION_NAME=${VERSION_LINE%%+*}
+          APP_BUILD_NUMBER=${BUILD_NUMBER:-${PROJECT_BUILD_NUMBER:-$BUILD_NUMBER_FALLBACK}}
+
+          echo "Using build-name: $APP_VERSION_NAME"
+          echo "Using build-number: $APP_BUILD_NUMBER"
+
+      - name: Build Android App Bundle
+        script: |
+          flutter build appbundle --release \
+            --build-name="$APP_VERSION_NAME" \
+            --build-number="$APP_BUILD_NUMBER"
+
+    artifacts:
+      - build/app/outputs/**/*.aab
+      - build/app/outputs/**/mapping.txt

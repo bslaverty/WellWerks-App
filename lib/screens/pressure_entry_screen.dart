@@ -735,7 +735,11 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         style: const TextStyle(color: Colors.white70),
       ),
       const SizedBox(height: 8),
-      _field('Choke Value', controller.choke, keyboardType: TextInputType.text),
+      _field(
+        'Choke Value',
+        controller.choke,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      ),
       _field('TBG', controller.tbg, suffix: 'PSI'),
       _field('ICP', controller.icp, suffix: 'PSI'),
       _field('CSG', controller.csg, suffix: 'PSI'),

@@ -92,8 +92,8 @@ class WwGaugeField extends StatelessWidget {
         focusNode: focusNode,
         autofocus: autofocus,
         onChanged: onChanged,
-        // Use a text keyboard so iPhone users have a space bar for mixed fractions.
-        keyboardType: TextInputType.text,
+        // Keep gauge entry keyboard numeric-oriented while allowing spaces/slashes.
+        keyboardType: TextInputType.datetime,
         autocorrect: false,
         enableSuggestions: false,
         textInputAction: textInputAction,
