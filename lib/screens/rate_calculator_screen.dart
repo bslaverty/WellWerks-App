@@ -3,13 +3,17 @@ import '../data/tank_charts.dart';
 import '../widgets/app_header.dart';
 import '../widgets/ww_number_field.dart';
 
+enum _GaugeTarget { start, end }
+
 class RateCalculatorConfig {
   final String title;
   final String? chartId;
   final double? defaultFactor;
 
-  const RateCalculatorConfig.chart(this.title, this.chartId) : defaultFactor = null;
-  const RateCalculatorConfig.linear(this.title, {required this.defaultFactor}) : chartId = null;
+  const RateCalculatorConfig.chart(this.title, this.chartId)
+      : defaultFactor = null;
+  const RateCalculatorConfig.linear(this.title, {required this.defaultFactor})
+      : chartId = null;
 
   bool get usesChart => chartId != null;
 }
@@ -22,14 +26,24 @@ class RateCalculatorScreen extends StatefulWidget {
   factory RateCalculatorScreen.legacy({Key? key, required String tankName}) {
     switch (tankName) {
       case 'SandX':
-        return RateCalculatorScreen(key: key, config: const RateCalculatorConfig.chart('SandX G3', 'sandx'));
+        return RateCalculatorScreen(
+            key: key,
+            config: const RateCalculatorConfig.chart('SandX G3', 'sandx'));
       case 'Flowback':
-        return RateCalculatorScreen(key: key, config: const RateCalculatorConfig.chart('500 BBL Flowback Tank', 'flowback500'));
+        return RateCalculatorScreen(
+            key: key,
+            config: const RateCalculatorConfig.chart(
+                '500 BBL Flowback Tank', 'flowback500'));
       case 'Production Tank':
-        return RateCalculatorScreen(key: key, config: const RateCalculatorConfig.linear('Production Tank', defaultFactor: 1.67));
+        return RateCalculatorScreen(
+            key: key,
+            config: const RateCalculatorConfig.linear('Production Tank',
+                defaultFactor: 1.67));
       case 'FS3':
       default:
-        return RateCalculatorScreen(key: key, config: const RateCalculatorConfig.chart('FS3 Tank', 'fs3'));
+        return RateCalculatorScreen(
+            key: key,
+            config: const RateCalculatorConfig.chart('FS3 Tank', 'fs3'));
     }
   }
 
@@ -41,7 +55,34 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   final startGauge = TextEditingController();
   final endGauge = TextEditingController();
   final minutes = TextEditingController();
+  final FocusNode minutesFocus = FocusNode();
   late final TextEditingController factor;
+  _GaugeTarget? _activeGaugeTarget;
+
+  static const List<String> _gaugeMainKeys = <String>[
+    '7',
+    '8',
+    '9',
+    '4',
+    '5',
+    '6',
+    '1',
+    '2',
+    '3',
+    '.',
+    '0',
+    '/',
+  ];
+
+  static const List<String> _gaugeFractionShortcuts = <String>[
+    '1/8',
+    '1/4',
+    '3/8',
+    '1/2',
+    '5/8',
+    '3/4',
+    '7/8',
+  ];
 
   double? bblPerMin;
   double? bblPerHr;
@@ -51,7 +92,83 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   @override
   void initState() {
     super.initState();
-    factor = TextEditingController(text: (widget.config.defaultFactor ?? 1.67).toString());
+    factor = TextEditingController(
+        text: (widget.config.defaultFactor ?? 1.67).toString());
+    minutesFocus.addListener(() {
+      if (minutesFocus.hasFocus && _activeGaugeTarget != null) {
+        setState(() => _activeGaugeTarget = null);
+      }
+    });
+  }
+
+  TextEditingController? get _activeGaugeController {
+    switch (_activeGaugeTarget) {
+      case _GaugeTarget.start:
+        return startGauge;
+      case _GaugeTarget.end:
+        return endGauge;
+      case null:
+        return null;
+    }
+  }
+
+  void _setActiveGauge(_GaugeTarget target) {
+    FocusScope.of(context).unfocus();
+    setState(() => _activeGaugeTarget = target);
+  }
+
+  void _insertGaugeText(String raw) {
+    final controller = _activeGaugeController;
+    if (controller == null) return;
+    final insertText = raw == 'Space' ? ' ' : raw;
+    final selection = controller.selection;
+    final text = controller.text;
+    final start = selection.start < 0 ? text.length : selection.start;
+    final end = selection.end < 0 ? text.length : selection.end;
+    final next = text.replaceRange(start, end, insertText);
+    final cursor = start + insertText.length;
+
+    setState(() {
+      controller.value = TextEditingValue(
+        text: next,
+        selection: TextSelection.collapsed(offset: cursor),
+      );
+    });
+  }
+
+  void _backspaceGauge() {
+    final controller = _activeGaugeController;
+    if (controller == null) return;
+    final text = controller.text;
+    if (text.isEmpty) return;
+
+    final selection = controller.selection;
+    final start = selection.start < 0 ? text.length : selection.start;
+    final end = selection.end < 0 ? text.length : selection.end;
+
+    setState(() {
+      if (start != end) {
+        controller.value = TextEditingValue(
+          text: text.replaceRange(start, end, ''),
+          selection: TextSelection.collapsed(offset: start),
+        );
+      } else if (start > 0) {
+        controller.value = TextEditingValue(
+          text: text.replaceRange(start - 1, start, ''),
+          selection: TextSelection.collapsed(offset: start - 1),
+        );
+      }
+    });
+  }
+
+  void _clearActiveGauge() {
+    final controller = _activeGaugeController;
+    if (controller == null) return;
+    setState(controller.clear);
+  }
+
+  void _closeGaugeKeypad() {
+    setState(() => _activeGaugeTarget = null);
   }
 
   TankChart? get chart {
@@ -107,7 +224,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
 
   void calculate() {
     final m = double.tryParse(minutes.text.trim()) ?? 0;
-    if (startGauge.text.trim().isEmpty || endGauge.text.trim().isEmpty || minutes.text.trim().isEmpty) {
+    if (startGauge.text.trim().isEmpty ||
+        endGauge.text.trim().isEmpty ||
+        minutes.text.trim().isEmpty) {
       setState(() => error = 'Enter start gauge, end gauge, and minutes.');
       return;
     }
@@ -115,7 +234,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
       setState(() => error = 'Minutes must be greater than zero.');
       return;
     }
-    if (!widget.config.usesChart && (double.tryParse(factor.text.trim()) ?? 0) <= 0) {
+    if (!widget.config.usesChart &&
+        (double.tryParse(factor.text.trim()) ?? 0) <= 0) {
       setState(() => error = 'Tank factor must be greater than zero.');
       return;
     }
@@ -138,6 +258,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     startGauge.dispose();
     endGauge.dispose();
     minutes.dispose();
+    minutesFocus.dispose();
     factor.dispose();
     super.dispose();
   }
@@ -148,46 +269,181 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: const TextStyle(color: Color(0xFFCDA56A), fontWeight: FontWeight.bold)),
+              Text(label,
+                  style: const TextStyle(
+                      color: Color(0xFFCDA56A), fontWeight: FontWeight.bold)),
               const SizedBox(height: 6),
-              Text(value, style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold)),
+              Text(value,
+                  style: const TextStyle(
+                      fontSize: 30, fontWeight: FontWeight.bold)),
             ],
           ),
         ),
       );
 
+  Widget _gaugeKeyButton(String label,
+      {VoidCallback? onPressed, bool compact = false}) {
+    return SizedBox(
+      height: compact ? 34 : 40,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: Color(0xFFCDA56A)),
+          backgroundColor: const Color(0xFF15181C),
+          foregroundColor: Colors.white,
+          padding:
+              EdgeInsets.symmetric(horizontal: compact ? 8 : 10, vertical: 6),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: compact ? 12 : 16, fontWeight: FontWeight.w700)),
+      ),
+    );
+  }
+
+  Widget _sharedGaugeKeypad() {
+    if (_activeGaugeTarget == null) return const SizedBox.shrink();
+    final activeLabel =
+        _activeGaugeTarget == _GaugeTarget.start ? 'Start Gauge' : 'End Gauge';
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF0F1114),
+        border: Border(top: BorderSide(color: Color(0xFF3A3A3A))),
+      ),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Gauge Keypad • $activeLabel',
+                    style: const TextStyle(
+                      color: Color(0xFFCDA56A),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                TextButton(
+                    onPressed: _clearActiveGauge, child: const Text('Clear')),
+                const SizedBox(width: 6),
+                FilledButton(
+                    onPressed: _closeGaugeKeypad, child: const Text('Done')),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                ..._gaugeFractionShortcuts.map((value) => _gaugeKeyButton(
+                      value,
+                      compact: true,
+                      onPressed: () => _insertGaugeText(value),
+                    )),
+                _gaugeKeyButton('Space',
+                    compact: true, onPressed: () => _insertGaugeText('Space')),
+                _gaugeKeyButton('⌫', compact: true, onPressed: _backspaceGauge),
+              ],
+            ),
+            const SizedBox(height: 8),
+            GridView.builder(
+              itemCount: _gaugeMainKeys.length,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: 6,
+                crossAxisSpacing: 6,
+                childAspectRatio: 2.3,
+              ),
+              itemBuilder: (context, index) {
+                final key = _gaugeMainKeys[index];
+                return _gaugeKeyButton(key,
+                    onPressed: () => _insertGaugeText(key));
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppHeader(title: widget.config.title, showBack: true),
-        body: ListView(
-          padding: const EdgeInsets.all(18),
+        body: Column(
           children: [
-            if (widget.config.usesChart)
-              Text('Using ${chart?.name ?? 'tank'} strapping chart with interpolation.', style: const TextStyle(color: Colors.white70))
-            else
-              WwNumberField(label: 'Tank Factor (BBL/In)', controller: factor, allowDecimal: true),
-            const SizedBox(height: 12),
-            WwGaugeField(label: 'Start Gauge', controller: startGauge, autofocus: true),
-            WwGaugeField(label: 'End Gauge', controller: endGauge),
-            WwNumberField(label: 'Minutes', controller: minutes, allowDecimal: true, textInputAction: TextInputAction.done),
-            const SizedBox(height: 4),
-            FilledButton(onPressed: calculate, child: const Text('Calculate')),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(onPressed: clearInputs, icon: const Icon(Icons.clear), label: const Text('Clear')),
-            if (error != null)
-              Card(
-                color: const Color(0xFF3A1E1E),
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Text(error!, style: const TextStyle(color: Colors.white)),
-                ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(18),
+                children: [
+                  if (widget.config.usesChart)
+                    Text(
+                        'Using ${chart?.name ?? 'tank'} strapping chart with interpolation.',
+                        style: const TextStyle(color: Colors.white70))
+                  else
+                    WwNumberField(
+                        label: 'Tank Factor (BBL/In)',
+                        controller: factor,
+                        allowDecimal: true),
+                  const SizedBox(height: 8),
+                  WwGaugeField(
+                    label: 'Start Gauge',
+                    controller: startGauge,
+                    autofocus: true,
+                    active: _activeGaugeTarget == _GaugeTarget.start,
+                    onTap: () => _setActiveGauge(_GaugeTarget.start),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  WwGaugeField(
+                    label: 'End Gauge',
+                    controller: endGauge,
+                    active: _activeGaugeTarget == _GaugeTarget.end,
+                    onTap: () => _setActiveGauge(_GaugeTarget.end),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  WwNumberField(
+                    label: 'Minutes',
+                    controller: minutes,
+                    allowDecimal: true,
+                    textInputAction: TextInputAction.done,
+                    focusNode: minutesFocus,
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  const SizedBox(height: 4),
+                  FilledButton(
+                      onPressed: calculate, child: const Text('Calculate')),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                      onPressed: clearInputs,
+                      icon: const Icon(Icons.clear),
+                      label: const Text('Clear')),
+                  if (error != null)
+                    Card(
+                      color: const Color(0xFF3A1E1E),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Text(error!,
+                            style: const TextStyle(color: Colors.white)),
+                      ),
+                    ),
+                  if (bblPerMin != null) ...[
+                    const SizedBox(height: 10),
+                    _resultCard('BBL/min', bblPerMin!.toStringAsFixed(3)),
+                    _resultCard('BBL/hr', bblPerHr!.toStringAsFixed(1)),
+                    _resultCard('BBL/day', bblPerDay!.toStringAsFixed(1)),
+                  ],
+                ],
               ),
-            if (bblPerMin != null) ...[
-              const SizedBox(height: 10),
-              _resultCard('BBL/min', bblPerMin!.toStringAsFixed(3)),
-              _resultCard('BBL/hr', bblPerHr!.toStringAsFixed(1)),
-              _resultCard('BBL/day', bblPerDay!.toStringAsFixed(1)),
-            ],
+            ),
+            _sharedGaugeKeypad(),
           ],
         ),
       );
