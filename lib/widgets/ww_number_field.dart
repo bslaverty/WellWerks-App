@@ -92,7 +92,10 @@ class WwGaugeField extends StatelessWidget {
         focusNode: focusNode,
         autofocus: autofocus,
         onChanged: onChanged,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        // Use a text keyboard so iPhone users have a space bar for mixed fractions.
+        keyboardType: TextInputType.text,
+        autocorrect: false,
+        enableSuggestions: false,
         textInputAction: textInputAction,
         inputFormatters: [
           FilteringTextInputFormatter.allow(RegExp(r'[0-9./\s]')),
