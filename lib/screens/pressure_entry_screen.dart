@@ -26,6 +26,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   final _roundStorage = RoundStorageService();
   final _recoveryState = RecoveryStateService();
   bool _loading = true;
+  int _activeHourIndex = 0;
 
   late ProductionShift _shift;
   JobSetup? _activeJob;
@@ -85,7 +86,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     _activeJob = activeJob;
     _rebuildControllers();
     if (!mounted) return;
-    setState(() => _loading = false);
+    setState(() {
+      _activeHourIndex = _firstIncompleteHourIndex();
+      _loading = false;
+    });
   }
 
   Future<ProductionShift> _migrateLegacyInventory(ProductionShift shift) async {
@@ -207,6 +211,75 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     await _service.saveActiveShift(_shift);
   }
 
+  int _firstIncompleteHourIndex() {
+    if (_controllers.isEmpty) return 0;
+    for (var i = 0; i < _controllers.length; i++) {
+      if (!_isHourSaved(i)) {
+        return i;
+      }
+    }
+    return _controllers.length - 1;
+  }
+
+  List<String> get _activeWells =>
+      _shift.header.wells.isEmpty ? const ['Well 1'] : _shift.header.wells;
+
+  bool _gaugeEntryHasValue(ProductionGaugeEntry entry) {
+    return entry.inches.trim().isNotEmpty ||
+        entry.feet.trim().isNotEmpty ||
+        entry.inchesPart.trim().isNotEmpty ||
+        entry.decimalFeet.trim().isNotEmpty;
+  }
+
+  ProductionWellCheckData _wellDataForHour(int hourIndex, String well) {
+    return _controllers[hourIndex].dataForWell(well, _chokeTypeForWell(well));
+  }
+
+  bool _isWellComplete(int hourIndex, String well) {
+    final data = _wellDataForHour(hourIndex, well);
+    final hasGas = _useGasAccumulator
+        ? data.currentGasAccum.trim().isNotEmpty
+        : data.salesGasRate.trim().isNotEmpty;
+    final hasWaterGauges =
+        data.waterTankGaugeEntries.every(_gaugeEntryHasValue);
+    final hasOilGauges = data.oilTankGaugeEntries.every(_gaugeEntryHasValue);
+    return data.choke.trim().isNotEmpty &&
+        data.tbg.trim().isNotEmpty &&
+        data.csg.trim().isNotEmpty &&
+        hasGas &&
+        hasWaterGauges &&
+        hasOilGauges;
+  }
+
+  bool _isHourSaved(int hourIndex) {
+    return _activeWells.every(
+      (well) => _shift.savedRows.any(
+        (row) => row.hourIndex == hourIndex && row.well == well,
+      ),
+    );
+  }
+
+  String? _validationMessageForWell(int hourIndex, String well) {
+    final data = _wellDataForHour(hourIndex, well);
+    if (data.choke.trim().isEmpty) return '$well is missing Choke Value.';
+    if (data.tbg.trim().isEmpty) return '$well is missing TBG.';
+    if (data.csg.trim().isEmpty) return '$well is missing CSG.';
+    if (_useGasAccumulator && data.currentGasAccum.trim().isEmpty) {
+      return '$well is missing Current Gas Accum.';
+    }
+    if (!_useGasAccumulator && data.salesGasRate.trim().isEmpty) {
+      return '$well is missing Sales Gas Rate.';
+    }
+    if (data.waterTankGaugeEntries
+        .any((entry) => !_gaugeEntryHasValue(entry))) {
+      return '$well is missing one or more water tank gauges.';
+    }
+    if (data.oilTankGaugeEntries.any((entry) => !_gaugeEntryHasValue(entry))) {
+      return '$well is missing one or more oil tank gauges.';
+    }
+    return null;
+  }
+
   Future<void> _refreshActiveJobReference() async {
     final activeJob = await _jobStorage.loadActiveJob();
     _activeJob = activeJob;
@@ -264,8 +337,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   List<ProductionHourlyCheck> _buildBlankChecks() {
-    final wells =
-        _shift.header.wells.isEmpty ? const ['Well 1'] : _shift.header.wells;
+    final wells = _activeWells;
     return List<ProductionHourlyCheck>.generate(
       _shift.checkCount,
       (index) => ProductionHourlyCheck(
@@ -292,7 +364,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     _rebuildControllers();
     await _service.saveActiveShift(updated);
     if (!mounted) return;
-    setState(() {});
+    setState(() => _activeHourIndex = 0);
   }
 
   Future<void> _clearRoundWithConfirm() async {
@@ -328,7 +400,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     _rebuildControllers();
     await _service.saveActiveShift(_shift);
     if (!mounted) return;
-    setState(() {});
+    setState(() => _activeHourIndex = 0);
   }
 
   ProductionReportRow? _latestSavedBefore(int index, String well) {
@@ -446,11 +518,11 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   String _gaugeText(
     List<ProductionTank> tanks,
-    List<_GaugeEntryControllers> gauges,
+    List<ProductionGaugeEntry> gauges,
   ) {
     final parts = <String>[];
     for (var i = 0; i < tanks.length; i++) {
-      final entry = gauges[i].entry(_shift.inventory.gaugeEntryType);
+      final entry = gauges[i];
       final converted = entry.asInches();
       final convertedText = converted % 1 == 0
           ? converted.toStringAsFixed(0)
@@ -462,58 +534,148 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     return parts.join(', ');
   }
 
-  Future<void> _saveHour(int index) async {
-    await _persistShift();
-    final controller = _controllers[index];
-    final row = ProductionReportRow(
-      hourIndex: index,
-      time: controller.time,
-      well: controller.well,
-      choke: controller.choke.text.trim(),
-      chokeType: _chokeTypeForWell(controller.well),
-      tbg: controller.tbg.text.trim(),
-      icp: controller.icp.text.trim(),
-      csg: controller.csg.text.trim(),
-      waterProduction: _waterProduction(index),
-      oilProduction: _oilProduction(index),
-      hourlyGas: _hourlyGas(index),
-      gas24HourRate: _gas24Hour(index),
-      salesGasRate: _gas24Hour(index),
-      gasStatic: controller.gasStatic.text.trim(),
-      gasDifferential: controller.gasDifferential.text.trim(),
-      gasTemp: controller.gasTemp.text.trim(),
-      waterSpecificGravity: controller.waterSpecificGravity.text.trim(),
-      wellheadTemp: controller.wellheadTemp.text.trim(),
-      waterTemp: controller.waterTemp.text.trim(),
-      flareRate: _storeGasField(controller.flareRate.text),
-      flarePilotTemp: controller.flarePilotTemp.text.trim(),
-      biocide: controller.biocide.text.trim(),
-      vruGasRate: _storeGasField(controller.vruGasRate.text),
-      compressorInjection: _storeGasField(controller.compressorInjection.text),
-      vruSuction: controller.vruSuction.text.trim(),
-      vruDischarge: controller.vruDischarge.text.trim(),
-      sandRate: controller.sandRate.text.trim(),
-      waterGaugeText: _gaugeText(
-          _shift.inventory.waterTanks, controller.waterTankGaugeEntries),
-      oilGaugeText:
-          _gaugeText(_shift.inventory.oilTanks, controller.oilTankGaugeEntries),
-      currentWaterBbl: _currentWaterBbl(index),
-      currentOilBbl: _currentOilBbl(index),
-      currentGasAccum: _useGasAccumulator
-          ? _n(controller.currentGasAccum.text)
-          : _previousGasAccum(index),
-      waterHauled: _n(controller.waterHauled.text),
-      oilHauled: _n(controller.oilHauled.text),
-      waterPumped: _n(controller.waterPumped.text),
-      oilPumped: _n(controller.oilPumped.text),
-      notes: controller.notes.text.trim(),
+  double _currentWaterBblForData(ProductionWellCheckData data) {
+    return ProductionMath.totalTankBbl(
+      _shift.inventory.waterTanks,
+      data.waterTankGaugeEntries
+          .map((item) => item.asInches().toString())
+          .toList(),
     );
+  }
+
+  double _currentOilBblForData(ProductionWellCheckData data) {
+    return ProductionMath.totalTankBbl(
+      _shift.inventory.oilTanks,
+      data.oilTankGaugeEntries
+          .map((item) => item.asInches().toString())
+          .toList(),
+    );
+  }
+
+  double _hourlyGasForData(
+      int index, ProductionWellCheckData data, String well) {
+    if (!_useGasAccumulator) {
+      final gasRate = _displayGasToBase(data.salesGasRate);
+      return gasRate / 24;
+    }
+    return ProductionMath.hourlyGas(
+      currentGasAccum: _n(data.currentGasAccum),
+      previousGasAccum: _latestSavedBefore(index, well)?.currentGasAccum ??
+          _startingGasAccum(),
+    );
+  }
+
+  double _gas24HourForData(
+      int index, ProductionWellCheckData data, String well) {
+    if (!_useGasAccumulator) {
+      return _displayGasToBase(data.salesGasRate);
+    }
+    return ProductionMath.gas24Hour(_hourlyGasForData(index, data, well));
+  }
+
+  double _waterProductionForData(
+      int index, ProductionWellCheckData data, String well) {
+    return ProductionMath.waterProduction(
+      currentWaterBbl: _currentWaterBblForData(data),
+      previousWaterBbl: _latestSavedBefore(index, well)?.currentWaterBbl ??
+          _startingWaterBbl(),
+      waterHauled: _n(data.waterHauled),
+      waterPumped: _n(data.waterPumped),
+      preRoundWaterHauled: _n(_shift.inventory.waterHauledBeforeRound),
+      preRoundWaterPumped: _n(_shift.inventory.waterPumpedBeforeRound),
+      isFirstHour: index == 0,
+    );
+  }
+
+  double _oilProductionForData(
+      int index, ProductionWellCheckData data, String well) {
+    return ProductionMath.oilProduction(
+      currentOilBbl: _currentOilBblForData(data),
+      previousOilBbl:
+          _latestSavedBefore(index, well)?.currentOilBbl ?? _startingOilBbl(),
+      oilHauled: _n(data.oilHauled),
+      oilPumped: _n(data.oilPumped),
+      preRoundOilHauled: _n(_shift.inventory.oilHauledBeforeRound),
+      preRoundOilPumped: _n(_shift.inventory.oilPumpedBeforeRound),
+      isFirstHour: index == 0,
+    );
+  }
+
+  ProductionReportRow _buildRowForWell(
+    int hourIndex,
+    String well,
+    ProductionWellCheckData data,
+  ) {
+    return ProductionReportRow(
+      hourIndex: hourIndex,
+      time: _controllers[hourIndex].time,
+      well: well,
+      choke: data.choke.trim(),
+      chokeType: _chokeTypeForWell(well),
+      tbg: data.tbg.trim(),
+      icp: data.icp.trim(),
+      csg: data.csg.trim(),
+      waterProduction: _waterProductionForData(hourIndex, data, well),
+      oilProduction: _oilProductionForData(hourIndex, data, well),
+      hourlyGas: _hourlyGasForData(hourIndex, data, well),
+      gas24HourRate: _gas24HourForData(hourIndex, data, well),
+      salesGasRate: _gas24HourForData(hourIndex, data, well),
+      gasStatic: data.gasStatic.trim(),
+      gasDifferential: data.gasDifferential.trim(),
+      gasTemp: data.gasTemp.trim(),
+      waterSpecificGravity: data.waterSpecificGravity.trim(),
+      wellheadTemp: data.wellheadTemp.trim(),
+      waterTemp: data.waterTemp.trim(),
+      flareRate: _storeGasField(data.flareRate),
+      flarePilotTemp: data.flarePilotTemp.trim(),
+      biocide: data.biocide.trim(),
+      vruGasRate: _storeGasField(data.vruGasRate),
+      compressorInjection: _storeGasField(data.compressorInjection),
+      vruSuction: data.vruSuction.trim(),
+      vruDischarge: data.vruDischarge.trim(),
+      sandRate: data.sandRate.trim(),
+      waterGaugeText:
+          _gaugeText(_shift.inventory.waterTanks, data.waterTankGaugeEntries),
+      oilGaugeText:
+          _gaugeText(_shift.inventory.oilTanks, data.oilTankGaugeEntries),
+      currentWaterBbl: _currentWaterBblForData(data),
+      currentOilBbl: _currentOilBblForData(data),
+      currentGasAccum: _useGasAccumulator
+          ? _n(data.currentGasAccum)
+          : (_latestSavedBefore(hourIndex, well)?.currentGasAccum ??
+              _startingGasAccum()),
+      waterHauled: _n(data.waterHauled),
+      oilHauled: _n(data.oilHauled),
+      waterPumped: _n(data.waterPumped),
+      oilPumped: _n(data.oilPumped),
+      notes: data.notes.trim(),
+    );
+  }
+
+  Future<void> _saveActiveHour() async {
+    final hourIndex = _activeHourIndex;
+    for (final well in _activeWells) {
+      final message = _validationMessageForWell(hourIndex, well);
+      if (message != null) {
+        setState(() {
+          _controllers[hourIndex].selectWell(well, _chokeTypeForWell(well));
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+        return;
+      }
+    }
+
+    await _persistShift();
+    final rows = <ProductionReportRow>[
+      for (final well in _activeWells)
+        _buildRowForWell(hourIndex, well, _wellDataForHour(hourIndex, well)),
+    ];
 
     final updatedRows = List<ProductionReportRow>.from(_shift.savedRows)
-      ..removeWhere(
-        (item) => item.hourIndex == index && item.well == row.well,
-      )
-      ..add(row)
+      ..removeWhere((item) => item.hourIndex == hourIndex)
+      ..addAll(rows)
       ..sort((a, b) {
         final hourCompare = a.hourIndex.compareTo(b.hourIndex);
         if (hourCompare != 0) return hourCompare;
@@ -524,32 +686,41 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       activeJobId: _activeJob?.id ?? '',
       hourlyChecks: _controllers.map((item) => item.toCheck()).toList(),
       savedRows: updatedRows,
-      selectedTextHour: _shift.selectedTextHour ?? index,
+      selectedTextHour: _shift.selectedTextHour ?? hourIndex,
     );
     await _service.saveActiveShift(_shift);
 
-    await _roundStorage.saveReading(
-      RoundReading(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
-        timestamp: DateTime.now(),
-        roundLabel: row.time,
-        oilRate: _fmt(row.oilProduction),
-        waterRate: _fmt(row.waterProduction),
-        gasRate: _fmt(_baseGasToDisplay(row.gas24HourRate)),
-        tubingPressure: row.tbg,
-        casingPressure: row.csg,
-        differentialPressure: row.gasDifferential,
-        gasTemp: row.gasTemp,
-        choke: _formatChk(row.choke, row.chokeType),
-        notes: row.notes,
-      ),
-    );
+    for (final row in rows) {
+      await _roundStorage.saveReading(
+        RoundReading(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          timestamp: DateTime.now(),
+          roundLabel: row.time,
+          oilRate: _fmt(row.oilProduction),
+          waterRate: _fmt(row.waterProduction),
+          gasRate: _fmt(_baseGasToDisplay(row.gas24HourRate)),
+          tubingPressure: row.tbg,
+          casingPressure: row.csg,
+          differentialPressure: row.gasDifferential,
+          gasTemp: row.gasTemp,
+          choke: _formatChk(row.choke, row.chokeType),
+          notes: row.notes,
+        ),
+      );
+    }
 
     if (!mounted) return;
     setState(() {});
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${row.time} saved to Production Report.')),
+      SnackBar(content: Text('${_controllers[hourIndex].time} Round Saved ✓')),
     );
+  }
+
+  void _goToNextHour() {
+    if (_activeHourIndex >= _controllers.length - 1) {
+      return;
+    }
+    setState(() => _activeHourIndex += 1);
   }
 
   Widget _section(String title, List<Widget> children) {
@@ -726,7 +897,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     final controller = _controllers[index];
     final wells =
         _shift.header.wells.isEmpty ? const ['Well 1'] : _shift.header.wells;
-    return _section('Hourly Check ${index + 1} • ${controller.time}', [
+    return _section('Active Hour • ${controller.time}', [
       DropdownButtonFormField<String>(
         initialValue:
             wells.contains(controller.well) ? controller.well : wells.first,
@@ -812,15 +983,84 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           suffix: _gasUnitLabel,
         ),
       ]),
-      SizedBox(
+    ]);
+  }
+
+  Widget _hourProgressSection() {
+    final hourIndex = _activeHourIndex;
+    return _section('Round Progress', [
+      Text(
+        'Current Hour: ${_controllers[hourIndex].time}',
+        style: const TextStyle(color: Colors.white70),
+      ),
+      const SizedBox(height: 10),
+      for (final well in _activeWells)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              Icon(
+                _isWellComplete(hourIndex, well)
+                    ? Icons.check_circle
+                    : Icons.radio_button_unchecked,
+                color: _isWellComplete(hourIndex, well)
+                    ? Colors.green
+                    : Colors.white54,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  well,
+                  style: const TextStyle(color: Colors.white70),
+                ),
+              ),
+            ],
+          ),
+        ),
+    ]);
+  }
+
+  Widget _hourActionButton() {
+    if (_controllers.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final hourIndex = _activeHourIndex;
+    final time = _controllers[hourIndex].time;
+    final hasNextHour = hourIndex < _controllers.length - 1;
+    final hourSaved = _isHourSaved(hourIndex);
+
+    if (hourSaved && hasNextHour) {
+      final nextTime = _controllers[hourIndex + 1].time;
+      return SizedBox(
         width: double.infinity,
         child: FilledButton.icon(
-          onPressed: () => _saveHour(index),
-          icon: const Icon(Icons.save),
-          label: Text('Save Hour (${controller.time})'),
+          onPressed: _goToNextHour,
+          icon: const Icon(Icons.arrow_forward),
+          label: Text('Next Hour ($nextTime)'),
         ),
+      );
+    }
+
+    if (hourSaved && !hasNextHour) {
+      return SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: null,
+          icon: const Icon(Icons.check_circle_outline),
+          label: const Text('All Hours Saved'),
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: _saveActiveHour,
+        icon: const Icon(Icons.save),
+        label: Text('Save $time Round'),
       ),
-    ]);
+    );
   }
 
   Widget _field(
@@ -1026,7 +1266,14 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
                 style: TextStyle(color: Colors.white70),
               ),
             ]),
-          for (int i = 0; i < _controllers.length; i++) _hourlyCard(i),
+          if (_shift.hourlyChecks.isNotEmpty) ...[
+            _hourProgressSection(),
+            _hourlyCard(_activeHourIndex),
+            SizedBox(
+              width: double.infinity,
+              child: _hourActionButton(),
+            ),
+          ],
         ],
       ),
     );
@@ -1343,6 +1590,12 @@ class _HourlyCheckControllers {
         ProductionWellCheckData(chokeType: nextChokeType);
     well = nextWell;
     _loadWellData(nextData, nextChokeType);
+  }
+
+  ProductionWellCheckData dataForWell(String targetWell, String chokeType) {
+    _wellDataByName[well] = _snapshotCurrentWellData();
+    return _wellDataByName[targetWell] ??
+        ProductionWellCheckData(chokeType: chokeType);
   }
 
   ProductionHourlyCheck toCheck() {
