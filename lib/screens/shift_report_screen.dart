@@ -147,6 +147,116 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     return _fmt(_baseGasToDisplay(parsed));
   }
 
+  bool _gaugeEntryHasValue(ProductionGaugeEntry entry) {
+    return entry.inches.trim().isNotEmpty ||
+        entry.feet.trim().isNotEmpty ||
+        entry.inchesPart.trim().isNotEmpty ||
+        entry.decimalFeet.trim().isNotEmpty;
+  }
+
+  List<ProductionReportRow> _rowsForWell(String well) {
+    final rows = _activeJobRows.where((row) => row.well == well).toList()
+      ..sort((a, b) => a.hourIndex.compareTo(b.hourIndex));
+    return rows;
+  }
+
+  ProductionReportRow? _previousRowForWell(
+    ProductionReportRow row,
+    bool Function(ProductionReportRow row) isValid,
+  ) {
+    final previous = _rowsForWell(row.well)
+        .where((item) => item.hourIndex < row.hourIndex && isValid(item))
+        .toList();
+    if (previous.isEmpty) return null;
+    previous.sort((a, b) => a.hourIndex.compareTo(b.hourIndex));
+    return previous.last;
+  }
+
+  double? _startingWaterBaseline() {
+    if (!_shift.inventory.useStartingReadings ||
+        _shift.inventory.waterTanks.isEmpty) {
+      return null;
+    }
+    final entry = _shift.inventory.waterTanks.first.gaugeEntry;
+    if (!_gaugeEntryHasValue(entry)) return null;
+    final value = ProductionMath.totalTankBbl(
+      _shift.inventory.waterTanks,
+      _shift.inventory.waterTanks
+          .map((tank) => tank.gaugeEntry.asInches().toString())
+          .toList(),
+    );
+    return value > 0 ? value : null;
+  }
+
+  double? _startingOilBaseline() {
+    if (!_shift.inventory.useStartingReadings ||
+        _shift.inventory.oilTanks.isEmpty) {
+      return null;
+    }
+    final entry = _shift.inventory.oilTanks.first.gaugeEntry;
+    if (!_gaugeEntryHasValue(entry)) return null;
+    final value = ProductionMath.totalTankBbl(
+      _shift.inventory.oilTanks,
+      _shift.inventory.oilTanks
+          .map((tank) => tank.gaugeEntry.asInches().toString())
+          .toList(),
+    );
+    return value > 0 ? value : null;
+  }
+
+  double? _startingGasBaseline() {
+    if (!_shift.inventory.useStartingReadings) {
+      return null;
+    }
+    final text = _shift.inventory.startingGasAccum.trim();
+    if (text.isEmpty) return null;
+    final value = double.tryParse(text);
+    if (value == null) return null;
+    return value >= 0 ? value : null;
+  }
+
+  String _bwphForRow(ProductionReportRow row) {
+    final current = row.currentWaterBbl;
+    if (current.isNaN || current < 0) return '--';
+    final previous = _previousRowForWell(
+      row,
+      (item) => !item.currentWaterBbl.isNaN && item.currentWaterBbl > 0,
+    );
+    final baseline = previous?.currentWaterBbl ?? _startingWaterBaseline();
+    if (baseline == null) return '--';
+    final delta = current - baseline;
+    if (delta < 0) return '--';
+    return _fmt(delta);
+  }
+
+  String _bophForRow(ProductionReportRow row) {
+    final current = row.currentOilBbl;
+    if (current.isNaN || current < 0) return '--';
+    final previous = _previousRowForWell(
+      row,
+      (item) => !item.currentOilBbl.isNaN && item.currentOilBbl > 0,
+    );
+    final baseline = previous?.currentOilBbl ?? _startingOilBaseline();
+    if (baseline == null) return '--';
+    final delta = current - baseline;
+    if (delta < 0) return '--';
+    return _fmt(delta);
+  }
+
+  String _gasSpotForRow(ProductionReportRow row) {
+    final current = row.currentGasAccum;
+    if (current.isNaN || current < 0) return '--';
+    final previous = _previousRowForWell(
+      row,
+      (item) => !item.currentGasAccum.isNaN && item.currentGasAccum > 0,
+    );
+    final baseline = previous?.currentGasAccum ?? _startingGasBaseline();
+    if (baseline == null) return '--';
+    final delta = current - baseline;
+    if (delta < 0) return '--';
+    return _fmt(_baseGasToDisplay(delta));
+  }
+
   String _chk(ProductionReportRow row) {
     final value = row.choke.trim();
     if (value.isEmpty) return '-';
@@ -220,11 +330,11 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       case 'chk':
         return _chk(row);
       case 'bwph':
-        return _fmt(row.waterProduction);
+        return _bwphForRow(row);
       case 'boph':
-        return _fmt(row.oilProduction);
+        return _bophForRow(row);
       case 'gasSpotRt':
-        return _fmt(_baseGasToDisplay(row.gas24HourRate));
+        return _gasSpotForRow(row);
       case 'diff':
         return row.gasDifferential;
       case 'stat':
