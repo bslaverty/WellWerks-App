@@ -280,8 +280,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   Future<void> _refreshActiveJobReference() async {
     final activeJob = await _jobStorage.loadActiveJob();
     _activeJob = activeJob;
-    final activeJobId = activeJob?.id ?? '';
-    if (_shift.activeJobId == activeJobId) {
+    final activeJobId = activeJob?.id;
+    if (activeJobId == null || _shift.activeJobId == activeJobId) {
       return;
     }
     _shift = _shift.copyWith(activeJobId: activeJobId);
@@ -495,7 +495,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   Future<void> _buildRound() async {
     await _refreshActiveJobReference();
     final updated = _shift.copyWith(
-      activeJobId: _activeJob?.id ?? '',
+      activeJobId: _activeJob?.id ?? _shift.activeJobId,
       hourlyChecks: _buildBlankChecks(),
       savedRows: const [],
       clearSelectedTextHour: true,
@@ -532,7 +532,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
     await _refreshActiveJobReference();
     _shift = _shift.copyWith(
-      activeJobId: _activeJob?.id ?? '',
+      activeJobId: _activeJob?.id ?? _shift.activeJobId,
       hourlyChecks: const [],
       savedRows: const [],
       clearSelectedTextHour: true,
@@ -922,7 +922,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       });
 
     _shift = _shift.copyWith(
-      activeJobId: _activeJob?.id ?? '',
+      activeJobId: _activeJob?.id ?? _shift.activeJobId,
       hourlyChecks: _controllers.map((item) => item.toCheck()).toList(),
       savedRows: updatedRows,
       selectedTextHour: _shift.selectedTextHour ?? hourIndex,
@@ -1196,9 +1196,29 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   Widget _activeJobBanner() {
     final activeJob = _activeJob;
     if (activeJob == null) {
+      final summary = [_shift.header.company, _shift.header.pad]
+          .where((item) => item.trim().isNotEmpty)
+          .join(' • ');
+      if (_shift.activeJobId.trim().isNotEmpty || summary.isNotEmpty) {
+        return _section('Active Job', [
+          Text(
+            summary.isEmpty ? 'Active shift job linked' : summary,
+            style: const TextStyle(
+              color: Color(0xFFCDA56A),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Using active shift job link.',
+            style: TextStyle(color: Colors.white70),
+          ),
+        ]);
+      }
+
       return _section('Active Job', const [
         Text(
-          'No active job currently selected. Quick Round entries save to the active shift and appear in Production Report when a job is active.',
+          'No active job currently selected. Start a job in Job Setup to link all Production modules.',
           style: TextStyle(color: Colors.white70),
         ),
       ]);

@@ -38,11 +38,15 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   }
 
   Future<void> _load() async {
-    final shift = await _shiftService.loadActiveShift();
+    var shift = await _shiftService.loadActiveShift();
     final activeJob = await _jobStorage.loadActiveJob();
+    if (activeJob != null && shift.activeJobId != activeJob.id) {
+      shift = shift.copyWith(activeJobId: activeJob.id);
+      await _shiftService.saveActiveShift(shift);
+    }
     final layout =
         await _layoutService.resolveProfile(shift.header.layoutProfileId);
-    final rows = activeJob != null && shift.activeJobId == activeJob.id
+    final rows = (activeJob == null || shift.activeJobId == activeJob.id)
         ? shift.savedRows
         : const <ProductionReportRow>[];
     if (!mounted) return;
@@ -59,7 +63,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   List<ProductionReportRow> get _activeJobRows {
     final activeJob = _activeJob;
     if (activeJob == null) {
-      return const [];
+      return _shift.savedRows;
     }
     if (_shift.activeJobId != activeJob.id) {
       return const [];
@@ -67,7 +71,10 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     return _shift.savedRows;
   }
 
-  bool get _hasActiveJob => _activeJob != null;
+  bool get _hasActiveJob =>
+      _activeJob != null ||
+      _shift.activeJobId.trim().isNotEmpty ||
+      _shift.savedRows.isNotEmpty;
 
   String get _emptyStateMessage {
     if (!_hasActiveJob) {
