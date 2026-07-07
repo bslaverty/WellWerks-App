@@ -128,6 +128,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   void _rebuildControllers() {
+    final wells =
+        _shift.header.wells.isEmpty ? const ['Well 1'] : _shift.header.wells;
     for (final controller in _controllers) {
       controller.dispose();
     }
@@ -136,9 +138,11 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       ..addAll(_shift.hourlyChecks.map(
         (check) => _HourlyCheckControllers.fromCheck(
           check: _normalizeCheck(check),
+          wells: wells,
           waterTankCount: _shift.inventory.waterTanks.length,
           oilTankCount: _shift.inventory.oilTanks.length,
           gaugeEntryType: _shift.inventory.gaugeEntryType,
+          chokeTypeForWell: _chokeTypeForWell,
         ),
       ));
   }
@@ -327,8 +331,13 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     setState(() {});
   }
 
-  ProductionReportRow? _latestSavedBefore(int index) {
-    return ProductionMath.previousSavedRow(_shift.savedRows, index);
+  ProductionReportRow? _latestSavedBefore(int index, String well) {
+    final previous = _shift.savedRows
+        .where((row) => row.well == well && row.hourIndex < index)
+        .toList()
+      ..sort((a, b) => a.hourIndex.compareTo(b.hourIndex));
+    if (previous.isEmpty) return null;
+    return previous.last;
   }
 
   double _startingWaterBbl() {
@@ -374,19 +383,19 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   double _previousWaterBbl(int index) {
-    final previous = _latestSavedBefore(index);
+    final previous = _latestSavedBefore(index, _controllers[index].well);
     if (previous == null) return _startingWaterBbl();
     return previous.currentWaterBbl;
   }
 
   double _previousOilBbl(int index) {
-    final previous = _latestSavedBefore(index);
+    final previous = _latestSavedBefore(index, _controllers[index].well);
     if (previous == null) return _startingOilBbl();
     return previous.currentOilBbl;
   }
 
   double _previousGasAccum(int index) {
-    final previous = _latestSavedBefore(index);
+    final previous = _latestSavedBefore(index, _controllers[index].well);
     if (previous == null) return _startingGasAccum();
     return previous.currentGasAccum;
   }
@@ -501,9 +510,15 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     );
 
     final updatedRows = List<ProductionReportRow>.from(_shift.savedRows)
-      ..removeWhere((item) => item.hourIndex == index)
+      ..removeWhere(
+        (item) => item.hourIndex == index && item.well == row.well,
+      )
       ..add(row)
-      ..sort((a, b) => a.hourIndex.compareTo(b.hourIndex));
+      ..sort((a, b) {
+        final hourCompare = a.hourIndex.compareTo(b.hourIndex);
+        if (hourCompare != 0) return hourCompare;
+        return a.well.compareTo(b.well);
+      });
 
     _shift = _shift.copyWith(
       activeJobId: _activeJob?.id ?? '',
@@ -723,8 +738,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         onChanged: (value) {
           if (value == null) return;
           setState(() {
-            controller.well = value;
-            controller.chokeType = _chokeTypeForWell(value);
+            controller.selectWell(value, _chokeTypeForWell(value));
           });
           _persistShift();
         },
@@ -1052,74 +1066,152 @@ class _HourlyCheckControllers {
     required this.oilPumped,
     required this.sandRate,
     required this.notes,
-  });
+    required Map<String, ProductionWellCheckData> wellDataByName,
+  }) : _wellDataByName = wellDataByName;
 
   factory _HourlyCheckControllers.fromCheck({
     required ProductionHourlyCheck check,
+    required List<String> wells,
     required int waterTankCount,
     required int oilTankCount,
     required String gaugeEntryType,
+    required String Function(String well) chokeTypeForWell,
   }) {
-    final water = List<String>.from(check.waterTankGauges);
-    final oil = List<String>.from(check.oilTankGauges);
-    final waterEntries = List<ProductionGaugeEntry>.from(
-      check.waterTankGaugeEntries,
+    ProductionWellCheckData normalizeData(ProductionWellCheckData data) {
+      final water = List<String>.from(data.waterTankGauges);
+      final oil = List<String>.from(data.oilTankGauges);
+      final waterEntries = List<ProductionGaugeEntry>.from(
+        data.waterTankGaugeEntries,
+      );
+      final oilEntries = List<ProductionGaugeEntry>.from(
+        data.oilTankGaugeEntries,
+      );
+
+      while (water.length < waterTankCount) {
+        water.add('');
+      }
+      while (oil.length < oilTankCount) {
+        oil.add('');
+      }
+      while (waterEntries.length < waterTankCount) {
+        final fallback = waterEntries.length < water.length
+            ? water[waterEntries.length]
+            : '';
+        waterEntries.add(ProductionGaugeEntry.fromLegacyGauge(fallback));
+      }
+      while (oilEntries.length < oilTankCount) {
+        final fallback =
+            oilEntries.length < oil.length ? oil[oilEntries.length] : '';
+        oilEntries.add(ProductionGaugeEntry.fromLegacyGauge(fallback));
+      }
+      if (water.length > waterTankCount) {
+        water.removeRange(waterTankCount, water.length);
+      }
+      if (oil.length > oilTankCount) {
+        oil.removeRange(oilTankCount, oil.length);
+      }
+      if (waterEntries.length > waterTankCount) {
+        waterEntries.removeRange(waterTankCount, waterEntries.length);
+      }
+      if (oilEntries.length > oilTankCount) {
+        oilEntries.removeRange(oilTankCount, oilEntries.length);
+      }
+
+      return ProductionWellCheckData(
+        choke: data.choke,
+        chokeType: data.chokeType,
+        tbg: data.tbg,
+        icp: data.icp,
+        csg: data.csg,
+        currentGasAccum: data.currentGasAccum,
+        salesGasRate: data.salesGasRate,
+        gasStatic: data.gasStatic,
+        gasDifferential: data.gasDifferential,
+        gasTemp: data.gasTemp,
+        waterSpecificGravity: data.waterSpecificGravity,
+        wellheadTemp: data.wellheadTemp,
+        waterTemp: data.waterTemp,
+        flareRate: data.flareRate,
+        flarePilotTemp: data.flarePilotTemp,
+        biocide: data.biocide,
+        vruGasRate: data.vruGasRate,
+        compressorInjection: data.compressorInjection,
+        vruSuction: data.vruSuction,
+        vruDischarge: data.vruDischarge,
+        waterTankGauges: water,
+        oilTankGauges: oil,
+        waterTankGaugeEntries: waterEntries,
+        oilTankGaugeEntries: oilEntries,
+        waterHauled: data.waterHauled,
+        oilHauled: data.oilHauled,
+        waterPumped: data.waterPumped,
+        oilPumped: data.oilPumped,
+        sandRate: data.sandRate,
+        notes: data.notes,
+      );
+    }
+
+    final persistedMap = Map<String, ProductionWellCheckData>.from(
+      check.wellChecks,
     );
-    final oilEntries = List<ProductionGaugeEntry>.from(
-      check.oilTankGaugeEntries,
-    );
-    while (water.length < waterTankCount) {
-      water.add('');
+    if (persistedMap.isEmpty) {
+      final fallbackWell = check.well.trim().isEmpty ? wells.first : check.well;
+      persistedMap[fallbackWell] =
+          ProductionWellCheckData.fromHourlyCheck(check);
     }
-    while (oil.length < oilTankCount) {
-      oil.add('');
-    }
-    while (waterEntries.length < waterTankCount) {
-      final fallback =
-          waterEntries.length < water.length ? water[waterEntries.length] : '';
-      waterEntries.add(ProductionGaugeEntry.fromLegacyGauge(fallback));
-    }
-    while (oilEntries.length < oilTankCount) {
-      final fallback =
-          oilEntries.length < oil.length ? oil[oilEntries.length] : '';
-      oilEntries.add(ProductionGaugeEntry.fromLegacyGauge(fallback));
-    }
+
+    final wellDataByName = <String, ProductionWellCheckData>{
+      for (final well in wells)
+        well: normalizeData(
+          persistedMap[well] ??
+              ProductionWellCheckData(chokeType: chokeTypeForWell(well)),
+        ),
+    };
+
+    final selectedWell = wells.contains(check.well) ? check.well : wells.first;
+    final selectedData = wellDataByName[selectedWell]!;
+
     return _HourlyCheckControllers(
       time: check.time,
-      well: check.well,
+      well: selectedWell,
       gaugeEntryType: gaugeEntryType,
-      choke: TextEditingController(text: check.choke),
-      chokeType: check.chokeType,
-      tbg: TextEditingController(text: check.tbg),
-      icp: TextEditingController(text: check.icp),
-      csg: TextEditingController(text: check.csg),
-      currentGasAccum: TextEditingController(text: check.currentGasAccum),
-      salesGasRate: TextEditingController(text: check.salesGasRate),
-      gasStatic: TextEditingController(text: check.gasStatic),
-      gasDifferential: TextEditingController(text: check.gasDifferential),
-      gasTemp: TextEditingController(text: check.gasTemp),
+      choke: TextEditingController(text: selectedData.choke),
+      chokeType: chokeTypeForWell(selectedWell),
+      tbg: TextEditingController(text: selectedData.tbg),
+      icp: TextEditingController(text: selectedData.icp),
+      csg: TextEditingController(text: selectedData.csg),
+      currentGasAccum:
+          TextEditingController(text: selectedData.currentGasAccum),
+      salesGasRate: TextEditingController(text: selectedData.salesGasRate),
+      gasStatic: TextEditingController(text: selectedData.gasStatic),
+      gasDifferential:
+          TextEditingController(text: selectedData.gasDifferential),
+      gasTemp: TextEditingController(text: selectedData.gasTemp),
       waterSpecificGravity:
-          TextEditingController(text: check.waterSpecificGravity),
-      wellheadTemp: TextEditingController(text: check.wellheadTemp),
-      waterTemp: TextEditingController(text: check.waterTemp),
-      flareRate: TextEditingController(text: check.flareRate),
-      flarePilotTemp: TextEditingController(text: check.flarePilotTemp),
-      biocide: TextEditingController(text: check.biocide),
-      vruGasRate: TextEditingController(text: check.vruGasRate),
+          TextEditingController(text: selectedData.waterSpecificGravity),
+      wellheadTemp: TextEditingController(text: selectedData.wellheadTemp),
+      waterTemp: TextEditingController(text: selectedData.waterTemp),
+      flareRate: TextEditingController(text: selectedData.flareRate),
+      flarePilotTemp: TextEditingController(text: selectedData.flarePilotTemp),
+      biocide: TextEditingController(text: selectedData.biocide),
+      vruGasRate: TextEditingController(text: selectedData.vruGasRate),
       compressorInjection:
-          TextEditingController(text: check.compressorInjection),
-      vruSuction: TextEditingController(text: check.vruSuction),
-      vruDischarge: TextEditingController(text: check.vruDischarge),
-      waterTankGaugeEntries:
-          waterEntries.map(_GaugeEntryControllers.fromEntry).toList(),
-      oilTankGaugeEntries:
-          oilEntries.map(_GaugeEntryControllers.fromEntry).toList(),
-      waterHauled: TextEditingController(text: check.waterHauled),
-      oilHauled: TextEditingController(text: check.oilHauled),
-      waterPumped: TextEditingController(text: check.waterPumped),
-      oilPumped: TextEditingController(text: check.oilPumped),
-      sandRate: TextEditingController(text: check.sandRate),
-      notes: TextEditingController(text: check.notes),
+          TextEditingController(text: selectedData.compressorInjection),
+      vruSuction: TextEditingController(text: selectedData.vruSuction),
+      vruDischarge: TextEditingController(text: selectedData.vruDischarge),
+      waterTankGaugeEntries: selectedData.waterTankGaugeEntries
+          .map(_GaugeEntryControllers.fromEntry)
+          .toList(),
+      oilTankGaugeEntries: selectedData.oilTankGaugeEntries
+          .map(_GaugeEntryControllers.fromEntry)
+          .toList(),
+      waterHauled: TextEditingController(text: selectedData.waterHauled),
+      oilHauled: TextEditingController(text: selectedData.oilHauled),
+      waterPumped: TextEditingController(text: selectedData.waterPumped),
+      oilPumped: TextEditingController(text: selectedData.oilPumped),
+      sandRate: TextEditingController(text: selectedData.sandRate),
+      notes: TextEditingController(text: selectedData.notes),
+      wellDataByName: wellDataByName,
     );
   }
 
@@ -1154,16 +1246,15 @@ class _HourlyCheckControllers {
   final TextEditingController oilPumped;
   final TextEditingController sandRate;
   final TextEditingController notes;
+  final Map<String, ProductionWellCheckData> _wellDataByName;
 
-  ProductionHourlyCheck toCheck() {
+  ProductionWellCheckData _snapshotCurrentWellData() {
     final waterEntries = waterTankGaugeEntries
         .map((item) => item.entry(gaugeEntryType))
         .toList();
     final oilEntries =
         oilTankGaugeEntries.map((item) => item.entry(gaugeEntryType)).toList();
-    return ProductionHourlyCheck(
-      time: time,
-      well: well,
+    return ProductionWellCheckData(
       choke: choke.text.trim(),
       chokeType: chokeType,
       tbg: tbg.text.trim(),
@@ -1194,6 +1285,103 @@ class _HourlyCheckControllers {
       oilPumped: oilPumped.text.trim(),
       sandRate: sandRate.text.trim(),
       notes: notes.text.trim(),
+    );
+  }
+
+  void _loadWellData(ProductionWellCheckData data, String nextChokeType) {
+    choke.text = data.choke;
+    chokeType = nextChokeType;
+    tbg.text = data.tbg;
+    icp.text = data.icp;
+    csg.text = data.csg;
+    currentGasAccum.text = data.currentGasAccum;
+    salesGasRate.text = data.salesGasRate;
+    gasStatic.text = data.gasStatic;
+    gasDifferential.text = data.gasDifferential;
+    gasTemp.text = data.gasTemp;
+    waterSpecificGravity.text = data.waterSpecificGravity;
+    wellheadTemp.text = data.wellheadTemp;
+    waterTemp.text = data.waterTemp;
+    flareRate.text = data.flareRate;
+    flarePilotTemp.text = data.flarePilotTemp;
+    biocide.text = data.biocide;
+    vruGasRate.text = data.vruGasRate;
+    compressorInjection.text = data.compressorInjection;
+    vruSuction.text = data.vruSuction;
+    vruDischarge.text = data.vruDischarge;
+    waterHauled.text = data.waterHauled;
+    oilHauled.text = data.oilHauled;
+    waterPumped.text = data.waterPumped;
+    oilPumped.text = data.oilPumped;
+    sandRate.text = data.sandRate;
+    notes.text = data.notes;
+
+    for (var i = 0; i < waterTankGaugeEntries.length; i++) {
+      final entry = i < data.waterTankGaugeEntries.length
+          ? data.waterTankGaugeEntries[i]
+          : const ProductionGaugeEntry();
+      waterTankGaugeEntries[i].inches.text = entry.inches;
+      waterTankGaugeEntries[i].feet.text = entry.feet;
+      waterTankGaugeEntries[i].inchesPart.text = entry.inchesPart;
+      waterTankGaugeEntries[i].decimalFeet.text = entry.decimalFeet;
+    }
+
+    for (var i = 0; i < oilTankGaugeEntries.length; i++) {
+      final entry = i < data.oilTankGaugeEntries.length
+          ? data.oilTankGaugeEntries[i]
+          : const ProductionGaugeEntry();
+      oilTankGaugeEntries[i].inches.text = entry.inches;
+      oilTankGaugeEntries[i].feet.text = entry.feet;
+      oilTankGaugeEntries[i].inchesPart.text = entry.inchesPart;
+      oilTankGaugeEntries[i].decimalFeet.text = entry.decimalFeet;
+    }
+  }
+
+  void selectWell(String nextWell, String nextChokeType) {
+    _wellDataByName[well] = _snapshotCurrentWellData();
+    final nextData = _wellDataByName[nextWell] ??
+        ProductionWellCheckData(chokeType: nextChokeType);
+    well = nextWell;
+    _loadWellData(nextData, nextChokeType);
+  }
+
+  ProductionHourlyCheck toCheck() {
+    _wellDataByName[well] = _snapshotCurrentWellData();
+    final current = _wellDataByName[well] ?? const ProductionWellCheckData();
+    return ProductionHourlyCheck(
+      time: time,
+      well: well,
+      wellChecks: Map<String, ProductionWellCheckData>.from(_wellDataByName),
+      choke: current.choke,
+      chokeType: current.chokeType,
+      tbg: current.tbg,
+      icp: current.icp,
+      csg: current.csg,
+      currentGasAccum: current.currentGasAccum,
+      salesGasRate: current.salesGasRate,
+      gasStatic: current.gasStatic,
+      gasDifferential: current.gasDifferential,
+      gasTemp: current.gasTemp,
+      waterSpecificGravity: current.waterSpecificGravity,
+      wellheadTemp: current.wellheadTemp,
+      waterTemp: current.waterTemp,
+      flareRate: current.flareRate,
+      flarePilotTemp: current.flarePilotTemp,
+      biocide: current.biocide,
+      vruGasRate: current.vruGasRate,
+      compressorInjection: current.compressorInjection,
+      vruSuction: current.vruSuction,
+      vruDischarge: current.vruDischarge,
+      waterTankGauges: current.waterTankGauges,
+      oilTankGauges: current.oilTankGauges,
+      waterTankGaugeEntries: current.waterTankGaugeEntries,
+      oilTankGaugeEntries: current.oilTankGaugeEntries,
+      waterHauled: current.waterHauled,
+      oilHauled: current.oilHauled,
+      waterPumped: current.waterPumped,
+      oilPumped: current.oilPumped,
+      sandRate: current.sandRate,
+      notes: current.notes,
     );
   }
 

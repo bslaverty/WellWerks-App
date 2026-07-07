@@ -470,10 +470,213 @@ class ProductionTank {
   }
 }
 
+class ProductionWellCheckData {
+  const ProductionWellCheckData({
+    this.choke = '',
+    this.chokeType = 'ADJ',
+    this.tbg = '',
+    this.icp = '',
+    this.csg = '',
+    this.currentGasAccum = '',
+    this.salesGasRate = '',
+    this.gasStatic = '',
+    this.gasDifferential = '',
+    this.gasTemp = '',
+    this.waterSpecificGravity = '',
+    this.wellheadTemp = '',
+    this.waterTemp = '',
+    this.flareRate = '',
+    this.flarePilotTemp = '',
+    this.biocide = '',
+    this.vruGasRate = '',
+    this.compressorInjection = '',
+    this.vruSuction = '',
+    this.vruDischarge = '',
+    this.waterTankGauges = const [],
+    this.oilTankGauges = const [],
+    this.waterTankGaugeEntries = const [],
+    this.oilTankGaugeEntries = const [],
+    this.waterHauled = '',
+    this.oilHauled = '',
+    this.waterPumped = '',
+    this.oilPumped = '',
+    this.sandRate = '',
+    this.notes = '',
+  });
+
+  factory ProductionWellCheckData.fromJson(Map<String, dynamic> json) {
+    final waterGauges = ((json['waterTankGauges'] as List?) ?? const [])
+        .map((item) => item?.toString() ?? '')
+        .toList();
+    final oilGauges = ((json['oilTankGauges'] as List?) ?? const [])
+        .map((item) => item?.toString() ?? '')
+        .toList();
+
+    List<ProductionGaugeEntry> parseGaugeEntries(
+      dynamic entries,
+      List<String> fallback,
+    ) {
+      if (entries is List) {
+        return entries
+            .map((item) => item is Map
+                ? ProductionGaugeEntry.fromJson(
+                    Map<String, dynamic>.from(item),
+                  )
+                : const ProductionGaugeEntry())
+            .toList();
+      }
+      return fallback
+          .map((value) => ProductionGaugeEntry.fromLegacyGauge(value))
+          .toList();
+    }
+
+    return ProductionWellCheckData(
+      choke: json['choke'] as String? ?? '',
+      chokeType: ProductionShiftHeader._normalizeChokeType(
+        json['chokeType'] as String?,
+      ),
+      tbg: json['tbg'] as String? ?? '',
+      icp: json['icp'] as String? ?? '',
+      csg: json['csg'] as String? ?? '',
+      currentGasAccum: json['currentGasAccum'] as String? ?? '',
+      salesGasRate: json['salesGasRate'] as String? ?? '',
+      gasStatic: json['gasStatic'] as String? ?? '',
+      gasDifferential: json['gasDifferential'] as String? ?? '',
+      gasTemp: json['gasTemp'] as String? ?? '',
+      waterSpecificGravity: json['waterSpecificGravity'] as String? ?? '',
+      wellheadTemp: json['wellheadTemp'] as String? ?? '',
+      waterTemp: json['waterTemp'] as String? ?? '',
+      flareRate: json['flareRate'] as String? ?? '',
+      flarePilotTemp: json['flarePilotTemp'] as String? ?? '',
+      biocide: json['biocide'] as String? ?? '',
+      vruGasRate: json['vruGasRate'] as String? ?? '',
+      compressorInjection: json['compressorInjection'] as String? ?? '',
+      vruSuction: json['vruSuction'] as String? ?? '',
+      vruDischarge: json['vruDischarge'] as String? ?? '',
+      waterTankGauges: waterGauges,
+      oilTankGauges: oilGauges,
+      waterTankGaugeEntries:
+          parseGaugeEntries(json['waterTankGaugeEntries'], waterGauges),
+      oilTankGaugeEntries:
+          parseGaugeEntries(json['oilTankGaugeEntries'], oilGauges),
+      waterHauled: json['waterHauled'] as String? ?? '',
+      oilHauled: json['oilHauled'] as String? ?? '',
+      waterPumped: json['waterPumped'] as String? ?? '',
+      oilPumped: json['oilPumped'] as String? ?? '',
+      sandRate: json['sandRate'] as String? ?? '',
+      notes: json['notes'] as String? ?? '',
+    );
+  }
+
+  factory ProductionWellCheckData.fromHourlyCheck(ProductionHourlyCheck check) {
+    return ProductionWellCheckData(
+      choke: check.choke,
+      chokeType: check.chokeType,
+      tbg: check.tbg,
+      icp: check.icp,
+      csg: check.csg,
+      currentGasAccum: check.currentGasAccum,
+      salesGasRate: check.salesGasRate,
+      gasStatic: check.gasStatic,
+      gasDifferential: check.gasDifferential,
+      gasTemp: check.gasTemp,
+      waterSpecificGravity: check.waterSpecificGravity,
+      wellheadTemp: check.wellheadTemp,
+      waterTemp: check.waterTemp,
+      flareRate: check.flareRate,
+      flarePilotTemp: check.flarePilotTemp,
+      biocide: check.biocide,
+      vruGasRate: check.vruGasRate,
+      compressorInjection: check.compressorInjection,
+      vruSuction: check.vruSuction,
+      vruDischarge: check.vruDischarge,
+      waterTankGauges: check.waterTankGauges,
+      oilTankGauges: check.oilTankGauges,
+      waterTankGaugeEntries: check.waterTankGaugeEntries,
+      oilTankGaugeEntries: check.oilTankGaugeEntries,
+      waterHauled: check.waterHauled,
+      oilHauled: check.oilHauled,
+      waterPumped: check.waterPumped,
+      oilPumped: check.oilPumped,
+      sandRate: check.sandRate,
+      notes: check.notes,
+    );
+  }
+
+  final String choke;
+  final String chokeType;
+  final String tbg;
+  final String icp;
+  final String csg;
+  final String currentGasAccum;
+  final String salesGasRate;
+  final String gasStatic;
+  final String gasDifferential;
+  final String gasTemp;
+  final String waterSpecificGravity;
+  final String wellheadTemp;
+  final String waterTemp;
+  final String flareRate;
+  final String flarePilotTemp;
+  final String biocide;
+  final String vruGasRate;
+  final String compressorInjection;
+  final String vruSuction;
+  final String vruDischarge;
+  final List<String> waterTankGauges;
+  final List<String> oilTankGauges;
+  final List<ProductionGaugeEntry> waterTankGaugeEntries;
+  final List<ProductionGaugeEntry> oilTankGaugeEntries;
+  final String waterHauled;
+  final String oilHauled;
+  final String waterPumped;
+  final String oilPumped;
+  final String sandRate;
+  final String notes;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'choke': choke,
+      'chokeType': chokeType,
+      'tbg': tbg,
+      'icp': icp,
+      'csg': csg,
+      'currentGasAccum': currentGasAccum,
+      'salesGasRate': salesGasRate,
+      'gasStatic': gasStatic,
+      'gasDifferential': gasDifferential,
+      'gasTemp': gasTemp,
+      'waterSpecificGravity': waterSpecificGravity,
+      'wellheadTemp': wellheadTemp,
+      'waterTemp': waterTemp,
+      'flareRate': flareRate,
+      'flarePilotTemp': flarePilotTemp,
+      'biocide': biocide,
+      'vruGasRate': vruGasRate,
+      'compressorInjection': compressorInjection,
+      'vruSuction': vruSuction,
+      'vruDischarge': vruDischarge,
+      'waterTankGauges': waterTankGauges,
+      'oilTankGauges': oilTankGauges,
+      'waterTankGaugeEntries':
+          waterTankGaugeEntries.map((item) => item.toJson()).toList(),
+      'oilTankGaugeEntries':
+          oilTankGaugeEntries.map((item) => item.toJson()).toList(),
+      'waterHauled': waterHauled,
+      'oilHauled': oilHauled,
+      'waterPumped': waterPumped,
+      'oilPumped': oilPumped,
+      'sandRate': sandRate,
+      'notes': notes,
+    };
+  }
+}
+
 class ProductionHourlyCheck {
   const ProductionHourlyCheck({
     required this.time,
     this.well = '',
+    this.wellChecks = const {},
     this.choke = '',
     this.chokeType = 'ADJ',
     this.tbg = '',
@@ -535,6 +738,16 @@ class ProductionHourlyCheck {
     return ProductionHourlyCheck(
       time: json['time'] as String? ?? '',
       well: json['well'] as String? ?? '',
+      wellChecks: ((json['wellChecks'] as Map?) ?? const {}).map(
+        (key, value) => MapEntry(
+          key.toString(),
+          value is Map
+              ? ProductionWellCheckData.fromJson(
+                  Map<String, dynamic>.from(value),
+                )
+              : const ProductionWellCheckData(),
+        ),
+      ),
       choke: json['choke'] as String? ?? '',
       chokeType: ProductionShiftHeader._normalizeChokeType(
         json['chokeType'] as String?,
@@ -574,6 +787,7 @@ class ProductionHourlyCheck {
 
   final String time;
   final String well;
+  final Map<String, ProductionWellCheckData> wellChecks;
   final String choke;
   final String chokeType;
   final String tbg;
@@ -608,6 +822,7 @@ class ProductionHourlyCheck {
   ProductionHourlyCheck copyWith({
     String? time,
     String? well,
+    Map<String, ProductionWellCheckData>? wellChecks,
     String? choke,
     String? chokeType,
     String? tbg,
@@ -642,6 +857,7 @@ class ProductionHourlyCheck {
     return ProductionHourlyCheck(
       time: time ?? this.time,
       well: well ?? this.well,
+      wellChecks: wellChecks ?? this.wellChecks,
       choke: choke ?? this.choke,
       chokeType: ProductionShiftHeader._normalizeChokeType(
         chokeType ?? this.chokeType,
@@ -682,6 +898,9 @@ class ProductionHourlyCheck {
     return {
       'time': time,
       'well': well,
+      'wellChecks': wellChecks.map(
+        (key, value) => MapEntry(key, value.toJson()),
+      ),
       'choke': choke,
       'chokeType': chokeType,
       'tbg': tbg,
