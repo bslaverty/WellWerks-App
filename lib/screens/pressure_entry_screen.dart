@@ -21,6 +21,7 @@ class PressureEntryScreen extends StatefulWidget {
 
 class _PressureEntryScreenState extends State<PressureEntryScreen> {
   static const _legacyInventoryKey = 'wellwerks_quick_round_start_inventory_v1';
+  static const double _missingCalcValue = -1;
 
   final _service = ProductionShiftService();
   final _jobStorage = JobStorageService();
@@ -316,7 +317,22 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     return _gaugeEntryHasValue(_shift.inventory.oilTanks.first.gaugeEntry);
   }
 
-  double _clampNonNegative(double value) => value < 0 ? 0 : value;
+  bool _isMissingCalc(double value) => value < 0;
+
+  ProductionReportRow? _latestSavedBeforeWith(
+    int index,
+    String well,
+    bool Function(ProductionReportRow row) predicate,
+  ) {
+    final previous = _shift.savedRows
+        .where(
+          (row) => row.well == well && row.hourIndex < index && predicate(row),
+        )
+        .toList()
+      ..sort((a, b) => a.hourIndex.compareTo(b.hourIndex));
+    if (previous.isEmpty) return null;
+    return previous.last;
+  }
 
   bool _canUseWaterBaseline(int index, String well) {
     if (index == 0) {
@@ -677,7 +693,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   double _currentWaterBblForData(ProductionWellCheckData data) {
     if (!_hasCompleteDataGaugeEntries(data.waterTankGaugeEntries)) {
-      return 0;
+      return _missingCalcValue;
     }
     return ProductionMath.totalTankBbl(
       _shift.inventory.waterTanks,
@@ -689,7 +705,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   double _currentOilBblForData(ProductionWellCheckData data) {
     if (!_hasCompleteDataGaugeEntries(data.oilTankGaugeEntries)) {
-      return 0;
+      return _missingCalcValue;
     }
     return ProductionMath.totalTankBbl(
       _shift.inventory.oilTanks,
@@ -703,45 +719,61 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       int index, ProductionWellCheckData data, String well) {
     if (!_useGasAccumulator) {
       if (data.salesGasRate.trim().isEmpty) {
-        return 0;
+        return _missingCalcValue;
       }
       final gasRate = _displayGasToBase(data.salesGasRate);
       return gasRate / 24;
     }
-    final previous = _latestSavedBefore(index, well)?.currentGasAccum ??
+    final previous = _latestSavedBeforeWith(
+          index,
+          well,
+          (row) => !_isMissingCalc(row.currentGasAccum),
+        )?.currentGasAccum ??
         (index == 0 &&
                 _useStartingReadings &&
                 _shift.inventory.startingGasAccum.trim().isNotEmpty
             ? _startingGasAccum()
             : double.nan);
     if (previous.isNaN || data.currentGasAccum.trim().isEmpty) {
-      return 0;
+      return _missingCalcValue;
+    }
+    final current = _n(data.currentGasAccum);
+    if (current < previous) {
+      return _missingCalcValue;
     }
     return ProductionMath.hourlyGas(
-      currentGasAccum: _n(data.currentGasAccum),
+      currentGasAccum: current,
       previousGasAccum: previous,
     );
   }
 
   double _gas24HourForData(
       int index, ProductionWellCheckData data, String well) {
+    final hourly = _hourlyGasForData(index, data, well);
+    if (_isMissingCalc(hourly)) {
+      return _missingCalcValue;
+    }
     if (!_useGasAccumulator) {
       return _displayGasToBase(data.salesGasRate);
     }
-    return ProductionMath.gas24Hour(_hourlyGasForData(index, data, well));
+    return ProductionMath.gas24Hour(hourly);
   }
 
   double _waterProductionForData(
       int index, ProductionWellCheckData data, String well) {
-    final previous = _latestSavedBefore(index, well)?.currentWaterBbl ??
+    final previous = _latestSavedBeforeWith(
+          index,
+          well,
+          (row) => !_isMissingCalc(row.currentWaterBbl),
+        )?.currentWaterBbl ??
         (index == 0 && _useStartingReadings && _hasStartingWaterReading()
             ? _startingWaterBbl()
             : double.nan);
     final current = _currentWaterBblForData(data);
-    if (previous.isNaN || current == 0) {
-      return 0;
+    if (previous.isNaN || _isMissingCalc(current)) {
+      return _missingCalcValue;
     }
-    return ProductionMath.waterProduction(
+    final calculated = ProductionMath.waterProduction(
       currentWaterBbl: current,
       previousWaterBbl: previous,
       waterHauled: _n(data.waterHauled),
@@ -749,20 +781,25 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       preRoundWaterHauled: _n(_shift.inventory.waterHauledBeforeRound),
       preRoundWaterPumped: _n(_shift.inventory.waterPumpedBeforeRound),
       isFirstHour: index == 0,
-    ).clamp(0, double.infinity).toDouble();
+    );
+    return calculated < 0 ? _missingCalcValue : calculated;
   }
 
   double _oilProductionForData(
       int index, ProductionWellCheckData data, String well) {
-    final previous = _latestSavedBefore(index, well)?.currentOilBbl ??
+    final previous = _latestSavedBeforeWith(
+          index,
+          well,
+          (row) => !_isMissingCalc(row.currentOilBbl),
+        )?.currentOilBbl ??
         (index == 0 && _useStartingReadings && _hasStartingOilReading()
             ? _startingOilBbl()
             : double.nan);
     final current = _currentOilBblForData(data);
-    if (previous.isNaN || current == 0) {
-      return 0;
+    if (previous.isNaN || _isMissingCalc(current)) {
+      return _missingCalcValue;
     }
-    return ProductionMath.oilProduction(
+    final calculated = ProductionMath.oilProduction(
       currentOilBbl: current,
       previousOilBbl: previous,
       oilHauled: _n(data.oilHauled),
@@ -770,7 +807,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       preRoundOilHauled: _n(_shift.inventory.oilHauledBeforeRound),
       preRoundOilPumped: _n(_shift.inventory.oilPumpedBeforeRound),
       isFirstHour: index == 0,
-    ).clamp(0, double.infinity).toDouble();
+    );
+    return calculated < 0 ? _missingCalcValue : calculated;
   }
 
   ProductionReportRow _buildRowForWell(
@@ -778,15 +816,25 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     String well,
     ProductionWellCheckData data,
   ) {
-    final waterProduction = _clampNonNegative(
-      _waterProductionForData(hourIndex, data, well),
-    );
-    final oilProduction = _clampNonNegative(
-      _oilProductionForData(hourIndex, data, well),
-    );
-    final gas24HourRate = _clampNonNegative(
-      _gas24HourForData(hourIndex, data, well),
-    );
+    final waterProduction = _waterProductionForData(hourIndex, data, well);
+    final oilProduction = _oilProductionForData(hourIndex, data, well);
+    final gas24HourRate = _gas24HourForData(hourIndex, data, well);
+    final hourlyGas = _hourlyGasForData(hourIndex, data, well);
+    final currentWaterBbl = _currentWaterBblForData(data);
+    final currentOilBbl = _currentOilBblForData(data);
+    final currentGasAccum = _useGasAccumulator
+        ? (data.currentGasAccum.trim().isEmpty
+            ? _missingCalcValue
+            : _n(data.currentGasAccum))
+        : (_latestSavedBeforeWith(
+              hourIndex,
+              well,
+              (row) => !_isMissingCalc(row.currentGasAccum),
+            )?.currentGasAccum ??
+            (_useStartingReadings &&
+                    _shift.inventory.startingGasAccum.trim().isNotEmpty
+                ? _startingGasAccum()
+                : _missingCalcValue));
     return ProductionReportRow(
       hourIndex: hourIndex,
       time: _controllers[hourIndex].time,
@@ -798,7 +846,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       csg: data.csg.trim(),
       waterProduction: waterProduction,
       oilProduction: oilProduction,
-      hourlyGas: _hourlyGasForData(hourIndex, data, well),
+      hourlyGas: hourlyGas,
       gas24HourRate: gas24HourRate,
       salesGasRate: gas24HourRate,
       gasStatic: data.gasStatic.trim(),
@@ -819,12 +867,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           _gaugeText(_shift.inventory.waterTanks, data.waterTankGaugeEntries),
       oilGaugeText:
           _gaugeText(_shift.inventory.oilTanks, data.oilTankGaugeEntries),
-      currentWaterBbl: _currentWaterBblForData(data),
-      currentOilBbl: _currentOilBblForData(data),
-      currentGasAccum: _useGasAccumulator
-          ? _n(data.currentGasAccum)
-          : (_latestSavedBefore(hourIndex, well)?.currentGasAccum ??
-              _startingGasAccum()),
+      currentWaterBbl: currentWaterBbl,
+      currentOilBbl: currentOilBbl,
+      currentGasAccum: currentGasAccum,
       waterHauled: _n(data.waterHauled),
       oilHauled: _n(data.oilHauled),
       waterPumped: _n(data.waterPumped),
@@ -862,7 +907,13 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       ..sort((a, b) {
         final hourCompare = a.hourIndex.compareTo(b.hourIndex);
         if (hourCompare != 0) return hourCompare;
-        return a.well.compareTo(b.well);
+        final wellOrder = _activeWells;
+        final ai = wellOrder.indexOf(a.well);
+        final bi = wellOrder.indexOf(b.well);
+        if (ai == -1 && bi == -1) return a.well.compareTo(b.well);
+        if (ai == -1) return 1;
+        if (bi == -1) return -1;
+        return ai.compareTo(bi);
       });
 
     _shift = _shift.copyWith(

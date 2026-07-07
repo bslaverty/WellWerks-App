@@ -29,6 +29,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   JobSetup? _activeJob;
   ReportLayoutProfile _layout = ReportProfileService().defaultProfile();
   bool _loading = true;
+  int _selectedWellIndex = 0;
 
   @override
   void initState() {
@@ -57,13 +58,57 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
 
   List<ProductionReportRow> get _activeJobRows {
     final activeJob = _activeJob;
-    if (activeJob == null) {
-      return _shift.savedRows;
+    final rows = activeJob == null
+        ? List<ProductionReportRow>.from(_shift.savedRows)
+        : (_shift.activeJobId != activeJob.id
+            ? <ProductionReportRow>[]
+            : List<ProductionReportRow>.from(_shift.savedRows));
+    final order = _shift.header.wells;
+    rows.sort((a, b) {
+      final hourCompare = a.hourIndex.compareTo(b.hourIndex);
+      if (hourCompare != 0) return hourCompare;
+      final ai = order.indexOf(a.well);
+      final bi = order.indexOf(b.well);
+      if (ai == -1 && bi == -1) return a.well.compareTo(b.well);
+      if (ai == -1) return 1;
+      if (bi == -1) return -1;
+      return ai.compareTo(bi);
+    });
+    return rows;
+  }
+
+  List<String> get _wellOrder {
+    final ordered = <String>[];
+    for (final well in _shift.header.wells) {
+      if (!ordered.contains(well)) {
+        ordered.add(well);
+      }
     }
-    if (_shift.activeJobId != activeJob.id) {
+    for (final row in _activeJobRows) {
+      if (!ordered.contains(row.well)) {
+        ordered.add(row.well);
+      }
+    }
+    return ordered;
+  }
+
+  String? get _selectedWell {
+    final wells = _wellOrder;
+    if (wells.isEmpty) return null;
+    final clamped = _selectedWellIndex.clamp(0, wells.length - 1);
+    return wells[clamped];
+  }
+
+  List<ProductionReportRow> get _rowsForSelectedWell {
+    final selectedWell = _selectedWell;
+    if (selectedWell == null) {
       return const [];
     }
-    return _shift.savedRows;
+    final rows = _activeJobRows
+        .where((row) => row.well == selectedWell)
+        .toList()
+      ..sort((a, b) => a.hourIndex.compareTo(b.hourIndex));
+    return rows;
   }
 
   bool get _hasActiveJob =>
@@ -79,6 +124,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   }
 
   String _fmt(double value) {
+    if (value < 0) return '--';
     final rounded = value.abs() < 0.01 ? 0 : value;
     return rounded % 1 == 0
         ? rounded.toStringAsFixed(0)
@@ -90,7 +136,13 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   }
 
   String _gasString(String value) {
-    final parsed = double.tryParse(value.trim()) ?? 0;
+    if (value.trim().isEmpty) {
+      return '--';
+    }
+    final parsed = double.tryParse(value.trim()) ?? -1;
+    if (parsed < 0) {
+      return '--';
+    }
     return _fmt(_baseGasToDisplay(parsed));
   }
 
@@ -284,7 +336,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   DataCell _cell(String value) => DataCell(Text(value.isEmpty ? '-' : value));
 
   Widget _buildTable() {
-    final rows = _activeJobRows;
+    final rows = _rowsForSelectedWell;
     if (rows.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(16),
@@ -319,6 +371,67 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
               ],
             ),
         ],
+      ),
+    );
+  }
+
+  void _goToPreviousWell() {
+    if (_selectedWellIndex <= 0) {
+      return;
+    }
+    setState(() => _selectedWellIndex -= 1);
+  }
+
+  void _goToNextWell() {
+    final wells = _wellOrder;
+    if (_selectedWellIndex >= wells.length - 1) {
+      return;
+    }
+    setState(() => _selectedWellIndex += 1);
+  }
+
+  Widget _wellNavigationControls() {
+    final wells = _wellOrder;
+    if (wells.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final selectedWell = _selectedWell ?? wells.first;
+    final canGoPrevious = _selectedWellIndex > 0;
+    final canGoNext = _selectedWellIndex < wells.length - 1;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: canGoPrevious ? _goToPreviousWell : null,
+                icon: const Icon(Icons.chevron_left),
+                label: const Text('Previous Well'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                selectedWell,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFFCDA56A),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: canGoNext ? _goToNextWell : null,
+                icon: const Icon(Icons.chevron_right),
+                label: const Text('Next Well'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -457,6 +570,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         padding: const EdgeInsets.all(18),
         children: [
           _activeJobBanner(),
+          _wellNavigationControls(),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(14),
