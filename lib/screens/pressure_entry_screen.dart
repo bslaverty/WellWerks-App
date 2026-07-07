@@ -291,6 +291,109 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   bool get _useGasAccumulator =>
       _shift.inventory.gasCalculationMethod == 'accumulator';
 
+  bool get _useStartingReadings => _shift.inventory.useStartingReadings;
+
+  bool _hasCompleteControllerGaugeEntries(
+      List<_GaugeEntryControllers> entries) {
+    return entries.isNotEmpty &&
+        entries.every(
+          (item) =>
+              _gaugeEntryHasValue(item.entry(_shift.inventory.gaugeEntryType)),
+        );
+  }
+
+  bool _hasCompleteDataGaugeEntries(List<ProductionGaugeEntry> entries) {
+    return entries.isNotEmpty && entries.every(_gaugeEntryHasValue);
+  }
+
+  bool _hasStartingWaterReading() {
+    if (_shift.inventory.waterTanks.isEmpty) return false;
+    return _gaugeEntryHasValue(_shift.inventory.waterTanks.first.gaugeEntry);
+  }
+
+  bool _hasStartingOilReading() {
+    if (_shift.inventory.oilTanks.isEmpty) return false;
+    return _gaugeEntryHasValue(_shift.inventory.oilTanks.first.gaugeEntry);
+  }
+
+  double _clampNonNegative(double value) => value < 0 ? 0 : value;
+
+  bool _canUseWaterBaseline(int index, String well) {
+    if (index == 0) {
+      return _useStartingReadings && _hasStartingWaterReading();
+    }
+    return _latestSavedBefore(index, well) != null;
+  }
+
+  bool _canUseOilBaseline(int index, String well) {
+    if (index == 0) {
+      return _useStartingReadings && _hasStartingOilReading();
+    }
+    return _latestSavedBefore(index, well) != null;
+  }
+
+  bool _canUseGasBaseline(int index, String well) {
+    if (!_useGasAccumulator) {
+      return _controllers[index].salesGasRate.text.trim().isNotEmpty;
+    }
+    if (_controllers[index].currentGasAccum.text.trim().isEmpty) {
+      return false;
+    }
+    if (index == 0) {
+      return _useStartingReadings &&
+          _shift.inventory.startingGasAccum.trim().isNotEmpty;
+    }
+    return _latestSavedBefore(index, well) != null;
+  }
+
+  void _setUseStartingReadings(bool enabled) {
+    setState(() {
+      _shift = _shift.copyWith(
+        inventory: _shift.inventory.copyWith(useStartingReadings: enabled),
+      );
+    });
+    _service.saveActiveShift(_shift);
+  }
+
+  void _setStartingGasAccum(String value) {
+    setState(() {
+      _shift = _shift.copyWith(
+        inventory: _shift.inventory.copyWith(startingGasAccum: value),
+      );
+    });
+    _service.saveActiveShift(_shift);
+  }
+
+  void _setStartingWaterTank(String value) {
+    if (_shift.inventory.waterTanks.isEmpty) return;
+    final tanks = List<ProductionTank>.from(_shift.inventory.waterTanks);
+    tanks[0] = tanks[0].copyWith(
+      gauge: value,
+      gaugeEntry: ProductionGaugeEntry.fromLegacyGauge(value),
+    );
+    setState(() {
+      _shift = _shift.copyWith(
+        inventory: _shift.inventory.copyWith(waterTanks: tanks),
+      );
+    });
+    _service.saveActiveShift(_shift);
+  }
+
+  void _setStartingOilTank(String value) {
+    if (_shift.inventory.oilTanks.isEmpty) return;
+    final tanks = List<ProductionTank>.from(_shift.inventory.oilTanks);
+    tanks[0] = tanks[0].copyWith(
+      gauge: value,
+      gaugeEntry: ProductionGaugeEntry.fromLegacyGauge(value),
+    );
+    setState(() {
+      _shift = _shift.copyWith(
+        inventory: _shift.inventory.copyWith(oilTanks: tanks),
+      );
+    });
+    _service.saveActiveShift(_shift);
+  }
+
   String get _gasUnitLabel =>
       _shift.inventory.gasUnit == 'mmcfd' ? 'mmcf/d' : 'mcf/d';
 
@@ -430,6 +533,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   double _currentWaterBbl(int index) {
     final controller = _controllers[index];
+    if (!_hasCompleteControllerGaugeEntries(controller.waterTankGaugeEntries)) {
+      return double.nan;
+    }
     return ProductionMath.totalTankBbl(
       _shift.inventory.waterTanks,
       controller.waterTankGaugeEntries
@@ -441,6 +547,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   double _currentOilBbl(int index) {
     final controller = _controllers[index];
+    if (!_hasCompleteControllerGaugeEntries(controller.oilTankGaugeEntries)) {
+      return double.nan;
+    }
     return ProductionMath.totalTankBbl(
       _shift.inventory.oilTanks,
       controller.oilTankGaugeEntries
@@ -452,64 +561,100 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   double _previousWaterBbl(int index) {
     final previous = _latestSavedBefore(index, _controllers[index].well);
-    if (previous == null) return _startingWaterBbl();
+    if (previous == null) {
+      if (_canUseWaterBaseline(index, _controllers[index].well)) {
+        return _startingWaterBbl();
+      }
+      return double.nan;
+    }
     return previous.currentWaterBbl;
   }
 
   double _previousOilBbl(int index) {
     final previous = _latestSavedBefore(index, _controllers[index].well);
-    if (previous == null) return _startingOilBbl();
+    if (previous == null) {
+      if (_canUseOilBaseline(index, _controllers[index].well)) {
+        return _startingOilBbl();
+      }
+      return double.nan;
+    }
     return previous.currentOilBbl;
   }
 
   double _previousGasAccum(int index) {
     final previous = _latestSavedBefore(index, _controllers[index].well);
-    if (previous == null) return _startingGasAccum();
+    if (previous == null) {
+      if (_canUseGasBaseline(index, _controllers[index].well)) {
+        return _startingGasAccum();
+      }
+      return double.nan;
+    }
     return previous.currentGasAccum;
   }
 
   double _hourlyGas(int index) {
     if (!_useGasAccumulator) {
+      if (_controllers[index].salesGasRate.text.trim().isEmpty) {
+        return double.nan;
+      }
       final gasRate = _displayGasToBase(_controllers[index].salesGasRate.text);
       return gasRate / 24;
     }
+    final previous = _previousGasAccum(index);
+    if (previous.isNaN) {
+      return double.nan;
+    }
     return ProductionMath.hourlyGas(
       currentGasAccum: _n(_controllers[index].currentGasAccum.text),
-      previousGasAccum: _previousGasAccum(index),
+      previousGasAccum: previous,
     );
   }
 
   double _gas24Hour(int index) {
+    final hourly = _hourlyGas(index);
+    if (hourly.isNaN) {
+      return double.nan;
+    }
     if (!_useGasAccumulator) {
       return _displayGasToBase(_controllers[index].salesGasRate.text);
     }
-    return ProductionMath.gas24Hour(_hourlyGas(index));
+    return ProductionMath.gas24Hour(hourly);
   }
 
   double _waterProduction(int index) {
     final check = _controllers[index];
+    final current = _currentWaterBbl(index);
+    final previous = _previousWaterBbl(index);
+    if (current.isNaN || previous.isNaN) {
+      return double.nan;
+    }
     return ProductionMath.waterProduction(
-      currentWaterBbl: _currentWaterBbl(index),
-      previousWaterBbl: _previousWaterBbl(index),
+      currentWaterBbl: current,
+      previousWaterBbl: previous,
       waterHauled: _n(check.waterHauled.text),
       waterPumped: _n(check.waterPumped.text),
       preRoundWaterHauled: _n(_shift.inventory.waterHauledBeforeRound),
       preRoundWaterPumped: _n(_shift.inventory.waterPumpedBeforeRound),
       isFirstHour: index == 0,
-    );
+    ).clamp(0, double.infinity).toDouble();
   }
 
   double _oilProduction(int index) {
     final check = _controllers[index];
+    final current = _currentOilBbl(index);
+    final previous = _previousOilBbl(index);
+    if (current.isNaN || previous.isNaN) {
+      return double.nan;
+    }
     return ProductionMath.oilProduction(
-      currentOilBbl: _currentOilBbl(index),
-      previousOilBbl: _previousOilBbl(index),
+      currentOilBbl: current,
+      previousOilBbl: previous,
       oilHauled: _n(check.oilHauled.text),
       oilPumped: _n(check.oilPumped.text),
       preRoundOilHauled: _n(_shift.inventory.oilHauledBeforeRound),
       preRoundOilPumped: _n(_shift.inventory.oilPumpedBeforeRound),
       isFirstHour: index == 0,
-    );
+    ).clamp(0, double.infinity).toDouble();
   }
 
   String _gaugeText(
@@ -531,6 +676,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   double _currentWaterBblForData(ProductionWellCheckData data) {
+    if (!_hasCompleteDataGaugeEntries(data.waterTankGaugeEntries)) {
+      return 0;
+    }
     return ProductionMath.totalTankBbl(
       _shift.inventory.waterTanks,
       data.waterTankGaugeEntries
@@ -540,6 +688,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   double _currentOilBblForData(ProductionWellCheckData data) {
+    if (!_hasCompleteDataGaugeEntries(data.oilTankGaugeEntries)) {
+      return 0;
+    }
     return ProductionMath.totalTankBbl(
       _shift.inventory.oilTanks,
       data.oilTankGaugeEntries
@@ -551,13 +702,24 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   double _hourlyGasForData(
       int index, ProductionWellCheckData data, String well) {
     if (!_useGasAccumulator) {
+      if (data.salesGasRate.trim().isEmpty) {
+        return 0;
+      }
       final gasRate = _displayGasToBase(data.salesGasRate);
       return gasRate / 24;
     }
+    final previous = _latestSavedBefore(index, well)?.currentGasAccum ??
+        (index == 0 &&
+                _useStartingReadings &&
+                _shift.inventory.startingGasAccum.trim().isNotEmpty
+            ? _startingGasAccum()
+            : double.nan);
+    if (previous.isNaN || data.currentGasAccum.trim().isEmpty) {
+      return 0;
+    }
     return ProductionMath.hourlyGas(
       currentGasAccum: _n(data.currentGasAccum),
-      previousGasAccum: _latestSavedBefore(index, well)?.currentGasAccum ??
-          _startingGasAccum(),
+      previousGasAccum: previous,
     );
   }
 
@@ -571,30 +733,44 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   double _waterProductionForData(
       int index, ProductionWellCheckData data, String well) {
+    final previous = _latestSavedBefore(index, well)?.currentWaterBbl ??
+        (index == 0 && _useStartingReadings && _hasStartingWaterReading()
+            ? _startingWaterBbl()
+            : double.nan);
+    final current = _currentWaterBblForData(data);
+    if (previous.isNaN || current == 0) {
+      return 0;
+    }
     return ProductionMath.waterProduction(
-      currentWaterBbl: _currentWaterBblForData(data),
-      previousWaterBbl: _latestSavedBefore(index, well)?.currentWaterBbl ??
-          _startingWaterBbl(),
+      currentWaterBbl: current,
+      previousWaterBbl: previous,
       waterHauled: _n(data.waterHauled),
       waterPumped: _n(data.waterPumped),
       preRoundWaterHauled: _n(_shift.inventory.waterHauledBeforeRound),
       preRoundWaterPumped: _n(_shift.inventory.waterPumpedBeforeRound),
       isFirstHour: index == 0,
-    );
+    ).clamp(0, double.infinity).toDouble();
   }
 
   double _oilProductionForData(
       int index, ProductionWellCheckData data, String well) {
+    final previous = _latestSavedBefore(index, well)?.currentOilBbl ??
+        (index == 0 && _useStartingReadings && _hasStartingOilReading()
+            ? _startingOilBbl()
+            : double.nan);
+    final current = _currentOilBblForData(data);
+    if (previous.isNaN || current == 0) {
+      return 0;
+    }
     return ProductionMath.oilProduction(
-      currentOilBbl: _currentOilBblForData(data),
-      previousOilBbl:
-          _latestSavedBefore(index, well)?.currentOilBbl ?? _startingOilBbl(),
+      currentOilBbl: current,
+      previousOilBbl: previous,
       oilHauled: _n(data.oilHauled),
       oilPumped: _n(data.oilPumped),
       preRoundOilHauled: _n(_shift.inventory.oilHauledBeforeRound),
       preRoundOilPumped: _n(_shift.inventory.oilPumpedBeforeRound),
       isFirstHour: index == 0,
-    );
+    ).clamp(0, double.infinity).toDouble();
   }
 
   ProductionReportRow _buildRowForWell(
@@ -602,6 +778,15 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     String well,
     ProductionWellCheckData data,
   ) {
+    final waterProduction = _clampNonNegative(
+      _waterProductionForData(hourIndex, data, well),
+    );
+    final oilProduction = _clampNonNegative(
+      _oilProductionForData(hourIndex, data, well),
+    );
+    final gas24HourRate = _clampNonNegative(
+      _gas24HourForData(hourIndex, data, well),
+    );
     return ProductionReportRow(
       hourIndex: hourIndex,
       time: _controllers[hourIndex].time,
@@ -611,11 +796,11 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       tbg: data.tbg.trim(),
       icp: data.icp.trim(),
       csg: data.csg.trim(),
-      waterProduction: _waterProductionForData(hourIndex, data, well),
-      oilProduction: _oilProductionForData(hourIndex, data, well),
+      waterProduction: waterProduction,
+      oilProduction: oilProduction,
       hourlyGas: _hourlyGasForData(hourIndex, data, well),
-      gas24HourRate: _gas24HourForData(hourIndex, data, well),
-      salesGasRate: _gas24HourForData(hourIndex, data, well),
+      gas24HourRate: gas24HourRate,
+      salesGasRate: gas24HourRate,
       gasStatic: data.gasStatic.trim(),
       gasDifferential: data.gasDifferential.trim(),
       gasTemp: data.gasTemp.trim(),
@@ -794,6 +979,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   Widget _calcLine(String label, double value, {String suffix = 'bbl'}) {
+    final unavailable = value.isNaN;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -805,7 +991,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
             ),
           ),
           Text(
-            suffix.isEmpty ? _fmt(value) : '${_fmt(value)} $suffix',
+            unavailable
+                ? '--'
+                : (suffix.isEmpty ? _fmt(value) : '${_fmt(value)} $suffix'),
             style: const TextStyle(
               color: Color(0xFFCDA56A),
               fontWeight: FontWeight.w700,
@@ -856,6 +1044,48 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         style: const TextStyle(color: Colors.white70),
       ),
       const SizedBox(height: 10),
+      SwitchListTile.adaptive(
+        value: _useStartingReadings,
+        contentPadding: EdgeInsets.zero,
+        title: const Text(
+          'Use Starting Readings',
+          style:
+              TextStyle(color: Color(0xFFCDA56A), fontWeight: FontWeight.w700),
+        ),
+        subtitle: const Text(
+          'When off, first saved hour becomes the baseline.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        onChanged: _setUseStartingReadings,
+      ),
+      if (_useStartingReadings) ...[
+        const SizedBox(height: 8),
+        TextFormField(
+          initialValue: _shift.inventory.startingGasAccum,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Starting Gas Accum'),
+          onChanged: _setStartingGasAccum,
+        ),
+        const SizedBox(height: 10),
+        TextFormField(
+          initialValue: _shift.inventory.waterTanks.isNotEmpty
+              ? _shift.inventory.waterTanks.first.gauge
+              : '',
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Starting Water Tank'),
+          onChanged: _setStartingWaterTank,
+        ),
+        const SizedBox(height: 10),
+        TextFormField(
+          initialValue: _shift.inventory.oilTanks.isNotEmpty
+              ? _shift.inventory.oilTanks.first.gauge
+              : '',
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Starting Oil Tank'),
+          onChanged: _setStartingOilTank,
+        ),
+      ],
+      const SizedBox(height: 8),
       for (final tank in inventory.waterTanks)
         Text(
           '${tank.name}: ${tank.gaugeEntry.entryText()} (${tank.gaugeEntry.inchesText().isEmpty ? '0' : tank.gaugeEntry.inchesText()} in) @ ${tank.bblPerInch} BBL/in',
@@ -868,9 +1098,26 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           style: const TextStyle(color: Colors.white70),
         ),
       const SizedBox(height: 10),
-      _calcLine('Starting Water BBL', _startingWaterBbl()),
-      _calcLine('Starting Oil BBL', _startingOilBbl()),
-      _calcLine('Starting Gas Accum', _startingGasAccum(), suffix: ''),
+      _calcLine(
+        'Starting Water BBL',
+        _useStartingReadings && _hasStartingWaterReading()
+            ? _startingWaterBbl()
+            : double.nan,
+      ),
+      _calcLine(
+        'Starting Oil BBL',
+        _useStartingReadings && _hasStartingOilReading()
+            ? _startingOilBbl()
+            : double.nan,
+      ),
+      _calcLine(
+        'Starting Gas Accum',
+        _useStartingReadings &&
+                _shift.inventory.startingGasAccum.trim().isNotEmpty
+            ? _startingGasAccum()
+            : double.nan,
+        suffix: '',
+      ),
       _calcLine(
         'Water Hauled Before Round',
         _n(inventory.waterHauledBeforeRound),
@@ -895,7 +1142,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     if (activeJob == null) {
       return _section('Active Job', const [
         Text(
-          'No active job found. Start a job first to link Quick Round entries, but Quick Round will still work as it does today.',
+          'No active job currently selected. Quick Round entries save to the active shift and appear in Production Report when a job is active.',
           style: TextStyle(color: Colors.white70),
         ),
       ]);

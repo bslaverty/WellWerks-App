@@ -294,6 +294,7 @@ class ProductionInventoryBaseline {
   const ProductionInventoryBaseline({
     required this.waterTanks,
     required this.oilTanks,
+    this.useStartingReadings = false,
     this.gaugeEntryType = 'inches',
     this.gasUnit = 'mcfd',
     this.gasCalculationMethod = 'accumulator',
@@ -330,6 +331,7 @@ class ProductionInventoryBaseline {
       oilTanks: oilTanks.isEmpty
           ? const [ProductionTank(name: 'Oil Tank 1')]
           : oilTanks,
+      useStartingReadings: json['useStartingReadings'] as bool? ?? false,
       gaugeEntryType: ProductionGaugeEntry._normalizeMode(
         (json['gaugeEntryType'] as String?) ?? inferredGaugeType,
       ),
@@ -347,6 +349,7 @@ class ProductionInventoryBaseline {
 
   final List<ProductionTank> waterTanks;
   final List<ProductionTank> oilTanks;
+  final bool useStartingReadings;
   final String gaugeEntryType;
   final String gasUnit;
   final String gasCalculationMethod;
@@ -359,6 +362,7 @@ class ProductionInventoryBaseline {
   ProductionInventoryBaseline copyWith({
     List<ProductionTank>? waterTanks,
     List<ProductionTank>? oilTanks,
+    bool? useStartingReadings,
     String? gaugeEntryType,
     String? gasUnit,
     String? gasCalculationMethod,
@@ -371,6 +375,7 @@ class ProductionInventoryBaseline {
     return ProductionInventoryBaseline(
       waterTanks: waterTanks ?? this.waterTanks,
       oilTanks: oilTanks ?? this.oilTanks,
+      useStartingReadings: useStartingReadings ?? this.useStartingReadings,
       gaugeEntryType: ProductionGaugeEntry._normalizeMode(
         gaugeEntryType ?? this.gaugeEntryType,
       ),
@@ -392,6 +397,7 @@ class ProductionInventoryBaseline {
     return {
       'waterTanks': waterTanks.map((item) => item.toJson()).toList(),
       'oilTanks': oilTanks.map((item) => item.toJson()).toList(),
+      'useStartingReadings': useStartingReadings,
       'gaugeEntryType': gaugeEntryType,
       'gasUnit': gasUnit,
       'gasCalculationMethod': gasCalculationMethod,

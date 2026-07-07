@@ -326,6 +326,30 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   Widget _activeJobBanner() {
     final activeJob = _activeJob;
     if (activeJob == null) {
+      if (_shift.savedRows.isNotEmpty || _shift.activeJobId.trim().isNotEmpty) {
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Active Job',
+                  style: TextStyle(
+                    color: Color(0xFFCDA56A),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Linked to active shift data (${_shift.savedRows.length} saved row${_shift.savedRows.length == 1 ? '' : 's'}).',
+                  style: const TextStyle(color: Colors.white70),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
       return const Card(
         child: Padding(
           padding: EdgeInsets.all(14),
