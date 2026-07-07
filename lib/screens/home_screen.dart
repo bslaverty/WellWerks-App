@@ -11,8 +11,8 @@ import 'rate_calculator_menu_screen.dart';
 import 'equipment_layout_screen.dart';
 import 'jsa_screen.dart';
 import 'pressure_entry_screen.dart';
+import 'production_dashboard_screen.dart';
 import 'shift_report_screen.dart';
-import 'report_template_screen.dart';
 import 'text_update_screen.dart';
 import 'production_history_screen.dart';
 import 'gas_accum_screen.dart';
@@ -303,37 +303,12 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(color: Colors.white70, fontSize: 15),
             ),
           ),
-          _moduleCard(
-            context: context,
+          ToolCard(
             icon: Icons.oil_barrel,
             title: 'Production',
-            subtitle: 'Quick Round, reports, text updates, and layouts',
-            tools: const [
-              ModuleTool(
-                icon: Icons.add_circle,
-                title: 'Quick Round',
-                subtitle: 'Enter production and pressure readings',
-                screen: PressureEntryScreen(),
-              ),
-              ModuleTool(
-                icon: Icons.table_chart,
-                title: 'Production Report',
-                subtitle: 'Read-only saved hourly production table',
-                screen: ShiftReportScreen(),
-              ),
-              ModuleTool(
-                icon: Icons.sms,
-                title: 'Text Update',
-                subtitle: 'Select an hour and copy a text update',
-                screen: TextUpdateScreen(),
-              ),
-              ModuleTool(
-                icon: Icons.edit_note,
-                title: 'Text/Report Layouts',
-                subtitle: 'Production Inventory and layout profile setup',
-                screen: ReportTemplateScreen(initialSection: 'inventory'),
-              ),
-            ],
+            subtitle:
+                'Quick Round, reports, text updates, and production setup',
+            onTap: () => open(context, const ProductionDashboardScreen()),
           ),
           _moduleCard(
             context: context,
