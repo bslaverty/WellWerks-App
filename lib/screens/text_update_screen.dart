@@ -112,6 +112,12 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         : rounded.toStringAsFixed(2);
   }
 
+  String _wholeFmt(double value) {
+    if (value.isNaN) return '--';
+    if (value < 0) return '--';
+    return value.round().toStringAsFixed(0);
+  }
+
   String get _gasUnitLabel =>
       _shift.inventory.gasUnit == 'mmcfd' ? 'mmcf/d' : 'mcf/d';
 
@@ -268,9 +274,9 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
             ? 'CHK - -'
             : 'CHK - ${row.choke.trim()} ${row.chokeType.toLowerCase()}';
       case 'bwph':
-        return 'BWPH - ${_fmt(row.waterProduction)} BBL/hr';
+        return 'BWPH - ${_wholeFmt(row.waterProduction)} BBL/hr';
       case 'boph':
-        return 'BOPH - ${_fmt(row.oilProduction)} BBL/hr';
+        return 'BOPH - ${_wholeFmt(row.oilProduction)} BBL/hr';
       case 'gasSpotRt':
         return 'GAS SPOT RT. ${_fmt(_baseGasToDisplay(row.gas24HourRate))} $_gasUnitLabel';
       case 'diff':
@@ -356,9 +362,9 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
             ? '-'
             : '${row.choke.trim()} ${row.chokeType.toUpperCase()}';
       case 'bwph':
-        return _fmt(row.waterProduction);
+        return _wholeFmt(row.waterProduction);
       case 'boph':
-        return _fmt(row.oilProduction);
+        return _wholeFmt(row.oilProduction);
       case 'gasSpotRt':
         return '${_fmt(_baseGasToDisplay(row.gas24HourRate))} $_gasUnitLabel';
       case 'stat':

@@ -132,6 +132,12 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         : rounded.toStringAsFixed(2);
   }
 
+  String _wholeFmt(double value) {
+    if (value.isNaN) return '--';
+    if (value < 0) return '--';
+    return value.round().toStringAsFixed(0);
+  }
+
   double _baseGasToDisplay(double value) {
     return _shift.inventory.gasUnit == 'mmcfd' ? value / 1000 : value;
   }
@@ -145,13 +151,6 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       return '--';
     }
     return _fmt(_baseGasToDisplay(parsed));
-  }
-
-  bool _gaugeEntryHasValue(ProductionGaugeEntry entry) {
-    return entry.inches.trim().isNotEmpty ||
-        entry.feet.trim().isNotEmpty ||
-        entry.inchesPart.trim().isNotEmpty ||
-        entry.decimalFeet.trim().isNotEmpty;
   }
 
   List<ProductionReportRow> _rowsForWell(String well) {
@@ -172,38 +171,6 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     return previous.last;
   }
 
-  double? _startingWaterBaseline() {
-    if (!_shift.inventory.useStartingReadings ||
-        _shift.inventory.waterTanks.isEmpty) {
-      return null;
-    }
-    final entry = _shift.inventory.waterTanks.first.gaugeEntry;
-    if (!_gaugeEntryHasValue(entry)) return null;
-    final value = ProductionMath.totalTankBbl(
-      _shift.inventory.waterTanks,
-      _shift.inventory.waterTanks
-          .map((tank) => tank.gaugeEntry.asInches().toString())
-          .toList(),
-    );
-    return value > 0 ? value : null;
-  }
-
-  double? _startingOilBaseline() {
-    if (!_shift.inventory.useStartingReadings ||
-        _shift.inventory.oilTanks.isEmpty) {
-      return null;
-    }
-    final entry = _shift.inventory.oilTanks.first.gaugeEntry;
-    if (!_gaugeEntryHasValue(entry)) return null;
-    final value = ProductionMath.totalTankBbl(
-      _shift.inventory.oilTanks,
-      _shift.inventory.oilTanks
-          .map((tank) => tank.gaugeEntry.asInches().toString())
-          .toList(),
-    );
-    return value > 0 ? value : null;
-  }
-
   double? _startingGasBaseline() {
     if (!_shift.inventory.useStartingReadings) {
       return null;
@@ -213,34 +180,6 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     final value = double.tryParse(text);
     if (value == null) return null;
     return value >= 0 ? value : null;
-  }
-
-  String _bwphForRow(ProductionReportRow row) {
-    final current = row.currentWaterBbl;
-    if (current.isNaN || current < 0) return '--';
-    final previous = _previousRowForWell(
-      row,
-      (item) => !item.currentWaterBbl.isNaN && item.currentWaterBbl > 0,
-    );
-    final baseline = previous?.currentWaterBbl ?? _startingWaterBaseline();
-    if (baseline == null) return '--';
-    final delta = current - baseline;
-    if (delta < 0) return '--';
-    return _fmt(delta);
-  }
-
-  String _bophForRow(ProductionReportRow row) {
-    final current = row.currentOilBbl;
-    if (current.isNaN || current < 0) return '--';
-    final previous = _previousRowForWell(
-      row,
-      (item) => !item.currentOilBbl.isNaN && item.currentOilBbl > 0,
-    );
-    final baseline = previous?.currentOilBbl ?? _startingOilBaseline();
-    if (baseline == null) return '--';
-    final delta = current - baseline;
-    if (delta < 0) return '--';
-    return _fmt(delta);
   }
 
   String _gasSpotForRow(ProductionReportRow row) {
@@ -330,9 +269,9 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       case 'chk':
         return _chk(row);
       case 'bwph':
-        return _bwphForRow(row);
+        return _wholeFmt(row.waterProduction);
       case 'boph':
-        return _bophForRow(row);
+        return _wholeFmt(row.oilProduction);
       case 'gasSpotRt':
         return _gasSpotForRow(row);
       case 'diff':
