@@ -6,7 +6,6 @@ import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../widgets/app_header.dart';
 import '../widgets/tool_card.dart';
-import 'gas_accum_screen.dart';
 import 'job_management_screen.dart';
 import 'pressure_entry_screen.dart';
 import 'production_history_screen.dart';
@@ -39,14 +38,24 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
   Future<void> _load() async {
     var shift = await _shiftService.loadActiveShift();
     final activeJob = await _jobStorage.loadActiveJob();
+    JobSetup? resolvedJob = activeJob;
     if (activeJob != null && shift.activeJobId != activeJob.id) {
       shift = shift.copyWith(activeJobId: activeJob.id);
       await _shiftService.saveActiveShift(shift);
     }
+    if (resolvedJob == null && shift.activeJobId.trim().isNotEmpty) {
+      final jobs = await _jobStorage.loadJobs();
+      for (final job in jobs) {
+        if (job.id == shift.activeJobId) {
+          resolvedJob = job;
+          break;
+        }
+      }
+    }
     if (!mounted) return;
     setState(() {
       _shift = shift;
-      _activeJob = activeJob;
+      _activeJob = resolvedJob;
       _loading = false;
     });
   }
@@ -57,13 +66,11 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
   }
 
   List<String> get _activeWells {
-    final activeJob = _activeJob;
-    if (activeJob == null) {
-      return const <String>[];
-    }
     final wells = <String>[];
-    final source =
-        activeJob.wells.isNotEmpty ? activeJob.wells : _shift.header.wells;
+    final activeJob = _activeJob;
+    final source = activeJob != null && activeJob.wells.isNotEmpty
+        ? activeJob.wells
+        : _shift.header.wells;
     for (final well in source) {
       final trimmed = well.trim();
       if (trimmed.isNotEmpty && !wells.contains(trimmed)) {
@@ -73,9 +80,29 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
     return wells;
   }
 
+  bool get _hasActiveJobContext {
+    return _activeJob != null ||
+        _shift.activeJobId.trim().isNotEmpty ||
+        _shift.header.company.trim().isNotEmpty ||
+        _shift.header.pad.trim().isNotEmpty ||
+        _activeWells.isNotEmpty;
+  }
+
+  String get _activeCompanyName {
+    final fromJob = _activeJob?.company.trim() ?? '';
+    if (fromJob.isNotEmpty) return fromJob;
+    final fromShift = _shift.header.company.trim();
+    return fromShift;
+  }
+
+  String get _activePadName {
+    final fromJob = _activeJob?.padName.trim() ?? '';
+    if (fromJob.isNotEmpty) return fromJob;
+    return _shift.header.pad.trim();
+  }
+
   Widget _activeJobCard(BuildContext context) {
-    final activeJob = _activeJob;
-    if (activeJob == null) {
+    if (!_hasActiveJobContext) {
       return Card(
         color: const Color(0xFF17130E),
         margin: const EdgeInsets.only(bottom: 14),
@@ -114,6 +141,8 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
     }
 
     final wellsText = _activeWells.isEmpty ? '-' : _activeWells.join(' / ');
+    final companyName = _activeCompanyName;
+    final padName = _activePadName;
     return Card(
       color: const Color(0xFF17130E),
       margin: const EdgeInsets.only(bottom: 14),
@@ -133,14 +162,12 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
             ),
             const SizedBox(height: 10),
             Text(
-              activeJob.company.trim().isEmpty
-                  ? 'Job in progress'
-                  : activeJob.company.trim(),
+              companyName.isEmpty ? 'Job in progress' : companyName,
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 4),
             Text(
-              activeJob.padName.trim().isEmpty ? '-' : activeJob.padName.trim(),
+              padName.isEmpty ? '-' : padName,
               style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 16,
@@ -188,23 +215,10 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
           ),
           const SizedBox(height: 14),
           ToolCard(
-            icon: Icons.local_fire_department,
-            title: 'Gas Accum Calculator',
-            subtitle: '13 readings with hourly gas-rate answers',
-            onTap: () => _open(context, const GasAccumScreen()),
-          ),
-          ToolCard(
             icon: Icons.add_circle,
             title: 'Quick Round',
             subtitle: 'Production and pressure readings in one place',
             onTap: () => _open(context, const PressureEntryScreen()),
-          ),
-          ToolCard(
-            icon: Icons.inventory,
-            title: 'Production Setup',
-            subtitle: 'Company, wells, reports, and production defaults',
-            onTap: () => _open(context,
-                const ReportTemplateScreen(initialSection: 'inventory')),
           ),
           ToolCard(
             icon: Icons.table_chart,
@@ -219,17 +233,18 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
             onTap: () => _open(context, const TextUpdateScreen()),
           ),
           ToolCard(
+            icon: Icons.inventory,
+            title: 'Production Setup',
+            subtitle: 'Company, wells, reports, and production defaults',
+            onTap: () => _open(context,
+                const ReportTemplateScreen(initialSection: 'inventory')),
+          ),
+          ToolCard(
             icon: Icons.history,
             title: 'Production History',
             subtitle:
                 'Archived inventory, reports, hourly checks, and text updates',
             onTap: () => _open(context, const ProductionHistoryScreen()),
-          ),
-          ToolCard(
-            icon: Icons.edit_note,
-            title: 'Layout Profiles',
-            subtitle: 'Create and manage reusable layout profiles',
-            onTap: () => _open(context, const ReportTemplateScreen()),
           ),
         ],
       ),
