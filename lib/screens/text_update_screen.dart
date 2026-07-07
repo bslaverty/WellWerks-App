@@ -62,13 +62,23 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
 
   List<ProductionReportRow> get _activeJobRows {
     final activeJob = _activeJob;
-    if (activeJob == null) {
-      return _shift.savedRows;
-    }
-    if (_shift.activeJobId != activeJob.id) {
-      return const [];
-    }
-    return _shift.savedRows;
+    final rows = activeJob == null
+        ? List<ProductionReportRow>.from(_shift.savedRows)
+        : (_shift.activeJobId != activeJob.id
+            ? <ProductionReportRow>[]
+            : List<ProductionReportRow>.from(_shift.savedRows));
+    final order = _shift.header.wells;
+    rows.sort((a, b) {
+      final hourCompare = a.hourIndex.compareTo(b.hourIndex);
+      if (hourCompare != 0) return hourCompare;
+      final ai = order.indexOf(a.well);
+      final bi = order.indexOf(b.well);
+      if (ai == -1 && bi == -1) return a.well.compareTo(b.well);
+      if (ai == -1) return 1;
+      if (bi == -1) return -1;
+      return ai.compareTo(bi);
+    });
+    return rows;
   }
 
   bool get _hasActiveJob =>
@@ -128,6 +138,20 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     if (rows.isEmpty) return const <ProductionReportRow>[];
     final selectedHour = _selectedHour ?? rows.first.hourIndex;
     return rows.where((row) => row.hourIndex == selectedHour).toList();
+  }
+
+  List<ProductionReportRow> get _orderedSelectedRows {
+    final rows = List<ProductionReportRow>.from(_selectedRows);
+    final order = _shift.header.wells;
+    rows.sort((a, b) {
+      final ai = order.indexOf(a.well);
+      final bi = order.indexOf(b.well);
+      if (ai == -1 && bi == -1) return a.well.compareTo(b.well);
+      if (ai == -1) return 1;
+      if (bi == -1) return -1;
+      return ai.compareTo(bi);
+    });
+    return rows;
   }
 
   String _lineFor(ProductionReportRow row, String key) {
@@ -254,36 +278,6 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     }
   }
 
-  List<ProductionReportRow> _rowsForTextPreview(
-    JobSetup activeJob,
-    List<ProductionReportRow> selectedRows,
-  ) {
-    if (selectedRows.isEmpty) return const <ProductionReportRow>[];
-    if (!activeJob.isMultiWellJob) {
-      return <ProductionReportRow>[selectedRows.first];
-    }
-
-    final byWell = <String, ProductionReportRow>{};
-    for (final row in selectedRows) {
-      byWell[row.well] = row;
-    }
-
-    final ordered = <ProductionReportRow>[];
-    for (final well in activeJob.wells) {
-      final row = byWell[well];
-      if (row != null) {
-        ordered.add(row);
-      }
-    }
-
-    for (final row in selectedRows) {
-      if (!ordered.contains(row)) {
-        ordered.add(row);
-      }
-    }
-    return ordered;
-  }
-
   String _machTextPreview(JobSetup activeJob, List<ProductionReportRow> rows) {
     final lines = <String>[];
     for (var i = 0; i < rows.length; i++) {
@@ -370,13 +364,13 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   }
 
   String get _preview {
-    if (_selectedRows.isEmpty) {
+    if (_orderedSelectedRows.isEmpty) {
       return _emptyStateMessage;
     }
 
     final activeJob = _activeJob;
     if (activeJob != null) {
-      final previewRows = _rowsForTextPreview(activeJob, _selectedRows);
+      final previewRows = _orderedSelectedRows;
       final company = _profileDefaults.normalizeCompany(activeJob.company);
       if (company == JobProfileDefaultsService.companyMach) {
         return _machTextPreview(activeJob, previewRows);
@@ -386,7 +380,8 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
       }
     }
 
-    final row = _selectedRows.first;
+    final previewRows = _orderedSelectedRows;
+    final row = previewRows.first;
 
     final pad =
         _shift.header.pad.trim().isEmpty ? '-' : _shift.header.pad.trim();
@@ -399,30 +394,41 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     lines.add('');
 
     final vruKeys = {'vruGasRt', 'compressorInj', 'vruSuction', 'vruDischarge'};
-    for (final field in included) {
-      if (vruKeys.contains(field.key) || field.key == 'notes') {
-        continue;
+    for (var i = 0; i < previewRows.length; i++) {
+      final previewRow = previewRows[i];
+      if (previewRows.length > 1) {
+        lines.add(
+            previewRow.well.trim().isEmpty ? 'Well' : previewRow.well.trim());
       }
-      final line = _lineFor(row, field.key);
-      if (line.isNotEmpty) {
-        lines.add(line);
+      for (final field in included) {
+        if (vruKeys.contains(field.key) || field.key == 'notes') {
+          continue;
+        }
+        final line = _lineFor(previewRow, field.key);
+        if (line.isNotEmpty) {
+          lines.add(line);
+        }
       }
-    }
 
-    final hasVru = included.any((f) => vruKeys.contains(f.key));
-    if (hasVru) {
-      lines.add('');
-      lines.add('VRU');
-      lines.add('');
-      for (final field in included.where((f) => vruKeys.contains(f.key))) {
-        lines.add(_lineFor(row, field.key));
+      final hasVru = included.any((f) => vruKeys.contains(f.key));
+      if (hasVru) {
+        lines.add('');
+        lines.add('VRU');
+        lines.add('');
+        for (final field in included.where((f) => vruKeys.contains(f.key))) {
+          lines.add(_lineFor(previewRow, field.key));
+        }
       }
-    }
 
-    if (included.any((f) => f.key == 'notes')) {
-      lines.add('');
-      lines.add('Notes');
-      lines.add(_lineFor(row, 'notes'));
+      if (included.any((f) => f.key == 'notes')) {
+        lines.add('');
+        lines.add('Notes');
+        lines.add(_lineFor(previewRow, 'notes'));
+      }
+
+      if (i != previewRows.length - 1) {
+        lines.add('');
+      }
     }
 
     return lines.join('\n');
@@ -468,6 +474,25 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   Widget _activeJobBanner() {
     final activeJob = _activeJob;
     if (activeJob == null) {
+      final summary = [_shift.header.company, _shift.header.pad]
+          .where((item) => item.trim().isNotEmpty)
+          .join(' • ');
+      if (_shift.activeJobId.trim().isNotEmpty || summary.isNotEmpty) {
+        return _section('Active Job', [
+          Text(
+            summary.isEmpty ? 'Active shift job linked' : summary,
+            style: const TextStyle(
+              color: Color(0xFFCDA56A),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Shift: Active shift data',
+            style: TextStyle(color: Colors.white70),
+          ),
+        ]);
+      }
       return _section('Active Job', const [
         Text(
           'No active job found. Start a job first to preview and copy the current Text Update safely.',
@@ -565,7 +590,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
                       await _shiftService.saveActiveShift(_shift);
                     },
             ),
-            if (_activeJob?.isMultiWellJob == true)
+            if (_orderedSelectedRows.length > 1)
               const Padding(
                 padding: EdgeInsets.only(top: 8),
                 child: Text(
