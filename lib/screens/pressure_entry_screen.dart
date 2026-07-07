@@ -8,6 +8,7 @@ import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/recovery_state_service.dart';
 import '../services/round_storage_service.dart';
+import 'shift_report_screen.dart';
 import '../widgets/app_header.dart';
 import '../widgets/ww_number_field.dart';
 
@@ -720,6 +721,54 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     setState(() => _activeHourIndex += 1);
   }
 
+  void _goToPreviousHour() {
+    if (_activeHourIndex <= 0) {
+      return;
+    }
+    setState(() => _activeHourIndex -= 1);
+  }
+
+  Widget _hourNavigationControls() {
+    if (_controllers.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final hourIndex = _activeHourIndex;
+    final canGoPrevious = hourIndex > 0;
+    final canGoNext = hourIndex < _controllers.length - 1;
+
+    return _section('Hour Navigation', [
+      Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: canGoPrevious ? _goToPreviousHour : null,
+              icon: const Icon(Icons.chevron_left),
+              label: const Text('Previous Hour'),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            _controllers[hourIndex].time,
+            style: const TextStyle(
+              color: Color(0xFFCDA56A),
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: canGoNext ? _goToNextHour : null,
+              icon: const Icon(Icons.chevron_right),
+              label: const Text('Next Hour'),
+            ),
+          ),
+        ],
+      ),
+    ]);
+  }
+
   Widget _section(String title, List<Widget> children) {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -1264,12 +1313,30 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
               ),
             ]),
           if (_shift.hourlyChecks.isNotEmpty) ...[
+            _hourNavigationControls(),
             _hourProgressSection(),
             _hourlyCard(_activeHourIndex),
             SizedBox(
               width: double.infinity,
               child: _hourActionButton(),
             ),
+            if (_isHourSaved(_activeHourIndex)) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ShiftReportScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.table_chart_outlined),
+                  label: const Text('View Production Report'),
+                ),
+              ),
+            ],
           ],
         ],
       ),
