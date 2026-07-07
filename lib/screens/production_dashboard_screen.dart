@@ -7,7 +7,7 @@ import '../services/production_shift_service.dart';
 import '../widgets/app_header.dart';
 import '../widgets/tool_card.dart';
 import 'gas_accum_screen.dart';
-import 'job_setup_screen.dart';
+import 'job_management_screen.dart';
 import 'pressure_entry_screen.dart';
 import 'production_history_screen.dart';
 import 'report_template_screen.dart';
@@ -51,8 +51,9 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
     });
   }
 
-  void _open(BuildContext context, Widget screen) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  Future<void> _open(BuildContext context, Widget screen) async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+    await _load();
   }
 
   List<String> get _activeWells {
@@ -101,7 +102,7 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
-                  onPressed: () => _open(context, const JobSetupScreen()),
+                  onPressed: () => _open(context, const JobManagementScreen()),
                   icon: const Icon(Icons.build_circle_outlined),
                   label: const Text('Manage Job >'),
                 ),
@@ -155,7 +156,7 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
-                onPressed: () => _open(context, const JobSetupScreen()),
+                onPressed: () => _open(context, const JobManagementScreen()),
                 icon: const Icon(Icons.build_circle_outlined),
                 label: const Text('Manage Job >'),
               ),

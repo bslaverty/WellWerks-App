@@ -10,7 +10,14 @@ import '../widgets/app_header.dart';
 import '../widgets/ww_number_field.dart';
 
 class JobSetupScreen extends StatefulWidget {
-  const JobSetupScreen({super.key});
+  const JobSetupScreen({
+    super.key,
+    this.startFreshJob = false,
+    this.editActiveOnOpen = false,
+  });
+
+  final bool startFreshJob;
+  final bool editActiveOnOpen;
 
   @override
   State<JobSetupScreen> createState() => _JobSetupScreenState();
@@ -124,10 +131,33 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     if (!mounted) return;
     setState(() {
       _activeJob = active;
-      _startingFreshJob = false;
-      _editing = false;
+      _startingFreshJob = widget.startFreshJob;
+      _editing =
+          widget.startFreshJob || (widget.editActiveOnOpen && active != null);
       _loading = false;
     });
+
+    if (widget.startFreshJob) {
+      _resetFormForNewJob();
+      if (mounted) {
+        setState(() {
+          _activeJob = null;
+          _startingFreshJob = true;
+          _editing = true;
+          _step = 0;
+        });
+      }
+      if (_page.hasClients) {
+        _page.jumpToPage(0);
+      }
+      return;
+    }
+
+    if (widget.editActiveOnOpen && active != null) {
+      if (_page.hasClients) {
+        _page.jumpToPage(0);
+      }
+    }
   }
 
   void _scheduleAutoSave() {
