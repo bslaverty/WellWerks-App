@@ -136,12 +136,16 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   void _insertKeypadText(String raw) {
     final controller = _activeKeypadController;
     if (controller == null) return;
-    final insertText = raw == 'Space' ? ' ' : raw;
+
+    final isGaugeFraction = _isGaugeMode && RegExp(r'^\d+/\d+$').hasMatch(raw);
+    final insertText = raw == 'Space'
+        ? ' '
+        : (isGaugeFraction ? _fractionInsertText(controller.text, raw) : raw);
     final selection = controller.selection;
     final text = controller.text;
     final start = selection.start < 0 ? text.length : selection.start;
     final end = selection.end < 0 ? text.length : selection.end;
-    final next = text.replaceRange(start, end, insertText);
+    final next = _normalizeSpaces(text.replaceRange(start, end, insertText));
     final cursor = start + insertText.length;
 
     setState(() {
@@ -164,17 +168,41 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
 
     setState(() {
       if (start != end) {
+        final updated = _trimTrailingSpaceOnDelete(
+          text.replaceRange(start, end, ''),
+        );
         controller.value = TextEditingValue(
-          text: text.replaceRange(start, end, ''),
-          selection: TextSelection.collapsed(offset: start),
+          text: updated,
+          selection: TextSelection.collapsed(
+            offset: start > updated.length ? updated.length : start,
+          ),
         );
       } else if (start > 0) {
+        final updated = _trimTrailingSpaceOnDelete(
+          text.replaceRange(start - 1, start, ''),
+        );
+        final nextCursor = (start - 1) > updated.length
+            ? updated.length
+            : (start - 1);
         controller.value = TextEditingValue(
-          text: text.replaceRange(start - 1, start, ''),
-          selection: TextSelection.collapsed(offset: start - 1),
+          text: updated,
+          selection: TextSelection.collapsed(offset: nextCursor),
         );
       }
     });
+  }
+
+  String _fractionInsertText(String currentText, String fraction) {
+    if (currentText.isEmpty) return fraction;
+    return currentText.endsWith(' ') ? fraction : ' $fraction';
+  }
+
+  String _normalizeSpaces(String value) {
+    return value.replaceAll(RegExp(r' {2,}'), ' ');
+  }
+
+  String _trimTrailingSpaceOnDelete(String value) {
+    return value.replaceFirst(RegExp(r'\s+$'), '');
   }
 
   void _clearActiveInput() {
@@ -354,8 +382,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                     ),
                   ),
                 ),
-                TextButton(
-                    onPressed: _clearActiveInput, child: const Text('Clear')),
+                TextButton(onPressed: _clearActiveInput, child: const Text('CLR')),
                 const SizedBox(width: 6),
                 FilledButton(
                     onPressed: _closeKeypad, child: const Text('Done')),
@@ -375,6 +402,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                   _gaugeKeyButton('Space',
                       compact: true,
                       onPressed: () => _insertKeypadText('Space')),
+                  _gaugeKeyButton('⌫',
+                      compact: true, onPressed: _backspaceKeypad),
                 ],
               ),
             ],
