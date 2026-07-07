@@ -235,49 +235,44 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     return _controllers[hourIndex].dataForWell(well, _chokeTypeForWell(well));
   }
 
-  bool _isWellComplete(int hourIndex, String well) {
+  bool _isWellEntered(int hourIndex, String well) {
     final data = _wellDataForHour(hourIndex, well);
-    final hasGas = _useGasAccumulator
-        ? data.currentGasAccum.trim().isNotEmpty
-        : data.salesGasRate.trim().isNotEmpty;
-    final hasWaterGauges =
-        data.waterTankGaugeEntries.every(_gaugeEntryHasValue);
-    final hasOilGauges = data.oilTankGaugeEntries.every(_gaugeEntryHasValue);
-    return data.choke.trim().isNotEmpty &&
-        data.tbg.trim().isNotEmpty &&
-        data.csg.trim().isNotEmpty &&
-        hasGas &&
-        hasWaterGauges &&
-        hasOilGauges;
+    final hasScalarValue = [
+      data.choke,
+      data.tbg,
+      data.icp,
+      data.csg,
+      data.currentGasAccum,
+      data.salesGasRate,
+      data.gasStatic,
+      data.gasDifferential,
+      data.gasTemp,
+      data.waterSpecificGravity,
+      data.wellheadTemp,
+      data.waterTemp,
+      data.flareRate,
+      data.flarePilotTemp,
+      data.biocide,
+      data.vruGasRate,
+      data.compressorInjection,
+      data.vruSuction,
+      data.vruDischarge,
+      data.waterHauled,
+      data.oilHauled,
+      data.waterPumped,
+      data.oilPumped,
+      data.sandRate,
+      data.notes,
+    ].any((value) => value.trim().isNotEmpty);
+
+    final hasGaugeValue = data.waterTankGaugeEntries.any(_gaugeEntryHasValue) ||
+        data.oilTankGaugeEntries.any(_gaugeEntryHasValue);
+
+    return hasScalarValue || hasGaugeValue;
   }
 
   bool _isHourSaved(int hourIndex) {
-    return _activeWells.every(
-      (well) => _shift.savedRows.any(
-        (row) => row.hourIndex == hourIndex && row.well == well,
-      ),
-    );
-  }
-
-  String? _validationMessageForWell(int hourIndex, String well) {
-    final data = _wellDataForHour(hourIndex, well);
-    if (data.choke.trim().isEmpty) return '$well is missing Choke Value.';
-    if (data.tbg.trim().isEmpty) return '$well is missing TBG.';
-    if (data.csg.trim().isEmpty) return '$well is missing CSG.';
-    if (_useGasAccumulator && data.currentGasAccum.trim().isEmpty) {
-      return '$well is missing Current Gas Accum.';
-    }
-    if (!_useGasAccumulator && data.salesGasRate.trim().isEmpty) {
-      return '$well is missing Sales Gas Rate.';
-    }
-    if (data.waterTankGaugeEntries
-        .any((entry) => !_gaugeEntryHasValue(entry))) {
-      return '$well is missing one or more water tank gauges.';
-    }
-    if (data.oilTankGaugeEntries.any((entry) => !_gaugeEntryHasValue(entry))) {
-      return '$well is missing one or more oil tank gauges.';
-    }
-    return null;
+    return _shift.savedRows.any((row) => row.hourIndex == hourIndex);
   }
 
   Future<void> _refreshActiveJobReference() async {
@@ -654,27 +649,29 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   Future<void> _saveActiveHour() async {
     final hourIndex = _activeHourIndex;
-    for (final well in _activeWells) {
-      final message = _validationMessageForWell(hourIndex, well);
-      if (message != null) {
-        setState(() {
-          _controllers[hourIndex].selectWell(well, _chokeTypeForWell(well));
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
-        return;
-      }
+    final enteredWells =
+        _activeWells.where((well) => _isWellEntered(hourIndex, well)).toList();
+
+    if (enteredWells.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter at least one value before saving this hour.'),
+        ),
+      );
+      return;
     }
 
     await _persistShift();
     final rows = <ProductionReportRow>[
-      for (final well in _activeWells)
+      for (final well in enteredWells)
         _buildRowForWell(hourIndex, well, _wellDataForHour(hourIndex, well)),
     ];
 
     final updatedRows = List<ProductionReportRow>.from(_shift.savedRows)
-      ..removeWhere((item) => item.hourIndex == hourIndex)
+      ..removeWhere(
+        (item) =>
+            item.hourIndex == hourIndex && enteredWells.contains(item.well),
+      )
       ..addAll(rows)
       ..sort((a, b) {
         final hourCompare = a.hourIndex.compareTo(b.hourIndex);
@@ -1000,10 +997,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           child: Row(
             children: [
               Icon(
-                _isWellComplete(hourIndex, well)
+                _isWellEntered(hourIndex, well)
                     ? Icons.check_circle
                     : Icons.radio_button_unchecked,
-                color: _isWellComplete(hourIndex, well)
+                color: _isWellEntered(hourIndex, well)
                     ? Colors.green
                     : Colors.white54,
               ),
