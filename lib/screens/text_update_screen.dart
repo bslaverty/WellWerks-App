@@ -136,6 +136,73 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     return '${parts[0]}:00 ${parts[1].toUpperCase()}';
   }
 
+  String get _headerCompanyName {
+    final activeJob = _activeJob;
+    if (activeJob != null && activeJob.company.trim().isNotEmpty) {
+      return activeJob.company.trim();
+    }
+    return _shift.header.company.trim();
+  }
+
+  String get _headerPadName {
+    final activeJob = _activeJob;
+    if (activeJob != null && activeJob.padName.trim().isNotEmpty) {
+      return activeJob.padName.trim();
+    }
+    return _shift.header.pad.trim();
+  }
+
+  List<String> get _headerWellList {
+    final activeJob = _activeJob;
+    final wells = <String>[];
+    final source = activeJob?.wells.isNotEmpty == true
+        ? activeJob!.wells
+        : _shift.header.wells;
+    for (final well in source) {
+      final trimmed = well.trim();
+      if (trimmed.isNotEmpty && !wells.contains(trimmed)) {
+        wells.add(trimmed);
+      }
+    }
+    return wells;
+  }
+
+  String get _headerWellListText =>
+      _headerWellList.isEmpty ? '-' : _headerWellList.join(' / ');
+
+  String get _headerUpdateTime {
+    final selected = _selectedRow;
+    if (selected != null) {
+      return '${_fmtTimeLabel(selected.time)} UPDATE';
+    }
+    final selectedHour = _selectedHour;
+    if (selectedHour != null && _activeJobRows.isNotEmpty) {
+      final row = _activeJobRows.firstWhere(
+        (item) => item.hourIndex == selectedHour,
+        orElse: () => _activeJobRows.first,
+      );
+      return '${_fmtTimeLabel(row.time)} UPDATE';
+    }
+    return 'UPDATE';
+  }
+
+  List<String> _buildHeaderLines() {
+    final lines = <String>[];
+    final company = _headerCompanyName;
+    final pad = _headerPadName;
+    if (company.isNotEmpty) {
+      lines.add(company);
+    }
+    if (pad.isNotEmpty) {
+      lines.add(pad);
+    }
+    if (_headerWellListText != '-') {
+      lines.add(_headerWellListText);
+    }
+    lines.add(_headerUpdateTime);
+    return lines;
+  }
+
   ProductionReportRow? get _selectedRow {
     final rows = _selectedRows;
     if (rows.isEmpty) return null;
@@ -188,8 +255,6 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
       return '';
     }
     switch (key) {
-      case 'time':
-        return 'TIME - ${_fmtTimeLabel(row.time)}';
       case 'well':
         return row.well;
       case 'wellName':
@@ -332,7 +397,8 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   }
 
   String _machTextPreview(JobSetup activeJob, List<ProductionReportRow> rows) {
-    final lines = <String>[];
+    final lines = _buildHeaderLines();
+    lines.add('');
     for (var i = 0; i < rows.length; i++) {
       final row = rows[i];
       lines.add(row.well.trim().isEmpty ? 'Well' : row.well.trim());
@@ -364,12 +430,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         ? defaults.defaultActiveSections
         : activeJob.activeEquipmentSections;
 
-    final lines = <String>[];
-    final pad =
-        _shift.header.pad.trim().isEmpty ? '-' : _shift.header.pad.trim();
-    lines.add(pad);
-    final firstRow = rows.first;
-    lines.add('${_fmtTimeLabel(firstRow.time)} UPDATE');
+    final lines = _buildHeaderLines();
     lines.add('');
 
     for (var i = 0; i < rows.length; i++) {
@@ -447,27 +508,21 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     }
 
     final previewRows = _orderedSelectedRows;
-    final row = previewRows.first;
-
-    final pad =
-        _shift.header.pad.trim().isEmpty ? '-' : _shift.header.pad.trim();
     final included =
         _layout.textFields.where((field) => field.included).toList();
 
-    final lines = <String>[];
-    lines.add(pad);
-    lines.add('${_fmtTimeLabel(row.time)} UPDATE');
+    final lines = _buildHeaderLines();
     lines.add('');
 
     final vruKeys = {'vruGasRt', 'compressorInj', 'vruSuction', 'vruDischarge'};
     for (var i = 0; i < previewRows.length; i++) {
       final previewRow = previewRows[i];
-      if (previewRows.length > 1) {
-        lines.add(
-            previewRow.well.trim().isEmpty ? 'Well' : previewRow.well.trim());
-      }
+      lines.add(
+          previewRow.well.trim().isEmpty ? 'Well' : previewRow.well.trim());
       for (final field in included) {
-        if (vruKeys.contains(field.key) || field.key == 'notes') {
+        if (field.key == 'time' ||
+            vruKeys.contains(field.key) ||
+            field.key == 'notes') {
           continue;
         }
         final line = _lineFor(previewRow, field.key);
