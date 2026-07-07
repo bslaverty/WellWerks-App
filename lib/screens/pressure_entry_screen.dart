@@ -334,6 +334,31 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     return previous.last;
   }
 
+  double _startingWaterBaselineOrMissing() {
+    if (!_useStartingReadings || !_hasStartingWaterReading()) {
+      return double.nan;
+    }
+    final value = _startingWaterBbl();
+    return value > 0 ? value : double.nan;
+  }
+
+  double _startingOilBaselineOrMissing() {
+    if (!_useStartingReadings || !_hasStartingOilReading()) {
+      return double.nan;
+    }
+    final value = _startingOilBbl();
+    return value > 0 ? value : double.nan;
+  }
+
+  double _startingGasBaselineOrMissing() {
+    if (!_useStartingReadings ||
+        _shift.inventory.startingGasAccum.trim().isEmpty) {
+      return double.nan;
+    }
+    final value = _startingGasAccum();
+    return value >= 0 ? value : double.nan;
+  }
+
   bool _canUseWaterBaseline(int index, String well) {
     if (index == 0) {
       return _useStartingReadings && _hasStartingWaterReading();
@@ -727,13 +752,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     final previous = _latestSavedBeforeWith(
           index,
           well,
-          (row) => !_isMissingCalc(row.currentGasAccum),
+          (row) =>
+              !_isMissingCalc(row.currentGasAccum) && row.currentGasAccum > 0,
         )?.currentGasAccum ??
-        (index == 0 &&
-                _useStartingReadings &&
-                _shift.inventory.startingGasAccum.trim().isNotEmpty
-            ? _startingGasAccum()
-            : double.nan);
+        _startingGasBaselineOrMissing();
     if (previous.isNaN || data.currentGasAccum.trim().isEmpty) {
       return _missingCalcValue;
     }
@@ -764,24 +786,15 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     final previous = _latestSavedBeforeWith(
           index,
           well,
-          (row) => !_isMissingCalc(row.currentWaterBbl),
+          (row) =>
+              !_isMissingCalc(row.currentWaterBbl) && row.currentWaterBbl > 0,
         )?.currentWaterBbl ??
-        (index == 0 && _useStartingReadings && _hasStartingWaterReading()
-            ? _startingWaterBbl()
-            : double.nan);
+        _startingWaterBaselineOrMissing();
     final current = _currentWaterBblForData(data);
-    if (previous.isNaN || _isMissingCalc(current)) {
+    if (previous.isNaN || _isMissingCalc(current) || current <= 0) {
       return _missingCalcValue;
     }
-    final calculated = ProductionMath.waterProduction(
-      currentWaterBbl: current,
-      previousWaterBbl: previous,
-      waterHauled: _n(data.waterHauled),
-      waterPumped: _n(data.waterPumped),
-      preRoundWaterHauled: _n(_shift.inventory.waterHauledBeforeRound),
-      preRoundWaterPumped: _n(_shift.inventory.waterPumpedBeforeRound),
-      isFirstHour: index == 0,
-    );
+    final calculated = current - previous;
     return calculated < 0 ? _missingCalcValue : calculated;
   }
 
@@ -790,24 +803,14 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     final previous = _latestSavedBeforeWith(
           index,
           well,
-          (row) => !_isMissingCalc(row.currentOilBbl),
+          (row) => !_isMissingCalc(row.currentOilBbl) && row.currentOilBbl > 0,
         )?.currentOilBbl ??
-        (index == 0 && _useStartingReadings && _hasStartingOilReading()
-            ? _startingOilBbl()
-            : double.nan);
+        _startingOilBaselineOrMissing();
     final current = _currentOilBblForData(data);
-    if (previous.isNaN || _isMissingCalc(current)) {
+    if (previous.isNaN || _isMissingCalc(current) || current <= 0) {
       return _missingCalcValue;
     }
-    final calculated = ProductionMath.oilProduction(
-      currentOilBbl: current,
-      previousOilBbl: previous,
-      oilHauled: _n(data.oilHauled),
-      oilPumped: _n(data.oilPumped),
-      preRoundOilHauled: _n(_shift.inventory.oilHauledBeforeRound),
-      preRoundOilPumped: _n(_shift.inventory.oilPumpedBeforeRound),
-      isFirstHour: index == 0,
-    );
+    final calculated = current - previous;
     return calculated < 0 ? _missingCalcValue : calculated;
   }
 
@@ -829,12 +832,14 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         : (_latestSavedBeforeWith(
               hourIndex,
               well,
-              (row) => !_isMissingCalc(row.currentGasAccum),
+              (row) =>
+                  !_isMissingCalc(row.currentGasAccum) &&
+                  row.currentGasAccum > 0,
             )?.currentGasAccum ??
-            (_useStartingReadings &&
-                    _shift.inventory.startingGasAccum.trim().isNotEmpty
-                ? _startingGasAccum()
-                : _missingCalcValue));
+            (() {
+              final starting = _startingGasBaselineOrMissing();
+              return starting.isNaN ? _missingCalcValue : starting;
+            })());
     return ProductionReportRow(
       hourIndex: hourIndex,
       time: _controllers[hourIndex].time,

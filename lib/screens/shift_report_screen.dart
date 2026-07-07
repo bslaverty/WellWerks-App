@@ -124,6 +124,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   }
 
   String _fmt(double value) {
+    if (value.isNaN) return '--';
     if (value < 0) return '--';
     final rounded = value.abs() < 0.01 ? 0 : value;
     return rounded % 1 == 0
