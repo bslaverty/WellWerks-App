@@ -37,20 +37,10 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
 
   Future<void> _load() async {
     var shift = await _shiftService.loadActiveShift();
-    final activeJob = await _jobStorage.loadActiveJob();
-    JobSetup? resolvedJob = activeJob;
-    if (activeJob != null && shift.activeJobId != activeJob.id) {
-      shift = shift.copyWith(activeJobId: activeJob.id);
+    final resolvedJob = await _jobStorage.resolveProductionActiveJob(shift);
+    if (resolvedJob != null && shift.activeJobId != resolvedJob.id) {
+      shift = shift.copyWith(activeJobId: resolvedJob.id);
       await _shiftService.saveActiveShift(shift);
-    }
-    if (resolvedJob == null && shift.activeJobId.trim().isNotEmpty) {
-      final jobs = await _jobStorage.loadJobs();
-      for (final job in jobs) {
-        if (job.id == shift.activeJobId) {
-          resolvedJob = job;
-          break;
-        }
-      }
     }
     if (!mounted) return;
     setState(() {

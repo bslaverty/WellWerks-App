@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/job_setup.dart';
+import '../models/production_shift.dart';
 
 class JobStorageService {
   static const _activeJobKey = 'wellwerks_active_job';
@@ -77,6 +78,26 @@ class JobStorageService {
   Future<String> loadLastActiveJobId() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_lastActiveJobIdKey) ?? '';
+  }
+
+  Future<JobSetup?> loadJobById(String jobId) async {
+    final targetId = jobId.trim();
+    if (targetId.isEmpty) return null;
+    final jobs = await loadJobs();
+    for (final job in jobs) {
+      if (job.id == targetId) {
+        return job;
+      }
+    }
+    return null;
+  }
+
+  Future<JobSetup?> resolveProductionActiveJob(ProductionShift shift) async {
+    final activeJob = await loadActiveJob();
+    if (activeJob != null) {
+      return activeJob;
+    }
+    return loadJobById(shift.activeJobId);
   }
 
   Future<JobSetup> updateActiveJob(JobSetup job) async {

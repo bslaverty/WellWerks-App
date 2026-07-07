@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/job_history.dart';
 import '../models/job_setup.dart';
+import '../models/production_shift.dart';
 import '../services/job_history_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/jsa_storage_service.dart';
@@ -22,6 +23,7 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
   final _shiftService = ProductionShiftService();
   final _jsaStorage = JsaStorageService();
 
+  ProductionShift _shift = ProductionShift.empty();
   JobSetup? _activeJob;
   List<JobSetup> _jobs = const <JobSetup>[];
   bool _loading = true;
@@ -33,7 +35,12 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
   }
 
   Future<void> _load() async {
-    final active = await _jobStorage.loadActiveJob();
+    var shift = await _shiftService.loadActiveShift();
+    final active = await _jobStorage.resolveProductionActiveJob(shift);
+    if (active != null && shift.activeJobId != active.id) {
+      shift = shift.copyWith(activeJobId: active.id);
+      await _shiftService.saveActiveShift(shift);
+    }
     var jobs = await _jobStorage.loadJobs();
 
     if (active != null && !jobs.any((item) => item.id == active.id)) {
@@ -42,6 +49,7 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
 
     if (!mounted) return;
     setState(() {
+      _shift = shift;
       _activeJob = active;
       _jobs = jobs;
       _loading = false;
@@ -60,6 +68,81 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
         .where((item) => item.isNotEmpty)
         .toList();
     return wells.isEmpty ? '-' : wells.join(' / ');
+  }
+
+  List<String> get _activeWells {
+    final source = _shift.header.wells.any((item) => item.trim().isNotEmpty)
+        ? _shift.header.wells
+        : (_activeJob?.wells ?? const <String>[]);
+    final wells = <String>[];
+    for (final well in source) {
+      final trimmed = well.trim();
+      if (trimmed.isNotEmpty && !wells.contains(trimmed)) {
+        wells.add(trimmed);
+      }
+    }
+    return wells;
+  }
+
+  bool get _hasActiveShiftLink {
+    final summary = [_shift.header.company, _shift.header.pad]
+        .where((item) => item.trim().isNotEmpty)
+        .join(' • ');
+    return _shift.activeJobId.trim().isNotEmpty || summary.isNotEmpty;
+  }
+
+  String get _activeCompanyName {
+    final fromJob = _activeJob?.company.trim() ?? '';
+    if (fromJob.isNotEmpty) return fromJob;
+    return _shift.header.company.trim();
+  }
+
+  String get _activePadName {
+    final fromJob = _activeJob?.padName.trim() ?? '';
+    if (fromJob.isNotEmpty) return fromJob;
+    return _shift.header.pad.trim();
+  }
+
+  String get _activeStatusLabel {
+    final status = _activeJob?.status.trim() ?? '';
+    if (status.isNotEmpty) {
+      return status.toUpperCase();
+    }
+    return _hasActiveShiftLink ? 'ACTIVE' : 'INACTIVE';
+  }
+
+  int get _savedHourCount {
+    final hours = <int>{};
+    for (final row in _shift.savedRows) {
+      hours.add(row.hourIndex);
+    }
+    return hours.length;
+  }
+
+  int get _savedRowCount => _shift.savedRows.length;
+
+  Widget _detailLine(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 92,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(value.trim().isEmpty ? '-' : value.trim()),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openJobSetup({
@@ -228,7 +311,7 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
 
   Widget _activeJobCard() {
     final activeJob = _activeJob;
-    if (activeJob == null) {
+    if (activeJob == null && !_hasActiveShiftLink) {
       return const Card(
         color: Color(0xFF17130E),
         child: Padding(
@@ -255,6 +338,10 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
       );
     }
 
+    final companyName = _activeCompanyName;
+    final padName = _activePadName;
+    final wellsText = _activeWells.isEmpty ? '-' : _activeWells.join(' / ');
+
     return Card(
       color: const Color(0xFF17130E),
       child: Padding(
@@ -271,15 +358,53 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
               ),
             ),
             const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCDA56A),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    _activeStatusLabel,
+                    style: const TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                if (_savedRowCount > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFCDA56A)),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '$_savedHourCount hr • $_savedRowCount rows',
+                      style: const TextStyle(
+                        color: Color(0xFFCDA56A),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
             Text(
-              activeJob.company.trim().isEmpty
-                  ? 'Job in progress'
-                  : activeJob.company.trim(),
+              companyName.isEmpty ? 'Job in progress' : companyName,
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 4),
             Text(
-              activeJob.padName.trim().isEmpty ? '-' : activeJob.padName.trim(),
+              padName.isEmpty ? '-' : padName,
               style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 16,
@@ -288,9 +413,23 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              _wellsLabel(activeJob),
+              wellsText,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
+            const SizedBox(height: 14),
+            _detailLine('Company', companyName),
+            _detailLine('Pad', padName),
+            _detailLine('Wells', wellsText),
+            _detailLine('Status', _activeStatusLabel),
+            _detailLine('Saved Hours', _savedHourCount.toString()),
+            _detailLine('Saved Rows', _savedRowCount.toString()),
+            if (activeJob == null && _hasActiveShiftLink) ...[
+              const SizedBox(height: 6),
+              const Text(
+                'Using active shift job link.',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ],
           ],
         ),
       ),
@@ -337,7 +476,7 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: _changeActiveJob,
+                onPressed: _nonArchivedJobs.isEmpty ? null : _changeActiveJob,
                 icon: const Icon(Icons.swap_horiz),
                 label: const Text('Change Active Job'),
               ),
