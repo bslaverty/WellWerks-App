@@ -15,6 +15,8 @@ class AppSettingsDefaults {
   static const chokeDisplay = 'ADJ';
   static const optionalReportSections = [
     'vru',
+    'flare',
+    'ecd',
     'compressor',
     'gasCooler',
     'waterCooler',
@@ -52,6 +54,8 @@ class AppSettingsData {
 
   static const optionalReportSectionOptions = [
     AppOptionalReportSection(id: 'vru', label: 'VRU'),
+    AppOptionalReportSection(id: 'flare', label: 'Flare'),
+    AppOptionalReportSection(id: 'ecd', label: 'ECD'),
     AppOptionalReportSection(id: 'compressor', label: 'Compressor'),
     AppOptionalReportSection(id: 'gasCooler', label: 'Gas Cooler'),
     AppOptionalReportSection(id: 'waterCooler', label: 'Water Cooler'),

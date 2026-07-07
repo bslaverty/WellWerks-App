@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../models/job_setup.dart';
 import '../models/production_shift.dart';
+import '../services/app_settings_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/job_profile_defaults_service.dart';
 import '../services/production_shift_service.dart';
@@ -18,12 +19,21 @@ class TextUpdateScreen extends StatefulWidget {
 }
 
 class _TextUpdateScreenState extends State<TextUpdateScreen> {
+  final _settingsService = AppSettingsService();
   final _shiftService = ProductionShiftService();
   final _layoutService = ReportProfileService();
   final _jobStorage = JobStorageService();
   final _recoveryState = RecoveryStateService();
   final _profileDefaults = JobProfileDefaultsService();
 
+  AppSettingsData _settings = const AppSettingsData(
+    defaultGasUnit: AppSettingsDefaults.gasUnit,
+    defaultGaugeType: AppSettingsDefaults.gaugeType,
+    defaultBblPerInch: AppSettingsDefaults.bblPerInch,
+    defaultGasCalculationMethod: AppSettingsDefaults.gasCalculationMethod,
+    defaultChokeDisplay: AppSettingsDefaults.chokeDisplay,
+    defaultOptionalReportSections: AppSettingsDefaults.optionalReportSections,
+  );
   ProductionShift _shift = ProductionShift.empty();
   JobSetup? _activeJob;
   ReportLayoutProfile _layout = ReportProfileService().defaultProfile();
@@ -39,6 +49,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
 
   Future<void> _load() async {
     var shift = await _shiftService.loadActiveShift();
+    final settings = await _settingsService.load();
     final activeJob = await _jobStorage.loadActiveJob();
     if (activeJob != null && shift.activeJobId != activeJob.id) {
       shift = shift.copyWith(activeJobId: activeJob.id);
@@ -51,6 +62,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         : const <ProductionReportRow>[];
     if (!mounted) return;
     setState(() {
+      _settings = settings;
       _shift = shift;
       _activeJob = activeJob;
       _layout = layout;
@@ -112,6 +124,12 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     return _fmt(_baseGasToDisplay(parsed));
   }
 
+  bool get _showVruSection => _settings.isOptionalSectionEnabled('vru');
+
+  bool get _showFlareSection => _settings.isOptionalSectionEnabled('flare');
+
+  bool get _showEcdSection => _settings.isOptionalSectionEnabled('ecd');
+
   String _fmtTimeLabel(String value) {
     final parts = value.trim().split(' ');
     if (parts.length != 2) return value.toUpperCase();
@@ -155,6 +173,20 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   }
 
   String _lineFor(ProductionReportRow row, String key) {
+    const vruKeys = {'vruGasRt', 'compressorInj', 'vruSuction', 'vruDischarge'};
+    const flareKeys = {
+      'flareRt',
+      'flarePilotTemp',
+      'clrFlarePilot',
+      'clrFlareRt',
+      'clrFlareTemp',
+    };
+    if (!_showVruSection && vruKeys.contains(key)) {
+      return '';
+    }
+    if (!_showFlareSection && flareKeys.contains(key)) {
+      return '';
+    }
     switch (key) {
       case 'time':
         return 'TIME - ${_fmtTimeLabel(row.time)}';
@@ -226,6 +258,27 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   }
 
   String _valueForProfileField(ProductionReportRow row, String key) {
+    if (!_showVruSection &&
+        const {
+          'vruGasRt',
+          'vruSuct',
+          'vruDisc',
+          'compressorInj',
+          'vruSuction',
+          'vruDischarge'
+        }.contains(key)) {
+      return '';
+    }
+    if (!_showFlareSection &&
+        const {
+          'flareRt',
+          'flarePilotTemp',
+          'clrFlarePilot',
+          'clrFlareRt',
+          'clrFlareTemp'
+        }.contains(key)) {
+      return '';
+    }
     switch (key) {
       case 'wellName':
         return row.well.isEmpty ? '-' : row.well;
@@ -289,6 +342,12 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
       lines.add('OIL: ${_valueForProfileField(row, 'boph')}');
       lines.add('GAS: ${_valueForProfileField(row, 'gasSpotRt')}');
       lines.add('SAND: ${_valueForProfileField(row, 'prop')}');
+      if (_showEcdSection) {
+        lines.add('');
+        lines.add('ECD');
+        lines.add('STATUS - ON/OFF');
+        lines.add('TEMP - --');
+      }
       if (i != rows.length - 1) {
         lines.add('');
       }
@@ -330,7 +389,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         lines.add('PL: -');
       }
 
-      if (activeSections.contains('CLR FLARE')) {
+      if (activeSections.contains('CLR FLARE') && _showFlareSection) {
         lines.add('');
         lines.add('CLR FLARE');
         lines.add(
@@ -340,7 +399,14 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         lines.add('Temp: ${row.gasTemp.isEmpty ? '-' : row.gasTemp}');
       }
 
-      if (activeSections.contains('VRU')) {
+      if (_showEcdSection) {
+        lines.add('');
+        lines.add('ECD');
+        lines.add('STATUS - ON/OFF');
+        lines.add('TEMP - --');
+      }
+
+      if (activeSections.contains('VRU') && _showVruSection) {
         lines.add('');
         lines.add('VRU');
         lines.add(
@@ -410,7 +476,8 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         }
       }
 
-      final hasVru = included.any((f) => vruKeys.contains(f.key));
+      final hasVru =
+          _showVruSection && included.any((f) => vruKeys.contains(f.key));
       if (hasVru) {
         lines.add('');
         lines.add('VRU');
@@ -418,6 +485,13 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         for (final field in included.where((f) => vruKeys.contains(f.key))) {
           lines.add(_lineFor(previewRow, field.key));
         }
+      }
+
+      if (_showEcdSection) {
+        lines.add('');
+        lines.add('ECD');
+        lines.add('STATUS - ON/OFF');
+        lines.add('TEMP - --');
       }
 
       if (included.any((f) => f.key == 'notes')) {
