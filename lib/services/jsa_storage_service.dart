@@ -69,6 +69,21 @@ class JsaStorageService {
     return loadDraft(activeJobId: activeJobId, date: _todayDateText());
   }
 
+  Future<List<JsaDraft>> loadAllDrafts() async {
+    final prefs = await SharedPreferences.getInstance();
+    final records = await _loadRecordsMap(prefs);
+    final drafts = records.values
+        .whereType<Map>()
+        .map((item) => JsaDraft.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+    drafts.sort((a, b) {
+      final aStamp = '${a.date.trim()} ${a.time.trim()}';
+      final bStamp = '${b.date.trim()} ${b.time.trim()}';
+      return bStamp.compareTo(aStamp);
+    });
+    return drafts;
+  }
+
   Future<bool> hasDraftForJobDate({
     required String activeJobId,
     required String date,

@@ -17,7 +17,14 @@ import '../services/recovery_state_service.dart';
 import '../widgets/app_header.dart';
 
 class JsaScreen extends StatefulWidget {
-  const JsaScreen({super.key});
+  const JsaScreen({
+    super.key,
+    this.initialActiveJobId,
+    this.initialDate,
+  });
+
+  final String? initialActiveJobId;
+  final String? initialDate;
 
   @override
   State<JsaScreen> createState() => _JsaScreenState();
@@ -231,28 +238,38 @@ class _JsaScreenState extends State<JsaScreen> {
   }
 
   Future<void> _loadDraft() async {
-    final activeJob = await _jobStorage.loadActiveJob();
-    final draft = activeJob != null
-        ? await _storage.loadTodayForJob(activeJob.id)
-        : await _storage.loadDraft();
+    final requestedJobId = widget.initialActiveJobId?.trim() ?? '';
+    final requestedDate = widget.initialDate?.trim() ?? '';
+    final liveActiveJob = await _jobStorage.loadActiveJob();
+    final targetJob = requestedJobId.isNotEmpty
+        ? await _jobStorage.loadJobById(requestedJobId)
+        : liveActiveJob;
+    final draft = requestedJobId.isNotEmpty || requestedDate.isNotEmpty
+        ? await _storage.loadDraft(
+            activeJobId: requestedJobId,
+            date: requestedDate,
+          )
+        : (targetJob != null
+            ? await _storage.loadTodayForJob(targetJob.id)
+            : await _storage.loadDraft());
     if (!mounted) return;
     setState(() {
-      _activeJob = activeJob;
+      _activeJob = targetJob;
       _clearFormValues(resetDateTime: false);
       if (draft != null) {
         _applyDraft(draft);
       }
-      if (activeJob != null) {
+      if (targetJob != null) {
         if (_company == 'Mach Energy' || _company == 'Custom') {
-          _company = _companies.contains(activeJob.company)
-              ? activeJob.company
+          _company = _companies.contains(targetJob.company)
+              ? targetJob.company
               : _company;
         }
         if (_location.text.trim().isEmpty) {
-          _location.text = activeJob.padName;
+          _location.text = targetJob.padName;
         }
         if (_wellName.text.trim().isEmpty) {
-          _wellName.text = activeJob.primaryWell;
+          _wellName.text = targetJob.primaryWell;
         }
       }
     });

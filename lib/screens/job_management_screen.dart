@@ -12,6 +12,7 @@ import '../services/jsa_export_service.dart';
 import '../services/jsa_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../widgets/app_header.dart';
+import 'jsa_history_screen.dart';
 import 'jsa_screen.dart';
 import 'job_setup_screen.dart';
 
@@ -558,7 +559,10 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
   Widget _todayJsaCard() {
     final hasActiveJob = _activeJob != null || _hasActiveShiftLink;
     final hasJsa = _todayJsa != null;
+    final statusColor =
+        hasJsa ? const Color(0xFF7EDC8C) : const Color(0xFFCDA56A);
     return Card(
+      color: hasJsa ? const Color(0xFF142015) : const Color(0xFF241B10),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -574,11 +578,19 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
             ),
             const SizedBox(height: 10),
             Text(
-              hasJsa ? 'JSA saved for today.' : 'No JSA saved for today.',
+              hasJsa ? 'JSA COMPLETE' : 'JSA NOT COMPLETE',
               style: TextStyle(
-                color: hasJsa ? const Color(0xFFCDA56A) : Colors.white70,
-                fontWeight: FontWeight.w700,
+                color: statusColor,
+                fontWeight: FontWeight.w900,
+                fontSize: 18,
               ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              hasJsa
+                  ? 'Today\'s JSA is saved and ready to reopen or share.'
+                  : 'No JSA exists for today under the active job.',
+              style: const TextStyle(color: Colors.white70),
             ),
             const SizedBox(height: 12),
             SizedBox(
@@ -598,6 +610,19 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
                 onPressed: hasJsa ? _shareTodayJsa : null,
                 icon: const Icon(Icons.share_outlined),
                 label: const Text('Export / Share Today\'s JSA'),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const JsaHistoryScreen()),
+                  );
+                },
+                icon: const Icon(Icons.history_outlined),
+                label: const Text('JSA History'),
               ),
             ),
           ],
