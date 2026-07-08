@@ -703,8 +703,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
       bblPerMin = perMin;
       bblPerHr = perMin * 60;
       bblPerDay = perMin * 1440;
-      startGauge.clear();
-      endGauge.clear();
       _timerFinished = false;
       _thirtySecondAlertShown = false;
       _remainingSeconds = _minutesToDurationSeconds();
