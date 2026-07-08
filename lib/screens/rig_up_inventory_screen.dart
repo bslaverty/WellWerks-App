@@ -112,12 +112,11 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
   final _recoveryState = RecoveryStateService();
   final _inventoryService = RigUpInventoryService();
 
-  final _companyController = TextEditingController();
   final _customerController = TextEditingController();
-  final _jobPadController = TextEditingController();
-  final _locationController = TextEditingController();
+  final _padController = TextEditingController();
   final _notesController = TextEditingController();
   final _newWellController = TextEditingController();
+  final _newWellFocusNode = FocusNode();
 
   bool _loading = true;
   bool _saving = false;
@@ -125,7 +124,7 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
   String _recordId = '';
   String _inventoryText = '';
 
-  final List<String> _wells = <String>['Well 1'];
+  final List<String> _wells = <String>[];
   Map<String, int> _counts = <String, int>{};
   Map<String, Map<String, int>> _assignedByWell = <String, Map<String, int>>{};
   Map<String, Map<String, String>> _tankSplits =
@@ -142,12 +141,11 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
 
   @override
   void dispose() {
-    _companyController.dispose();
     _customerController.dispose();
-    _jobPadController.dispose();
-    _locationController.dispose();
+    _padController.dispose();
     _notesController.dispose();
     _newWellController.dispose();
+    _newWellFocusNode.dispose();
     super.dispose();
   }
 
@@ -177,10 +175,9 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
       };
 
       if (record != null) {
-        _companyController.text = record['company']?.toString() ?? '';
         _customerController.text = record['customer']?.toString() ?? '';
-        _jobPadController.text = record['jobPad']?.toString() ?? '';
-        _locationController.text = record['location']?.toString() ?? '';
+        _padController.text =
+            (record['pad']?.toString() ?? record['jobPad']?.toString() ?? '');
         _notesController.text = record['notes']?.toString() ?? '';
         _inventoryText = record['inventoryText']?.toString() ?? '';
 
@@ -194,7 +191,6 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
           ..addAll(rawWells
               .map((well) => well.trim())
               .where((well) => well.isNotEmpty));
-        if (_wells.isEmpty) _wells.add('Well 1');
 
         final rawCounts = Map<String, dynamic>.from(
             record['counts'] as Map? ?? <String, dynamic>{});
@@ -462,16 +458,13 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
       _newWellController.clear();
       _reconcileToWells();
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _newWellFocusNode.requestFocus();
+    });
   }
 
   void _removeWell(String name) {
-    if (_wells.length == 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('At least one well is required.')),
-      );
-      return;
-    }
-
     setState(() {
       _wells.remove(name);
       _reconcileToWells();
@@ -479,12 +472,11 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
   }
 
   bool _validateHeader() {
-    if (_companyController.text.trim().isEmpty ||
-        _jobPadController.text.trim().isEmpty ||
+    if (_padController.text.trim().isEmpty ||
         _wells.where((well) => well.trim().isNotEmpty).isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Enter Company, Job/Pad, and at least one Well.'),
+          content: Text('Enter Pad and at least one Well.'),
         ),
       );
       return false;
@@ -493,8 +485,8 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
   }
 
   String _buildInventoryText() {
-    final company = _companyController.text.trim();
-    final jobPad = _jobPadController.text.trim();
+    final customer = _customerController.text.trim();
+    final pad = _padController.text.trim();
     final dateText = DateFormat('yyyy-MM-dd').format(_date);
 
     final perWellLines = <String>[];
@@ -543,10 +535,10 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
       ..sort((a, b) => a.key.compareTo(b.key));
 
     final buffer = StringBuffer()
-      ..writeln('RIG-UP INVENTORY')
+      ..writeln('RIG-UP PACKAGE INVENTORY')
       ..writeln('')
-      ..writeln('Company: ${company.isEmpty ? '-' : company}')
-      ..writeln('Job/Pad: ${jobPad.isEmpty ? '-' : jobPad}')
+      ..writeln('Customer: ${customer.isEmpty ? '-' : customer}')
+      ..writeln('Pad: ${pad.isEmpty ? '-' : pad}')
       ..writeln('Date: $dateText')
       ..writeln('')
       ..writeln('PER-WELL INVENTORY')
@@ -582,10 +574,8 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
     try {
       final text = _buildInventoryText();
       final payload = <String, dynamic>{
-        'company': _companyController.text.trim(),
         'customer': _customerController.text.trim(),
-        'jobPad': _jobPadController.text.trim(),
-        'location': _locationController.text.trim(),
+        'pad': _padController.text.trim(),
         'date': DateFormat('yyyy-MM-dd').format(_date),
         'wells': _wells,
         'counts': _counts,
@@ -631,6 +621,22 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
     await Share.share(text, subject: 'Rig-Up Inventory');
   }
 
+  ButtonStyle get _primaryActionStyle => FilledButton.styleFrom(
+        minimumSize: const Size.fromHeight(56),
+        textStyle: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w800,
+        ),
+      );
+
+  ButtonStyle get _secondaryActionStyle => OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(56),
+        textStyle: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+        ),
+      );
+
   Widget _recordHeaderCard() {
     final dateText = DateFormat('MM/dd/yyyy').format(_date);
 
@@ -642,13 +648,8 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Rig-Up Record',
+              'Rig-Up Package Inventory',
               style: TextStyle(color: _gold, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _companyController,
-              decoration: const InputDecoration(labelText: 'Company'),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -656,20 +657,16 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
               decoration: const InputDecoration(labelText: 'Customer'),
             ),
             const SizedBox(height: 10),
-            TextField(
-              controller: _jobPadController,
-              decoration: const InputDecoration(labelText: 'Job / Pad'),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _locationController,
-              decoration: const InputDecoration(labelText: 'Location'),
-            ),
-            const SizedBox(height: 10),
             OutlinedButton.icon(
+              style: _secondaryActionStyle,
               onPressed: _pickDate,
               icon: const Icon(Icons.calendar_today_outlined),
               label: Text('Date: $dateText'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _padController,
+              decoration: const InputDecoration(labelText: 'Pad'),
             ),
             const SizedBox(height: 10),
             const Text(
@@ -694,13 +691,17 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
                 Expanded(
                   child: TextField(
                     controller: _newWellController,
-                    decoration:
-                        const InputDecoration(labelText: 'Add Well Name'),
+                    focusNode: _newWellFocusNode,
+                    textInputAction: TextInputAction.done,
+                    decoration: const InputDecoration(labelText: 'Well Name'),
                     onSubmitted: (_) => _addWell(),
                   ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton(onPressed: _addWell, child: const Text('Add')),
+                FilledButton(
+                  onPressed: _addWell,
+                  child: const Text('Add'),
+                ),
               ],
             ),
             const SizedBox(height: 10),
@@ -1120,18 +1121,21 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
             ),
           ),
           FilledButton.icon(
+            style: _primaryActionStyle,
             onPressed: _saving ? null : _saveInventory,
             icon: const Icon(Icons.save_outlined),
             label: const Text('Save Inventory'),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
+            style: _secondaryActionStyle,
             onPressed: _previewInventory,
             icon: const Icon(Icons.description_outlined),
             label: const Text('Preview Inventory'),
           ),
           const SizedBox(height: 8),
           FilledButton.icon(
+            style: _primaryActionStyle,
             onPressed: _shareSend,
             icon: const Icon(Icons.share_outlined),
             label: const Text('Share / Send'),

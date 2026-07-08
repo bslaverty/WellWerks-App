@@ -110,8 +110,12 @@ class _RigUpHistoryScreenState extends State<RigUpHistoryScreen> {
               itemBuilder: (context, index) {
                 final record = _records[index];
                 final id = record['id']?.toString() ?? '';
+                final customer = (record['customer']?.toString() ?? '').trim();
                 final company = (record['company']?.toString() ?? '').trim();
-                final jobPad = (record['jobPad']?.toString() ?? '').trim();
+                final pad = (record['pad']?.toString() ??
+                        record['jobPad']?.toString() ??
+                        '')
+                    .trim();
                 final date = (record['date']?.toString() ?? '').trim();
                 final wells = List<String>.from(
                   record['wells'] as List? ?? const <String>[],
@@ -124,7 +128,9 @@ class _RigUpHistoryScreenState extends State<RigUpHistoryScreen> {
                     leading:
                         const Icon(Icons.inventory_2_outlined, color: _gold),
                     title: Text(
-                      company.isEmpty ? 'Not entered' : company,
+                      customer.isNotEmpty
+                          ? customer
+                          : (company.isEmpty ? 'Not entered' : company),
                       style: const TextStyle(
                         color: _gold,
                         fontWeight: FontWeight.w800,
@@ -133,7 +139,7 @@ class _RigUpHistoryScreenState extends State<RigUpHistoryScreen> {
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Job/Pad: ${jobPad.isEmpty ? '-' : jobPad}'),
+                        Text('Pad: ${pad.isEmpty ? '-' : pad}'),
                         Text('Date: ${date.isEmpty ? '-' : date}'),
                         Text('Wells: ${wells.length}'),
                       ],

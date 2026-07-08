@@ -30,6 +30,11 @@ class JsaScreen extends StatefulWidget {
   State<JsaScreen> createState() => _JsaScreenState();
 }
 
+enum _JsaShareFormat {
+  pdf,
+  png,
+}
+
 class _JsaScreenState extends State<JsaScreen> {
   static const gold = Color(0xFFCDA56A);
 
@@ -56,7 +61,6 @@ class _JsaScreenState extends State<JsaScreen> {
   String _company = 'Mach Energy';
   JobSetup? _activeJob;
   JsaDraft? _exportPreviewDraft;
-  ExportedJsaFile? _latestExport;
   DateTime _date = DateTime.now();
   TimeOfDay _time = TimeOfDay.now();
   final Set<String> _selectedTasks = {'Flowback'};
@@ -421,8 +425,9 @@ class _JsaScreenState extends State<JsaScreen> {
     _exportPreviewDraft = draft;
     if (!mounted) return draft;
     if (showFeedback) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('JSA draft saved')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('JSA saved to history.')),
+      );
     }
     return draft;
   }
@@ -513,85 +518,68 @@ class _JsaScreenState extends State<JsaScreen> {
     return byteData?.buffer.asUint8List();
   }
 
-  Future<void> _saveAsPdf() async {
+  Future<void> _shareSend() async {
     if (_exporting) return;
-    setState(() => _exporting = true);
-    try {
-      final draft = await _saveDraft(showFeedback: false);
-      final exported = await _exportService.exportPdf(
-        draft: draft,
-        activeJob: _activeJob,
-      );
-      _latestExport = exported;
-      await _shareFile(
-        exported,
-        successMessage: 'JSA PDF ready to share.',
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-              'Unable to export JSA. Check required fields and try again.'),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _exporting = false);
-      }
-    }
-  }
 
-  Future<void> _saveAsImage() async {
-    if (_exporting) return;
-    setState(() => _exporting = true);
-    try {
-      final draft = await _saveDraft(showFeedback: false);
-      final imageBytes = await _captureExportImageBytes(draft);
-      if (imageBytes == null) {
-        throw StateError('Unable to capture JSA image.');
-      }
-      final exported = await _exportService.exportImage(
-        draft: draft,
-        pngBytes: imageBytes,
-      );
-      _latestExport = exported;
-      await _shareFile(
-        exported,
-        successMessage: 'JSA image ready to share.',
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-              'Unable to export JSA. Check required fields and try again.'),
+    final format = await showDialog<_JsaShareFormat>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Share As'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => Navigator.of(context).pop(_JsaShareFormat.pdf),
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                label: const Text('PDF'),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).pop(_JsaShareFormat.png),
+                icon: const Icon(Icons.image_outlined),
+                label: const Text('Image (PNG)'),
+              ),
+            ),
+          ],
         ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _exporting = false);
-      }
-    }
-  }
+      ),
+    );
 
-  Future<void> _shareJsa() async {
-    if (_exporting) return;
+    if (format == null) return;
+
     setState(() => _exporting = true);
     try {
-      var exportToShare = _latestExport;
-      if (exportToShare == null) {
-        final draft = await _saveDraft(showFeedback: false);
-        exportToShare = await _exportService.exportPdf(
+      final draft = await _buildDraft();
+      _exportPreviewDraft = draft;
+
+      if (format == _JsaShareFormat.pdf) {
+        final exported = await _exportService.exportPdf(
           draft: draft,
           activeJob: _activeJob,
         );
-        _latestExport = exportToShare;
+        await _shareFile(
+          exported,
+          successMessage: 'JSA PDF ready to share.',
+        );
+      } else {
+        final imageBytes = await _captureExportImageBytes(draft);
+        if (imageBytes == null) {
+          throw StateError('Unable to capture JSA image.');
+        }
+        final exported = await _exportService.exportImage(
+          draft: draft,
+          pngBytes: imageBytes,
+        );
+        await _shareFile(
+          exported,
+          successMessage: 'JSA image ready to share.',
+        );
       }
-      await _shareFile(
-        exportToShare,
-        successMessage: 'JSA PDF ready to share.',
-      );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -616,8 +604,16 @@ class _JsaScreenState extends State<JsaScreen> {
         ? box.localToGlobal(Offset.zero) & box.size
         : const Rect.fromLTWH(0, 0, 1, 1);
 
+    final lowerName = exported.fileName.toLowerCase();
+    final mimeType = lowerName.endsWith('.png')
+        ? 'image/png'
+        : (lowerName.endsWith('.pdf') ? 'application/pdf' : null);
+    final fileToShare = mimeType == null
+        ? XFile(exported.filePath)
+        : XFile(exported.filePath, mimeType: mimeType);
+
     await Share.shareXFiles(
-      [XFile(exported.filePath)],
+      [fileToShare],
       subject: 'WellWerks JSA',
       text: 'JSA exported from WellWerks.',
       sharePositionOrigin: shareOrigin,
@@ -734,25 +730,28 @@ class _JsaScreenState extends State<JsaScreen> {
               _section('Employees & Signatures'),
               for (var i = 0; i < 6; i++) _employeeCard(i),
               const SizedBox(height: 18),
-              FilledButton(
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(56),
+                  textStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
                 onPressed: _exporting ? null : () => _saveDraft(),
-                child: const Text('Save JSA Draft'),
-              ),
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
-                onPressed: _exporting ? null : _saveAsPdf,
-                icon: const Icon(Icons.picture_as_pdf_outlined),
-                label: const Text('Save as PDF'),
-              ),
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
-                onPressed: _exporting ? null : _saveAsImage,
-                icon: const Icon(Icons.image_outlined),
-                label: const Text('Save as Image'),
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('Save'),
               ),
               const SizedBox(height: 10),
               FilledButton.icon(
-                onPressed: _exporting ? null : _shareJsa,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(56),
+                  textStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                onPressed: _exporting ? null : _shareSend,
                 icon: const Icon(Icons.share_outlined),
                 label: const Text('Share / Send'),
               ),
