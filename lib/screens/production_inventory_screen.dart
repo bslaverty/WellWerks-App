@@ -205,6 +205,11 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     ];
   }
 
+  void _syncComputedCushion(int index) {
+    if (index < 0 || index >= _oilInventoryWells.length) return;
+    _oilInventoryWells[index].setComputedCushion();
+  }
+
   ProductionShiftHeader _headerFromControllers() {
     final wells = _wellControllers
         .map((controller) => controller.text.trim())
@@ -614,25 +619,35 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                   label: 'Current Oil Inventory',
                   controller: _oilInventoryWells[i].currentOilInventory,
                   helperText: 'BBL',
-                  onChanged: (_) => setState(() {}),
+                  onChanged: (_) {
+                    setState(() {
+                      _syncComputedCushion(i);
+                    });
+                  },
                 ),
                 WwNumberField(
                   label: 'Expected Oil Inventory',
                   controller: _oilInventoryWells[i].expectedOilInventory,
                   helperText: 'BBL',
-                  onChanged: (_) => setState(() {}),
+                  onChanged: (_) {
+                    setState(() {
+                      _syncComputedCushion(i);
+                    });
+                  },
                 ),
-                WwNumberField(
-                  label: 'Current Cushion',
-                  controller: _oilInventoryWells[i].currentCushion,
-                  helperText: 'BBL',
-                  onChanged: (_) => setState(() {}),
-                ),
+                _buildCurrentCushionField(i),
+                const SizedBox(height: 4),
+                _buildCushionStatus(i),
+                const SizedBox(height: 10),
                 WwNumberField(
                   label: 'Maximum Cushion',
                   controller: _oilInventoryWells[i].maximumCushion,
                   helperText: 'BBL',
-                  onChanged: (_) => setState(() {}),
+                  onChanged: (_) {
+                    setState(() {
+                      _syncComputedCushion(i);
+                    });
+                  },
                 ),
               ],
             ),
@@ -644,6 +659,65 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
           style: TextStyle(color: Colors.white70),
         ),
     ]);
+  }
+
+  Widget _buildCurrentCushionField(int index) {
+    final cushion = _oilInventoryWells[index].computedCushion;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: InputDecorator(
+        decoration: const InputDecoration(
+          labelText: 'Current Cushion',
+          helperText: 'BBL (Current Oil Inventory - Expected Oil Inventory)',
+        ),
+        child: Text(
+          cushion.toStringAsFixed(2),
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFFCDA56A),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCushionStatus(int index) {
+    final well = _oilInventoryWells[index];
+    final current = well.currentOilValue;
+    final expected = well.expectedOilValue;
+    final max = well.maximumCushionValue;
+    final cushion = well.computedCushion;
+
+    if (expected > current) {
+      final byAmount = (expected - current).toStringAsFixed(2);
+      return Text(
+        'OUTSIDE CUSHION BY $byAmount BBL',
+        style: const TextStyle(
+          color: Color(0xFFE57373),
+          fontWeight: FontWeight.w800,
+        ),
+      );
+    }
+
+    if (cushion >= 0 && cushion <= max) {
+      return const Text(
+        'WITHIN CUSHION',
+        style: TextStyle(
+          color: Color(0xFF7EDC8C),
+          fontWeight: FontWeight.w800,
+        ),
+      );
+    }
+
+    final overBy = (cushion - max).toStringAsFixed(2);
+    return Text(
+      'OUTSIDE CUSHION BY $overBy BBL',
+      style: const TextStyle(
+        color: Color(0xFFE57373),
+        fontWeight: FontWeight.w800,
+      ),
+    );
   }
 
   Widget _wellChokeField(int index) {
@@ -987,18 +1061,21 @@ class _OilInventoryControllers {
   factory _OilInventoryControllers.fromWell({
     ProductionOilInventoryWell? existing,
   }) {
+    final currentText = existing?.currentOilInventory ?? '';
+    final expectedText = existing?.expectedOilInventory ?? '';
+    final computed = _computeCushionFromStrings(currentText, expectedText);
     return _OilInventoryControllers(
       beginningOilInventory: TextEditingController(
         text: existing?.beginningOilInventory ?? '',
       ),
       currentOilInventory: TextEditingController(
-        text: existing?.currentOilInventory ?? '',
+        text: currentText,
       ),
       expectedOilInventory: TextEditingController(
-        text: existing?.expectedOilInventory ?? '',
+        text: expectedText,
       ),
       currentCushion: TextEditingController(
-        text: existing?.currentCushion ?? '',
+        text: computed.toStringAsFixed(2),
       ),
       maximumCushion: TextEditingController(
         text: existing?.maximumCushion ?? '',
@@ -1012,13 +1089,28 @@ class _OilInventoryControllers {
   final TextEditingController currentCushion;
   final TextEditingController maximumCushion;
 
+  static double _parse(String value) => double.tryParse(value.trim()) ?? 0;
+
+  static double _computeCushionFromStrings(String current, String expected) {
+    return _parse(current) - _parse(expected);
+  }
+
+  double get currentOilValue => _parse(currentOilInventory.text);
+  double get expectedOilValue => _parse(expectedOilInventory.text);
+  double get maximumCushionValue => _parse(maximumCushion.text);
+  double get computedCushion => currentOilValue - expectedOilValue;
+
+  void setComputedCushion() {
+    currentCushion.text = computedCushion.toStringAsFixed(2);
+  }
+
   ProductionOilInventoryWell toWell(String wellName) {
     return ProductionOilInventoryWell(
       wellName: wellName,
       beginningOilInventory: beginningOilInventory.text.trim(),
       currentOilInventory: currentOilInventory.text.trim(),
       expectedOilInventory: expectedOilInventory.text.trim(),
-      currentCushion: currentCushion.text.trim(),
+      currentCushion: computedCushion.toStringAsFixed(2),
       maximumCushion: maximumCushion.text.trim(),
     );
   }
