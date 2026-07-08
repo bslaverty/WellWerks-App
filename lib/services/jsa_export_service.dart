@@ -87,7 +87,8 @@ class JsaExportService {
         .replaceAll(RegExp(r'[^A-Za-z0-9_\-]+'), '_')
         .replaceAll(RegExp(r'_+'), '_')
         .replaceAll(RegExp(r'^_|_$'), '');
-    return '${safeBase.isEmpty ? 'jsa' : safeBase}.$extension';
+    final readableBase = safeBase.isEmpty ? 'jsa' : safeBase;
+    return '${readableBase}_JSA.$extension';
   }
 
   pw.Widget _header(JsaDraft draft) {

@@ -56,6 +56,7 @@ class _JsaScreenState extends State<JsaScreen> {
   String _company = 'Mach Energy';
   JobSetup? _activeJob;
   JsaDraft? _exportPreviewDraft;
+  ExportedJsaFile? _latestExport;
   DateTime _date = DateTime.now();
   TimeOfDay _time = TimeOfDay.now();
   final Set<String> _selectedTasks = {'Flowback'};
@@ -521,9 +522,18 @@ class _JsaScreenState extends State<JsaScreen> {
         draft: draft,
         activeJob: _activeJob,
       );
+      _latestExport = exported;
+      await _shareFile(
+        exported,
+        successMessage: 'JSA PDF ready to share.',
+      );
+    } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved PDF: ${exported.fileName}')),
+        const SnackBar(
+          content: Text(
+              'Unable to export JSA. Check required fields and try again.'),
+        ),
       );
     } finally {
       if (mounted) {
@@ -539,19 +549,24 @@ class _JsaScreenState extends State<JsaScreen> {
       final draft = await _saveDraft(showFeedback: false);
       final imageBytes = await _captureExportImageBytes(draft);
       if (imageBytes == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unable to capture JSA image.')),
-        );
-        return;
+        throw StateError('Unable to capture JSA image.');
       }
       final exported = await _exportService.exportImage(
         draft: draft,
         pngBytes: imageBytes,
       );
+      _latestExport = exported;
+      await _shareFile(
+        exported,
+        successMessage: 'JSA image ready to share.',
+      );
+    } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved Image: ${exported.fileName}')),
+        const SnackBar(
+          content: Text(
+              'Unable to export JSA. Check required fields and try again.'),
+        ),
       );
     } finally {
       if (mounted) {
@@ -564,25 +579,54 @@ class _JsaScreenState extends State<JsaScreen> {
     if (_exporting) return;
     setState(() => _exporting = true);
     try {
-      final draft = await _saveDraft(showFeedback: false);
-      final exported = await _exportService.exportPdf(
-        draft: draft,
-        activeJob: _activeJob,
+      var exportToShare = _latestExport;
+      if (exportToShare == null) {
+        final draft = await _saveDraft(showFeedback: false);
+        exportToShare = await _exportService.exportPdf(
+          draft: draft,
+          activeJob: _activeJob,
+        );
+        _latestExport = exportToShare;
+      }
+      await _shareFile(
+        exportToShare,
+        successMessage: 'JSA PDF ready to share.',
       );
-      await Share.shareXFiles(
-        [XFile(exported.filePath)],
-        subject: 'WellWerks JSA',
-        text: 'JSA exported from WellWerks.',
-      );
+    } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('JSA shared.')),
+        const SnackBar(
+          content: Text(
+              'Unable to export JSA. Check required fields and try again.'),
+        ),
       );
     } finally {
       if (mounted) {
         setState(() => _exporting = false);
       }
     }
+  }
+
+  Future<void> _shareFile(
+    ExportedJsaFile exported, {
+    required String successMessage,
+  }) async {
+    final box = context.findRenderObject() as RenderBox?;
+    final shareOrigin = box != null
+        ? box.localToGlobal(Offset.zero) & box.size
+        : const Rect.fromLTWH(0, 0, 1, 1);
+
+    await Share.shareXFiles(
+      [XFile(exported.filePath)],
+      subject: 'WellWerks JSA',
+      text: 'JSA exported from WellWerks.',
+      sharePositionOrigin: shareOrigin,
+    );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(successMessage)),
+    );
   }
 
   Future<void> _clearDraft() async {
