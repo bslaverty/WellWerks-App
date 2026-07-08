@@ -10,6 +10,7 @@ import 'module_menu_screen.dart';
 import 'rate_calculator_menu_screen.dart';
 import 'equipment_layout_screen.dart';
 import 'rig_up_inventory_screen.dart';
+import 'rig_up_history_screen.dart';
 import 'jsa_screen.dart';
 import 'pressure_entry_screen.dart';
 import 'production_dashboard_screen.dart';
@@ -194,6 +195,8 @@ class _HomeScreenState extends State<HomeScreen> {
         return 'Layout Designer';
       case RecoveryModules.rigUpInventory:
         return 'Rig-Up Inventory';
+      case RecoveryModules.rigUpHistory:
+        return 'Rig-Up History';
       case RecoveryModules.history:
         return 'History';
       default:
@@ -218,6 +221,9 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       case RecoveryModules.rigUpInventory:
         screen = const RigUpInventoryScreen();
+        break;
+      case RecoveryModules.rigUpHistory:
+        screen = const RigUpHistoryScreen();
         break;
       default:
         screen = const PressureEntryScreen();
@@ -738,7 +744,7 @@ class _HomeScreenState extends State<HomeScreen> {
             context: context,
             icon: Icons.account_tree,
             title: 'Rig-Up',
-            subtitle: 'Layout Designer and rig-up inventory assignments',
+            subtitle: 'Layout Designer, Rig-Up Inventory, and Rig-Up History',
             tools: const [
               ModuleTool(
                 icon: Icons.account_tree,
@@ -751,6 +757,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: 'Rig-Up Inventory',
                 subtitle: 'Track equipment, assign by well, and share summary',
                 screen: RigUpInventoryScreen(),
+              ),
+              ModuleTool(
+                icon: Icons.history,
+                title: 'Rig-Up History',
+                subtitle: 'Open, share, or delete saved rig-up records',
+                screen: RigUpHistoryScreen(),
               ),
             ],
           ),

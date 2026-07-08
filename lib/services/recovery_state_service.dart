@@ -7,6 +7,7 @@ class RecoveryModules {
   static const jsa = 'jsa';
   static const layoutDesigner = 'layout_designer';
   static const rigUpInventory = 'rig_up_inventory';
+  static const rigUpHistory = 'rig_up_history';
   static const history = 'history';
 }
 
