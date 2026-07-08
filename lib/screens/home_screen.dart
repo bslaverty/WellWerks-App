@@ -9,6 +9,7 @@ import '../services/recovery_state_service.dart';
 import 'module_menu_screen.dart';
 import 'rate_calculator_menu_screen.dart';
 import 'equipment_layout_screen.dart';
+import 'rig_up_inventory_screen.dart';
 import 'jsa_screen.dart';
 import 'pressure_entry_screen.dart';
 import 'production_dashboard_screen.dart';
@@ -191,6 +192,8 @@ class _HomeScreenState extends State<HomeScreen> {
         return 'JSA';
       case RecoveryModules.layoutDesigner:
         return 'Layout Designer';
+      case RecoveryModules.rigUpInventory:
+        return 'Rig-Up Inventory';
       case RecoveryModules.history:
         return 'History';
       default:
@@ -212,6 +215,9 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       case RecoveryModules.layoutDesigner:
         screen = const EquipmentLayoutScreen();
+        break;
+      case RecoveryModules.rigUpInventory:
+        screen = const RigUpInventoryScreen();
         break;
       default:
         screen = const PressureEntryScreen();
@@ -728,11 +734,25 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          ToolCard(
+          _moduleCard(
+            context: context,
             icon: Icons.account_tree,
-            title: 'Layout Designer',
-            subtitle: 'Build and manage field equipment layouts',
-            onTap: () => open(context, const EquipmentLayoutScreen()),
+            title: 'Rig-Up',
+            subtitle: 'Layout Designer and rig-up inventory assignments',
+            tools: const [
+              ModuleTool(
+                icon: Icons.account_tree,
+                title: 'Layout Designer',
+                subtitle: 'Design rig-up layouts and iron flow paths',
+                screen: EquipmentLayoutScreen(),
+              ),
+              ModuleTool(
+                icon: Icons.inventory_2_outlined,
+                title: 'Rig-Up Inventory',
+                subtitle: 'Track equipment, assign by well, and share summary',
+                screen: RigUpInventoryScreen(),
+              ),
+            ],
           ),
           ToolCard(
             icon: Icons.assignment,
