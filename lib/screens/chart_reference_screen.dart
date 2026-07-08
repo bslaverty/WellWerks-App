@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../data/tank_charts.dart';
@@ -146,21 +148,13 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
 
   void _calculateChlorides() {
     double? input;
-    String inputType = 'Specific Gravity';
 
     if (_chloridesInputType == 'Brix') {
-      final brix = double.tryParse(_chloridesBrixInput.text.trim());
-      if (brix != null) {
-        input = ChloridesCalculator.specificGravityFromBrix(brix);
-      }
+      input = double.tryParse(_chloridesBrixInput.text.trim());
     } else if (_chloridesInputType == 'Pounds / gal') {
       input = double.tryParse(_chloridesPoundsInput.text.trim());
-      inputType = 'Pounds';
     } else if (_chloridesInputType == 'Salinity / PPT') {
-      final salinity = double.tryParse(_chloridesSalinityInput.text.trim());
-      if (salinity != null) {
-        input = ChloridesCalculator.specificGravityFromSalinityPpt(salinity);
-      }
+      input = double.tryParse(_chloridesSalinityInput.text.trim());
     } else {
       input = double.tryParse(_chloridesSpecificGravityInput.text.trim());
     }
@@ -173,9 +167,9 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
       return;
     }
 
-    final result = ChloridesCalculator.interpolate(
+    final result = ChloridesCalculator.calculate(
       entries: _chloridesEntries,
-      inputType: inputType,
+      inputType: _chloridesInputType,
       inputValue: input,
     );
 
@@ -228,10 +222,6 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
                           const InputDecoration(labelText: 'Input Type'),
                       items: const [
                         DropdownMenuItem(
-                          value: 'Brix',
-                          child: Text('Brix'),
-                        ),
-                        DropdownMenuItem(
                           value: 'Specific Gravity',
                           child: Text('Specific Gravity'),
                         ),
@@ -242,6 +232,10 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
                         DropdownMenuItem(
                           value: 'Salinity / PPT',
                           child: Text('Salinity / PPT'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Brix',
+                          child: Text('Brix'),
                         ),
                       ],
                       onChanged: (value) {
@@ -347,6 +341,11 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
                       label: 'Pounds / gal',
                       value: _formatOutput(_chloridesResult?.poundsPerGallon,
                           decimals: 2),
+                    ),
+                    _ResultLine(
+                      label: 'Salinity / PPT',
+                      value: _formatOutput(_chloridesResult?.salinityPpt,
+                          decimals: 1),
                     ),
                     _ResultLine(
                       label: 'Chlorides / ppm',
@@ -478,11 +477,13 @@ class ChloridesCalculationResult {
   const ChloridesCalculationResult({
     this.specificGravity,
     this.poundsPerGallon,
+    this.salinityPpt,
     this.chloridesPpm,
   });
 
   final double? specificGravity;
   final double? poundsPerGallon;
+  final double? salinityPpt;
   final double? chloridesPpm;
 }
 
@@ -494,6 +495,86 @@ class ChloridesInterpolationResponse {
 }
 
 class ChloridesCalculator {
+  static ChloridesInterpolationResponse calculate({
+    required List<ChloridesTableEntry> entries,
+    required String inputType,
+    required double inputValue,
+  }) {
+    final sgResponse = _toSpecificGravity(
+      entries: entries,
+      inputType: inputType,
+      inputValue: inputValue,
+    );
+    if (sgResponse.result?.specificGravity == null) {
+      return ChloridesInterpolationResponse(
+          warning: sgResponse.warning ?? 'N/A');
+    }
+
+    final interpolated = interpolate(
+      entries: entries,
+      inputType: 'Specific Gravity',
+      inputValue: sgResponse.result!.specificGravity!,
+    );
+    if (interpolated.result == null) {
+      return interpolated;
+    }
+
+    return ChloridesInterpolationResponse(
+      warning: interpolated.warning,
+      result: ChloridesCalculationResult(
+        specificGravity: interpolated.result!.specificGravity,
+        poundsPerGallon: interpolated.result!.poundsPerGallon,
+        salinityPpt: salinityPptFromSpecificGravity(
+            interpolated.result!.specificGravity),
+        chloridesPpm: interpolated.result!.chloridesPpm,
+      ),
+    );
+  }
+
+  static ChloridesInterpolationResponse _toSpecificGravity({
+    required List<ChloridesTableEntry> entries,
+    required String inputType,
+    required double inputValue,
+  }) {
+    switch (inputType) {
+      case 'Specific Gravity':
+        return ChloridesInterpolationResponse(
+          result: ChloridesCalculationResult(specificGravity: inputValue),
+        );
+      case 'Pounds / gal':
+        final poundsResponse = interpolate(
+          entries: entries,
+          inputType: 'Pounds',
+          inputValue: inputValue,
+        );
+        if (poundsResponse.result?.specificGravity == null) {
+          return ChloridesInterpolationResponse(
+            warning: poundsResponse.warning ?? 'Value is outside chart range.',
+          );
+        }
+        return ChloridesInterpolationResponse(
+          result: ChloridesCalculationResult(
+            specificGravity: poundsResponse.result!.specificGravity,
+          ),
+        );
+      case 'Salinity / PPT':
+        return ChloridesInterpolationResponse(
+          result: ChloridesCalculationResult(
+            specificGravity: specificGravityFromSalinityPpt(inputValue),
+          ),
+        );
+      case 'Brix':
+        return ChloridesInterpolationResponse(
+          result: ChloridesCalculationResult(
+            specificGravity: specificGravityFromBrix(inputValue),
+          ),
+        );
+      default:
+        return const ChloridesInterpolationResponse(
+            warning: 'Invalid input type.');
+    }
+  }
+
   static double specificGravityFromBrix(double brix) {
     final b = brix < 0 ? 0 : brix;
     return 1 + (b / (258.6 - ((b / 258.2) * 227.1)));
@@ -503,6 +584,17 @@ class ChloridesCalculator {
     final s = salinityPpt < 0 ? 0 : salinityPpt;
     // Practical field approximation for brine/seawater refractometer salinity.
     return 1 + (0.00078 * s) + (0.0000003 * s * s);
+  }
+
+  static double? salinityPptFromSpecificGravity(double? specificGravity) {
+    if (specificGravity == null) return null;
+    const a = 0.00078;
+    const b = 0.0000003;
+    final delta = specificGravity - 1;
+    if (delta <= 0) return 0;
+    final discriminant = (a * a) + (4 * b * delta);
+    if (discriminant < 0) return null;
+    return (-a + math.sqrt(discriminant)) / (2 * b);
   }
 
   static ChloridesInterpolationResponse interpolate({
@@ -537,7 +629,8 @@ class ChloridesCalculator {
 
     final min = xOf(candidates.first)!;
     final max = xOf(candidates.last)!;
-    if (inputValue < min || inputValue > max) {
+    const epsilon = 0.0000001;
+    if (inputValue < (min - epsilon) || inputValue > (max + epsilon)) {
       return const ChloridesInterpolationResponse(
         warning: 'Value is outside chart range.',
       );

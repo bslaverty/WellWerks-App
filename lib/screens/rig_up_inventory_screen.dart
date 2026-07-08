@@ -130,6 +130,8 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
   Map<String, Map<String, int>> _assignedByWell = <String, Map<String, int>>{};
   Map<String, Map<String, String>> _tankSplits =
       <String, Map<String, String>>{};
+  Map<String, bool> _assignByWellEnabled = <String, bool>{};
+  Map<String, bool> _splitByWellEnabled = <String, bool>{};
 
   @override
   void initState() {
@@ -165,6 +167,14 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
     setState(() {
       _counts = counts;
       _recordId = initialId;
+      _assignByWellEnabled = {
+        for (final item in _allItems.where((item) => !item.splittable))
+          item.key: false,
+      };
+      _splitByWellEnabled = {
+        for (final item in _allItems.where((item) => item.splittable))
+          item.key: false,
+      };
 
       if (record != null) {
         _companyController.text = record['company']?.toString() ?? '';
@@ -199,6 +209,18 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
 
         _assignedByWell = _decodeAssignments(record['assignedByWell']);
         _tankSplits = _decodeTankSplits(record['tankSplits']);
+        _assignByWellEnabled = _decodeToggleMap(
+          record['assignByWellEnabled'],
+          keys: _allItems
+              .where((item) => !item.splittable)
+              .map((item) => item.key),
+        );
+        _splitByWellEnabled = _decodeToggleMap(
+          record['splitByWellEnabled'],
+          keys: _allItems
+              .where((item) => item.splittable)
+              .map((item) => item.key),
+        );
       }
 
       _reconcileToWells();
@@ -244,6 +266,29 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
     return out;
   }
 
+  Map<String, bool> _decodeToggleMap(
+    dynamic raw, {
+    required Iterable<String> keys,
+  }) {
+    final out = <String, bool>{for (final key in keys) key: false};
+    if (raw is! Map) return out;
+
+    for (final entry in raw.entries) {
+      final key = entry.key.toString();
+      if (!out.containsKey(key)) continue;
+      final value = entry.value;
+      if (value is bool) {
+        out[key] = value;
+      } else if (value is num) {
+        out[key] = value != 0;
+      } else if (value is String) {
+        final normalized = value.trim().toLowerCase();
+        out[key] = normalized == 'true' || normalized == '1';
+      }
+    }
+    return out;
+  }
+
   void _reconcileToWells() {
     for (final item in _allItems) {
       final assigned = _assignedByWell[item.key] ?? <String, int>{};
@@ -259,6 +304,12 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
         splits.putIfAbsent(well, () => '');
       }
       _tankSplits[item.key] = splits;
+
+      if (item.splittable) {
+        _splitByWellEnabled.putIfAbsent(item.key, () => false);
+      } else {
+        _assignByWellEnabled.putIfAbsent(item.key, () => false);
+      }
     }
   }
 
@@ -269,49 +320,31 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
     setState(() {
       _counts[item.key] = clamped;
       if (item.splittable && clamped == 0) {
+        _splitByWellEnabled[item.key] = false;
         _tankSplits[item.key] = {for (final well in _wells) well: ''};
       }
     });
   }
 
-  int _assignedTotal(_InventoryItem item) {
-    final map = _assignedByWell[item.key] ?? const <String, int>{};
-    var total = 0;
-    for (final value in map.values) {
-      total += value;
-    }
-    return total;
-  }
-
-  int _remainingAssignable(_InventoryItem item) {
-    return (_countFor(item) - _assignedTotal(item)).clamp(0, 999999);
-  }
-
-  void _assignToWell(_InventoryItem item, String well, int delta) {
-    if (_countFor(item) == 0) return;
-    if (delta > 0 && _remainingAssignable(item) <= 0) return;
-
+  void _setAssignedForWell(_InventoryItem item, String well, int value) {
     setState(() {
       final map = _assignedByWell[item.key] ?? <String, int>{};
-      final current = map[well] ?? 0;
-      map[well] = (current + delta).clamp(0, _countFor(item));
+      map[well] = value < 0 ? 0 : value;
       _assignedByWell[item.key] = map;
     });
   }
 
-  void _assignOneToAllWells(_InventoryItem item) {
-    if (_wells.isEmpty) return;
-    if (_countFor(item) < _wells.length) return;
-
+  void _toggleAssignByWell(_InventoryItem item, bool enabled) {
     setState(() {
-      _assignedByWell[item.key] = {for (final well in _wells) well: 1};
+      _assignByWellEnabled[item.key] = enabled;
+      if (enabled) {
+        final defaultQty = _countFor(item);
+        _assignedByWell[item.key] = {
+          for (final well in _wells)
+            well: (_assignedByWell[item.key]?[well] ?? defaultQty),
+        };
+      }
     });
-  }
-
-  bool _showOneEachSuggestion(_InventoryItem item) {
-    return _wells.length > 1 &&
-        _countFor(item) == _wells.length &&
-        _assignedTotal(item) == 0;
   }
 
   int _fractionUnits(String value) {
@@ -352,42 +385,6 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
     return '${units ~/ d}/${12 ~/ d}';
   }
 
-  String _twelfthsToDisplay(int units) {
-    if (units <= 0) return '0';
-    final whole = units ~/ 12;
-    final remainder = units % 12;
-    if (remainder == 0) return '$whole';
-    final fraction = _unitsToFractionLabel(remainder);
-    return whole == 0 ? fraction : '$whole $fraction';
-  }
-
-  int _parseDisplayToTwelfths(String value) {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty || trimmed == '0') return 0;
-
-    if (RegExp(r'^\d+$').hasMatch(trimmed)) {
-      return (int.tryParse(trimmed) ?? 0) * 12;
-    }
-
-    if (RegExp(r'^\d+\s+\d+/\d+$').hasMatch(trimmed)) {
-      final parts = trimmed.split(RegExp(r'\s+'));
-      final whole = int.tryParse(parts[0]) ?? 0;
-      final fracParts = parts[1].split('/');
-      final n = int.tryParse(fracParts.first) ?? 0;
-      final d = fracParts.length > 1 ? (int.tryParse(fracParts[1]) ?? 1) : 1;
-      return (whole * 12) + ((n * 12) ~/ d);
-    }
-
-    if (RegExp(r'^\d+/\d+$').hasMatch(trimmed)) {
-      final parts = trimmed.split('/');
-      final n = int.tryParse(parts.first) ?? 0;
-      final d = parts.length > 1 ? (int.tryParse(parts[1]) ?? 1) : 1;
-      return (n * 12) ~/ d;
-    }
-
-    return 0;
-  }
-
   int _allocatedUnits(_InventoryItem item) {
     final map = _tankSplits[item.key] ?? const <String, String>{};
     var units = 0;
@@ -402,6 +399,15 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
       final map = _tankSplits[item.key] ?? <String, String>{};
       map[well] = value;
       _tankSplits[item.key] = map;
+    });
+  }
+
+  void _toggleSplitByWell(_InventoryItem item, bool enabled) {
+    setState(() {
+      _splitByWellEnabled[item.key] = enabled;
+      if (!enabled) {
+        _tankSplits[item.key] = {for (final well in _wells) well: ''};
+      }
     });
   }
 
@@ -498,7 +504,10 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
       final entries = <String>[];
 
       for (final item in _allItems.where((x) => !x.splittable)) {
-        final value = _assignedByWell[item.key]?[well] ?? 0;
+        final usePerWellAssignments = _assignByWellEnabled[item.key] ?? false;
+        final value = usePerWellAssignments
+            ? (_assignedByWell[item.key]?[well] ?? 0)
+            : _countFor(item);
         if (value <= 0) continue;
         entries.add('- ${item.label}: $value');
         final current = int.tryParse(padTotals[item.label] ?? '0') ?? 0;
@@ -506,13 +515,17 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
       }
 
       for (final item in _allItems.where((x) => x.splittable)) {
+        final totalPadQty = _countFor(item);
+        if (totalPadQty > 0) {
+          padTotals[item.label] = '$totalPadQty';
+        }
+
+        final splitByWell = _splitByWellEnabled[item.key] ?? false;
+        if (!splitByWell) continue;
+
         final split = _tankSplits[item.key]?[well] ?? '';
         if (split.isEmpty) continue;
-        entries.add('- ${item.label}: $split of ${_countFor(item)}');
-        final units = _fractionUnits(split) * _countFor(item);
-        final currentUnits =
-            _parseDisplayToTwelfths(padTotals[item.label] ?? '0');
-        padTotals[item.label] = _twelfthsToDisplay(currentUnits + units);
+        entries.add('- ${item.label}: $split of $totalPadQty');
       }
 
       perWellLines.add(well);
@@ -577,7 +590,9 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
         'wells': _wells,
         'counts': _counts,
         'assignedByWell': _assignedByWell,
+        'assignByWellEnabled': _assignByWellEnabled,
         'tankSplits': _tankSplits,
+        'splitByWellEnabled': _splitByWellEnabled,
         'notes': _notesController.text.trim(),
         'inventoryText': text,
       };
@@ -734,10 +749,16 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
     );
   }
 
+  String _quantityLabel(_InventoryItem item) {
+    if (item.splittable) return 'Pad Qty';
+    if (item.label == 'Footage') return 'Footage Per Well';
+    return 'Qty Per Well';
+  }
+
   Widget _dedicatedAssignmentEditor(_InventoryItem item) {
     final quantity = _countFor(item);
     if (quantity <= 0) return const SizedBox.shrink();
-    final remaining = _remainingAssignable(item);
+    final assignByWell = _assignByWellEnabled[item.key] ?? false;
 
     return Container(
       margin: const EdgeInsets.only(top: 10),
@@ -751,86 +772,66 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Assigned: ${_assignedTotal(item)}  |  Remaining: $remaining',
+            assignByWell
+                ? 'Assign by Well is on for this item.'
+                : '${_quantityLabel(item)} applies to every well by default.',
             style: const TextStyle(color: Colors.white70),
           ),
-          if (_showOneEachSuggestion(item)) ...[
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFF17130E),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _gold.withValues(alpha: 0.45)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Assign one to every well?',
-                    style: TextStyle(color: _gold, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      FilledButton(
-                        onPressed: () => _assignOneToAllWells(item),
-                        child: const Text('Yes'),
-                      ),
-                      OutlinedButton(
-                        onPressed: () {},
-                        child: const Text('Assign Manually'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-          if (_wells.length > 1) ...[
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: quantity >= _wells.length
-                  ? () => _assignOneToAllWells(item)
-                  : null,
-              icon: const Icon(Icons.done_all),
-              label: const Text('Assign to All Wells'),
-            ),
-          ],
           const SizedBox(height: 8),
-          for (final well in _wells)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      well,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => _assignToWell(item, well, -1),
-                    icon: const Icon(Icons.remove_circle_outline),
-                  ),
-                  Container(
-                    width: 42,
-                    alignment: Alignment.center,
-                    child: Text(
-                      '${_assignedByWell[item.key]?[well] ?? 0}',
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => _assignToWell(item, well, 1),
-                    icon: const Icon(Icons.add_circle_outline),
-                  ),
-                ],
-              ),
+          if (!assignByWell)
+            OutlinedButton.icon(
+              onPressed: _wells.length > 1
+                  ? () => _toggleAssignByWell(item, true)
+                  : null,
+              icon: const Icon(Icons.tune),
+              label: const Text('Assign by Well'),
+            )
+          else ...[
+            OutlinedButton.icon(
+              onPressed: () => _toggleAssignByWell(item, false),
+              icon: const Icon(Icons.restart_alt),
+              label: Text('Use ${_quantityLabel(item)} for all wells'),
             ),
+            const SizedBox(height: 8),
+            for (final well in _wells)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        well,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => _setAssignedForWell(
+                        item,
+                        well,
+                        (_assignedByWell[item.key]?[well] ?? quantity) - 1,
+                      ),
+                      icon: const Icon(Icons.remove_circle_outline),
+                    ),
+                    Container(
+                      width: 42,
+                      alignment: Alignment.center,
+                      child: Text(
+                        '${_assignedByWell[item.key]?[well] ?? quantity}',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => _setAssignedForWell(
+                        item,
+                        well,
+                        (_assignedByWell[item.key]?[well] ?? quantity) + 1,
+                      ),
+                      icon: const Icon(Icons.add_circle_outline),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ],
       ),
     );
@@ -839,10 +840,39 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
   Widget _splitAssignmentEditor(_InventoryItem item) {
     final quantity = _countFor(item);
     if (quantity <= 0) return const SizedBox.shrink();
+    final splitByWell = _splitByWellEnabled[item.key] ?? false;
+
+    if (!splitByWell) {
+      return Container(
+        margin: const EdgeInsets.only(top: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFF333333)),
+          color: const Color(0xFF13161A),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Pad Inventory only by default. Split is optional.',
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _wells.length > 1
+                  ? () => _toggleSplitByWell(item, true)
+                  : null,
+              icon: const Icon(Icons.call_split),
+              label: const Text('Split by Well'),
+            ),
+          ],
+        ),
+      );
+    }
 
     final allocated = _allocatedUnits(item);
     final remaining = 12 - allocated;
-    final complete = allocated == 12;
 
     return Container(
       margin: const EdgeInsets.only(top: 10),
@@ -877,12 +907,10 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            complete
-                ? 'Split complete.'
-                : 'Fractions must total Full before complete.',
+          const Text(
+            'Split by Well is on. Use fractions for wells receiving this equipment.',
             style: TextStyle(
-              color: complete ? _gold : Colors.orangeAccent,
+              color: Colors.white70,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -894,6 +922,12 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
               label: Text('Use Equal Split (${_wells.length} wells)'),
             ),
           ],
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => _toggleSplitByWell(item, false),
+            icon: const Icon(Icons.restart_alt),
+            label: const Text('Use Pad Inventory Only'),
+          ),
           const SizedBox(height: 8),
           for (final well in _wells)
             Padding(
@@ -948,6 +982,11 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
               ),
             ),
             const SizedBox(height: 8),
+            Text(
+              _quantityLabel(item),
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 6),
             _quantityStepper(item),
             item.splittable
                 ? _splitAssignmentEditor(item)
