@@ -108,7 +108,12 @@ class JobHistoryService {
     }
 
     final now = DateTime.now();
-    final jsa = await _jsaStorage.loadDraft();
+    final jsaDate = _shiftDate(activeShift, activeJob);
+    final jsaJobId = activeJob?.id ?? activeShift.activeJobId;
+    final jsa = await _jsaStorage.loadDraft(
+      activeJobId: jsaJobId,
+      date: jsaDate,
+    );
     final layoutSummary = await _loadLayoutSummary();
     final layout = await _layoutProfiles
         .resolveProfile(activeShift.header.layoutProfileId);

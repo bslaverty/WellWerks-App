@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/job_history.dart';
 import '../models/job_setup.dart';
+import '../models/jsa_draft.dart';
 import '../models/production_shift.dart';
 import '../services/job_history_service.dart';
 import '../services/job_storage_service.dart';
+import '../services/jsa_export_service.dart';
 import '../services/jsa_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../widgets/app_header.dart';
+import 'jsa_screen.dart';
 import 'job_setup_screen.dart';
 
 class JobManagementScreen extends StatefulWidget {
@@ -22,9 +27,11 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
   final _historyService = JobHistoryService();
   final _shiftService = ProductionShiftService();
   final _jsaStorage = JsaStorageService();
+  final _jsaExportService = const JsaExportService();
 
   ProductionShift _shift = ProductionShift.empty();
   JobSetup? _activeJob;
+  JsaDraft? _todayJsa;
   List<JobSetup> _jobs = const <JobSetup>[];
   bool _loading = true;
 
@@ -47,10 +54,18 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
       jobs = <JobSetup>[active, ...jobs];
     }
 
+    final todayJsa = active == null
+        ? null
+        : await _jsaStorage.loadDraft(
+            activeJobId: active.id,
+            date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+          );
+
     if (!mounted) return;
     setState(() {
       _shift = shift;
       _activeJob = active;
+      _todayJsa = todayJsa;
       _jobs = jobs;
       _loading = false;
     });
@@ -158,6 +173,38 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
       ),
     );
     await _load();
+  }
+
+  Future<void> _openTodayJsa() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const JsaScreen()),
+    );
+    await _load();
+  }
+
+  Future<void> _shareTodayJsa() async {
+    final activeJob = _activeJob;
+    final draft = _todayJsa;
+    if (activeJob == null || draft == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No JSA saved for today yet.')),
+      );
+      return;
+    }
+
+    final exported = await _jsaExportService.exportPdf(
+      draft: draft,
+      activeJob: activeJob,
+    );
+    await Share.shareXFiles(
+      [XFile(exported.filePath)],
+      subject: 'WellWerks JSA',
+      text: 'Today\'s JSA exported from WellWerks.',
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Today\'s JSA shared.')),
+    );
   }
 
   Future<void> _changeActiveJob() async {
@@ -287,6 +334,7 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
 
     final wasActive = _activeJob?.id == job.id;
     await _jobStorage.deleteJobById(job.id);
+    await _jsaStorage.deleteDraftsForJob(job.id);
 
     if (wasActive) {
       await _shiftService.clearActiveShift();
@@ -507,6 +555,57 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
     );
   }
 
+  Widget _todayJsaCard() {
+    final hasActiveJob = _activeJob != null || _hasActiveShiftLink;
+    final hasJsa = _todayJsa != null;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Today\'s JSA',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              hasJsa ? 'JSA saved for today.' : 'No JSA saved for today.',
+              style: TextStyle(
+                color: hasJsa ? const Color(0xFFCDA56A) : Colors.white70,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: hasActiveJob ? _openTodayJsa : null,
+                icon:
+                    Icon(hasJsa ? Icons.description_outlined : Icons.add_task),
+                label:
+                    Text(hasJsa ? 'Open Today\'s JSA' : 'Create Today\'s JSA'),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: hasJsa ? _shareTodayJsa : null,
+                icon: const Icon(Icons.share_outlined),
+                label: const Text('Export / Share Today\'s JSA'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _jobsListCard() {
     return Card(
       child: Padding(
@@ -594,6 +693,8 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
         padding: const EdgeInsets.all(18),
         children: [
           _activeJobCard(),
+          const SizedBox(height: 10),
+          _todayJsaCard(),
           const SizedBox(height: 10),
           _actionsCard(),
           const SizedBox(height: 10),

@@ -617,7 +617,14 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
         ? await _historyService.buildTextUpdatesForShift(liveShift)
         : const <ArchivedTextUpdate>[];
 
-    final jsaDraft = includesLiveShift ? await _jsaStorage.loadDraft() : null;
+    final jsaDraft = includesLiveShift
+        ? await _jsaStorage.loadDraft(
+            activeJobId: activeJob.id,
+            date: liveShift.header.date.trim().isEmpty
+                ? DateTime.now().toIso8601String().split('T').first
+                : liveShift.header.date.trim(),
+          )
+        : null;
     final matchingJsa = (jsaDraft != null &&
             (jsaDraft.activeJobId.isEmpty ||
                 jsaDraft.activeJobId == activeJob?.id))

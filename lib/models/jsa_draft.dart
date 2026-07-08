@@ -1,24 +1,62 @@
+class JsaSignaturePoint {
+  const JsaSignaturePoint({
+    required this.x,
+    required this.y,
+    required this.type,
+    required this.pressure,
+  });
+
+  final double x;
+  final double y;
+  final String type;
+  final double pressure;
+
+  Map<String, dynamic> toJson() => {
+        'x': x,
+        'y': y,
+        'type': type,
+        'pressure': pressure,
+      };
+
+  factory JsaSignaturePoint.fromJson(Map<String, dynamic> json) {
+    return JsaSignaturePoint(
+      x: (json['x'] as num?)?.toDouble() ?? 0,
+      y: (json['y'] as num?)?.toDouble() ?? 0,
+      type: json['type'] as String? ?? 'tap',
+      pressure: (json['pressure'] as num?)?.toDouble() ?? 1,
+    );
+  }
+}
+
 class JsaEmployee {
   JsaEmployee({
     this.name = '',
     this.company = '',
     this.signaturePngBase64,
+    this.signaturePoints = const [],
   });
 
   String name;
   String company;
   String? signaturePngBase64;
+  List<JsaSignaturePoint> signaturePoints;
 
   Map<String, dynamic> toJson() => {
         'name': name,
         'company': company,
         'signaturePngBase64': signaturePngBase64,
+        'signaturePoints':
+            signaturePoints.map((item) => item.toJson()).toList(),
       };
 
   factory JsaEmployee.fromJson(Map<String, dynamic> json) => JsaEmployee(
         name: json['name'] as String? ?? '',
         company: json['company'] as String? ?? '',
         signaturePngBase64: json['signaturePngBase64'] as String?,
+        signaturePoints: (json['signaturePoints'] as List? ?? const [])
+            .map((item) => JsaSignaturePoint.fromJson(
+                Map<String, dynamic>.from(item as Map)))
+            .toList(),
       );
 }
 
