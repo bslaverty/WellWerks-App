@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibration/vibration.dart';
 import '../data/tank_charts.dart';
 import '../widgets/app_header.dart';
 import '../widgets/ww_number_field.dart';
@@ -52,11 +56,20 @@ class RateCalculatorScreen extends StatefulWidget {
 }
 
 class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
+  static const _timerMinutesPrefKey = 'wellwerks_rate_timer_minutes';
+
   final startGauge = TextEditingController();
   final endGauge = TextEditingController();
   final minutes = TextEditingController();
   late final TextEditingController factor;
+  late FixedExtentScrollController _timerPickerController;
   _KeypadTarget? _activeKeypadTarget;
+  Timer? _countdownTimer;
+  int _selectedTimerMinutes = 5;
+  int _remainingSeconds = 0;
+  bool _thirtySecondAlertShown = false;
+  bool _timerFinished = false;
+  String? _timerMessage;
 
   static const List<String> _gaugeMainKeys = <String>[
     '7',
@@ -108,6 +121,254 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     super.initState();
     factor = TextEditingController(
         text: (widget.config.defaultFactor ?? 1.67).toString());
+    _timerPickerController =
+        FixedExtentScrollController(initialItem: _selectedTimerMinutes - 1);
+    _loadSavedTimerMinutes();
+  }
+
+  bool get _timerRunning => _countdownTimer != null;
+
+  Future<void> _loadSavedTimerMinutes() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getInt(_timerMinutesPrefKey) ?? 5;
+    final clamped = saved.clamp(1, 60);
+    if (!mounted) return;
+    setState(() {
+      _selectedTimerMinutes = clamped;
+      _timerPickerController.dispose();
+      _timerPickerController =
+          FixedExtentScrollController(initialItem: _selectedTimerMinutes - 1);
+    });
+  }
+
+  Future<void> _saveTimerMinutes(int value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_timerMinutesPrefKey, value);
+  }
+
+  String _timerText() {
+    final minutesPart = (_remainingSeconds ~/ 60).toString().padLeft(2, '0');
+    final secondsPart = (_remainingSeconds % 60).toString().padLeft(2, '0');
+    return '$minutesPart:$secondsPart';
+  }
+
+  Future<void> _vibrateOnce() async {
+    final hasVibrator = await Vibration.hasVibrator();
+    if (!hasVibrator) return;
+    await Vibration.vibrate(duration: 120);
+  }
+
+  Future<void> _vibrateThreeQuickTimes() async {
+    final hasVibrator = await Vibration.hasVibrator();
+    if (!hasVibrator) return;
+    for (int i = 0; i < 3; i++) {
+      await Vibration.vibrate(duration: 100);
+      if (i < 2) {
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      }
+    }
+  }
+
+  void _startTimedRate() {
+    _countdownTimer?.cancel();
+    setState(() {
+      _remainingSeconds = _selectedTimerMinutes * 60;
+      _thirtySecondAlertShown = false;
+      _timerFinished = false;
+      _timerMessage = null;
+    });
+
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        _countdownTimer = null;
+        return;
+      }
+
+      final nextSeconds = _remainingSeconds - 1;
+      if (nextSeconds <= 0) {
+        timer.cancel();
+        _countdownTimer = null;
+        setState(() {
+          _remainingSeconds = 0;
+          _timerFinished = true;
+          _timerMessage = 'TIME';
+        });
+        _vibrateThreeQuickTimes();
+        return;
+      }
+
+      if (nextSeconds == 30 && !_thirtySecondAlertShown) {
+        _thirtySecondAlertShown = true;
+        setState(() {
+          _remainingSeconds = nextSeconds;
+          _timerMessage = '30 seconds remaining';
+        });
+        _vibrateOnce();
+        return;
+      }
+
+      setState(() {
+        _remainingSeconds = nextSeconds;
+      });
+    });
+  }
+
+  void _cancelTimedRate() {
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+    setState(() {
+      _remainingSeconds = 0;
+      _thirtySecondAlertShown = false;
+      _timerFinished = false;
+      _timerMessage = null;
+    });
+  }
+
+  void _useTimedRate() {
+    minutes.text = _selectedTimerMinutes.toStringAsFixed(2);
+    _cancelTimedRate();
+  }
+
+  Widget _timedRateSection() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Timed Rate',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Pick a timer length (1-60 minutes) and run the countdown on-site.',
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF111418),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF3A3A3A)),
+              ),
+              child: SizedBox(
+                height: 170,
+                child: ListWheelScrollView.useDelegate(
+                  controller: _timerPickerController,
+                  itemExtent: 44,
+                  perspective: 0.003,
+                  diameterRatio: 1.5,
+                  physics: const FixedExtentScrollPhysics(),
+                  onSelectedItemChanged: (index) {
+                    final next = index + 1;
+                    setState(() => _selectedTimerMinutes = next);
+                    _saveTimerMinutes(next);
+                  },
+                  childDelegate: ListWheelChildBuilderDelegate(
+                    childCount: 60,
+                    builder: (context, index) {
+                      final minute = index + 1;
+                      final selected = minute == _selectedTimerMinutes;
+                      return Center(
+                        child: Text(
+                          '$minute minute${minute == 1 ? '' : 's'}',
+                          style: TextStyle(
+                            fontSize: selected ? 22 : 18,
+                            fontWeight:
+                                selected ? FontWeight.w800 : FontWeight.w600,
+                            color: selected
+                                ? const Color(0xFFCDA56A)
+                                : Colors.white70,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _startTimedRate,
+              icon: const Icon(Icons.timer_outlined),
+              label: const Text('Start Timed Rate'),
+            ),
+            if (_timerRunning || _timerFinished) ...[
+              const SizedBox(height: 12),
+              Card(
+                color: const Color(0xFF17130E),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _timerText(),
+                        style: const TextStyle(
+                          fontSize: 34,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFFCDA56A),
+                        ),
+                      ),
+                      if (_timerMessage != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          _timerMessage!,
+                          style: TextStyle(
+                            color: _timerMessage == 'TIME'
+                                ? Colors.redAccent
+                                : Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            if (_timerRunning) ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _cancelTimedRate,
+                icon: const Icon(Icons.stop_circle_outlined),
+                label: const Text('Cancel'),
+              ),
+            ],
+            if (_timerFinished) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.icon(
+                    onPressed: _useTimedRate,
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: const Text('Use Time'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _startTimedRate,
+                    icon: const Icon(Icons.replay),
+                    label: const Text('Restart'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _cancelTimedRate,
+                    icon: const Icon(Icons.cancel_outlined),
+                    label: const Text('Cancel'),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   TextEditingController? get _activeKeypadController {
@@ -181,9 +442,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
         final updated = _trimTrailingSpaceOnDelete(
           text.replaceRange(start - 1, start, ''),
         );
-        final nextCursor = (start - 1) > updated.length
-            ? updated.length
-            : (start - 1);
+        final nextCursor =
+            (start - 1) > updated.length ? updated.length : (start - 1);
         controller.value = TextEditingValue(
           text: updated,
           selection: TextSelection.collapsed(offset: nextCursor),
@@ -255,6 +515,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   }
 
   void clearInputs() {
+    _cancelTimedRate();
     setState(() {
       startGauge.clear();
       endGauge.clear();
@@ -305,10 +566,12 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
 
   @override
   void dispose() {
+    _countdownTimer?.cancel();
     startGauge.dispose();
     endGauge.dispose();
     minutes.dispose();
     factor.dispose();
+    _timerPickerController.dispose();
     super.dispose();
   }
 
@@ -382,7 +645,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                     ),
                   ),
                 ),
-                TextButton(onPressed: _clearActiveInput, child: const Text('CLR')),
+                TextButton(
+                    onPressed: _clearActiveInput, child: const Text('CLR')),
                 const SizedBox(width: 6),
                 FilledButton(
                     onPressed: _closeKeypad, child: const Text('Done')),
@@ -522,6 +786,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                       onTap: () => _setActiveKeypad(_KeypadTarget.minutes),
                     ),
                   ),
+                  _timedRateSection(),
+                  const SizedBox(height: 4),
                   const SizedBox(height: 4),
                   FilledButton(
                       onPressed: calculate, child: const Text('Calculate')),
