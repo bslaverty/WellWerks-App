@@ -100,13 +100,12 @@ class ChartReferenceScreen extends StatefulWidget {
 class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
   final TextEditingController _search = TextEditingController();
   final TextEditingController _brix = TextEditingController();
+  final TextEditingController _chloridesBrixInput = TextEditingController();
   final TextEditingController _chloridesSpecificGravityInput =
       TextEditingController();
-  final TextEditingController _chloridesPoundsInput = TextEditingController();
   final TextEditingController _chloridesSalinityInput = TextEditingController();
   String _sgResult = '--';
   String _chloridesInputType = 'Specific Gravity';
-  String _chloridesSgInputSource = 'specificGravity';
   ChloridesCalculationResult? _chloridesResult;
   String? _chloridesWarning;
 
@@ -114,8 +113,8 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
   void dispose() {
     _search.dispose();
     _brix.dispose();
+    _chloridesBrixInput.dispose();
     _chloridesSpecificGravityInput.dispose();
-    _chloridesPoundsInput.dispose();
     _chloridesSalinityInput.dispose();
     super.dispose();
   }
@@ -154,39 +153,20 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
 
   void _calculateChlorides() {
     double? input;
-    String inputType = _chloridesInputType;
+    const String inputType = 'Specific Gravity';
 
-    if (_chloridesInputType == 'Pounds') {
-      input = double.tryParse(_chloridesPoundsInput.text.trim());
+    if (_chloridesInputType == 'Brix') {
+      final brix = double.tryParse(_chloridesBrixInput.text.trim());
+      if (brix != null) {
+        input = 1 + (brix / (258.6 - ((brix / 258.2) * 227.1)));
+      }
+    } else if (_chloridesInputType == 'Salinity / PPT') {
+      final salinity = double.tryParse(_chloridesSalinityInput.text.trim());
+      if (salinity != null) {
+        input = ChloridesCalculator.specificGravityFromSalinityPpt(salinity);
+      }
     } else {
-      final specificGravityText = _chloridesSpecificGravityInput.text.trim();
-      final salinityText = _chloridesSalinityInput.text.trim();
-      if (_chloridesSgInputSource == 'salinity' && salinityText.isNotEmpty) {
-        final salinity = double.tryParse(salinityText);
-        if (salinity != null) {
-          final sg = ChloridesCalculator.specificGravityFromSalinityPpt(
-            salinity,
-          );
-          _chloridesSpecificGravityInput.text = sg.toStringAsFixed(4);
-          input = sg;
-        }
-      }
-
-      input ??= double.tryParse(specificGravityText);
-
-      if (input == null && salinityText.isNotEmpty) {
-        final salinity = double.tryParse(salinityText);
-        if (salinity != null) {
-          final sg = ChloridesCalculator.specificGravityFromSalinityPpt(
-            salinity,
-          );
-          _chloridesSpecificGravityInput.text = sg.toStringAsFixed(4);
-          input = sg;
-          _chloridesSgInputSource = 'salinity';
-        }
-      }
-
-      inputType = 'Specific Gravity';
+      input = double.tryParse(_chloridesSpecificGravityInput.text.trim());
     }
 
     if (input == null) {
@@ -292,12 +272,16 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
                           const InputDecoration(labelText: 'Input Type'),
                       items: const [
                         DropdownMenuItem(
+                          value: 'Brix',
+                          child: Text('Brix'),
+                        ),
+                        DropdownMenuItem(
                           value: 'Specific Gravity',
                           child: Text('Specific Gravity'),
                         ),
                         DropdownMenuItem(
-                          value: 'Pounds',
-                          child: Text('Pounds'),
+                          value: 'Salinity / PPT',
+                          child: Text('Salinity / PPT'),
                         ),
                       ],
                       onChanged: (value) {
@@ -310,14 +294,14 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
                       },
                     ),
                     const SizedBox(height: 12),
-                    if (_chloridesInputType == 'Pounds')
+                    if (_chloridesInputType == 'Brix')
                       TextField(
-                        controller: _chloridesPoundsInput,
+                        controller: _chloridesBrixInput,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
                         decoration: const InputDecoration(
-                          labelText: 'Pounds',
+                          labelText: 'Brix',
                         ),
                         onChanged: (_) {
                           setState(() {
@@ -326,7 +310,7 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
                           });
                         },
                       )
-                    else ...[
+                    else if (_chloridesInputType == 'Specific Gravity')
                       TextField(
                         controller: _chloridesSpecificGravityInput,
                         keyboardType: const TextInputType.numberWithOptions(
@@ -337,13 +321,12 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
                         ),
                         onChanged: (_) {
                           setState(() {
-                            _chloridesSgInputSource = 'specificGravity';
                             _chloridesResult = null;
                             _chloridesWarning = null;
                           });
                         },
-                      ),
-                      const SizedBox(height: 12),
+                      )
+                    else
                       TextField(
                         controller: _chloridesSalinityInput,
                         keyboardType: const TextInputType.numberWithOptions(
@@ -352,25 +335,14 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Salinity / PPT',
                         ),
-                        onChanged: (value) {
-                          final salinity = double.tryParse(value.trim());
+                        onChanged: (_) {
                           setState(() {
-                            _chloridesSgInputSource = 'salinity';
                             _chloridesResult = null;
                             _chloridesWarning = null;
-                            if (salinity == null) {
-                              _chloridesSpecificGravityInput.text = '';
-                              return;
-                            }
-                            final sg = ChloridesCalculator
-                                .specificGravityFromSalinityPpt(
-                              salinity,
-                            );
-                            _chloridesSpecificGravityInput.text =
-                                sg.toStringAsFixed(4);
                           });
                         },
                       ),
+                    if (_chloridesInputType == 'Salinity / PPT') ...[
                       const SizedBox(height: 6),
                       const Text(
                         'Salinity / PPT uses the right-side refractometer scale.',

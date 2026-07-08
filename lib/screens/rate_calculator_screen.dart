@@ -295,8 +295,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                   ),
                   const SizedBox(width: 6),
                   FilledButton(
-                    onPressed:
-                        (!_timerRunning && canRunTimer) ? _startTimedRate : null,
+                    onPressed: (!_timerRunning && canRunTimer)
+                        ? _startTimedRate
+                        : null,
                     child: const Text('Start'),
                   ),
                   const SizedBox(width: 6),
@@ -306,8 +307,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                   ),
                   const SizedBox(width: 6),
                   OutlinedButton(
-                    onPressed:
-                        (_timerRunning || _timerFinished) ? _cancelTimedRate : null,
+                    onPressed: (_timerRunning || _timerFinished)
+                        ? _cancelTimedRate
+                        : null,
                     child: const Text('Cancel'),
                   ),
                 ],
