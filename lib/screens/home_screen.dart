@@ -407,7 +407,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   title: 'Chlorides Chart',
                   description:
                       'Chlorides reference table from the web app source with Brix to SG conversion.',
-                  showBrixTool: true,
+                  showBrixTool: false,
                   showChloridesCalculator: true,
                   enableSearch: true,
                   sections: [

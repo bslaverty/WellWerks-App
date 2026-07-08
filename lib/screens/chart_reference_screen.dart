@@ -99,12 +99,11 @@ class ChartReferenceScreen extends StatefulWidget {
 
 class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
   final TextEditingController _search = TextEditingController();
-  final TextEditingController _brix = TextEditingController();
   final TextEditingController _chloridesBrixInput = TextEditingController();
   final TextEditingController _chloridesSpecificGravityInput =
       TextEditingController();
+  final TextEditingController _chloridesPoundsInput = TextEditingController();
   final TextEditingController _chloridesSalinityInput = TextEditingController();
-  String _sgResult = '--';
   String _chloridesInputType = 'Specific Gravity';
   ChloridesCalculationResult? _chloridesResult;
   String? _chloridesWarning;
@@ -112,9 +111,9 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
   @override
   void dispose() {
     _search.dispose();
-    _brix.dispose();
     _chloridesBrixInput.dispose();
     _chloridesSpecificGravityInput.dispose();
+    _chloridesPoundsInput.dispose();
     _chloridesSalinityInput.dispose();
     super.dispose();
   }
@@ -145,21 +144,18 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
         .toList();
   }
 
-  void _convertBrix() {
-    final brix = double.tryParse(_brix.text.trim()) ?? 0;
-    final sg = 1 + (brix / (258.6 - ((brix / 258.2) * 227.1)));
-    setState(() => _sgResult = sg.toStringAsFixed(4));
-  }
-
   void _calculateChlorides() {
     double? input;
-    const String inputType = 'Specific Gravity';
+    String inputType = 'Specific Gravity';
 
     if (_chloridesInputType == 'Brix') {
       final brix = double.tryParse(_chloridesBrixInput.text.trim());
       if (brix != null) {
-        input = 1 + (brix / (258.6 - ((brix / 258.2) * 227.1)));
+        input = ChloridesCalculator.specificGravityFromBrix(brix);
       }
+    } else if (_chloridesInputType == 'Pounds / gal') {
+      input = double.tryParse(_chloridesPoundsInput.text.trim());
+      inputType = 'Pounds';
     } else if (_chloridesInputType == 'Salinity / PPT') {
       final salinity = double.tryParse(_chloridesSalinityInput.text.trim());
       if (salinity != null) {
@@ -210,46 +206,6 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
               ),
             ),
           ),
-          if (widget.showBrixTool)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Brix to Specific Gravity',
-                      style: TextStyle(
-                        color: Color(0xFFCDA56A),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _brix,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const InputDecoration(labelText: 'Brix'),
-                    ),
-                    const SizedBox(height: 10),
-                    FilledButton(
-                      onPressed: _convertBrix,
-                      child: const Text('Convert'),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Specific Gravity: $_sgResult',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           if (widget.showChloridesCalculator)
             Card(
               child: Padding(
@@ -278,6 +234,10 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
                         DropdownMenuItem(
                           value: 'Specific Gravity',
                           child: Text('Specific Gravity'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Pounds / gal',
+                          child: Text('Pounds / gal'),
                         ),
                         DropdownMenuItem(
                           value: 'Salinity / PPT',
@@ -318,6 +278,22 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
                         ),
                         decoration: const InputDecoration(
                           labelText: 'Specific Gravity',
+                        ),
+                        onChanged: (_) {
+                          setState(() {
+                            _chloridesResult = null;
+                            _chloridesWarning = null;
+                          });
+                        },
+                      )
+                    else if (_chloridesInputType == 'Pounds / gal')
+                      TextField(
+                        controller: _chloridesPoundsInput,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Pounds / gal',
                         ),
                         onChanged: (_) {
                           setState(() {
@@ -368,7 +344,7 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
                           decimals: 4),
                     ),
                     _ResultLine(
-                      label: 'Pounds',
+                      label: 'Pounds / gal',
                       value: _formatOutput(_chloridesResult?.poundsPerGallon,
                           decimals: 2),
                     ),
@@ -518,6 +494,11 @@ class ChloridesInterpolationResponse {
 }
 
 class ChloridesCalculator {
+  static double specificGravityFromBrix(double brix) {
+    final b = brix < 0 ? 0 : brix;
+    return 1 + (b / (258.6 - ((b / 258.2) * 227.1)));
+  }
+
   static double specificGravityFromSalinityPpt(double salinityPpt) {
     final s = salinityPpt < 0 ? 0 : salinityPpt;
     // Practical field approximation for brine/seawater refractometer salinity.
