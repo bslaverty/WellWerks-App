@@ -1,13 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 import '../data/tank_charts.dart';
 import '../widgets/app_header.dart';
 import '../widgets/ww_number_field.dart';
 
-enum _KeypadTarget { start, end, minutes }
+enum _KeypadTarget { start, end }
 
 class RateCalculatorConfig {
   final String title;
@@ -69,34 +70,21 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   bool _timerFinished = false;
 
   static const List<String> _gaugeMainKeys = <String>[
-    '7',
-    '8',
-    '9',
-    '4',
-    '5',
-    '6',
     '1',
     '2',
     '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
     '.',
     '0',
     '/',
   ];
 
-  static const List<String> _minutesMainKeys = <String>[
-    '7',
-    '8',
-    '9',
-    '4',
-    '5',
-    '6',
-    '1',
-    '2',
-    '3',
-    '.',
-    '0',
-    '⌫',
-  ];
+  static const List<int> _minutePresetValues = <int>[1, 2, 3, 5, 10, 15];
 
   static const List<String> _gaugeFractionShortcuts = <String>[
     '1/8',
@@ -365,8 +353,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
         return startGauge;
       case _KeypadTarget.end:
         return endGauge;
-      case _KeypadTarget.minutes:
-        return minutes;
       case null:
         return null;
     }
@@ -380,6 +366,135 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   void _setActiveKeypad(_KeypadTarget target) {
     FocusScope.of(context).unfocus();
     setState(() => _activeKeypadTarget = target);
+  }
+
+  String get _minutesDisplayText {
+    final raw = minutes.text.trim();
+    final parsed = int.tryParse(raw);
+    if (parsed == null || parsed <= 0) {
+      return 'Select timer length';
+    }
+    return parsed == 1 ? '1 minute' : '$parsed minutes';
+  }
+
+  void _applyMinutesSelection(int value) {
+    final clamped = value.clamp(1, 60);
+    minutes.text = clamped.toString();
+    if (!mounted) return;
+    setState(() {
+      if (!_timerRunning) {
+        _remainingSeconds = _minutesToDurationSeconds();
+        _timerFinished = false;
+      }
+      error = null;
+    });
+  }
+
+  Future<void> _openCustomMinutesEntry() async {
+    final seed = int.tryParse(minutes.text.trim());
+    final input = TextEditingController(
+      text: (seed != null && seed > 0) ? seed.toString() : '',
+    );
+
+    final selected = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) {
+        String? dialogError;
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Custom Minutes'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: input,
+                  autofocus: true,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(
+                    labelText: 'Minutes (1-60)',
+                  ),
+                ),
+                if (dialogError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    dialogError!,
+                    style: const TextStyle(color: Colors.redAccent),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final value = int.tryParse(input.text.trim());
+                  if (value == null || value < 1 || value > 60) {
+                    setDialogState(
+                      () => dialogError = 'Enter a whole number from 1 to 60.',
+                    );
+                    return;
+                  }
+                  Navigator.of(dialogContext).pop(value);
+                },
+                child: const Text('Set'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    input.dispose();
+    if (selected == null) return;
+    _applyMinutesSelection(selected);
+  }
+
+  Future<void> _openMinutesSelector() async {
+    FocusScope.of(context).unfocus();
+    if (_activeKeypadTarget != null) {
+      setState(() => _activeKeypadTarget = null);
+    }
+
+    final picked = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(
+                title: Text(
+                  'Select Timer Length',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              for (final value in _minutePresetValues)
+                ListTile(
+                  title: Text(value == 1 ? '1 minute' : '$value minutes'),
+                  onTap: () => Navigator.of(sheetContext).pop(value),
+                ),
+              ListTile(
+                title: const Text('Custom...'),
+                onTap: () => Navigator.of(sheetContext).pop(-1),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted || picked == null) return;
+    if (picked == -1) {
+      await _openCustomMinutesEntry();
+      return;
+    }
+    _applyMinutesSelection(picked);
   }
 
   void _insertKeypadText(String raw) {
@@ -616,9 +731,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     if (_activeKeypadTarget == null) return const SizedBox.shrink();
     final activeLabel = _activeKeypadTarget == _KeypadTarget.start
         ? 'Starting Gauge'
-        : _activeKeypadTarget == _KeypadTarget.end
-            ? 'Ending Gauge'
-            : 'Minutes';
+        : 'Ending Gauge';
     return Container(
       decoration: const BoxDecoration(
         color: Color(0xFF0F1114),
@@ -670,9 +783,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
             ],
             const SizedBox(height: 8),
             GridView.builder(
-              itemCount: _isGaugeMode
-                  ? _gaugeMainKeys.length
-                  : _minutesMainKeys.length,
+              itemCount: _gaugeMainKeys.length,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -682,9 +793,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                 childAspectRatio: 2.6,
               ),
               itemBuilder: (context, index) {
-                final key = _isGaugeMode
-                    ? _gaugeMainKeys[index]
-                    : _minutesMainKeys[index];
+                final key = _gaugeMainKeys[index];
                 if (key == '⌫') {
                   return _gaugeKeyButton(key, onPressed: _backspaceKeypad);
                 }
@@ -730,53 +839,48 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                   ),
                   Padding(
                     padding: const EdgeInsets.only(bottom: 14),
-                    child: TextField(
-                      controller: minutes,
-                      readOnly: true,
-                      showCursor: _activeKeypadTarget == _KeypadTarget.minutes,
-                      enableInteractiveSelection: false,
-                      autocorrect: false,
-                      enableSuggestions: false,
-                      decoration: InputDecoration(
-                        labelText: 'Minutes',
-                        suffixIcon: minutes.text.isEmpty
-                            ? null
-                            : IconButton(
-                                tooltip: 'Clear',
-                                icon: const Icon(Icons.clear),
-                                onPressed: () {
-                                  minutes.clear();
-                                  setState(() {});
-                                },
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: _openMinutesSelector,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(0xFF4A4A4A),
+                              width: 1.2,
+                            ),
+                            color: const Color(0xFF121418),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 14,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Minutes',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                        border: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: _activeKeypadTarget == _KeypadTarget.minutes
-                                ? const Color(0xFFCDA56A)
-                                : const Color(0xFF4A4A4A),
-                            width: _activeKeypadTarget == _KeypadTarget.minutes
-                                ? 1.8
-                                : 1.0,
-                          ),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: _activeKeypadTarget == _KeypadTarget.minutes
-                                ? const Color(0xFFCDA56A)
-                                : const Color(0xFF4A4A4A),
-                            width: _activeKeypadTarget == _KeypadTarget.minutes
-                                ? 1.8
-                                : 1.0,
-                          ),
-                        ),
-                        focusedBorder: const OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: Color(0xFFCDA56A),
-                            width: 2.0,
+                              const SizedBox(height: 4),
+                              Text(
+                                _minutesDisplayText,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFFCDA56A),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      onTap: () => _setActiveKeypad(_KeypadTarget.minutes),
                     ),
                   ),
                   _timedRateSection(),
