@@ -265,6 +265,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
 
   bool get _canCalculate => _hasGaugeInputs && _hasValidMinutes;
 
+  bool get _showResetButton =>
+      bblPerMin != null || bblPerHr != null || bblPerDay != null;
+
   String get _timerStatusText {
     if (_timerRunning) return 'Timer running...';
     if (_timerFinished) return 'Ready to calculate.';
@@ -648,6 +651,22 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     return inches * f;
   }
 
+  void _resetTimedRateWorkflow() {
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+    setState(() {
+      startGauge.clear();
+      endGauge.clear();
+      bblPerMin = null;
+      bblPerHr = null;
+      bblPerDay = null;
+      _timerFinished = false;
+      _thirtySecondAlertShown = false;
+      _remainingSeconds = _minutesToDurationSeconds();
+      error = null;
+    });
+  }
+
   void calculate() {
     final hadKeypadOpen = _activeKeypadTarget != null;
     FocusScope.of(context).unfocus();
@@ -904,8 +923,10 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                   const SizedBox(height: 10),
                   FilledButton(
                     style: _calculateButtonStyle(),
-                    onPressed: _canCalculate ? calculate : null,
-                    child: const Text('Calculate'),
+                    onPressed: _showResetButton
+                        ? _resetTimedRateWorkflow
+                        : (_canCalculate ? calculate : null),
+                    child: Text(_showResetButton ? 'RESET' : 'CALCULATE'),
                   ),
                   if (error != null)
                     Card(
