@@ -203,6 +203,10 @@ class _JsaHistoryScreenState extends State<JsaHistoryScreen> {
   Widget _historyItem(JsaDraft draft) {
     final linkedJob = _jobsById[draft.activeJobId];
     final padName = linkedJob?.padName.trim() ?? '';
+    final customer = linkedJob?.customer.trim() ?? '';
+    final company = draft.company.trim();
+    final location = draft.location.trim();
+    final wellName = draft.wellName.trim();
     return Card(
       color: const Color(0xFF17130E),
       margin: const EdgeInsets.only(bottom: 12),
@@ -234,17 +238,24 @@ class _JsaHistoryScreenState extends State<JsaHistoryScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              draft.company.trim().isEmpty ? '-' : draft.company.trim(),
+              customer.isNotEmpty
+                  ? 'Customer: $customer'
+                  : (company.isEmpty ? 'Company: -' : 'Company: $company'),
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
             Text(
-              draft.location.trim().isEmpty ? '-' : draft.location.trim(),
+              'Location: ${location.isEmpty ? '-' : location}',
               style: const TextStyle(color: Colors.white70),
             ),
             const SizedBox(height: 4),
             Text(
               'Job / Pad: ${padName.isEmpty ? '-' : padName}',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Well: ${wellName.isEmpty ? '-' : wellName}',
               style: const TextStyle(color: Colors.white70),
             ),
             const SizedBox(height: 12),

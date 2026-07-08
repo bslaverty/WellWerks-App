@@ -426,7 +426,7 @@ class _JsaScreenState extends State<JsaScreen> {
     if (!mounted) return draft;
     if (showFeedback) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('JSA saved to history.')),
+        const SnackBar(content: Text('Saved to JSA History.')),
       );
     }
     return draft;
@@ -608,14 +608,15 @@ class _JsaScreenState extends State<JsaScreen> {
     final mimeType = lowerName.endsWith('.png')
         ? 'image/png'
         : (lowerName.endsWith('.pdf') ? 'application/pdf' : null);
+    final isImage = mimeType == 'image/png';
     final fileToShare = mimeType == null
         ? XFile(exported.filePath)
         : XFile(exported.filePath, mimeType: mimeType);
 
     await Share.shareXFiles(
       [fileToShare],
-      subject: 'WellWerks JSA',
-      text: 'JSA exported from WellWerks.',
+      subject: isImage ? null : 'WellWerks JSA',
+      text: isImage ? null : 'JSA exported from WellWerks.',
       sharePositionOrigin: shareOrigin,
     );
 
