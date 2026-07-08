@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 import '../data/tank_charts.dart';
@@ -84,7 +83,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     '/',
   ];
 
-  static const List<int> _minutePresetValues = <int>[1, 2, 3, 5, 10, 15];
+  static const int _minMinutes = 1;
+  static const int _maxMinutes = 60;
+  static const double _minuteRowHeight = 64;
 
   static const List<String> _gaugeFractionShortcuts = <String>[
     '1/8',
@@ -119,19 +120,26 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     if (!mounted) return;
 
     if (savedText != null && savedText.trim().isNotEmpty) {
-      minutes.text = savedText.trim();
+      final parsed = int.tryParse(savedText.trim());
+      if (parsed != null && parsed >= _minMinutes && parsed <= _maxMinutes) {
+        minutes.text = parsed.toString();
+      } else {
+        minutes.text = _minMinutes.toString();
+      }
       _remainingSeconds = _minutesToDurationSeconds();
       return;
     }
 
-    if (savedLegacyInt != null && savedLegacyInt > 0) {
+    if (savedLegacyInt != null &&
+        savedLegacyInt >= _minMinutes &&
+        savedLegacyInt <= _maxMinutes) {
       minutes.text = savedLegacyInt.toString();
       _remainingSeconds = _minutesToDurationSeconds();
       return;
     }
 
-    minutes.clear();
-    _remainingSeconds = 0;
+    minutes.text = _minMinutes.toString();
+    _remainingSeconds = _minutesToDurationSeconds();
   }
 
   Future<void> _saveTimerMinutes(String valueText) async {
@@ -140,15 +148,17 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   }
 
   int _minutesToDurationSeconds() {
-    final parsedMinutes = double.tryParse(minutes.text.trim()) ?? 0;
-    if (parsedMinutes <= 0) return 0;
+    final parsedMinutes = int.tryParse(minutes.text.trim()) ?? 0;
+    if (parsedMinutes < _minMinutes || parsedMinutes > _maxMinutes) return 0;
     return (parsedMinutes * 60).round();
   }
 
   void _handleMinutesChanged() {
-    final parsedMinutes = double.tryParse(minutes.text.trim());
-    if (parsedMinutes != null && parsedMinutes > 0) {
-      _saveTimerMinutes(minutes.text.trim());
+    final parsedMinutes = int.tryParse(minutes.text.trim());
+    if (parsedMinutes != null &&
+        parsedMinutes >= _minMinutes &&
+        parsedMinutes <= _maxMinutes) {
+      _saveTimerMinutes(parsedMinutes.toString());
     }
 
     if (_timerRunning || !mounted) return;
@@ -371,14 +381,22 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   String get _minutesDisplayText {
     final raw = minutes.text.trim();
     final parsed = int.tryParse(raw);
-    if (parsed == null || parsed <= 0) {
-      return 'Select timer length';
+    if (parsed == null || parsed < _minMinutes || parsed > _maxMinutes) {
+      return '$_minMinutes minute';
     }
     return parsed == 1 ? '1 minute' : '$parsed minutes';
   }
 
+  int get _selectedMinutes {
+    final parsed = int.tryParse(minutes.text.trim());
+    if (parsed == null || parsed < _minMinutes || parsed > _maxMinutes) {
+      return _minMinutes;
+    }
+    return parsed;
+  }
+
   void _applyMinutesSelection(int value) {
-    final clamped = value.clamp(1, 60);
+    final clamped = value.clamp(_minMinutes, _maxMinutes);
     minutes.text = clamped.toString();
     if (!mounted) return;
     setState(() {
@@ -390,110 +408,110 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     });
   }
 
-  Future<void> _openCustomMinutesEntry() async {
-    final seed = int.tryParse(minutes.text.trim());
-    final input = TextEditingController(
-      text: (seed != null && seed > 0) ? seed.toString() : '',
-    );
-
-    final selected = await showDialog<int>(
-      context: context,
-      builder: (dialogContext) {
-        String? dialogError;
-        return StatefulBuilder(
-          builder: (context, setDialogState) => AlertDialog(
-            title: const Text('Custom Minutes'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: input,
-                  autofocus: true,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: const InputDecoration(
-                    labelText: 'Minutes (1-60)',
-                  ),
-                ),
-                if (dialogError != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    dialogError!,
-                    style: const TextStyle(color: Colors.redAccent),
-                  ),
-                ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  final value = int.tryParse(input.text.trim());
-                  if (value == null || value < 1 || value > 60) {
-                    setDialogState(
-                      () => dialogError = 'Enter a whole number from 1 to 60.',
-                    );
-                    return;
-                  }
-                  Navigator.of(dialogContext).pop(value);
-                },
-                child: const Text('Set'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-
-    input.dispose();
-    if (selected == null) return;
-    _applyMinutesSelection(selected);
-  }
-
   Future<void> _openMinutesSelector() async {
     FocusScope.of(context).unfocus();
     if (_activeKeypadTarget != null) {
       setState(() => _activeKeypadTarget = null);
     }
 
+    final initialMinutes = _selectedMinutes;
+    final scrollController = ScrollController(
+      initialScrollOffset: (initialMinutes - _minMinutes) * _minuteRowHeight,
+    );
+
     final picked = await showModalBottomSheet<int>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) {
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const ListTile(
-                title: Text(
-                  'Select Timer Length',
-                  style: TextStyle(fontWeight: FontWeight.w800),
+          child: Container(
+            color: const Color(0xFF0F1114),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 6, 16, 10),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Select Timer Length',
+                      style: TextStyle(
+                        color: Color(0xFFCDA56A),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-              for (final value in _minutePresetValues)
-                ListTile(
-                  title: Text(value == 1 ? '1 minute' : '$value minutes'),
-                  onTap: () => Navigator.of(sheetContext).pop(value),
+                SizedBox(
+                  height: 420,
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: _maxMinutes,
+                    itemExtent: _minuteRowHeight,
+                    itemBuilder: (context, index) {
+                      final minute = index + _minMinutes;
+                      final selected = minute == _selectedMinutes;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        child: Material(
+                          color: selected
+                              ? const Color(0x33282E36)
+                              : const Color(0xFF15181C),
+                          borderRadius: BorderRadius.circular(12),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => Navigator.of(sheetContext).pop(minute),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                                vertical: 12,
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      minute == 1
+                                          ? '1 minute'
+                                          : '$minute minutes',
+                                      style: TextStyle(
+                                        color: selected
+                                            ? const Color(0xFFCDA56A)
+                                            : Colors.white,
+                                        fontSize: 20,
+                                        fontWeight: selected
+                                            ? FontWeight.w900
+                                            : FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  if (selected)
+                                    const Icon(
+                                      Icons.check_circle,
+                                      color: Color(0xFFCDA56A),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ListTile(
-                title: const Text('Custom...'),
-                onTap: () => Navigator.of(sheetContext).pop(-1),
-              ),
-            ],
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         );
       },
     );
+    scrollController.dispose();
 
     if (!mounted || picked == null) return;
-    if (picked == -1) {
-      await _openCustomMinutesEntry();
-      return;
-    }
     _applyMinutesSelection(picked);
   }
 
@@ -578,6 +596,20 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     setState(() => _activeKeypadTarget = null);
   }
 
+  ButtonStyle _calculateButtonStyle() {
+    return FilledButton.styleFrom(
+      backgroundColor: const Color(0xFFCDA56A),
+      foregroundColor: Colors.black,
+      disabledBackgroundColor: const Color(0xFF3A3A3A),
+      disabledForegroundColor: const Color(0xFF9BA0A7),
+      minimumSize: const Size.fromHeight(52),
+      textStyle: const TextStyle(
+        fontSize: 17,
+        fontWeight: FontWeight.w900,
+      ),
+    );
+  }
+
   TankChart? get chart {
     switch (widget.config.chartId) {
       case 'fs3':
@@ -615,19 +647,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     if (c != null) return c.barrelsAt(inches);
     final f = double.tryParse(factor.text.trim()) ?? 1.67;
     return inches * f;
-  }
-
-  void clearInputs() {
-    _cancelTimedRate();
-    setState(() {
-      startGauge.clear();
-      endGauge.clear();
-      _remainingSeconds = _minutesToDurationSeconds();
-      bblPerMin = null;
-      bblPerHr = null;
-      bblPerDay = null;
-      error = null;
-    });
   }
 
   void calculate() {
@@ -886,13 +905,10 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                   _timedRateSection(),
                   const SizedBox(height: 10),
                   FilledButton(
-                      onPressed: _canCalculate ? calculate : null,
-                      child: const Text('Calculate')),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                      onPressed: clearInputs,
-                      icon: const Icon(Icons.clear),
-                      label: const Text('Clear')),
+                    style: _calculateButtonStyle(),
+                    onPressed: _canCalculate ? calculate : null,
+                    child: const Text('Calculate'),
+                  ),
                   if (error != null)
                     Card(
                       color: const Color(0xFF3A1E1E),
