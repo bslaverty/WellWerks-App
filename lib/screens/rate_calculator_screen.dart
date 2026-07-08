@@ -62,14 +62,11 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   final endGauge = TextEditingController();
   final minutes = TextEditingController();
   late final TextEditingController factor;
-  late FixedExtentScrollController _timerPickerController;
   _KeypadTarget? _activeKeypadTarget;
   Timer? _countdownTimer;
-  int _selectedTimerMinutes = 5;
   int _remainingSeconds = 0;
   bool _thirtySecondAlertShown = false;
   bool _timerFinished = false;
-  String? _timerMessage;
 
   static const List<String> _gaugeMainKeys = <String>[
     '7',
@@ -121,8 +118,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     super.initState();
     factor = TextEditingController(
         text: (widget.config.defaultFactor ?? 1.67).toString());
-    _timerPickerController =
-        FixedExtentScrollController(initialItem: _selectedTimerMinutes - 1);
+    minutes.addListener(_handleMinutesChanged);
     _loadSavedTimerMinutes();
   }
 
@@ -131,19 +127,38 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   Future<void> _loadSavedTimerMinutes() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getInt(_timerMinutesPrefKey) ?? 5;
-    final clamped = saved.clamp(1, 60);
+    final clamped = saved.clamp(1, 60).toInt();
     if (!mounted) return;
-    setState(() {
-      _selectedTimerMinutes = clamped;
-      _timerPickerController.dispose();
-      _timerPickerController =
-          FixedExtentScrollController(initialItem: _selectedTimerMinutes - 1);
-    });
+    minutes.text = clamped.toString();
   }
 
   Future<void> _saveTimerMinutes(int value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_timerMinutesPrefKey, value);
+  }
+
+  int _minutesToDurationSeconds() {
+    final parsedMinutes = double.tryParse(minutes.text.trim()) ?? 0;
+    if (parsedMinutes <= 0) return 0;
+    return (parsedMinutes * 60).round();
+  }
+
+  void _handleMinutesChanged() {
+    final parsedMinutes = double.tryParse(minutes.text.trim());
+    if (parsedMinutes != null && parsedMinutes > 0) {
+      final toSave = parsedMinutes.round().clamp(1, 60);
+      _saveTimerMinutes(toSave);
+    }
+
+    if (_timerRunning || !mounted) return;
+
+    final nextSeconds = _minutesToDurationSeconds();
+    if (_remainingSeconds == nextSeconds && !_timerFinished) return;
+
+    setState(() {
+      _remainingSeconds = nextSeconds;
+      _timerFinished = false;
+    });
   }
 
   String _timerText() {
@@ -170,12 +185,21 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   }
 
   void _startTimedRate() {
+    final configuredSeconds = _minutesToDurationSeconds();
+    if (configuredSeconds <= 0) {
+      setState(() {
+        error = 'Minutes must be greater than zero.';
+        _timerFinished = false;
+        _remainingSeconds = 0;
+      });
+      return;
+    }
+
     _countdownTimer?.cancel();
     setState(() {
-      _remainingSeconds = _selectedTimerMinutes * 60;
+      _remainingSeconds = configuredSeconds;
       _thirtySecondAlertShown = false;
       _timerFinished = false;
-      _timerMessage = null;
     });
 
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -192,7 +216,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
         setState(() {
           _remainingSeconds = 0;
           _timerFinished = true;
-          _timerMessage = 'TIME';
         });
         _vibrateThreeQuickTimes();
         return;
@@ -202,7 +225,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
         _thirtySecondAlertShown = true;
         setState(() {
           _remainingSeconds = nextSeconds;
-          _timerMessage = '30 seconds remaining';
         });
         _vibrateOnce();
         return;
@@ -217,20 +239,17 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   void _cancelTimedRate() {
     _countdownTimer?.cancel();
     _countdownTimer = null;
+    final configuredSeconds = _minutesToDurationSeconds();
     setState(() {
-      _remainingSeconds = 0;
+      _remainingSeconds = configuredSeconds;
       _thirtySecondAlertShown = false;
       _timerFinished = false;
-      _timerMessage = null;
     });
   }
 
-  void _useTimedRate() {
-    minutes.text = _selectedTimerMinutes.toStringAsFixed(2);
-    _cancelTimedRate();
-  }
-
   Widget _timedRateSection() {
+    final canRunTimer = _minutesToDurationSeconds() > 0;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -246,125 +265,54 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Pick a timer length (1-60 minutes) and run the countdown on-site.',
-              style: TextStyle(color: Colors.white70),
-            ),
-            const SizedBox(height: 12),
             Container(
               decoration: BoxDecoration(
                 color: const Color(0xFF111418),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFF3A3A3A)),
               ),
-              child: SizedBox(
-                height: 170,
-                child: ListWheelScrollView.useDelegate(
-                  controller: _timerPickerController,
-                  itemExtent: 44,
-                  perspective: 0.003,
-                  diameterRatio: 1.5,
-                  physics: const FixedExtentScrollPhysics(),
-                  onSelectedItemChanged: (index) {
-                    final next = index + 1;
-                    setState(() => _selectedTimerMinutes = next);
-                    _saveTimerMinutes(next);
-                  },
-                  childDelegate: ListWheelChildBuilderDelegate(
-                    childCount: 60,
-                    builder: (context, index) {
-                      final minute = index + 1;
-                      final selected = minute == _selectedTimerMinutes;
-                      return Center(
-                        child: Text(
-                          '$minute minute${minute == 1 ? '' : 's'}',
-                          style: TextStyle(
-                            fontSize: selected ? 22 : 18,
-                            fontWeight:
-                                selected ? FontWeight.w800 : FontWeight.w600,
-                            color: selected
-                                ? const Color(0xFFCDA56A)
-                                : Colors.white70,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: _startTimedRate,
-              icon: const Icon(Icons.timer_outlined),
-              label: const Text('Start Timed Rate'),
-            ),
-            if (_timerRunning || _timerFinished) ...[
-              const SizedBox(height: 12),
-              Card(
-                color: const Color(0xFF17130E),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _timerText(),
-                        style: const TextStyle(
-                          fontSize: 34,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFFCDA56A),
-                        ),
-                      ),
-                      if (_timerMessage != null) ...[
-                        const SizedBox(height: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        const Icon(Icons.timer_outlined,
+                            color: Color(0xFFCDA56A)),
+                        const SizedBox(width: 6),
                         Text(
-                          _timerMessage!,
+                          _timerFinished ? 'TIME' : _timerText(),
                           style: TextStyle(
-                            color: _timerMessage == 'TIME'
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: _timerFinished
                                 ? Colors.redAccent
-                                : Colors.white,
-                            fontWeight: FontWeight.w800,
+                                : const Color(0xFFCDA56A),
                           ),
                         ),
                       ],
-                    ],
+                    ),
                   ),
-                ),
-              ),
-            ],
-            if (_timerRunning) ...[
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: _cancelTimedRate,
-                icon: const Icon(Icons.stop_circle_outlined),
-                label: const Text('Cancel'),
-              ),
-            ],
-            if (_timerFinished) ...[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  FilledButton.icon(
-                    onPressed: _useTimedRate,
-                    icon: const Icon(Icons.check_circle_outline),
-                    label: const Text('Use Time'),
+                  const SizedBox(width: 6),
+                  FilledButton(
+                    onPressed:
+                        (!_timerRunning && canRunTimer) ? _startTimedRate : null,
+                    child: const Text('Start'),
                   ),
-                  OutlinedButton.icon(
-                    onPressed: _startTimedRate,
-                    icon: const Icon(Icons.replay),
-                    label: const Text('Restart'),
+                  const SizedBox(width: 6),
+                  OutlinedButton(
+                    onPressed: canRunTimer ? _startTimedRate : null,
+                    child: const Text('Restart'),
                   ),
-                  OutlinedButton.icon(
-                    onPressed: _cancelTimedRate,
-                    icon: const Icon(Icons.cancel_outlined),
-                    label: const Text('Cancel'),
+                  const SizedBox(width: 6),
+                  OutlinedButton(
+                    onPressed:
+                        (_timerRunning || _timerFinished) ? _cancelTimedRate : null,
+                    child: const Text('Cancel'),
                   ),
                 ],
               ),
-            ],
+            ),
           ],
         ),
       ),
@@ -567,11 +515,11 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   @override
   void dispose() {
     _countdownTimer?.cancel();
+    minutes.removeListener(_handleMinutesChanged);
     startGauge.dispose();
     endGauge.dispose();
     minutes.dispose();
     factor.dispose();
-    _timerPickerController.dispose();
     super.dispose();
   }
 
