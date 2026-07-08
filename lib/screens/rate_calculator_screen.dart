@@ -87,34 +87,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   bool _rateLogExpanded = false;
   final List<_RateLogEntry> _rateLogEntries = <_RateLogEntry>[];
 
-  static const List<String> _gaugeMainKeys = <String>[
-    '1',
-    '2',
-    '3',
-    '4',
-    '5',
-    '6',
-    '7',
-    '8',
-    '9',
-    '.',
-    '0',
-    '/',
-  ];
-
   static const int _minMinutes = 1;
   static const int _maxMinutes = 60;
   static const double _minuteRowHeight = 64;
-
-  static const List<String> _gaugeFractionShortcuts = <String>[
-    '1/8',
-    '1/4',
-    '3/8',
-    '1/2',
-    '5/8',
-    '3/4',
-    '7/8',
-  ];
 
   double? bblPerMin;
   double? bblPerHr;
@@ -1007,6 +982,47 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     );
   }
 
+  Widget _keypadRow(List<Widget> children) {
+    return Row(
+      children: [
+        for (int i = 0; i < children.length; i++) ...[
+          Expanded(child: children[i]),
+          if (i != children.length - 1) const SizedBox(width: 6),
+        ],
+      ],
+    );
+  }
+
+  Widget _keypadNumericButton(String value) {
+    return _gaugeKeyButton(
+      value,
+      onPressed: () => _insertKeypadText(value),
+    );
+  }
+
+  Widget _keypadCalculateButton() {
+    return SizedBox(
+      height: 40,
+      child: FilledButton(
+        onPressed: _canCalculate ? calculate : null,
+        style: FilledButton.styleFrom(
+          backgroundColor: const Color(0xFFCDA56A),
+          foregroundColor: Colors.black,
+          disabledBackgroundColor: const Color(0xFF3A3A3A),
+          disabledForegroundColor: const Color(0xFF9BA0A7),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          textStyle: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        child: const Text('CALCULATE'),
+      ),
+    );
+  }
+
   Widget _sharedGaugeKeypad() {
     if (_activeKeypadTarget == null) return const SizedBox.shrink();
     final activeLabel = _activeKeypadTarget == _KeypadTarget.start
@@ -1044,43 +1060,84 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
             ),
             if (_isGaugeMode) ...[
               const SizedBox(height: 6),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
+              _keypadRow([
+                _gaugeKeyButton(
+                  '1/8',
+                  compact: true,
+                  onPressed: () => _insertKeypadText('1/8'),
+                ),
+                _gaugeKeyButton(
+                  '1/4',
+                  compact: true,
+                  onPressed: () => _insertKeypadText('1/4'),
+                ),
+                _gaugeKeyButton(
+                  '3/8',
+                  compact: true,
+                  onPressed: () => _insertKeypadText('3/8'),
+                ),
+                _gaugeKeyButton(
+                  '1/2',
+                  compact: true,
+                  onPressed: () => _insertKeypadText('1/2'),
+                ),
+                _gaugeKeyButton(
+                  '5/8',
+                  compact: true,
+                  onPressed: () => _insertKeypadText('5/8'),
+                ),
+              ]),
+              const SizedBox(height: 6),
+              _keypadRow([
+                _gaugeKeyButton(
+                  '3/4',
+                  compact: true,
+                  onPressed: () => _insertKeypadText('3/4'),
+                ),
+                _gaugeKeyButton(
+                  '7/8',
+                  compact: true,
+                  onPressed: () => _insertKeypadText('7/8'),
+                ),
+                _gaugeKeyButton(
+                  'Space',
+                  compact: true,
+                  onPressed: () => _insertKeypadText('Space'),
+                ),
+                _gaugeKeyButton(
+                  'Backspace',
+                  compact: true,
+                  onPressed: _backspaceKeypad,
+                ),
+                _keypadCalculateButton(),
+              ]),
+              const SizedBox(height: 8),
+              _keypadRow([
+                _keypadNumericButton('1'),
+                _keypadNumericButton('2'),
+                _keypadNumericButton('3'),
+              ]),
+              const SizedBox(height: 6),
+              _keypadRow([
+                _keypadNumericButton('4'),
+                _keypadNumericButton('5'),
+                _keypadNumericButton('6'),
+              ]),
+              const SizedBox(height: 6),
+              _keypadRow([
+                _keypadNumericButton('7'),
+                _keypadNumericButton('8'),
+                _keypadNumericButton('9'),
+              ]),
+              const SizedBox(height: 6),
+              Row(
                 children: [
-                  ..._gaugeFractionShortcuts.map((value) => _gaugeKeyButton(
-                        value,
-                        compact: true,
-                        onPressed: () => _insertKeypadText(value),
-                      )),
-                  _gaugeKeyButton('Space',
-                      compact: true,
-                      onPressed: () => _insertKeypadText('Space')),
-                  _gaugeKeyButton('⌫',
-                      compact: true, onPressed: _backspaceKeypad),
+                  const Spacer(),
+                  Expanded(child: _keypadNumericButton('0')),
+                  const Spacer(),
                 ],
               ),
             ],
-            const SizedBox(height: 8),
-            GridView.builder(
-              itemCount: _gaugeMainKeys.length,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                mainAxisSpacing: 6,
-                crossAxisSpacing: 6,
-                childAspectRatio: 2.6,
-              ),
-              itemBuilder: (context, index) {
-                final key = _gaugeMainKeys[index];
-                if (key == '⌫') {
-                  return _gaugeKeyButton(key, onPressed: _backspaceKeypad);
-                }
-                return _gaugeKeyButton(key,
-                    onPressed: () => _insertKeypadText(key));
-              },
-            ),
           ],
         ),
       ),
