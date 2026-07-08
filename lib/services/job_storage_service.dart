@@ -217,7 +217,7 @@ class JobStorageService {
   }
 
   Future<void> _upsertJobInList(JobSetup job) async {
-    final jobs = await loadJobs();
+    final jobs = List<JobSetup>.from(await loadJobs());
     final index = jobs.indexWhere((item) => item.id == job.id);
     if (index == -1) {
       jobs.insert(0, job);

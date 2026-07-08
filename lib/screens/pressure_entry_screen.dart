@@ -28,7 +28,11 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   final _roundStorage = RoundStorageService();
   final _recoveryState = RecoveryStateService();
   bool _loading = true;
+  bool _savingHour = false;
   int _activeHourIndex = 0;
+  final Set<TextEditingController> _invalidHourControllers =
+      <TextEditingController>{};
+  String? _hourValidationMessage;
 
   late ProductionShift _shift;
   JobSetup? _activeJob;
@@ -1012,14 +1016,76 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   Future<void> _saveActiveHour() async {
     final hourIndex = _activeHourIndex;
+    final current = _controllers[hourIndex];
     final enteredWells =
         _activeWells.where((well) => _isWellEntered(hourIndex, well)).toList();
 
+    final invalidControllers = <TextEditingController>{};
+    void disallowNegative(TextEditingController controller) {
+      final text = controller.text.trim();
+      if (text.isEmpty) return;
+      final value = double.tryParse(text);
+      if (value != null && value < 0) {
+        invalidControllers.add(controller);
+      }
+    }
+
+    for (final controller in [
+      current.choke,
+      current.tbg,
+      current.icp,
+      current.csg,
+      current.currentGasAccum,
+      current.salesGasRate,
+      current.gasStatic,
+      current.gasDifferential,
+      current.waterSpecificGravity,
+      current.flareRate,
+      current.biocide,
+      current.vruGasRate,
+      current.compressorInjection,
+      current.vruSuction,
+      current.vruDischarge,
+      current.waterHauled,
+      current.oilHauled,
+      current.waterPumped,
+      current.oilPumped,
+      current.sandRate,
+      current.beginningOilInventory,
+      current.expectedOilInventory,
+      current.maximumCushion,
+      ...current.waterTankGaugeEntries.expand((item) => item.controllers),
+      ...current.oilTankGaugeEntries.expand((item) => item.controllers),
+    ]) {
+      disallowNegative(controller);
+    }
+
+    setState(() {
+      _invalidHourControllers
+        ..clear()
+        ..addAll(invalidControllers);
+      _hourValidationMessage = invalidControllers.isNotEmpty
+          ? 'Negative values are not valid in the highlighted production fields.'
+          : null;
+    });
+
     if (enteredWells.isEmpty) {
+      setState(() {
+        _hourValidationMessage =
+            'Enter at least one value before saving this hour.';
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Enter at least one value before saving this hour.'),
         ),
+      );
+      return;
+    }
+
+    if (invalidControllers.isNotEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_hourValidationMessage!)),
       );
       return;
     }
@@ -1029,6 +1095,126 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       for (final well in enteredWells)
         _buildRowForWell(hourIndex, well, _wellDataForHour(hourIndex, well)),
     ];
+
+    final warnings = <String>[];
+    for (final row in rows) {
+      final previousData = _latestSavedWellData(hourIndex, row.well);
+      if (row.waterProduction.abs() > 250) {
+        warnings.add('${row.well} water rate is unusually large.');
+      }
+      if (row.oilProduction.abs() > 250) {
+        warnings.add('${row.well} oil rate is unusually large.');
+      }
+      final currentSand = double.tryParse(
+              _wellDataForHour(hourIndex, row.well).sandRate.trim()) ??
+          0;
+      if (currentSand.abs() > 100) {
+        warnings.add('${row.well} sand rate is unusually large.');
+      }
+      if (previousData != null) {
+        void comparePressure(
+            String label, String currentText, String previousText) {
+          final currentValue = double.tryParse(currentText.trim());
+          final previousValue = double.tryParse(previousText.trim());
+          if (currentValue != null &&
+              previousValue != null &&
+              (currentValue - previousValue).abs() > 1000) {
+            warnings.add('${row.well} $label changed by more than 1000 PSI.');
+          }
+        }
+
+        comparePressure(
+            'TBG', _wellDataForHour(hourIndex, row.well).tbg, previousData.tbg);
+        comparePressure(
+            'ICP', _wellDataForHour(hourIndex, row.well).icp, previousData.icp);
+        comparePressure(
+            'CSG', _wellDataForHour(hourIndex, row.well).csg, previousData.csg);
+
+        if (_useGasAccumulator) {
+          final currentGas = double.tryParse(
+              _wellDataForHour(hourIndex, row.well).currentGasAccum.trim());
+          final previousGas =
+              double.tryParse(previousData.currentGasAccum.trim());
+          if (currentGas != null &&
+              previousGas != null &&
+              (currentGas - previousGas).abs() > 500) {
+            warnings
+                .add('${row.well} gas accumulator changed by more than 500.');
+          }
+        }
+
+        void compareGaugeList(
+            String label,
+            List<ProductionGaugeEntry> currentEntries,
+            List<ProductionGaugeEntry> previousEntries) {
+          final count = currentEntries.length < previousEntries.length
+              ? currentEntries.length
+              : previousEntries.length;
+          for (var gaugeIndex = 0; gaugeIndex < count; gaugeIndex++) {
+            final currentGauge = currentEntries[gaugeIndex].asInches();
+            final previousGauge = previousEntries[gaugeIndex].asInches();
+            if ((currentGauge - previousGauge).abs() > 24) {
+              warnings.add(
+                  '${row.well} $label ${gaugeIndex + 1} changed by more than 24 inches.');
+            }
+          }
+        }
+
+        final currentData = _wellDataForHour(hourIndex, row.well);
+        compareGaugeList(
+          'Water Tank',
+          currentData.waterTankGaugeEntries,
+          previousData.waterTankGaugeEntries,
+        );
+        compareGaugeList(
+          'Oil Tank',
+          currentData.oilTankGaugeEntries,
+          previousData.oilTankGaugeEntries,
+        );
+      }
+    }
+
+    if (warnings.isNotEmpty) {
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Confirm Save'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'These values are outside the normal operating range. Save anyway?',
+                  ),
+                  const SizedBox(height: 10),
+                  for (final warning in warnings.take(10))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Text('• $warning'),
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Save Anyway'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!confirmed) return;
+    }
+
+    setState(() {
+      _savingHour = true;
+      _hourValidationMessage = null;
+    });
 
     final updatedRows = List<ProductionReportRow>.from(_shift.savedRows)
       ..removeWhere(
@@ -1076,10 +1262,23 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     }
 
     if (!mounted) return;
-    setState(() {});
+    setState(() {
+      _savingHour = false;
+    });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${_controllers[hourIndex].time} Round Saved ✓')),
+      SnackBar(
+        content:
+            Text('${_controllers[hourIndex].time} Round saved successfully.'),
+      ),
     );
+  }
+
+  ProductionWellCheckData? _latestSavedWellData(int hourIndex, String well) {
+    for (var index = hourIndex - 1; index >= 0; index--) {
+      if (!_isHourSaved(index)) continue;
+      return _controllers[index].dataForWell(well, _chokeTypeForWell(well));
+    }
+    return null;
   }
 
   void _goToNextHour() {
@@ -1553,9 +1752,15 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     return SizedBox(
       width: double.infinity,
       child: FilledButton.icon(
-        onPressed: _saveActiveHour,
-        icon: const Icon(Icons.save),
-        label: Text('Save $time Round'),
+        onPressed: _savingHour ? null : _saveActiveHour,
+        icon: _savingHour
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.save),
+        label: Text(_savingHour ? 'Saving Round...' : 'Save $time Round'),
       ),
     );
   }
@@ -1579,11 +1784,19 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         decoration: InputDecoration(
           labelText: label,
           suffixText: suffix,
+          errorText: _invalidHourControllers.contains(controller)
+              ? 'Cannot be negative'
+              : null,
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
         ),
         onChanged: (_) {
-          setState(() {});
+          setState(() {
+            _invalidHourControllers.remove(controller);
+            if (_invalidHourControllers.isEmpty) {
+              _hourValidationMessage = null;
+            }
+          });
           _persistShift();
         },
       ),
@@ -1597,16 +1810,32 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         WwNumberField(
           label: 'Feet',
           controller: controller.feet,
+          errorText: _invalidHourControllers.contains(controller.feet)
+              ? 'Cannot be negative'
+              : null,
           onChanged: (_) {
-            setState(() {});
+            setState(() {
+              _invalidHourControllers.remove(controller.feet);
+              if (_invalidHourControllers.isEmpty) {
+                _hourValidationMessage = null;
+              }
+            });
             _persistShift();
           },
         ),
         WwNumberField(
           label: 'Inches',
           controller: controller.inchesPart,
+          errorText: _invalidHourControllers.contains(controller.inchesPart)
+              ? 'Cannot be negative'
+              : null,
           onChanged: (_) {
-            setState(() {});
+            setState(() {
+              _invalidHourControllers.remove(controller.inchesPart);
+              if (_invalidHourControllers.isEmpty) {
+                _hourValidationMessage = null;
+              }
+            });
             _persistShift();
           },
         ),
@@ -1617,8 +1846,16 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         WwNumberField(
           label: 'Decimal Feet',
           controller: controller.decimalFeet,
+          errorText: _invalidHourControllers.contains(controller.decimalFeet)
+              ? 'Cannot be negative'
+              : null,
           onChanged: (_) {
-            setState(() {});
+            setState(() {
+              _invalidHourControllers.remove(controller.decimalFeet);
+              if (_invalidHourControllers.isEmpty) {
+                _hourValidationMessage = null;
+              }
+            });
             _persistShift();
           },
         ),
@@ -1628,12 +1865,33 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       WwNumberField(
         label: 'Current Gauge (in)',
         controller: controller.inches,
+        errorText: _invalidHourControllers.contains(controller.inches)
+            ? 'Cannot be negative'
+            : null,
         onChanged: (_) {
-          setState(() {});
+          setState(() {
+            _invalidHourControllers.remove(controller.inches);
+            if (_invalidHourControllers.isEmpty) {
+              _hourValidationMessage = null;
+            }
+          });
           _persistShift();
         },
       ),
     ];
+  }
+
+  Widget _hourValidationCard() {
+    final message = _hourValidationMessage;
+    if (message == null) return const SizedBox.shrink();
+    return Card(
+      color: const Color(0xFF3A1E1E),
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Text(message, style: const TextStyle(color: Colors.white)),
+      ),
+    );
   }
 
   Widget _tankGaugeInputs({
@@ -1707,6 +1965,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         padding: const EdgeInsets.all(18),
         children: [
           _activeJobBanner(),
+          _hourValidationCard(),
           _section('Round Setup', [
             DropdownButtonFormField<String>(
               initialValue: _shift.roundStartTime,

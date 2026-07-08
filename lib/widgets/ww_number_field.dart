@@ -12,6 +12,7 @@ class WwNumberField extends StatelessWidget {
   final ValueChanged<String>? onChanged;
   final bool autofocus;
   final FocusNode? focusNode;
+  final String? errorText;
 
   const WwNumberField({
     super.key,
@@ -25,6 +26,7 @@ class WwNumberField extends StatelessWidget {
     this.onChanged,
     this.autofocus = false,
     this.focusNode,
+    this.errorText,
   });
 
   @override
@@ -50,6 +52,7 @@ class WwNumberField extends StatelessWidget {
           labelText: label,
           hintText: hintText,
           helperText: helperText,
+          errorText: errorText,
           suffixIcon: controller.text.isEmpty
               ? null
               : IconButton(

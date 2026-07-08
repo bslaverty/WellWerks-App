@@ -52,6 +52,12 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   String _defaultChokeDisplay = 'ADJ';
 
   bool _loading = true;
+  bool _saving = false;
+  final Set<TextEditingController> _missingControllers =
+      <TextEditingController>{};
+  final Set<TextEditingController> _invalidControllers =
+      <TextEditingController>{};
+  String? _validationMessage;
 
   @override
   void initState() {
@@ -270,15 +276,206 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   Future<void> _saveInventory() async {
+    final missing = <TextEditingController>{};
+    final invalid = <TextEditingController>{};
+
+    void requireFilled(TextEditingController controller) {
+      if (controller.text.trim().isEmpty) {
+        missing.add(controller);
+      }
+    }
+
+    void disallowNegative(TextEditingController controller) {
+      final text = controller.text.trim();
+      if (text.isEmpty) return;
+      final value = double.tryParse(text);
+      if (value != null && value < 0) {
+        invalid.add(controller);
+      }
+    }
+
+    requireFilled(_company);
+    requireFilled(_pad);
+    requireFilled(_date);
+    for (final controller in _wellControllers) {
+      requireFilled(controller);
+    }
+
+    for (final controller in [
+      _startingGasAccum,
+      _waterHauledBeforeRound,
+      _oilHauledBeforeRound,
+      _waterPumpedBeforeRound,
+      _oilPumpedBeforeRound,
+    ]) {
+      disallowNegative(controller);
+    }
+
+    for (final tank in [..._waterTanks, ..._oilTanks]) {
+      for (final controller in [
+        tank.gaugeInches,
+        tank.gaugeFeet,
+        tank.gaugeInchesPart,
+        tank.gaugeDecimalFeet,
+        tank.bblPerInch,
+      ]) {
+        disallowNegative(controller);
+      }
+    }
+
+    for (final well in _oilInventoryWells) {
+      for (final controller in [
+        well.beginningOilInventory,
+        well.currentOilInventory,
+        well.expectedOilInventory,
+        well.maximumCushion,
+      ]) {
+        disallowNegative(controller);
+      }
+    }
+
+    setState(() {
+      _missingControllers
+        ..clear()
+        ..addAll(missing);
+      _invalidControllers
+        ..clear()
+        ..addAll(invalid);
+      if (missing.isNotEmpty) {
+        _validationMessage =
+            'Fill the highlighted required Production Setup fields before saving.';
+      } else if (invalid.isNotEmpty) {
+        _validationMessage =
+            'Negative values are not valid in the highlighted Production Inventory fields.';
+      } else {
+        _validationMessage = null;
+      }
+    });
+
+    if (missing.isNotEmpty || invalid.isNotEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_validationMessage!)),
+      );
+      return;
+    }
+
     final active = await _service.loadActiveShift();
     final updated = active.copyWith(
       header: _headerFromControllers(),
       inventory: _inventoryFromControllers(),
     );
+
+    final warnings = <String>[];
+    for (var i = 0;
+        i < _waterTanks.length && i < active.inventory.waterTanks.length;
+        i++) {
+      final previous = active.inventory.waterTanks[i].gaugeEntry.asInches();
+      final current = _waterTanks[i].gaugeEntry(_gaugeEntryType).asInches();
+      if ((current - previous).abs() > 24) {
+        warnings
+            .add('Water Tank ${i + 1} gauge changed by more than 24 inches.');
+      }
+    }
+    for (var i = 0;
+        i < _oilTanks.length && i < active.inventory.oilTanks.length;
+        i++) {
+      final previous = active.inventory.oilTanks[i].gaugeEntry.asInches();
+      final current = _oilTanks[i].gaugeEntry(_gaugeEntryType).asInches();
+      if ((current - previous).abs() > 24) {
+        warnings.add('Oil Tank ${i + 1} gauge changed by more than 24 inches.');
+      }
+    }
+    final previousGas =
+        double.tryParse(active.inventory.startingGasAccum.trim());
+    final currentGas = double.tryParse(_startingGasAccum.text.trim());
+    if (previousGas != null &&
+        currentGas != null &&
+        (currentGas - previousGas).abs() > 1000) {
+      warnings.add('Starting gas accumulator changed by more than 1000.');
+    }
+
+    if (warnings.isNotEmpty) {
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Confirm Save'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'These values are outside the normal operating range. Save anyway?',
+                  ),
+                  const SizedBox(height: 10),
+                  for (final warning in warnings)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Text('• $warning'),
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Save Anyway'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!confirmed) return;
+    }
+
+    setState(() => _saving = true);
     await _service.saveActiveShift(updated);
     if (!mounted) return;
+    setState(() => _saving = false);
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Production Inventory saved.')),
+      const SnackBar(content: Text('Production Inventory saved successfully.')),
+    );
+  }
+
+  void _clearFieldIssue(TextEditingController controller) {
+    if (!_missingControllers.contains(controller) &&
+        !_invalidControllers.contains(controller)) {
+      return;
+    }
+    setState(() {
+      _missingControllers.remove(controller);
+      _invalidControllers.remove(controller);
+      if (_missingControllers.isEmpty && _invalidControllers.isEmpty) {
+        _validationMessage = null;
+      }
+    });
+  }
+
+  String? _errorTextFor(TextEditingController controller) {
+    if (_missingControllers.contains(controller)) {
+      return 'Required';
+    }
+    if (_invalidControllers.contains(controller)) {
+      return 'Cannot be negative';
+    }
+    return null;
+  }
+
+  Widget _validationCard() {
+    final message = _validationMessage;
+    if (message == null) return const SizedBox.shrink();
+    return Card(
+      color: const Color(0xFF3A1E1E),
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Text(message, style: const TextStyle(color: Colors.white)),
+      ),
     );
   }
 
@@ -470,10 +667,14 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
         style: const TextStyle(fontSize: 16),
         decoration: InputDecoration(
           labelText: label,
+          errorText: _errorTextFor(controller),
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
         ),
-        onChanged: (_) => setState(() {}),
+        onChanged: (_) {
+          _clearFieldIssue(controller);
+          setState(() {});
+        },
       ),
     );
   }
@@ -484,12 +685,20 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
         WwNumberField(
           label: 'Gauge Feet',
           controller: tank.gaugeFeet,
-          onChanged: (_) => setState(() {}),
+          errorText: _errorTextFor(tank.gaugeFeet),
+          onChanged: (_) {
+            _clearFieldIssue(tank.gaugeFeet);
+            setState(() {});
+          },
         ),
         WwNumberField(
           label: 'Gauge Inches',
           controller: tank.gaugeInchesPart,
-          onChanged: (_) => setState(() {}),
+          errorText: _errorTextFor(tank.gaugeInchesPart),
+          onChanged: (_) {
+            _clearFieldIssue(tank.gaugeInchesPart);
+            setState(() {});
+          },
         ),
       ];
     }
@@ -498,7 +707,11 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
         WwNumberField(
           label: 'Gauge (decimal feet)',
           controller: tank.gaugeDecimalFeet,
-          onChanged: (_) => setState(() {}),
+          errorText: _errorTextFor(tank.gaugeDecimalFeet),
+          onChanged: (_) {
+            _clearFieldIssue(tank.gaugeDecimalFeet);
+            setState(() {});
+          },
         ),
       ];
     }
@@ -506,7 +719,11 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
       WwNumberField(
         label: 'Gauge (inches)',
         controller: tank.gaugeInches,
-        onChanged: (_) => setState(() {}),
+        errorText: _errorTextFor(tank.gaugeInches),
+        onChanged: (_) {
+          _clearFieldIssue(tank.gaugeInches);
+          setState(() {});
+        },
       ),
     ];
   }
@@ -550,7 +767,11 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                   label: 'BBL per inch',
                   controller: tanks[i].bblPerInch,
                   helperText: 'Default 1.67',
-                  onChanged: (_) => setState(() {}),
+                  errorText: _errorTextFor(tanks[i].bblPerInch),
+                  onChanged: (_) {
+                    _clearFieldIssue(tanks[i].bblPerInch);
+                    setState(() {});
+                  },
                 ),
                 Text(
                   'Entered: ${tanks[i].gaugeEntryText(_gaugeEntryType)}',
@@ -613,14 +834,24 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                   label: 'Beginning Oil Inventory',
                   controller: _oilInventoryWells[i].beginningOilInventory,
                   helperText: 'BBL',
-                  onChanged: (_) => setState(() {}),
+                  errorText: _errorTextFor(
+                      _oilInventoryWells[i].beginningOilInventory),
+                  onChanged: (_) {
+                    _clearFieldIssue(
+                        _oilInventoryWells[i].beginningOilInventory);
+                    setState(() {});
+                  },
                 ),
                 WwNumberField(
                   label: 'Current Oil Inventory',
                   controller: _oilInventoryWells[i].currentOilInventory,
                   helperText: 'BBL',
+                  errorText:
+                      _errorTextFor(_oilInventoryWells[i].currentOilInventory),
                   onChanged: (_) {
                     setState(() {
+                      _clearFieldIssue(
+                          _oilInventoryWells[i].currentOilInventory);
                       _syncComputedCushion(i);
                     });
                   },
@@ -629,8 +860,12 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                   label: 'Expected Oil Inventory',
                   controller: _oilInventoryWells[i].expectedOilInventory,
                   helperText: 'BBL',
+                  errorText:
+                      _errorTextFor(_oilInventoryWells[i].expectedOilInventory),
                   onChanged: (_) {
                     setState(() {
+                      _clearFieldIssue(
+                          _oilInventoryWells[i].expectedOilInventory);
                       _syncComputedCushion(i);
                     });
                   },
@@ -643,8 +878,11 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                   label: 'Maximum Cushion',
                   controller: _oilInventoryWells[i].maximumCushion,
                   helperText: 'BBL',
+                  errorText:
+                      _errorTextFor(_oilInventoryWells[i].maximumCushion),
                   onChanged: (_) {
                     setState(() {
+                      _clearFieldIssue(_oilInventoryWells[i].maximumCushion);
                       _syncComputedCushion(i);
                     });
                   },
@@ -742,6 +980,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
+        _validationCard(),
         _section('Shift Header', [
           _textField('Company', _company),
           _textField('Pad Name', _pad),
@@ -877,37 +1116,63 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
             WwNumberField(
               label: 'Starting Gas Accum',
               controller: _startingGasAccum,
-              onChanged: (_) => setState(() {}),
+              errorText: _errorTextFor(_startingGasAccum),
+              onChanged: (_) {
+                _clearFieldIssue(_startingGasAccum);
+                setState(() {});
+              },
             ),
           ]),
         _section('Pre-Round Adjustments', [
           WwNumberField(
             label: 'Water Hauled Before Round',
             controller: _waterHauledBeforeRound,
-            onChanged: (_) => setState(() {}),
+            errorText: _errorTextFor(_waterHauledBeforeRound),
+            onChanged: (_) {
+              _clearFieldIssue(_waterHauledBeforeRound);
+              setState(() {});
+            },
           ),
           WwNumberField(
             label: 'Oil Hauled Before Round',
             controller: _oilHauledBeforeRound,
-            onChanged: (_) => setState(() {}),
+            errorText: _errorTextFor(_oilHauledBeforeRound),
+            onChanged: (_) {
+              _clearFieldIssue(_oilHauledBeforeRound);
+              setState(() {});
+            },
           ),
           WwNumberField(
             label: 'Water Pumped Before Round',
             controller: _waterPumpedBeforeRound,
-            onChanged: (_) => setState(() {}),
+            errorText: _errorTextFor(_waterPumpedBeforeRound),
+            onChanged: (_) {
+              _clearFieldIssue(_waterPumpedBeforeRound);
+              setState(() {});
+            },
           ),
           WwNumberField(
             label: 'Oil Pumped Before Round',
             controller: _oilPumpedBeforeRound,
-            onChanged: (_) => setState(() {}),
+            errorText: _errorTextFor(_oilPumpedBeforeRound),
+            onChanged: (_) {
+              _clearFieldIssue(_oilPumpedBeforeRound);
+              setState(() {});
+            },
           ),
         ]),
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
-            onPressed: _saveInventory,
-            icon: const Icon(Icons.save),
-            label: const Text('Save Inventory'),
+            onPressed: _saving ? null : _saveInventory,
+            icon: _saving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.save),
+            label: Text(_saving ? 'Saving Inventory...' : 'Save Inventory'),
           ),
         ),
         const SizedBox(height: 8),
