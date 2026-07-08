@@ -263,8 +263,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   bool get _hasGaugeInputs =>
       startGauge.text.trim().isNotEmpty && endGauge.text.trim().isNotEmpty;
 
-  bool get _canCalculate =>
-      _hasGaugeInputs && _hasValidMinutes && _timerFinished && !_timerRunning;
+  bool get _canCalculate => _hasGaugeInputs && _hasValidMinutes;
 
   String get _timerStatusText {
     if (_timerRunning) return 'Timer running...';
@@ -667,10 +666,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
       setState(() => error = 'Minutes must be greater than zero.');
       return;
     }
-    if (!_timerFinished) {
-      setState(() => error = 'Finish the timer before calculating.');
-      return;
-    }
     if (!widget.config.usesChart &&
         (double.tryParse(factor.text.trim()) ?? 0) <= 0) {
       setState(() => error = 'Tank factor must be greater than zero.');
@@ -681,6 +676,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     final endBbl = barrelsAt(parseGauge(endGauge.text));
     final change = (endBbl - startBbl).abs();
     final perMin = change / m;
+
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
 
     setState(() {
       bblPerMin = perMin;
