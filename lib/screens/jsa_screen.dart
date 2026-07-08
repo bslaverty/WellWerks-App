@@ -1,9 +1,10 @@
 import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:image_gallery_saver/image_gallery_saver.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:signature/signature.dart';
@@ -33,6 +34,7 @@ class JsaScreen extends StatefulWidget {
 enum _JsaShareFormat {
   pdf,
   png,
+  savePngToPhotos,
 }
 
 class _JsaScreenState extends State<JsaScreen> {
@@ -521,6 +523,9 @@ class _JsaScreenState extends State<JsaScreen> {
   Future<void> _shareSend() async {
     if (_exporting) return;
 
+    final canSaveToPhotos =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
     final format = await showDialog<_JsaShareFormat>(
       context: context,
       builder: (context) => AlertDialog(
@@ -545,6 +550,18 @@ class _JsaScreenState extends State<JsaScreen> {
                 label: const Text('Image (PNG)'),
               ),
             ),
+            if (canSaveToPhotos) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => Navigator.of(context)
+                      .pop(_JsaShareFormat.savePngToPhotos),
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('Save Image to Photos'),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -566,7 +583,7 @@ class _JsaScreenState extends State<JsaScreen> {
           exported,
           successMessage: 'JSA PDF ready to share.',
         );
-      } else {
+      } else if (format == _JsaShareFormat.png) {
         final imageBytes = await _captureExportImageBytes(draft);
         if (imageBytes == null) {
           throw StateError('Unable to capture JSA image.');
@@ -579,6 +596,8 @@ class _JsaScreenState extends State<JsaScreen> {
           exported,
           successMessage: 'JSA image ready to share.',
         );
+      } else {
+        await _saveImageToPhotos(draft);
       }
     } catch (_) {
       if (!mounted) return;
@@ -593,6 +612,34 @@ class _JsaScreenState extends State<JsaScreen> {
         setState(() => _exporting = false);
       }
     }
+  }
+
+  Future<void> _saveImageToPhotos(JsaDraft draft) async {
+    final imageBytes = await _captureExportImageBytes(draft);
+    if (imageBytes == null) {
+      throw StateError('Unable to capture JSA image.');
+    }
+
+    final now = DateTime.now();
+    final name =
+        'wellwerks_jsa_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+    final result = await ImageGallerySaver.saveImage(
+      imageBytes,
+      quality: 100,
+      name: name,
+    );
+
+    final map = result is Map ? result : <String, dynamic>{};
+    final dynamic raw = map['isSuccess'] ?? map['success'];
+    final success = raw == true || raw == 1 || raw?.toString() == 'true';
+    if (!success) {
+      throw StateError('Unable to save image to Photos.');
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('JSA image saved to Photos.')),
+    );
   }
 
   Future<void> _shareFile(

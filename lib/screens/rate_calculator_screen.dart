@@ -126,15 +126,29 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
 
   Future<void> _loadSavedTimerMinutes() async {
     final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getInt(_timerMinutesPrefKey) ?? 5;
-    final clamped = saved.clamp(1, 60).toInt();
+    final savedText = prefs.getString(_timerMinutesPrefKey);
+    final savedLegacyInt = prefs.getInt(_timerMinutesPrefKey);
     if (!mounted) return;
-    minutes.text = clamped.toString();
+
+    if (savedText != null && savedText.trim().isNotEmpty) {
+      minutes.text = savedText.trim();
+      _remainingSeconds = _minutesToDurationSeconds();
+      return;
+    }
+
+    if (savedLegacyInt != null && savedLegacyInt > 0) {
+      minutes.text = savedLegacyInt.toString();
+      _remainingSeconds = _minutesToDurationSeconds();
+      return;
+    }
+
+    minutes.clear();
+    _remainingSeconds = 0;
   }
 
-  Future<void> _saveTimerMinutes(int value) async {
+  Future<void> _saveTimerMinutes(String valueText) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_timerMinutesPrefKey, value);
+    await prefs.setString(_timerMinutesPrefKey, valueText);
   }
 
   int _minutesToDurationSeconds() {
@@ -146,8 +160,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   void _handleMinutesChanged() {
     final parsedMinutes = double.tryParse(minutes.text.trim());
     if (parsedMinutes != null && parsedMinutes > 0) {
-      final toSave = parsedMinutes.round().clamp(1, 60);
-      _saveTimerMinutes(toSave);
+      _saveTimerMinutes(minutes.text.trim());
     }
 
     if (_timerRunning || !mounted) return;
@@ -247,8 +260,22 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     });
   }
 
+  bool get _hasValidMinutes => _minutesToDurationSeconds() > 0;
+
+  bool get _hasGaugeInputs =>
+      startGauge.text.trim().isNotEmpty && endGauge.text.trim().isNotEmpty;
+
+  bool get _canCalculate =>
+      _hasGaugeInputs && _hasValidMinutes && _timerFinished && !_timerRunning;
+
+  String get _timerStatusText {
+    if (_timerRunning) return 'Timer running...';
+    if (_timerFinished) return 'Ready to calculate.';
+    return 'Enter gauges and start timer.';
+  }
+
   Widget _timedRateSection() {
-    final canRunTimer = _minutesToDurationSeconds() > 0;
+    final canRunTimer = _hasValidMinutes;
 
     return Card(
       child: Padding(
@@ -272,46 +299,57 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                 border: Border.all(color: const Color(0xFF3A3A3A)),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        const Icon(Icons.timer_outlined,
-                            color: Color(0xFFCDA56A)),
-                        const SizedBox(width: 6),
-                        Text(
-                          _timerFinished ? 'TIME' : _timerText(),
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                            color: _timerFinished
-                                ? Colors.redAccent
-                                : const Color(0xFFCDA56A),
-                          ),
+                  Row(
+                    children: [
+                      const Icon(Icons.timer_outlined,
+                          color: Color(0xFFCDA56A), size: 28),
+                      const SizedBox(width: 8),
+                      Text(
+                        _timerFinished ? 'TIME' : _timerText(),
+                        style: TextStyle(
+                          fontSize: 44,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.2,
+                          color: _timerFinished
+                              ? Colors.redAccent
+                              : const Color(0xFFCDA56A),
                         ),
-                      ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _timerStatusText,
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                  const SizedBox(height: 10),
+                  if (_timerRunning)
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: _cancelTimedRate,
+                        child: const Text('Cancel'),
+                      ),
+                    )
+                  else if (_timerFinished)
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: canRunTimer ? _startTimedRate : null,
+                        child: const Text('Restart'),
+                      ),
+                    )
+                  else
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: canRunTimer ? _startTimedRate : null,
+                        child: const Text('Start'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  FilledButton(
-                    onPressed: (!_timerRunning && canRunTimer)
-                        ? _startTimedRate
-                        : null,
-                    child: const Text('Start'),
-                  ),
-                  const SizedBox(width: 6),
-                  OutlinedButton(
-                    onPressed: canRunTimer ? _startTimedRate : null,
-                    child: const Text('Restart'),
-                  ),
-                  const SizedBox(width: 6),
-                  OutlinedButton(
-                    onPressed: (_timerRunning || _timerFinished)
-                        ? _cancelTimedRate
-                        : null,
-                    child: const Text('Cancel'),
-                  ),
                 ],
               ),
             ),
@@ -469,7 +507,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     setState(() {
       startGauge.clear();
       endGauge.clear();
-      minutes.clear();
+      _remainingSeconds = _minutesToDurationSeconds();
       bblPerMin = null;
       bblPerHr = null;
       bblPerDay = null;
@@ -484,15 +522,19 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
       setState(() => _activeKeypadTarget = null);
     }
 
-    final m = double.tryParse(minutes.text.trim()) ?? 0;
-    if (startGauge.text.trim().isEmpty ||
-        endGauge.text.trim().isEmpty ||
-        minutes.text.trim().isEmpty) {
-      setState(() => error = 'Enter start gauge, end gauge, and minutes.');
+    if (!_hasGaugeInputs || minutes.text.trim().isEmpty) {
+      setState(
+        () => error = 'Enter Starting Gauge, Ending Gauge, and Minutes.',
+      );
       return;
     }
+    final m = double.tryParse(minutes.text.trim()) ?? 0;
     if (m <= 0) {
       setState(() => error = 'Minutes must be greater than zero.');
+      return;
+    }
+    if (!_timerFinished) {
+      setState(() => error = 'Finish the timer before calculating.');
       return;
     }
     if (!widget.config.usesChart &&
@@ -510,6 +552,11 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
       bblPerMin = perMin;
       bblPerHr = perMin * 60;
       bblPerDay = perMin * 1440;
+      startGauge.clear();
+      endGauge.clear();
+      _timerFinished = false;
+      _thirtySecondAlertShown = false;
+      _remainingSeconds = _minutesToDurationSeconds();
       error = null;
     });
   }
@@ -568,9 +615,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   Widget _sharedGaugeKeypad() {
     if (_activeKeypadTarget == null) return const SizedBox.shrink();
     final activeLabel = _activeKeypadTarget == _KeypadTarget.start
-        ? 'Start Gauge'
+        ? 'Starting Gauge'
         : _activeKeypadTarget == _KeypadTarget.end
-            ? 'End Gauge'
+            ? 'Ending Gauge'
             : 'Minutes';
     return Container(
       decoration: const BoxDecoration(
@@ -660,18 +707,14 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(18),
                 children: [
-                  if (widget.config.usesChart)
-                    Text(
-                        'Using ${chart?.name ?? 'tank'} strapping chart with interpolation.',
-                        style: const TextStyle(color: Colors.white70))
-                  else
+                  if (!widget.config.usesChart)
                     WwNumberField(
                         label: 'Tank Factor (BBL/In)',
                         controller: factor,
                         allowDecimal: true),
                   const SizedBox(height: 8),
                   WwGaugeField(
-                    label: 'Start Gauge',
+                    label: 'Starting Gauge',
                     controller: startGauge,
                     autofocus: true,
                     active: _activeKeypadTarget == _KeypadTarget.start,
@@ -679,7 +722,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                     onChanged: (_) => setState(() {}),
                   ),
                   WwGaugeField(
-                    label: 'End Gauge',
+                    label: 'Ending Gauge',
                     controller: endGauge,
                     active: _activeKeypadTarget == _KeypadTarget.end,
                     onTap: () => _setActiveKeypad(_KeypadTarget.end),
@@ -737,10 +780,10 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                     ),
                   ),
                   _timedRateSection(),
-                  const SizedBox(height: 4),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 10),
                   FilledButton(
-                      onPressed: calculate, child: const Text('Calculate')),
+                      onPressed: _canCalculate ? calculate : null,
+                      child: const Text('Calculate')),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
                       onPressed: clearInputs,
