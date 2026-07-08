@@ -166,7 +166,14 @@ class ProductionShiftService {
         inventory.oilTanks.any((tank) =>
             tank.name.trim().isNotEmpty ||
             tank.gauge.trim().isNotEmpty ||
-            tank.bblPerInch.trim().isNotEmpty);
+            tank.bblPerInch.trim().isNotEmpty) ||
+        inventory.oilInventoryWells.any((well) =>
+            well.wellName.trim().isNotEmpty ||
+            well.beginningOilInventory.trim().isNotEmpty ||
+            well.currentOilInventory.trim().isNotEmpty ||
+            well.expectedOilInventory.trim().isNotEmpty ||
+            well.currentCushion.trim().isNotEmpty ||
+            well.maximumCushion.trim().isNotEmpty);
     return !hasHeader &&
         !hasInventory &&
         shift.hourlyChecks.isEmpty &&

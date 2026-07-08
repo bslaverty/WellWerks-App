@@ -46,6 +46,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   final List<String> _wellChokeTypes = [];
   final List<_TankControllers> _waterTanks = [];
   final List<_TankControllers> _oilTanks = [];
+  final List<_OilInventoryControllers> _oilInventoryWells = [];
   List<ReportLayoutProfile> _layoutProfiles = const [];
   String _defaultBblPerInch = '1.67';
   String _defaultChokeDisplay = 'ADJ';
@@ -80,6 +81,9 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     }
     for (final tank in _oilTanks) {
       tank.dispose();
+    }
+    for (final well in _oilInventoryWells) {
+      well.dispose();
     }
     super.dispose();
   }
@@ -119,7 +123,14 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
         shift.header.date.trim().isEmpty &&
         shift.savedRows.isEmpty &&
         shift.hourlyChecks.isEmpty &&
-        shift.inventory.startingGasAccum.trim().isEmpty;
+        shift.inventory.startingGasAccum.trim().isEmpty &&
+        shift.inventory.oilInventoryWells.every((well) =>
+            well.wellName.trim().isEmpty &&
+            well.beginningOilInventory.trim().isEmpty &&
+            well.currentOilInventory.trim().isEmpty &&
+            well.expectedOilInventory.trim().isEmpty &&
+            well.currentCushion.trim().isEmpty &&
+            well.maximumCushion.trim().isEmpty);
   }
 
   void _setFromShift(ProductionShift shift) {
@@ -173,6 +184,25 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     _oilTanks
       ..clear()
       ..addAll(shift.inventory.oilTanks.map(_TankControllers.fromTank));
+
+    for (final well in _oilInventoryWells) {
+      well.dispose();
+    }
+    _oilInventoryWells
+      ..clear()
+      ..addAll(
+          _buildOilInventoryControllers(shift.inventory.oilInventoryWells));
+  }
+
+  List<_OilInventoryControllers> _buildOilInventoryControllers(
+    List<ProductionOilInventoryWell> existing,
+  ) {
+    return [
+      for (int i = 0; i < _wellControllers.length; i++)
+        _OilInventoryControllers.fromWell(
+          existing: i < existing.length ? existing[i] : null,
+        ),
+    ];
   }
 
   ProductionShiftHeader _headerFromControllers() {
@@ -215,6 +245,14 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
       waterTanks:
           _waterTanks.map((tank) => tank.toTank(_gaugeEntryType)).toList(),
       oilTanks: _oilTanks.map((tank) => tank.toTank(_gaugeEntryType)).toList(),
+      oilInventoryWells: [
+        for (int i = 0; i < _wellControllers.length; i++)
+          _oilInventoryWells[i].toWell(
+            _wellControllers[i].text.trim().isEmpty
+                ? 'Well ${i + 1}'
+                : _wellControllers[i].text.trim(),
+          ),
+      ],
       gaugeEntryType: _gaugeEntryType,
       gasUnit: _gasUnit,
       gasCalculationMethod: _gasCalculationMethod,
@@ -359,6 +397,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
         TextEditingController(text: 'Well ${_wellControllers.length + 1}'),
       );
       _wellChokeTypes.add(_defaultChokeDisplay);
+      _oilInventoryWells.add(_OilInventoryControllers.blank());
     });
   }
 
@@ -368,6 +407,8 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
       final controller = _wellControllers.removeAt(index);
       controller.dispose();
       _wellChokeTypes.removeAt(index);
+      final oilInventory = _oilInventoryWells.removeAt(index);
+      oilInventory.dispose();
     });
   }
 
@@ -538,6 +579,73 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     ]);
   }
 
+  Widget _oilInventorySection() {
+    return _section('Oil Inventory Foundation', [
+      const Text(
+        'Track per-well oil inventory and cushion values for the active shift.',
+        style: TextStyle(color: Colors.white70),
+      ),
+      const SizedBox(height: 10),
+      for (int i = 0; i < _wellControllers.length; i++)
+        Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _wellControllers[i].text.trim().isEmpty
+                      ? 'Well ${i + 1}'
+                      : _wellControllers[i].text.trim(),
+                  style: const TextStyle(
+                    color: Color(0xFFCDA56A),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                WwNumberField(
+                  label: 'Beginning Oil Inventory',
+                  controller: _oilInventoryWells[i].beginningOilInventory,
+                  helperText: 'BBL',
+                  onChanged: (_) => setState(() {}),
+                ),
+                WwNumberField(
+                  label: 'Current Oil Inventory',
+                  controller: _oilInventoryWells[i].currentOilInventory,
+                  helperText: 'BBL',
+                  onChanged: (_) => setState(() {}),
+                ),
+                WwNumberField(
+                  label: 'Expected Oil Inventory',
+                  controller: _oilInventoryWells[i].expectedOilInventory,
+                  helperText: 'BBL',
+                  onChanged: (_) => setState(() {}),
+                ),
+                WwNumberField(
+                  label: 'Current Cushion',
+                  controller: _oilInventoryWells[i].currentCushion,
+                  helperText: 'BBL',
+                  onChanged: (_) => setState(() {}),
+                ),
+                WwNumberField(
+                  label: 'Maximum Cushion',
+                  controller: _oilInventoryWells[i].maximumCushion,
+                  helperText: 'BBL',
+                  onChanged: (_) => setState(() {}),
+                ),
+              ],
+            ),
+          ),
+        ),
+      if (_wellControllers.isEmpty)
+        const Text(
+          'Add at least one well to begin oil inventory tracking.',
+          style: TextStyle(color: Colors.white70),
+        ),
+    ]);
+  }
+
   Widget _wellChokeField(int index) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -689,6 +797,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
           tanks: _oilTanks,
           tankLabel: 'Oil Tank',
         ),
+        _oilInventorySection(),
         if (_gasCalculationMethod == 'accumulator')
           _section('Starting Gas', [
             WwNumberField(
@@ -853,5 +962,72 @@ class _TankControllers {
     gaugeInchesPart.dispose();
     gaugeDecimalFeet.dispose();
     bblPerInch.dispose();
+  }
+}
+
+class _OilInventoryControllers {
+  _OilInventoryControllers({
+    required this.beginningOilInventory,
+    required this.currentOilInventory,
+    required this.expectedOilInventory,
+    required this.currentCushion,
+    required this.maximumCushion,
+  });
+
+  factory _OilInventoryControllers.blank() {
+    return _OilInventoryControllers(
+      beginningOilInventory: TextEditingController(),
+      currentOilInventory: TextEditingController(),
+      expectedOilInventory: TextEditingController(),
+      currentCushion: TextEditingController(),
+      maximumCushion: TextEditingController(),
+    );
+  }
+
+  factory _OilInventoryControllers.fromWell({
+    ProductionOilInventoryWell? existing,
+  }) {
+    return _OilInventoryControllers(
+      beginningOilInventory: TextEditingController(
+        text: existing?.beginningOilInventory ?? '',
+      ),
+      currentOilInventory: TextEditingController(
+        text: existing?.currentOilInventory ?? '',
+      ),
+      expectedOilInventory: TextEditingController(
+        text: existing?.expectedOilInventory ?? '',
+      ),
+      currentCushion: TextEditingController(
+        text: existing?.currentCushion ?? '',
+      ),
+      maximumCushion: TextEditingController(
+        text: existing?.maximumCushion ?? '',
+      ),
+    );
+  }
+
+  final TextEditingController beginningOilInventory;
+  final TextEditingController currentOilInventory;
+  final TextEditingController expectedOilInventory;
+  final TextEditingController currentCushion;
+  final TextEditingController maximumCushion;
+
+  ProductionOilInventoryWell toWell(String wellName) {
+    return ProductionOilInventoryWell(
+      wellName: wellName,
+      beginningOilInventory: beginningOilInventory.text.trim(),
+      currentOilInventory: currentOilInventory.text.trim(),
+      expectedOilInventory: expectedOilInventory.text.trim(),
+      currentCushion: currentCushion.text.trim(),
+      maximumCushion: maximumCushion.text.trim(),
+    );
+  }
+
+  void dispose() {
+    beginningOilInventory.dispose();
+    currentOilInventory.dispose();
+    expectedOilInventory.dispose();
+    currentCushion.dispose();
+    maximumCushion.dispose();
   }
 }

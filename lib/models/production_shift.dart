@@ -294,6 +294,7 @@ class ProductionInventoryBaseline {
   const ProductionInventoryBaseline({
     required this.waterTanks,
     required this.oilTanks,
+    this.oilInventoryWells = const [],
     this.useStartingReadings = false,
     this.gaugeEntryType = 'inches',
     this.gasUnit = 'mcfd',
@@ -321,6 +322,10 @@ class ProductionInventoryBaseline {
         .map((item) =>
             ProductionTank.fromJson(Map<String, dynamic>.from(item as Map)))
         .toList();
+    final oilInventoryWells = ((json['oilInventoryWells'] as List?) ?? const [])
+        .map((item) => ProductionOilInventoryWell.fromJson(
+            Map<String, dynamic>.from(item as Map)))
+        .toList();
     final inferredGaugeType = waterTanks.isNotEmpty
         ? waterTanks.first.gaugeEntry.mode
         : (oilTanks.isNotEmpty ? oilTanks.first.gaugeEntry.mode : 'inches');
@@ -331,6 +336,7 @@ class ProductionInventoryBaseline {
       oilTanks: oilTanks.isEmpty
           ? const [ProductionTank(name: 'Oil Tank 1')]
           : oilTanks,
+      oilInventoryWells: oilInventoryWells,
       useStartingReadings: json['useStartingReadings'] as bool? ?? false,
       gaugeEntryType: ProductionGaugeEntry._normalizeMode(
         (json['gaugeEntryType'] as String?) ?? inferredGaugeType,
@@ -349,6 +355,7 @@ class ProductionInventoryBaseline {
 
   final List<ProductionTank> waterTanks;
   final List<ProductionTank> oilTanks;
+  final List<ProductionOilInventoryWell> oilInventoryWells;
   final bool useStartingReadings;
   final String gaugeEntryType;
   final String gasUnit;
@@ -362,6 +369,7 @@ class ProductionInventoryBaseline {
   ProductionInventoryBaseline copyWith({
     List<ProductionTank>? waterTanks,
     List<ProductionTank>? oilTanks,
+    List<ProductionOilInventoryWell>? oilInventoryWells,
     bool? useStartingReadings,
     String? gaugeEntryType,
     String? gasUnit,
@@ -375,6 +383,7 @@ class ProductionInventoryBaseline {
     return ProductionInventoryBaseline(
       waterTanks: waterTanks ?? this.waterTanks,
       oilTanks: oilTanks ?? this.oilTanks,
+      oilInventoryWells: oilInventoryWells ?? this.oilInventoryWells,
       useStartingReadings: useStartingReadings ?? this.useStartingReadings,
       gaugeEntryType: ProductionGaugeEntry._normalizeMode(
         gaugeEntryType ?? this.gaugeEntryType,
@@ -397,6 +406,8 @@ class ProductionInventoryBaseline {
     return {
       'waterTanks': waterTanks.map((item) => item.toJson()).toList(),
       'oilTanks': oilTanks.map((item) => item.toJson()).toList(),
+      'oilInventoryWells':
+          oilInventoryWells.map((item) => item.toJson()).toList(),
       'useStartingReadings': useStartingReadings,
       'gaugeEntryType': gaugeEntryType,
       'gasUnit': gasUnit,
@@ -417,6 +428,65 @@ class ProductionInventoryBaseline {
   static String _normalizeGasCalculationMethod(String? value) {
     final normalized = (value ?? '').trim().toLowerCase();
     return normalized == 'manual' ? 'manual' : 'accumulator';
+  }
+}
+
+class ProductionOilInventoryWell {
+  const ProductionOilInventoryWell({
+    required this.wellName,
+    this.beginningOilInventory = '',
+    this.currentOilInventory = '',
+    this.expectedOilInventory = '',
+    this.currentCushion = '',
+    this.maximumCushion = '',
+  });
+
+  factory ProductionOilInventoryWell.fromJson(Map<String, dynamic> json) {
+    return ProductionOilInventoryWell(
+      wellName: json['wellName'] as String? ?? '',
+      beginningOilInventory: json['beginningOilInventory'] as String? ?? '',
+      currentOilInventory: json['currentOilInventory'] as String? ?? '',
+      expectedOilInventory: json['expectedOilInventory'] as String? ?? '',
+      currentCushion: json['currentCushion'] as String? ?? '',
+      maximumCushion: json['maximumCushion'] as String? ?? '',
+    );
+  }
+
+  final String wellName;
+  final String beginningOilInventory;
+  final String currentOilInventory;
+  final String expectedOilInventory;
+  final String currentCushion;
+  final String maximumCushion;
+
+  ProductionOilInventoryWell copyWith({
+    String? wellName,
+    String? beginningOilInventory,
+    String? currentOilInventory,
+    String? expectedOilInventory,
+    String? currentCushion,
+    String? maximumCushion,
+  }) {
+    return ProductionOilInventoryWell(
+      wellName: wellName ?? this.wellName,
+      beginningOilInventory:
+          beginningOilInventory ?? this.beginningOilInventory,
+      currentOilInventory: currentOilInventory ?? this.currentOilInventory,
+      expectedOilInventory: expectedOilInventory ?? this.expectedOilInventory,
+      currentCushion: currentCushion ?? this.currentCushion,
+      maximumCushion: maximumCushion ?? this.maximumCushion,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'wellName': wellName,
+      'beginningOilInventory': beginningOilInventory,
+      'currentOilInventory': currentOilInventory,
+      'expectedOilInventory': expectedOilInventory,
+      'currentCushion': currentCushion,
+      'maximumCushion': maximumCushion,
+    };
   }
 }
 
