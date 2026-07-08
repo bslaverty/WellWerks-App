@@ -10,10 +10,12 @@ import '../services/export_service.dart';
 import '../services/job_history_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/job_serializer.dart';
+import '../services/jsa_export_service.dart';
 import '../services/jsa_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/recovery_state_service.dart';
 import '../widgets/app_header.dart';
+import 'jsa_screen.dart';
 import 'pressure_entry_screen.dart';
 
 class ProductionHistoryScreen extends StatefulWidget {
@@ -28,6 +30,8 @@ enum _HistoryStatusFilter { all, active, ended }
 
 enum _HistorySortOrder { newestFirst, oldestFirst }
 
+enum _HistoryContentFilter { all, jobs, jsa }
+
 enum _HistoryJobAction { duplicate, delete, resume }
 
 class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
@@ -35,6 +39,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   final _jobStorage = JobStorageService();
   final _shiftService = ProductionShiftService();
   final _jsaStorage = JsaStorageService();
+  final _jsaExportService = const JsaExportService();
   final _recoveryState = RecoveryStateService();
 
   final _companySearch = TextEditingController();
@@ -43,7 +48,10 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   final _wellSearch = TextEditingController();
 
   List<_HistoryJobRecord> _jobs = const [];
+  List<JsaDraft> _jsaDrafts = const [];
   bool _loading = true;
+  bool _sharingJsa = false;
+  _HistoryContentFilter _contentFilter = _HistoryContentFilter.all;
   _HistoryStatusFilter _statusFilter = _HistoryStatusFilter.all;
   _HistorySortOrder _sortOrder = _HistorySortOrder.newestFirst;
 
@@ -67,6 +75,12 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
     final activeJob = await _jobStorage.loadActiveJob();
     final lastEndedJob = await _jobStorage.loadLastEndedJob();
     final history = await _historyService.loadHistory();
+    List<JsaDraft> jsaDrafts = const [];
+    try {
+      jsaDrafts = await _jsaStorage.loadAllDrafts();
+    } catch (_) {
+      jsaDrafts = const [];
+    }
     final jobs = _buildJobs(
       activeJob: activeJob,
       lastEndedJob: lastEndedJob,
@@ -75,6 +89,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
     if (!mounted) return;
     setState(() {
       _jobs = jobs;
+      _jsaDrafts = jsaDrafts;
       _loading = false;
     });
   }
@@ -141,12 +156,105 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
     return visible;
   }
 
+  JobSetup? _linkedJobForDraft(JsaDraft draft) {
+    final id = draft.activeJobId.trim();
+    if (id.isEmpty) return null;
+    for (final job in _jobs) {
+      final setup = job.preferredJobSetup;
+      if (setup != null && setup.id == id) {
+        return setup;
+      }
+    }
+    return null;
+  }
+
+  DateTime _draftSortAt(JsaDraft draft) {
+    final date = draft.date.trim();
+    final time = draft.time.trim();
+    final stamp = '$date $time'.trim();
+    return DateTime.tryParse(stamp.replaceFirst(' ', 'T')) ??
+        DateTime.tryParse(date) ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  List<JsaDraft> get _visibleJsas {
+    final companyQuery = _companySearch.text.trim().toLowerCase();
+    final customerQuery = _customerSearch.text.trim().toLowerCase();
+    final padQuery = _padSearch.text.trim().toLowerCase();
+    final wellQuery = _wellSearch.text.trim().toLowerCase();
+
+    final visible = _jsaDrafts.where((draft) {
+      final linkedJob = _linkedJobForDraft(draft);
+      final company = draft.company.trim().toLowerCase();
+      final customer = (linkedJob?.customer ?? '').trim().toLowerCase();
+      final pad = (linkedJob?.padName ?? '').trim().toLowerCase();
+      final location = draft.location.trim().toLowerCase();
+      final well = draft.wellName.trim().toLowerCase();
+
+      final matchesCompany =
+          companyQuery.isEmpty || company.contains(companyQuery);
+      final matchesCustomer =
+          customerQuery.isEmpty || customer.contains(customerQuery);
+      final matchesPad = padQuery.isEmpty ||
+          pad.contains(padQuery) ||
+          location.contains(padQuery);
+      final matchesWell = wellQuery.isEmpty || well.contains(wellQuery);
+      return matchesCompany && matchesCustomer && matchesPad && matchesWell;
+    }).toList();
+
+    visible.sort((a, b) {
+      final aTime = _draftSortAt(a);
+      final bTime = _draftSortAt(b);
+      final dateCompare = _sortOrder == _HistorySortOrder.newestFirst
+          ? bTime.compareTo(aTime)
+          : aTime.compareTo(bTime);
+      if (dateCompare != 0) return dateCompare;
+      return a.company.compareTo(b.company);
+    });
+
+    return visible;
+  }
+
   bool get _hasSearchOrFilter {
     return _companySearch.text.trim().isNotEmpty ||
         _customerSearch.text.trim().isNotEmpty ||
         _padSearch.text.trim().isNotEmpty ||
         _wellSearch.text.trim().isNotEmpty ||
-        _statusFilter != _HistoryStatusFilter.all;
+        _statusFilter != _HistoryStatusFilter.all ||
+        _contentFilter != _HistoryContentFilter.all;
+  }
+
+  Future<void> _openJsaDraft(JsaDraft draft) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => JsaScreen(
+          initialActiveJobId: draft.activeJobId,
+          initialDate: draft.date,
+        ),
+      ),
+    );
+    await _load();
+  }
+
+  Future<void> _shareJsaDraft(JsaDraft draft) async {
+    if (_sharingJsa) return;
+    setState(() => _sharingJsa = true);
+    try {
+      final linkedJob = _linkedJobForDraft(draft);
+      final exported = await _jsaExportService.exportPdf(
+        draft: draft,
+        activeJob: linkedJob,
+      );
+      await Share.shareXFiles(
+        [XFile(exported.filePath, mimeType: 'application/pdf')],
+        subject: 'WellWerks JSA',
+        text: 'Saved JSA exported from WellWerks.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _sharingJsa = false);
+      }
+    }
   }
 
   Future<void> _handleJobAction(
@@ -293,67 +401,102 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   Widget _controlsCard() {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Search & Filter',
-              style: TextStyle(
-                color: Color(0xFFCDA56A),
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 14),
-            _searchField(controller: _companySearch, label: 'Search Company'),
-            _searchField(
-              controller: _customerSearch,
-              label: 'Search Customer',
-            ),
-            _searchField(controller: _padSearch, label: 'Search Pad'),
-            _searchField(controller: _wellSearch, label: 'Search Well'),
-            const SizedBox(height: 4),
-            const Text(
-              'Job Filter',
-              style: TextStyle(
-                color: Colors.white70,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _filterChip(_HistoryStatusFilter.all, 'All Jobs'),
-                _filterChip(_HistoryStatusFilter.active, 'Active Jobs'),
-                _filterChip(_HistoryStatusFilter.ended, 'Ended Jobs'),
-              ],
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<_HistorySortOrder>(
-              initialValue: _sortOrder,
-              decoration: const InputDecoration(labelText: 'Sort Order'),
-              items: const [
-                DropdownMenuItem(
-                  value: _HistorySortOrder.newestFirst,
-                  child: Text('Newest first'),
-                ),
-                DropdownMenuItem(
-                  value: _HistorySortOrder.oldestFirst,
-                  child: Text('Oldest first'),
-                ),
-              ],
-              onChanged: (value) {
-                if (value == null) return;
-                setState(() => _sortOrder = value);
-              },
-            ),
-          ],
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+        title: const Text(
+          'Search & Filter',
+          style: TextStyle(
+            color: Color(0xFFCDA56A),
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+          ),
         ),
+        subtitle: const Text(
+          'Tap to refine jobs and JSA records',
+          style: TextStyle(color: Colors.white70),
+        ),
+        children: [
+          _searchField(controller: _companySearch, label: 'Search Company'),
+          _searchField(
+            controller: _customerSearch,
+            label: 'Search Customer',
+          ),
+          _searchField(controller: _padSearch, label: 'Search Pad'),
+          _searchField(controller: _wellSearch, label: 'Search Well'),
+          const SizedBox(height: 4),
+          const Text(
+            'Show',
+            style: TextStyle(
+              color: Colors.white70,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _contentChip(_HistoryContentFilter.all, 'All'),
+              _contentChip(_HistoryContentFilter.jobs, 'Jobs'),
+              _contentChip(_HistoryContentFilter.jsa, 'JSA'),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Job Filter',
+            style: TextStyle(
+              color: Colors.white70,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _filterChip(_HistoryStatusFilter.all, 'All Jobs'),
+              _filterChip(_HistoryStatusFilter.active, 'Active Jobs'),
+              _filterChip(_HistoryStatusFilter.ended, 'Ended Jobs'),
+            ],
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<_HistorySortOrder>(
+            initialValue: _sortOrder,
+            decoration: const InputDecoration(labelText: 'Sort Order'),
+            items: const [
+              DropdownMenuItem(
+                value: _HistorySortOrder.newestFirst,
+                child: Text('Newest first'),
+              ),
+              DropdownMenuItem(
+                value: _HistorySortOrder.oldestFirst,
+                child: Text('Oldest first'),
+              ),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() => _sortOrder = value);
+            },
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _contentChip(_HistoryContentFilter value, String label) {
+    final selected = _contentFilter == value;
+    return ChoiceChip(
+      selected: selected,
+      label: Text(label),
+      onSelected: (_) => setState(() => _contentFilter = value),
+      selectedColor: const Color(0xFFCDA56A),
+      labelStyle: TextStyle(
+        color: selected ? Colors.black : Colors.white,
+        fontWeight: FontWeight.w700,
+      ),
+      side: const BorderSide(color: Color(0xFFCDA56A)),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
     );
   }
 
@@ -374,11 +517,11 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   }
 
   Widget _emptyState() {
-    final message = _jobs.isEmpty
-        ? 'No jobs yet. Start a job or archive a completed job to build local History.'
+    final message = (_jobs.isEmpty && _jsaDrafts.isEmpty)
+        ? 'No saved jobs or JSAs yet. Save activity to build local History.'
         : _hasSearchOrFilter
-            ? 'No jobs match the current search or filter. Adjust the fields above to see more results.'
-            : 'No jobs available right now.';
+            ? 'No history items match the current search or filter. Adjust the fields above to see more results.'
+            : 'No history items available right now.';
 
     return Card(
       child: Padding(
@@ -394,6 +537,15 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   Widget _jobCard(_HistoryJobRecord job) {
     final statusColor =
         job.isActive ? const Color(0xFFCDA56A) : const Color(0xFF5E646C);
+    final companyTitle = <String?>[
+      job.activeJob?.company,
+      job.endedJob?.company,
+      job.archivedJob?.company,
+      job.archivedJob?.jobSetup?.company,
+      job.companyLabel,
+    ]
+        .map((value) => (value ?? '').trim())
+        .firstWhere((value) => value.isNotEmpty, orElse: () => 'Job');
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -421,7 +573,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          job.companyLabel,
+                          companyTitle,
                           style: const TextStyle(
                             color: Color(0xFFCDA56A),
                             fontSize: 18,
@@ -509,6 +661,99 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
     );
   }
 
+  Widget _jsaSectionCard(List<JsaDraft> drafts) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'JSA Records',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              drafts.isEmpty
+                  ? 'No saved JSAs found.'
+                  : '${drafts.length} saved JSA${drafts.length == 1 ? '' : 's'}',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 12),
+            if (drafts.isEmpty)
+              const Text(
+                'Save a JSA to see it here in Home History.',
+                style: TextStyle(color: Colors.white70),
+              )
+            else
+              for (final draft in drafts) _jsaCard(draft),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _jsaCard(JsaDraft draft) {
+    final linkedJob = _linkedJobForDraft(draft);
+    final customer = (linkedJob?.customer ?? '').trim();
+    final company = draft.company.trim();
+    final location = draft.location.trim();
+    final pad = (linkedJob?.padName ?? '').trim();
+    final well = draft.wellName.trim();
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1D20),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF2A2E33)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            draft.date.trim().isEmpty ? '-' : draft.date.trim(),
+            style: const TextStyle(
+              color: Color(0xFFCDA56A),
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _infoLine('Customer', customer),
+          _infoLine('Company', company),
+          _infoLine('Location', location),
+          _infoLine('Job / Pad', pad),
+          _infoLine('Well', well),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: () => _openJsaDraft(draft),
+                icon: const Icon(Icons.description_outlined),
+                label: const Text('Open / Edit'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _sharingJsa ? null : () => _shareJsaDraft(draft),
+                icon: const Icon(Icons.share_outlined),
+                label: const Text('Share / Send'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _infoLine(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -543,6 +788,13 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
     }
 
     final visibleJobs = _visibleJobs;
+    final visibleJsas = _visibleJsas;
+    final showJobs = _contentFilter == _HistoryContentFilter.all ||
+        _contentFilter == _HistoryContentFilter.jobs;
+    final showJsas = _contentFilter == _HistoryContentFilter.all ||
+        _contentFilter == _HistoryContentFilter.jsa;
+    final hasVisibleContent = (showJobs && visibleJobs.isNotEmpty) ||
+        (showJsas && visibleJsas.isNotEmpty);
 
     return Scaffold(
       appBar: const AppHeader(title: 'History', showBack: true),
@@ -550,8 +802,11 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
         padding: const EdgeInsets.all(18),
         children: [
           _controlsCard(),
-          if (visibleJobs.isEmpty) _emptyState(),
-          for (final job in visibleJobs) _jobCard(job),
+          if (!hasVisibleContent) _emptyState(),
+          if (showJobs) ...[
+            for (final job in visibleJobs) _jobCard(job),
+          ],
+          if (showJsas) _jsaSectionCard(visibleJsas),
         ],
       ),
     );

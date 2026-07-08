@@ -427,8 +427,19 @@ class _JsaScreenState extends State<JsaScreen> {
     _exportPreviewDraft = draft;
     if (!mounted) return draft;
     if (showFeedback) {
+      final persisted = await _storage.loadDraft(
+        activeJobId: draft.activeJobId,
+        date: draft.date,
+      );
+      if (!mounted) return draft;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Saved to JSA History.')),
+        SnackBar(
+          content: Text(
+            persisted != null
+                ? 'Saved to JSA History.'
+                : 'Unable to verify JSA in History. Please try again.',
+          ),
+        ),
       );
     }
     return draft;
