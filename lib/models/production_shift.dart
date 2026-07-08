@@ -508,6 +508,9 @@ class ProductionWellCheckData {
     this.oilPumped = '',
     this.sandRate = '',
     this.notes = '',
+    this.beginningOilInventory = '',
+    this.expectedOilInventory = '',
+    this.maximumCushion = '',
   });
 
   factory ProductionWellCheckData.fromJson(Map<String, dynamic> json) {
@@ -571,6 +574,9 @@ class ProductionWellCheckData {
       oilPumped: json['oilPumped'] as String? ?? '',
       sandRate: json['sandRate'] as String? ?? '',
       notes: json['notes'] as String? ?? '',
+      beginningOilInventory: json['beginningOilInventory'] as String? ?? '',
+      expectedOilInventory: json['expectedOilInventory'] as String? ?? '',
+      maximumCushion: json['maximumCushion'] as String? ?? '',
     );
   }
 
@@ -606,6 +612,9 @@ class ProductionWellCheckData {
       oilPumped: check.oilPumped,
       sandRate: check.sandRate,
       notes: check.notes,
+      beginningOilInventory: '',
+      expectedOilInventory: '',
+      maximumCushion: '',
     );
   }
 
@@ -639,6 +648,9 @@ class ProductionWellCheckData {
   final String oilPumped;
   final String sandRate;
   final String notes;
+  final String beginningOilInventory;
+  final String expectedOilInventory;
+  final String maximumCushion;
 
   Map<String, dynamic> toJson() {
     return {
@@ -674,6 +686,9 @@ class ProductionWellCheckData {
       'oilPumped': oilPumped,
       'sandRate': sandRate,
       'notes': notes,
+      'beginningOilInventory': beginningOilInventory,
+      'expectedOilInventory': expectedOilInventory,
+      'maximumCushion': maximumCushion,
     };
   }
 }

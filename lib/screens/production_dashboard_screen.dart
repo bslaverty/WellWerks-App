@@ -8,6 +8,7 @@ import '../widgets/app_header.dart';
 import '../widgets/tool_card.dart';
 import 'job_management_screen.dart';
 import 'pressure_entry_screen.dart';
+import 'production_inventory_screen.dart';
 import 'production_history_screen.dart';
 import 'report_template_screen.dart';
 import 'shift_report_screen.dart';
@@ -223,11 +224,10 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
             onTap: () => _open(context, const TextUpdateScreen()),
           ),
           ToolCard(
-            icon: Icons.inventory,
-            title: 'Production Setup',
-            subtitle: 'Company, wells, reports, and production defaults',
-            onTap: () => _open(context,
-                const ReportTemplateScreen(initialSection: 'inventory')),
+            icon: Icons.local_drink,
+            title: 'Oil Inventory',
+            subtitle: 'Set company, wells, and starting oil inventory',
+            onTap: () => _open(context, const ProductionInventoryScreen()),
           ),
           ToolCard(
             icon: Icons.history,
@@ -235,6 +235,13 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
             subtitle:
                 'Archived inventory, reports, hourly checks, and text updates',
             onTap: () => _open(context, const ProductionHistoryScreen()),
+          ),
+          ToolCard(
+            icon: Icons.inventory,
+            title: 'Production Setup',
+            subtitle: 'Company, wells, reports, and production defaults',
+            onTap: () => _open(context,
+                const ReportTemplateScreen(initialSection: 'inventory')),
           ),
         ],
       ),

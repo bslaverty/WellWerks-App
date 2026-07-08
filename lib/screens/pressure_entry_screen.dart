@@ -740,6 +740,133 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     );
   }
 
+  double _parseCushionBbl(String value) {
+    return double.tryParse(value.trim()) ?? double.nan;
+  }
+
+  double _expectedOilInventoryForData(ProductionWellCheckData data) {
+    return _parseCushionBbl(data.expectedOilInventory);
+  }
+
+  double _maximumCushionForData(ProductionWellCheckData data) {
+    final parsed = _parseCushionBbl(data.maximumCushion);
+    return parsed.isNaN || parsed < 0 ? 0 : parsed;
+  }
+
+  double _currentCushionForData(ProductionWellCheckData data) {
+    final current = _currentOilBblForData(data);
+    final expected = _expectedOilInventoryForData(data);
+    if (_isMissingCalc(current) || current.isNaN || expected.isNaN) {
+      return _missingCalcValue;
+    }
+    return current - expected;
+  }
+
+  String _fmtCushion(double value) {
+    if (value.isNaN || _isMissingCalc(value)) return '--';
+    if (value.abs() < 0.01) return '0';
+    return value % 1 == 0 ? value.toStringAsFixed(0) : value.toStringAsFixed(2);
+  }
+
+  Widget _oilCushionSection(int index) {
+    final data = _controllers[index].dataForWell(
+      _controllers[index].well,
+      _chokeTypeForWell(_controllers[index].well),
+    );
+    final current = _currentOilBblForData(data);
+    final expected = _expectedOilInventoryForData(data);
+    final maximum = _maximumCushionForData(data);
+    final cushion = _currentCushionForData(data);
+    final hasCurrent = !_isMissingCalc(current) && !current.isNaN;
+    final hasExpected = !expected.isNaN;
+    final hasCushion = !_isMissingCalc(cushion) && !cushion.isNaN;
+    final withinCushion = hasCushion && cushion >= 0 && cushion <= maximum;
+    final outsideAmount = hasCushion
+        ? (cushion < 0 ? cushion.abs() : (cushion - maximum).abs())
+        : double.nan;
+
+    return _section('Oil Cushion', [
+      WwNumberField(
+        label: 'Beginning Oil Inventory (BBL)',
+        controller: _controllers[index].beginningOilInventory,
+        onChanged: (_) {
+          setState(() {});
+          _persistShift();
+        },
+      ),
+      const SizedBox(height: 2),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Current Oil Inventory (BBL)',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ),
+            Text(
+              hasCurrent ? _fmt(current) : '--',
+              style: const TextStyle(
+                color: Color(0xFFCDA56A),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+      WwNumberField(
+        label: 'Expected Oil Inventory (BBL)',
+        controller: _controllers[index].expectedOilInventory,
+        onChanged: (_) {
+          setState(() {});
+          _persistShift();
+        },
+      ),
+      WwNumberField(
+        label: 'Maximum Cushion (BBL)',
+        controller: _controllers[index].maximumCushion,
+        onChanged: (_) {
+          setState(() {});
+          _persistShift();
+        },
+      ),
+      const SizedBox(height: 4),
+      if (hasCushion && cushion >= 0) ...[
+        Text(
+          'Current Cushion (BBL): ${_fmtCushion(cushion)}',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        const SizedBox(height: 8),
+      ],
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color:
+              withinCushion ? const Color(0xFF12351E) : const Color(0xFF3A1E1E),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: withinCushion
+                ? const Color(0xFF55D980)
+                : const Color(0xFFFF6B6B),
+          ),
+        ),
+        child: Text(
+          !hasCurrent || !hasExpected
+              ? 'Enter expected oil inventory to calculate Cushion.'
+              : withinCushion
+                  ? '🟢 WITHIN CUSHION'
+                  : '🔴 OUTSIDE CUSHION BY ${_fmtCushion(outsideAmount)} BBL',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    ]);
+  }
+
   double _hourlyGasForData(
       int index, ProductionWellCheckData data, String well) {
     if (!_useGasAccumulator) {
@@ -1352,6 +1479,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           suffix: _gasUnitLabel,
         ),
       ]),
+      _oilCushionSection(index),
     ]);
   }
 
@@ -1700,6 +1828,9 @@ class _HourlyCheckControllers {
     required this.oilPumped,
     required this.sandRate,
     required this.notes,
+    required this.beginningOilInventory,
+    required this.expectedOilInventory,
+    required this.maximumCushion,
     required Map<String, ProductionWellCheckData> wellDataByName,
   }) : _wellDataByName = wellDataByName;
 
@@ -1782,6 +1913,9 @@ class _HourlyCheckControllers {
         oilPumped: data.oilPumped,
         sandRate: data.sandRate,
         notes: data.notes,
+        beginningOilInventory: data.beginningOilInventory,
+        expectedOilInventory: data.expectedOilInventory,
+        maximumCushion: data.maximumCushion,
       );
     }
 
@@ -1845,6 +1979,11 @@ class _HourlyCheckControllers {
       oilPumped: TextEditingController(text: selectedData.oilPumped),
       sandRate: TextEditingController(text: selectedData.sandRate),
       notes: TextEditingController(text: selectedData.notes),
+      beginningOilInventory:
+          TextEditingController(text: selectedData.beginningOilInventory),
+      expectedOilInventory:
+          TextEditingController(text: selectedData.expectedOilInventory),
+      maximumCushion: TextEditingController(text: selectedData.maximumCushion),
       wellDataByName: wellDataByName,
     );
   }
@@ -1880,6 +2019,9 @@ class _HourlyCheckControllers {
   final TextEditingController oilPumped;
   final TextEditingController sandRate;
   final TextEditingController notes;
+  final TextEditingController beginningOilInventory;
+  final TextEditingController expectedOilInventory;
+  final TextEditingController maximumCushion;
   final Map<String, ProductionWellCheckData> _wellDataByName;
 
   ProductionWellCheckData _snapshotCurrentWellData() {
@@ -1919,6 +2061,9 @@ class _HourlyCheckControllers {
       oilPumped: oilPumped.text.trim(),
       sandRate: sandRate.text.trim(),
       notes: notes.text.trim(),
+      beginningOilInventory: beginningOilInventory.text.trim(),
+      expectedOilInventory: expectedOilInventory.text.trim(),
+      maximumCushion: maximumCushion.text.trim(),
     );
   }
 
@@ -1949,6 +2094,9 @@ class _HourlyCheckControllers {
     oilPumped.text = data.oilPumped;
     sandRate.text = data.sandRate;
     notes.text = data.notes;
+    beginningOilInventory.text = data.beginningOilInventory;
+    expectedOilInventory.text = data.expectedOilInventory;
+    maximumCushion.text = data.maximumCushion;
 
     for (var i = 0; i < waterTankGaugeEntries.length; i++) {
       final entry = i < data.waterTankGaugeEntries.length
@@ -2052,6 +2200,9 @@ class _HourlyCheckControllers {
       oilPumped,
       sandRate,
       notes,
+      beginningOilInventory,
+      expectedOilInventory,
+      maximumCushion,
       ...waterTankGaugeEntries.expand((item) => item.controllers),
       ...oilTankGaugeEntries.expand((item) => item.controllers),
     ]) {
