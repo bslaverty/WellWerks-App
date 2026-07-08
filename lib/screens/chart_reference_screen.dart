@@ -100,9 +100,13 @@ class ChartReferenceScreen extends StatefulWidget {
 class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
   final TextEditingController _search = TextEditingController();
   final TextEditingController _brix = TextEditingController();
-  final TextEditingController _chloridesInput = TextEditingController();
+  final TextEditingController _chloridesSpecificGravityInput =
+      TextEditingController();
+  final TextEditingController _chloridesPoundsInput = TextEditingController();
+  final TextEditingController _chloridesSalinityInput = TextEditingController();
   String _sgResult = '--';
   String _chloridesInputType = 'Specific Gravity';
+  String _chloridesSgInputSource = 'specificGravity';
   ChloridesCalculationResult? _chloridesResult;
   String? _chloridesWarning;
 
@@ -110,7 +114,9 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
   void dispose() {
     _search.dispose();
     _brix.dispose();
-    _chloridesInput.dispose();
+    _chloridesSpecificGravityInput.dispose();
+    _chloridesPoundsInput.dispose();
+    _chloridesSalinityInput.dispose();
     super.dispose();
   }
 
@@ -147,7 +153,42 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
   }
 
   void _calculateChlorides() {
-    final input = double.tryParse(_chloridesInput.text.trim());
+    double? input;
+    String inputType = _chloridesInputType;
+
+    if (_chloridesInputType == 'Pounds') {
+      input = double.tryParse(_chloridesPoundsInput.text.trim());
+    } else {
+      final specificGravityText = _chloridesSpecificGravityInput.text.trim();
+      final salinityText = _chloridesSalinityInput.text.trim();
+      if (_chloridesSgInputSource == 'salinity' && salinityText.isNotEmpty) {
+        final salinity = double.tryParse(salinityText);
+        if (salinity != null) {
+          final sg = ChloridesCalculator.specificGravityFromSalinityPpt(
+            salinity,
+          );
+          _chloridesSpecificGravityInput.text = sg.toStringAsFixed(4);
+          input = sg;
+        }
+      }
+
+      input ??= double.tryParse(specificGravityText);
+
+      if (input == null && salinityText.isNotEmpty) {
+        final salinity = double.tryParse(salinityText);
+        if (salinity != null) {
+          final sg = ChloridesCalculator.specificGravityFromSalinityPpt(
+            salinity,
+          );
+          _chloridesSpecificGravityInput.text = sg.toStringAsFixed(4);
+          input = sg;
+          _chloridesSgInputSource = 'salinity';
+        }
+      }
+
+      inputType = 'Specific Gravity';
+    }
+
     if (input == null) {
       setState(() {
         _chloridesResult = null;
@@ -158,7 +199,7 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
 
     final result = ChloridesCalculator.interpolate(
       entries: _chloridesEntries,
-      inputType: _chloridesInputType,
+      inputType: inputType,
       inputValue: input,
     );
 
@@ -269,15 +310,73 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
                       },
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: _chloridesInput,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
+                    if (_chloridesInputType == 'Pounds')
+                      TextField(
+                        controller: _chloridesPoundsInput,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Pounds',
+                        ),
+                        onChanged: (_) {
+                          setState(() {
+                            _chloridesResult = null;
+                            _chloridesWarning = null;
+                          });
+                        },
+                      )
+                    else ...[
+                      TextField(
+                        controller: _chloridesSpecificGravityInput,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Specific Gravity',
+                        ),
+                        onChanged: (_) {
+                          setState(() {
+                            _chloridesSgInputSource = 'specificGravity';
+                            _chloridesResult = null;
+                            _chloridesWarning = null;
+                          });
+                        },
                       ),
-                      decoration: InputDecoration(
-                        labelText: _chloridesInputType,
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _chloridesSalinityInput,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Salinity / PPT',
+                        ),
+                        onChanged: (value) {
+                          final salinity = double.tryParse(value.trim());
+                          setState(() {
+                            _chloridesSgInputSource = 'salinity';
+                            _chloridesResult = null;
+                            _chloridesWarning = null;
+                            if (salinity == null) {
+                              _chloridesSpecificGravityInput.text = '';
+                              return;
+                            }
+                            final sg = ChloridesCalculator
+                                .specificGravityFromSalinityPpt(
+                              salinity,
+                            );
+                            _chloridesSpecificGravityInput.text =
+                                sg.toStringAsFixed(4);
+                          });
+                        },
                       ),
-                    ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Salinity / PPT uses the right-side refractometer scale.',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     FilledButton(
                       onPressed: _calculateChlorides,
@@ -447,6 +546,12 @@ class ChloridesInterpolationResponse {
 }
 
 class ChloridesCalculator {
+  static double specificGravityFromSalinityPpt(double salinityPpt) {
+    final s = salinityPpt < 0 ? 0 : salinityPpt;
+    // Practical field approximation for brine/seawater refractometer salinity.
+    return 1 + (0.00078 * s) + (0.0000003 * s * s);
+  }
+
   static ChloridesInterpolationResponse interpolate({
     required List<ChloridesTableEntry> entries,
     required String inputType,
