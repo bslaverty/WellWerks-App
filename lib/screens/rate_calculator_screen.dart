@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 import '../data/tank_charts.dart';
@@ -8,6 +9,20 @@ import '../widgets/app_header.dart';
 import '../widgets/ww_number_field.dart';
 
 enum _KeypadTarget { start, end }
+
+enum _RateDisplayUnit { bblPerMin, bblPerHr }
+
+class _RateLogEntry {
+  const _RateLogEntry({
+    required this.timestamp,
+    required this.rateValue,
+    required this.rateUnit,
+  });
+
+  final DateTime timestamp;
+  final double rateValue;
+  final String rateUnit;
+}
 
 class RateCalculatorConfig {
   final String title;
@@ -67,6 +82,10 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   int _remainingSeconds = 0;
   bool _thirtySecondAlertShown = false;
   bool _timerFinished = false;
+  _RateDisplayUnit _rateDisplayUnit = _RateDisplayUnit.bblPerMin;
+  bool _rateLogEnabled = false;
+  bool _rateLogExpanded = false;
+  final List<_RateLogEntry> _rateLogEntries = <_RateLogEntry>[];
 
   static const List<String> _gaugeMainKeys = <String>[
     '1',
@@ -109,6 +128,75 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
         text: (widget.config.defaultFactor ?? 1.67).toString());
     minutes.addListener(_handleMinutesChanged);
     _loadSavedTimerMinutes();
+    _loadSavedDisplayUnit();
+  }
+
+  String get _displayUnitPrefKey {
+    final source = (widget.config.chartId ?? widget.config.title)
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+    return 'wellwerks_rate_display_unit_$source';
+  }
+
+  Future<void> _loadSavedDisplayUnit() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_displayUnitPrefKey);
+    if (!mounted) return;
+    setState(() {
+      _rateDisplayUnit = saved == 'bbl_hr'
+          ? _RateDisplayUnit.bblPerHr
+          : _RateDisplayUnit.bblPerMin;
+    });
+  }
+
+  Future<void> _saveDisplayUnit() async {
+    final prefs = await SharedPreferences.getInstance();
+    final value =
+        _rateDisplayUnit == _RateDisplayUnit.bblPerHr ? 'bbl_hr' : 'bbl_min';
+    await prefs.setString(_displayUnitPrefKey, value);
+  }
+
+  String get _selectedRateUnitLabel =>
+      _rateDisplayUnit == _RateDisplayUnit.bblPerHr ? 'BBL/hr' : 'BBL/min';
+
+  double? get _selectedRateValue {
+    if (_rateDisplayUnit == _RateDisplayUnit.bblPerHr) {
+      return bblPerHr;
+    }
+    return bblPerMin;
+  }
+
+  String _formatSelectedRateValue(double? value) {
+    if (value == null) return '-';
+    return _rateDisplayUnit == _RateDisplayUnit.bblPerHr
+        ? value.toStringAsFixed(1)
+        : value.toStringAsFixed(3);
+  }
+
+  String _formatLogTimestamp(DateTime value) {
+    final h = value.hour.toString().padLeft(2, '0');
+    final m = value.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  void _setDisplayUnit(_RateDisplayUnit unit) {
+    if (_rateDisplayUnit == unit) return;
+    setState(() => _rateDisplayUnit = unit);
+    _saveDisplayUnit();
+  }
+
+  Future<void> _shareRateLog() async {
+    if (_rateLogEntries.isEmpty) return;
+    final text = _rateLogEntries.map((entry) {
+      final value = entry.rateUnit == 'BBL/hr'
+          ? entry.rateValue.toStringAsFixed(1)
+          : entry.rateValue.toStringAsFixed(3);
+      return '${_formatLogTimestamp(entry.timestamp)} - $value ${entry.rateUnit}';
+    }).join('\n');
+    await Share.share(
+      text,
+      subject: 'WellWerks Rate Log',
+    );
   }
 
   bool get _timerRunning => _countdownTimer != null;
@@ -695,18 +783,31 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     final endBbl = barrelsAt(parseGauge(endGauge.text));
     final change = (endBbl - startBbl).abs();
     final perMin = change / m;
+    final perHour = perMin * 60;
 
     _countdownTimer?.cancel();
     _countdownTimer = null;
 
     setState(() {
       bblPerMin = perMin;
-      bblPerHr = perMin * 60;
+      bblPerHr = perHour;
       bblPerDay = perMin * 1440;
       _timerFinished = false;
       _thirtySecondAlertShown = false;
       _remainingSeconds = _minutesToDurationSeconds();
       error = null;
+      if (_rateLogEnabled) {
+        final value =
+            _rateDisplayUnit == _RateDisplayUnit.bblPerHr ? perHour : perMin;
+        _rateLogEntries.insert(
+          0,
+          _RateLogEntry(
+            timestamp: DateTime.now(),
+            rateValue: value,
+            rateUnit: _selectedRateUnitLabel,
+          ),
+        );
+      }
     });
   }
 
@@ -721,23 +822,168 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     super.dispose();
   }
 
-  Widget _resultCard(String label, String value) => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
-                  style: const TextStyle(
-                      color: Color(0xFFCDA56A), fontWeight: FontWeight.bold)),
-              const SizedBox(height: 6),
-              Text(value,
-                  style: const TextStyle(
-                      fontSize: 30, fontWeight: FontWeight.bold)),
-            ],
-          ),
+  Widget _resultsCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Results',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Rate Display',
+              style: TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                ChoiceChip(
+                  selected: _rateDisplayUnit == _RateDisplayUnit.bblPerMin,
+                  label: const Text('BBL/min'),
+                  onSelected: (_) =>
+                      _setDisplayUnit(_RateDisplayUnit.bblPerMin),
+                  selectedColor: const Color(0xFFCDA56A),
+                  labelStyle: TextStyle(
+                    color: _rateDisplayUnit == _RateDisplayUnit.bblPerMin
+                        ? Colors.black
+                        : Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                ChoiceChip(
+                  selected: _rateDisplayUnit == _RateDisplayUnit.bblPerHr,
+                  label: const Text('BBL/hr'),
+                  onSelected: (_) => _setDisplayUnit(_RateDisplayUnit.bblPerHr),
+                  selectedColor: const Color(0xFFCDA56A),
+                  labelStyle: TextStyle(
+                    color: _rateDisplayUnit == _RateDisplayUnit.bblPerHr
+                        ? Colors.black
+                        : Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _formatSelectedRateValue(_selectedRateValue),
+              style: const TextStyle(
+                fontSize: 42,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFFCDA56A),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _selectedRateUnitLabel,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
-      );
+      ),
+    );
+  }
+
+  Widget _rateLogSection() {
+    return Card(
+      child: Column(
+        children: [
+          ListTile(
+            title: Text(
+              'Rate Log (${_rateLogEntries.length})',
+              style: const TextStyle(
+                color: Color(0xFFCDA56A),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            trailing: Icon(
+              _rateLogExpanded ? Icons.expand_less : Icons.expand_more,
+            ),
+            onTap: () => setState(() => _rateLogExpanded = !_rateLogExpanded),
+          ),
+          if (_rateLogExpanded) ...[
+            if (_rateLogEntries.isEmpty)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 14),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'No log entries yet.',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                ),
+              )
+            else ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _shareRateLog,
+                        icon: const Icon(Icons.share_outlined),
+                        label: const Text('Share / Send'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _rateLogEntries.clear();
+                            _rateLogExpanded = false;
+                          });
+                        },
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Clear Log'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 220),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _rateLogEntries.length,
+                  itemBuilder: (context, index) {
+                    final entry = _rateLogEntries[index];
+                    final value = entry.rateUnit == 'BBL/hr'
+                        ? entry.rateValue.toStringAsFixed(1)
+                        : entry.rateValue.toStringAsFixed(3);
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Text(
+                        '${_formatLogTimestamp(entry.timestamp)} - $value ${entry.rateUnit}',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
 
   Widget _gaugeKeyButton(String label,
       {VoidCallback? onPressed, bool compact = false}) {
@@ -926,6 +1172,16 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                         : (_canCalculate ? calculate : null),
                     child: Text(_showResetButton ? 'RESET' : 'CALCULATE'),
                   ),
+                  const SizedBox(height: 10),
+                  SwitchListTile.adaptive(
+                    value: _rateLogEnabled,
+                    onChanged: (value) {
+                      setState(() => _rateLogEnabled = value);
+                    },
+                    title: const Text('Rate Log'),
+                    subtitle: const Text('Save each CALCULATE result to log'),
+                    activeThumbColor: const Color(0xFFCDA56A),
+                  ),
                   if (error != null)
                     Card(
                       color: const Color(0xFF3A1E1E),
@@ -937,9 +1193,11 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                     ),
                   if (bblPerMin != null) ...[
                     const SizedBox(height: 10),
-                    _resultCard('BBL/min', bblPerMin!.toStringAsFixed(3)),
-                    _resultCard('BBL/hr', bblPerHr!.toStringAsFixed(1)),
-                    _resultCard('BBL/day', bblPerDay!.toStringAsFixed(1)),
+                    _resultsCard(),
+                    _rateLogSection(),
+                  ] else if (_rateLogEntries.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    _rateLogSection(),
                   ],
                 ],
               ),
