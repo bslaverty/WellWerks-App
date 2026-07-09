@@ -202,14 +202,15 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
         children: [
           _activeJobCard(context),
           const Text(
-            'Production tools for gas rates, tank inventory, quick rounds, and copy/paste updates.',
+            'Production flow: Job Setup -> Quick Round data entry -> Tank Inventory totals/database -> Report/Text/History.',
             style: TextStyle(color: Colors.white70, fontSize: 15),
           ),
           const SizedBox(height: 14),
           ToolCard(
             icon: Icons.add_circle,
             title: 'Quick Round',
-            subtitle: 'Production and pressure readings in one place',
+            subtitle:
+                'Primary production entry: gauges, hauled, pumped, and interval hours',
             onTap: () => _open(context, const PressureEntryScreen()),
           ),
           ToolCard(
@@ -226,8 +227,8 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
           ),
           ToolCard(
             icon: Icons.local_drink,
-            title: 'Oil Inventory',
-            subtitle: 'Set company, wells, and starting oil inventory',
+            title: 'Tank Inventory',
+            subtitle: 'Production database, running totals, and setup defaults',
             onTap: () => _open(context, const ProductionInventoryScreen()),
           ),
           ToolCard(

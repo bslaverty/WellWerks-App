@@ -56,13 +56,20 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     });
   }
 
+  List<ProductionReportRow> get _inventoryRows {
+    if (_shift.inventory.productionRows.isNotEmpty) {
+      return _shift.inventory.productionRows;
+    }
+    return _shift.savedRows;
+  }
+
   List<ProductionReportRow> get _activeJobRows {
     final activeJob = _activeJob;
     final rows = activeJob == null
-        ? List<ProductionReportRow>.from(_shift.savedRows)
+        ? List<ProductionReportRow>.from(_inventoryRows)
         : (_shift.activeJobId != activeJob.id
             ? <ProductionReportRow>[]
-            : List<ProductionReportRow>.from(_shift.savedRows));
+            : List<ProductionReportRow>.from(_inventoryRows));
     final order = _shift.header.wells;
     rows.sort((a, b) {
       final hourCompare = a.hourIndex.compareTo(b.hourIndex);
@@ -114,7 +121,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   bool get _hasActiveJob =>
       _activeJob != null ||
       _shift.activeJobId.trim().isNotEmpty ||
-      _shift.savedRows.isNotEmpty;
+      _inventoryRows.isNotEmpty;
 
   String get _emptyStateMessage {
     if (!_hasActiveJob) {
@@ -489,7 +496,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   Widget _activeJobBanner() {
     final activeJob = _activeJob;
     if (activeJob == null) {
-      if (_shift.savedRows.isNotEmpty || _shift.activeJobId.trim().isNotEmpty) {
+      if (_inventoryRows.isNotEmpty || _shift.activeJobId.trim().isNotEmpty) {
         return Card(
           child: Padding(
             padding: const EdgeInsets.all(14),
@@ -505,7 +512,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Linked to active shift data (${_shift.savedRows.length} saved row${_shift.savedRows.length == 1 ? '' : 's'}).',
+                  'Linked to active shift data (${_inventoryRows.length} saved row${_inventoryRows.length == 1 ? '' : 's'}).',
                   style: const TextStyle(color: Colors.white70),
                 ),
               ],

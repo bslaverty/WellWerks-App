@@ -83,6 +83,12 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   Future<void> _load() async {
     var shift = await _service.loadActiveShift();
     shift = await _migrateLegacyInventory(shift);
+    if (shift.inventory.productionRows.isEmpty && shift.savedRows.isNotEmpty) {
+      shift = shift.copyWith(
+        inventory: shift.inventory.copyWith(productionRows: shift.savedRows),
+      );
+      await _service.saveActiveShift(shift);
+    }
     final activeJob = await _jobStorage.loadActiveJob();
     if (activeJob != null && shift.activeJobId != activeJob.id) {
       shift = shift.copyWith(activeJobId: activeJob.id);
@@ -230,6 +236,13 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   List<String> get _activeWells =>
       _shift.header.wells.isEmpty ? const ['Well 1'] : _shift.header.wells;
 
+  List<ProductionReportRow> get _storedRows {
+    if (_shift.inventory.productionRows.isNotEmpty) {
+      return _shift.inventory.productionRows;
+    }
+    return _shift.savedRows;
+  }
+
   bool _gaugeEntryHasValue(ProductionGaugeEntry entry) {
     return entry.inches.trim().isNotEmpty ||
         entry.feet.trim().isNotEmpty ||
@@ -244,6 +257,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   bool _isWellEntered(int hourIndex, String well) {
     final data = _wellDataForHour(hourIndex, well);
     final hasScalarValue = [
+      data.hoursSincePrevious,
       data.choke,
       data.tbg,
       data.icp,
@@ -278,7 +292,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   bool _isHourSaved(int hourIndex) {
-    return _shift.savedRows.any((row) => row.hourIndex == hourIndex);
+    return _storedRows.any((row) => row.hourIndex == hourIndex);
   }
 
   Future<void> _refreshActiveJobReference() async {
@@ -328,7 +342,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     String well,
     bool Function(ProductionReportRow row) predicate,
   ) {
-    final previous = _shift.savedRows
+    final previous = _storedRows
         .where(
           (row) => row.well == well && row.hourIndex < index && predicate(row),
         )
@@ -502,6 +516,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       activeJobId: _activeJob?.id ?? _shift.activeJobId,
       hourlyChecks: _buildBlankChecks(),
       savedRows: const [],
+      inventory: _shift.inventory.copyWith(productionRows: const []),
       clearSelectedTextHour: true,
     );
     _shift = updated;
@@ -539,6 +554,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       activeJobId: _activeJob?.id ?? _shift.activeJobId,
       hourlyChecks: const [],
       savedRows: const [],
+      inventory: _shift.inventory.copyWith(productionRows: const []),
       clearSelectedTextHour: true,
     );
     _rebuildControllers();
@@ -548,7 +564,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   ProductionReportRow? _latestSavedBefore(int index, String well) {
-    final previous = _shift.savedRows
+    final previous = _storedRows
         .where((row) => row.well == well && row.hourIndex < index)
         .toList()
       ..sort((a, b) => a.hourIndex.compareTo(b.hourIndex));
@@ -873,6 +889,15 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   double _hourlyGasForData(
       int index, ProductionWellCheckData data, String well) {
+    final previous = _latestSavedBefore(index, well);
+    if (previous == null) {
+      return _missingCalcValue;
+    }
+    final intervalHours =
+        double.tryParse(data.hoursSincePrevious.trim()) ?? _missingCalcValue;
+    if (_isMissingCalc(intervalHours) || intervalHours <= 0) {
+      return _missingCalcValue;
+    }
     if (!_useGasAccumulator) {
       if (data.salesGasRate.trim().isEmpty) {
         return _missingCalcValue;
@@ -880,24 +905,25 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       final gasRate = _displayGasToBase(data.salesGasRate);
       return gasRate / 24;
     }
-    final previous = _latestSavedBeforeWith(
+    final previousGasAccum = _latestSavedBeforeWith(
           index,
           well,
           (row) =>
               !_isMissingCalc(row.currentGasAccum) && row.currentGasAccum > 0,
         )?.currentGasAccum ??
         _startingGasBaselineOrMissing();
-    if (previous.isNaN || data.currentGasAccum.trim().isEmpty) {
+    if (previousGasAccum.isNaN || data.currentGasAccum.trim().isEmpty) {
       return _missingCalcValue;
     }
     final current = _n(data.currentGasAccum);
-    if (current < previous) {
+    if (current < previousGasAccum) {
       return _missingCalcValue;
     }
-    return ProductionMath.hourlyGas(
+    final intervalGas = ProductionMath.hourlyGas(
       currentGasAccum: current,
-      previousGasAccum: previous,
+      previousGasAccum: previousGasAccum,
     );
+    return intervalGas / intervalHours;
   }
 
   double _gas24HourForData(
@@ -914,6 +940,16 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   double _waterProductionForData(
       int index, ProductionWellCheckData data, String well) {
+    final previousRow = _latestSavedBefore(index, well);
+    if (previousRow == null) {
+      return _missingCalcValue;
+    }
+    final intervalHours =
+        double.tryParse(data.hoursSincePrevious.trim()) ?? _missingCalcValue;
+    if (_isMissingCalc(intervalHours) || intervalHours <= 0) {
+      return _missingCalcValue;
+    }
+
     final previous = _latestSavedBeforeWith(
           index,
           well,
@@ -925,12 +961,33 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     if (previous.isNaN || _isMissingCalc(current) || current <= 0) {
       return _missingCalcValue;
     }
-    final calculated = current - previous;
-    return calculated < 0 ? _missingCalcValue : calculated;
+    final intervalVolume = ProductionMath.waterProduction(
+      currentWaterBbl: current,
+      previousWaterBbl: previous,
+      waterHauled: _n(data.waterHauled),
+      waterPumped: _n(data.waterPumped),
+      preRoundWaterHauled: 0,
+      preRoundWaterPumped: 0,
+      isFirstHour: false,
+    );
+    if (intervalVolume < 0) {
+      return _missingCalcValue;
+    }
+    return intervalVolume / intervalHours;
   }
 
   double _oilProductionForData(
       int index, ProductionWellCheckData data, String well) {
+    final previousRow = _latestSavedBefore(index, well);
+    if (previousRow == null) {
+      return _missingCalcValue;
+    }
+    final intervalHours =
+        double.tryParse(data.hoursSincePrevious.trim()) ?? _missingCalcValue;
+    if (_isMissingCalc(intervalHours) || intervalHours <= 0) {
+      return _missingCalcValue;
+    }
+
     final previous = _latestSavedBeforeWith(
           index,
           well,
@@ -941,8 +998,19 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     if (previous.isNaN || _isMissingCalc(current) || current <= 0) {
       return _missingCalcValue;
     }
-    final calculated = current - previous;
-    return calculated < 0 ? _missingCalcValue : calculated;
+    final intervalVolume = ProductionMath.oilProduction(
+      currentOilBbl: current,
+      previousOilBbl: previous,
+      oilHauled: _n(data.oilHauled),
+      oilPumped: _n(data.oilPumped),
+      preRoundOilHauled: 0,
+      preRoundOilPumped: 0,
+      isFirstHour: false,
+    );
+    if (intervalVolume < 0) {
+      return _missingCalcValue;
+    }
+    return intervalVolume / intervalHours;
   }
 
   ProductionReportRow _buildRowForWell(
@@ -1006,6 +1074,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       currentWaterBbl: currentWaterBbl,
       currentOilBbl: currentOilBbl,
       currentGasAccum: currentGasAccum,
+      hoursSincePrevious: double.tryParse(data.hoursSincePrevious.trim()) ?? 0,
       waterHauled: _n(data.waterHauled),
       oilHauled: _n(data.oilHauled),
       waterPumped: _n(data.waterPumped),
@@ -1031,6 +1100,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     }
 
     for (final controller in [
+      current.hoursSincePrevious,
       current.choke,
       current.tbg,
       current.icp,
@@ -1078,6 +1148,27 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         const SnackBar(
           content: Text('Enter at least one value before saving this hour.'),
         ),
+      );
+      return;
+    }
+
+    final wellsMissingHours = <String>[];
+    for (final well in enteredWells) {
+      final hasPrevious = _latestSavedBefore(hourIndex, well) != null;
+      if (!hasPrevious) continue;
+      final data = _wellDataForHour(hourIndex, well);
+      final hours = double.tryParse(data.hoursSincePrevious.trim()) ?? 0;
+      if (hours <= 0) {
+        wellsMissingHours.add(well);
+      }
+    }
+
+    if (wellsMissingHours.isNotEmpty) {
+      final message =
+          'Enter Hours Since Previous Reading for: ${wellsMissingHours.join(', ')}';
+      setState(() => _hourValidationMessage = message);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
       );
       return;
     }
@@ -1216,7 +1307,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       _hourValidationMessage = null;
     });
 
-    final updatedRows = List<ProductionReportRow>.from(_shift.savedRows)
+    final updatedRows = List<ProductionReportRow>.from(_storedRows)
       ..removeWhere(
         (item) =>
             item.hourIndex == hourIndex && enteredWells.contains(item.well),
@@ -1238,6 +1329,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       activeJobId: _activeJob?.id ?? _shift.activeJobId,
       hourlyChecks: _controllers.map((item) => item.toCheck()).toList(),
       savedRows: updatedRows,
+      inventory: _shift.inventory.copyWith(productionRows: updatedRows),
       selectedTextHour: _shift.selectedTextHour ?? hourIndex,
     );
     await _service.saveActiveShift(_shift);
@@ -1620,6 +1712,12 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         controller.choke,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
       ),
+      _field(
+        'Hours Since Previous Reading',
+        controller.hoursSincePrevious,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        helperText: 'Required after the first saved reading for this well.',
+      ),
       _field('TBG', controller.tbg, suffix: 'PSI'),
       _field('ICP', controller.icp, suffix: 'PSI'),
       _field('CSG', controller.csg, suffix: 'PSI'),
@@ -1769,6 +1867,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     String label,
     TextEditingController controller, {
     String? suffix,
+    String? helperText,
     TextInputType? keyboardType,
     int lines = 1,
   }) {
@@ -1784,6 +1883,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         decoration: InputDecoration(
           labelText: label,
           suffixText: suffix,
+          helperText: helperText,
           errorText: _invalidHourControllers.contains(controller)
               ? 'Cannot be negative'
               : null,
@@ -2059,6 +2159,7 @@ class _HourlyCheckControllers {
     required this.time,
     required this.well,
     required this.gaugeEntryType,
+    required this.hoursSincePrevious,
     required this.choke,
     required this.chokeType,
     required this.tbg,
@@ -2144,6 +2245,7 @@ class _HourlyCheckControllers {
       return ProductionWellCheckData(
         choke: data.choke,
         chokeType: data.chokeType,
+        hoursSincePrevious: data.hoursSincePrevious,
         tbg: data.tbg,
         icp: data.icp,
         csg: data.csg,
@@ -2202,6 +2304,8 @@ class _HourlyCheckControllers {
       time: check.time,
       well: selectedWell,
       gaugeEntryType: gaugeEntryType,
+      hoursSincePrevious:
+          TextEditingController(text: selectedData.hoursSincePrevious),
       choke: TextEditingController(text: selectedData.choke),
       chokeType: chokeTypeForWell(selectedWell),
       tbg: TextEditingController(text: selectedData.tbg),
@@ -2251,6 +2355,7 @@ class _HourlyCheckControllers {
   String well;
   final String gaugeEntryType;
   String chokeType;
+  final TextEditingController hoursSincePrevious;
   final TextEditingController choke;
   final TextEditingController tbg;
   final TextEditingController icp;
@@ -2290,6 +2395,7 @@ class _HourlyCheckControllers {
     final oilEntries =
         oilTankGaugeEntries.map((item) => item.entry(gaugeEntryType)).toList();
     return ProductionWellCheckData(
+      hoursSincePrevious: hoursSincePrevious.text.trim(),
       choke: choke.text.trim(),
       chokeType: chokeType,
       tbg: tbg.text.trim(),
@@ -2327,6 +2433,7 @@ class _HourlyCheckControllers {
   }
 
   void _loadWellData(ProductionWellCheckData data, String nextChokeType) {
+    hoursSincePrevious.text = data.hoursSincePrevious;
     choke.text = data.choke;
     chokeType = nextChokeType;
     tbg.text = data.tbg;
@@ -2399,6 +2506,7 @@ class _HourlyCheckControllers {
       time: time,
       well: well,
       wellChecks: Map<String, ProductionWellCheckData>.from(_wellDataByName),
+      hoursSincePrevious: current.hoursSincePrevious,
       choke: current.choke,
       chokeType: current.chokeType,
       tbg: current.tbg,
@@ -2434,6 +2542,7 @@ class _HourlyCheckControllers {
 
   void dispose() {
     for (final controller in [
+      hoursSincePrevious,
       choke,
       tbg,
       icp,

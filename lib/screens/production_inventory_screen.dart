@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../models/job_setup.dart';
 import '../models/production_shift.dart';
 import '../services/app_settings_service.dart';
 import '../services/job_history_service.dart';
+import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/report_profile_service.dart';
 import '../widgets/app_header.dart';
@@ -28,6 +30,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   final _historyService = JobHistoryService();
   final _settingsService = AppSettingsService();
   final _layoutService = ReportProfileService();
+  final _jobStorage = JobStorageService();
 
   final _company = TextEditingController();
   final _pad = TextEditingController();
@@ -36,6 +39,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   String _gasUnit = 'mcfd';
   String _gasCalculationMethod = 'accumulator';
   String _layoutProfileId = 'default';
+  bool _useJobSetupTanks = true;
   final _startingGasAccum = TextEditingController();
   final _waterHauledBeforeRound = TextEditingController();
   final _oilHauledBeforeRound = TextEditingController();
@@ -53,6 +57,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
 
   bool _loading = true;
   bool _saving = false;
+  ProductionShift _activeShift = ProductionShift.empty();
   final Set<TextEditingController> _missingControllers =
       <TextEditingController>{};
   final Set<TextEditingController> _invalidControllers =
@@ -96,10 +101,16 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
 
   Future<void> _load() async {
     final shift = await _service.loadActiveShift();
+    final activeJob = await _jobStorage.loadActiveJob();
     final settings = await _settingsService.load();
     _layoutProfiles = await _layoutService.loadProfiles();
     final activeLayoutId = await _layoutService.loadActiveProfileId();
     _setFromShift(shift);
+    _activeShift = shift;
+    _useJobSetupTanks = shift.inventory.useJobSetupTanks;
+    if (_useJobSetupTanks && activeJob != null) {
+      _applyJobSetupDefaults(activeJob);
+    }
     _defaultBblPerInch = settings.defaultBblPerInch;
     _defaultChokeDisplay = settings.defaultChokeDisplay;
     if (_isEffectivelyEmptyShift(shift)) {
@@ -154,6 +165,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
           : _layoutProfiles.first.id;
     }
     _startingGasAccum.text = shift.inventory.startingGasAccum;
+    _useJobSetupTanks = shift.inventory.useJobSetupTanks;
     _waterHauledBeforeRound.text = shift.inventory.waterHauledBeforeRound;
     _oilHauledBeforeRound.text = shift.inventory.oilHauledBeforeRound;
     _waterPumpedBeforeRound.text = shift.inventory.waterPumpedBeforeRound;
@@ -211,6 +223,106 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     ];
   }
 
+  List<ProductionReportRow> get _productionRows {
+    if (_activeShift.inventory.productionRows.isNotEmpty) {
+      return _activeShift.inventory.productionRows;
+    }
+    return _activeShift.savedRows;
+  }
+
+  void _setTankCount(
+    List<_TankControllers> tanks,
+    int desiredCount,
+    String label,
+    String defaultBblPerInch,
+  ) {
+    final normalized = desiredCount < 1 ? 1 : desiredCount;
+    while (tanks.length < normalized) {
+      tanks.add(_TankControllers(
+        name: TextEditingController(text: '$label ${tanks.length + 1}'),
+        gaugeInches: TextEditingController(),
+        gaugeFeet: TextEditingController(),
+        gaugeInchesPart: TextEditingController(),
+        gaugeDecimalFeet: TextEditingController(),
+        bblPerInch: TextEditingController(text: defaultBblPerInch),
+      ));
+    }
+    while (tanks.length > normalized) {
+      final removed = tanks.removeLast();
+      removed.dispose();
+    }
+    for (int i = 0; i < tanks.length; i++) {
+      if (tanks[i].name.text.trim().isEmpty) {
+        tanks[i].name.text = '$label ${i + 1}';
+      }
+      if (tanks[i].bblPerInch.text.trim().isEmpty) {
+        tanks[i].bblPerInch.text = defaultBblPerInch;
+      }
+    }
+  }
+
+  void _setWellCountFromJob(List<String> wells) {
+    final jobWells = wells.where((item) => item.trim().isNotEmpty).toList();
+    final normalized = jobWells.isEmpty ? <String>['Well 1'] : jobWells;
+
+    while (_wellControllers.length < normalized.length) {
+      _wellControllers.add(TextEditingController());
+      _wellChokeTypes.add(_defaultChokeDisplay);
+      _oilInventoryWells.add(_OilInventoryControllers.blank());
+    }
+    while (_wellControllers.length > normalized.length) {
+      _wellControllers.removeLast().dispose();
+      _wellChokeTypes.removeLast();
+      _oilInventoryWells.removeLast().dispose();
+    }
+
+    for (int i = 0; i < normalized.length; i++) {
+      _wellControllers[i].text = normalized[i];
+    }
+  }
+
+  void _applyJobSetupDefaults(JobSetup activeJob) {
+    _setWellCountFromJob(activeJob.wells);
+    final defaultFactor = activeJob.productionTankFactor.trim().isEmpty
+        ? _defaultBblPerInch
+        : activeJob.productionTankFactor.trim();
+    _setTankCount(
+      _waterTanks,
+      activeJob.waterTanks,
+      'Water Tank',
+      defaultFactor,
+    );
+    _setTankCount(
+      _oilTanks,
+      activeJob.oilTanks,
+      'Oil Tank',
+      defaultFactor,
+    );
+  }
+
+  double _sumRow(double Function(ProductionReportRow row) accessor) {
+    var total = 0.0;
+    for (final row in _productionRows) {
+      total += accessor(row);
+    }
+    return total;
+  }
+
+  String _fmt(double value) {
+    if (value.isNaN) return '--';
+    final rounded = value.abs() < 0.01 ? 0 : value;
+    return rounded % 1 == 0
+        ? rounded.toStringAsFixed(0)
+        : rounded.toStringAsFixed(2);
+  }
+
+  ProductionReportRow? get _latestProductionRow {
+    if (_productionRows.isEmpty) return null;
+    final sorted = List<ProductionReportRow>.from(_productionRows)
+      ..sort((a, b) => a.hourIndex.compareTo(b.hourIndex));
+    return sorted.last;
+  }
+
   void _syncComputedCushion(int index) {
     if (index < 0 || index >= _oilInventoryWells.length) return;
     _oilInventoryWells[index].setComputedCushion();
@@ -265,6 +377,8 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
           ),
       ],
       gaugeEntryType: _gaugeEntryType,
+      useJobSetupTanks: _useJobSetupTanks,
+      productionRows: _productionRows,
       gasUnit: _gasUnit,
       gasCalculationMethod: _gasCalculationMethod,
       startingGasAccum: _startingGasAccum.text.trim(),
@@ -276,6 +390,13 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   Future<void> _saveInventory() async {
+    final activeJob = await _jobStorage.loadActiveJob();
+    if (_useJobSetupTanks && activeJob != null) {
+      setState(() {
+        _applyJobSetupDefaults(activeJob);
+      });
+    }
+
     final missing = <TextEditingController>{};
     final invalid = <TextEditingController>{};
 
@@ -435,7 +556,10 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     setState(() => _saving = true);
     await _service.saveActiveShift(updated);
     if (!mounted) return;
-    setState(() => _saving = false);
+    setState(() {
+      _activeShift = updated;
+      _saving = false;
+    });
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Production Inventory saved successfully.')),
@@ -509,6 +633,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     );
     await _service.saveActiveShift(cleared);
     _setFromShift(cleared);
+    _activeShift = cleared;
     if (!mounted) return;
     setState(() {});
     ScaffoldMessenger.of(context).showSnackBar(
@@ -550,6 +675,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
 
     await _service.clearActiveShift();
     _setFromShift(ProductionShift.empty());
+    _activeShift = ProductionShift.empty();
     if (!mounted) return;
     setState(() {});
     ScaffoldMessenger.of(context).showSnackBar(
@@ -594,6 +720,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   void _addWell() {
+    if (_useJobSetupTanks) return;
     setState(() {
       _wellControllers.add(
         TextEditingController(text: 'Well ${_wellControllers.length + 1}'),
@@ -604,6 +731,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   void _removeWell(int index) {
+    if (_useJobSetupTanks) return;
     if (_wellControllers.length == 1) return;
     setState(() {
       final controller = _wellControllers.removeAt(index);
@@ -615,6 +743,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   void _addTank(List<_TankControllers> list, String label) {
+    if (_useJobSetupTanks) return;
     setState(() {
       list.add(_TankControllers(
         name: TextEditingController(text: '$label ${list.length + 1}'),
@@ -628,6 +757,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   void _removeTank(List<_TankControllers> list, int index) {
+    if (_useJobSetupTanks) return;
     if (list.length == 1) return;
     setState(() {
       final tank = list.removeAt(index);
@@ -659,11 +789,16 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     );
   }
 
-  Widget _textField(String label, TextEditingController controller) {
+  Widget _textField(
+    String label,
+    TextEditingController controller, {
+    bool enabled = true,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
         controller: controller,
+        enabled: enabled,
         style: const TextStyle(fontSize: 16),
         decoration: InputDecoration(
           labelText: label,
@@ -754,14 +889,18 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                       ),
                     ),
                     IconButton(
-                      onPressed: tanks.length == 1
+                      onPressed: _useJobSetupTanks || tanks.length == 1
                           ? null
                           : () => _removeTank(tanks, i),
                       icon: const Icon(Icons.remove_circle_outline),
                     ),
                   ],
                 ),
-                _textField('Tank Name', tanks[i].name),
+                _textField(
+                  'Tank Name',
+                  tanks[i].name,
+                  enabled: !_useJobSetupTanks,
+                ),
                 ..._gaugeInputFields(tanks[i]),
                 WwNumberField(
                   label: 'BBL per inch',
@@ -797,11 +936,56 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
       SizedBox(
         width: double.infinity,
         child: OutlinedButton.icon(
-          onPressed: () => _addTank(tanks, tankLabel),
+          onPressed:
+              _useJobSetupTanks ? null : () => _addTank(tanks, tankLabel),
           icon: const Icon(Icons.add),
           label: Text('Add $tankLabel'),
         ),
       ),
+    ]);
+  }
+
+  Widget _runningTotalsSection() {
+    final latest = _latestProductionRow;
+    final totalOilHauled = _sumRow((row) => row.oilHauled) +
+        (double.tryParse(_oilHauledBeforeRound.text.trim()) ?? 0);
+    final totalWaterHauled = _sumRow((row) => row.waterHauled) +
+        (double.tryParse(_waterHauledBeforeRound.text.trim()) ?? 0);
+    final totalWaterPumped = _sumRow((row) => row.waterPumped) +
+        (double.tryParse(_waterPumpedBeforeRound.text.trim()) ?? 0);
+    final avgOilRateRows =
+        _productionRows.where((row) => row.oilProduction >= 0).toList();
+    final avgWaterRateRows =
+        _productionRows.where((row) => row.waterProduction >= 0).toList();
+    final avgOilRate = avgOilRateRows.isEmpty
+        ? double.nan
+        : avgOilRateRows
+                .map((row) => row.oilProduction)
+                .reduce((a, b) => a + b) /
+            avgOilRateRows.length;
+    final avgWaterRate = avgWaterRateRows.isEmpty
+        ? double.nan
+        : avgWaterRateRows
+                .map((row) => row.waterProduction)
+                .reduce((a, b) => a + b) /
+            avgWaterRateRows.length;
+
+    return _section('Running Production Totals', [
+      Text(
+        'Entries saved from Quick Round: ${_productionRows.length}',
+        style: const TextStyle(color: Colors.white70),
+      ),
+      const SizedBox(height: 10),
+      Text('Oil hauled total: ${_fmt(totalOilHauled)} BBL'),
+      Text('Water hauled total: ${_fmt(totalWaterHauled)} BBL'),
+      Text('Water pumped total: ${_fmt(totalWaterPumped)} BBL'),
+      const SizedBox(height: 8),
+      Text(
+          'Oil currently on location: ${_fmt(latest?.currentOilBbl ?? double.nan)} BBL'),
+      Text(
+          'Water currently on location: ${_fmt(latest?.currentWaterBbl ?? double.nan)} BBL'),
+      Text('Oil production rate: ${_fmt(avgOilRate)} BBL/hr'),
+      Text('Water production rate: ${_fmt(avgWaterRate)} BBL/hr'),
     ]);
   }
 
@@ -985,6 +1169,26 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
           _textField('Company', _company),
           _textField('Pad Name', _pad),
           _textField('Date', _date),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Use Job Setup Tanks'),
+            subtitle: Text(
+              _useJobSetupTanks
+                  ? 'ON: wells and tank counts sync from Job Setup automatically.'
+                  : 'OFF: Standalone mode for temporary or one-day jobs.',
+            ),
+            value: _useJobSetupTanks,
+            onChanged: (value) async {
+              final activeJob = await _jobStorage.loadActiveJob();
+              setState(() {
+                _useJobSetupTanks = value;
+                if (value && activeJob != null) {
+                  _applyJobSetupDefaults(activeJob);
+                }
+              });
+            },
+          ),
+          const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             initialValue: _gaugeEntryType,
             decoration: const InputDecoration(labelText: 'Gauge Entry Type'),
@@ -1084,7 +1288,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                 ),
                 const SizedBox(width: 8),
                 IconButton(
-                  onPressed: _wellControllers.length == 1
+                  onPressed: _useJobSetupTanks || _wellControllers.length == 1
                       ? null
                       : () => _removeWell(i),
                   icon: const Icon(Icons.remove_circle_outline),
@@ -1094,7 +1298,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: _addWell,
+              onPressed: _useJobSetupTanks ? null : _addWell,
               icon: const Icon(Icons.add),
               label: const Text('Add Well'),
             ),
@@ -1161,6 +1365,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
             },
           ),
         ]),
+        _runningTotalsSection(),
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
@@ -1213,7 +1418,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
         return const Center(child: CircularProgressIndicator());
       }
       return const Scaffold(
-        appBar: AppHeader(title: 'Production Inventory', showBack: true),
+        appBar: AppHeader(title: 'Tank Inventory', showBack: true),
         body: Center(child: CircularProgressIndicator()),
       );
     }
@@ -1223,7 +1428,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     }
 
     return Scaffold(
-      appBar: const AppHeader(title: 'Production Inventory', showBack: true),
+      appBar: const AppHeader(title: 'Tank Inventory', showBack: true),
       body: _content(),
     );
   }

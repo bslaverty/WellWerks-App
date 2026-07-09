@@ -58,7 +58,9 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     final layout =
         await _layoutService.resolveProfile(shift.header.layoutProfileId);
     final rows = (activeJob == null || shift.activeJobId == activeJob.id)
-        ? shift.savedRows
+        ? (shift.inventory.productionRows.isNotEmpty
+            ? shift.inventory.productionRows
+            : shift.savedRows)
         : const <ProductionReportRow>[];
     if (!mounted) return;
     setState(() {
@@ -73,12 +75,15 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   }
 
   List<ProductionReportRow> get _activeJobRows {
+    final inventoryRows = _shift.inventory.productionRows.isNotEmpty
+        ? _shift.inventory.productionRows
+        : _shift.savedRows;
     final activeJob = _activeJob;
     final rows = activeJob == null
-        ? List<ProductionReportRow>.from(_shift.savedRows)
+        ? List<ProductionReportRow>.from(inventoryRows)
         : (_shift.activeJobId != activeJob.id
             ? <ProductionReportRow>[]
-            : List<ProductionReportRow>.from(_shift.savedRows));
+            : List<ProductionReportRow>.from(inventoryRows));
     final order = _shift.header.wells;
     rows.sort((a, b) {
       final hourCompare = a.hourIndex.compareTo(b.hourIndex);
@@ -96,7 +101,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   bool get _hasActiveJob =>
       _activeJob != null ||
       _shift.activeJobId.trim().isNotEmpty ||
-      _shift.savedRows.isNotEmpty;
+      _activeJobRows.isNotEmpty;
 
   String get _emptyStateMessage {
     if (!_hasActiveJob) {

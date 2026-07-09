@@ -296,6 +296,8 @@ class ProductionInventoryBaseline {
     required this.oilTanks,
     this.oilInventoryWells = const [],
     this.useStartingReadings = false,
+    this.useJobSetupTanks = true,
+    this.productionRows = const [],
     this.gaugeEntryType = 'inches',
     this.gasUnit = 'mcfd',
     this.gasCalculationMethod = 'accumulator',
@@ -326,6 +328,10 @@ class ProductionInventoryBaseline {
         .map((item) => ProductionOilInventoryWell.fromJson(
             Map<String, dynamic>.from(item as Map)))
         .toList();
+    final productionRows = ((json['productionRows'] as List?) ?? const [])
+        .map((item) => ProductionReportRow.fromJson(
+            Map<String, dynamic>.from(item as Map)))
+        .toList();
     final inferredGaugeType = waterTanks.isNotEmpty
         ? waterTanks.first.gaugeEntry.mode
         : (oilTanks.isNotEmpty ? oilTanks.first.gaugeEntry.mode : 'inches');
@@ -338,6 +344,8 @@ class ProductionInventoryBaseline {
           : oilTanks,
       oilInventoryWells: oilInventoryWells,
       useStartingReadings: json['useStartingReadings'] as bool? ?? false,
+      useJobSetupTanks: json['useJobSetupTanks'] as bool? ?? true,
+      productionRows: productionRows,
       gaugeEntryType: ProductionGaugeEntry._normalizeMode(
         (json['gaugeEntryType'] as String?) ?? inferredGaugeType,
       ),
@@ -357,6 +365,8 @@ class ProductionInventoryBaseline {
   final List<ProductionTank> oilTanks;
   final List<ProductionOilInventoryWell> oilInventoryWells;
   final bool useStartingReadings;
+  final bool useJobSetupTanks;
+  final List<ProductionReportRow> productionRows;
   final String gaugeEntryType;
   final String gasUnit;
   final String gasCalculationMethod;
@@ -371,6 +381,8 @@ class ProductionInventoryBaseline {
     List<ProductionTank>? oilTanks,
     List<ProductionOilInventoryWell>? oilInventoryWells,
     bool? useStartingReadings,
+    bool? useJobSetupTanks,
+    List<ProductionReportRow>? productionRows,
     String? gaugeEntryType,
     String? gasUnit,
     String? gasCalculationMethod,
@@ -385,6 +397,8 @@ class ProductionInventoryBaseline {
       oilTanks: oilTanks ?? this.oilTanks,
       oilInventoryWells: oilInventoryWells ?? this.oilInventoryWells,
       useStartingReadings: useStartingReadings ?? this.useStartingReadings,
+      useJobSetupTanks: useJobSetupTanks ?? this.useJobSetupTanks,
+      productionRows: productionRows ?? this.productionRows,
       gaugeEntryType: ProductionGaugeEntry._normalizeMode(
         gaugeEntryType ?? this.gaugeEntryType,
       ),
@@ -409,6 +423,8 @@ class ProductionInventoryBaseline {
       'oilInventoryWells':
           oilInventoryWells.map((item) => item.toJson()).toList(),
       'useStartingReadings': useStartingReadings,
+      'useJobSetupTanks': useJobSetupTanks,
+      'productionRows': productionRows.map((item) => item.toJson()).toList(),
       'gaugeEntryType': gaugeEntryType,
       'gasUnit': gasUnit,
       'gasCalculationMethod': gasCalculationMethod,
@@ -548,6 +564,7 @@ class ProductionTank {
 
 class ProductionWellCheckData {
   const ProductionWellCheckData({
+    this.hoursSincePrevious = '',
     this.choke = '',
     this.chokeType = 'ADJ',
     this.tbg = '',
@@ -610,6 +627,7 @@ class ProductionWellCheckData {
     }
 
     return ProductionWellCheckData(
+      hoursSincePrevious: json['hoursSincePrevious'] as String? ?? '',
       choke: json['choke'] as String? ?? '',
       chokeType: ProductionShiftHeader._normalizeChokeType(
         json['chokeType'] as String?,
@@ -652,6 +670,7 @@ class ProductionWellCheckData {
 
   factory ProductionWellCheckData.fromHourlyCheck(ProductionHourlyCheck check) {
     return ProductionWellCheckData(
+      hoursSincePrevious: check.hoursSincePrevious,
       choke: check.choke,
       chokeType: check.chokeType,
       tbg: check.tbg,
@@ -688,6 +707,7 @@ class ProductionWellCheckData {
     );
   }
 
+  final String hoursSincePrevious;
   final String choke;
   final String chokeType;
   final String tbg;
@@ -724,6 +744,7 @@ class ProductionWellCheckData {
 
   Map<String, dynamic> toJson() {
     return {
+      'hoursSincePrevious': hoursSincePrevious,
       'choke': choke,
       'chokeType': chokeType,
       'tbg': tbg,
@@ -768,6 +789,7 @@ class ProductionHourlyCheck {
     required this.time,
     this.well = '',
     this.wellChecks = const {},
+    this.hoursSincePrevious = '',
     this.choke = '',
     this.chokeType = 'ADJ',
     this.tbg = '',
@@ -839,6 +861,7 @@ class ProductionHourlyCheck {
               : const ProductionWellCheckData(),
         ),
       ),
+      hoursSincePrevious: json['hoursSincePrevious'] as String? ?? '',
       choke: json['choke'] as String? ?? '',
       chokeType: ProductionShiftHeader._normalizeChokeType(
         json['chokeType'] as String?,
@@ -879,6 +902,7 @@ class ProductionHourlyCheck {
   final String time;
   final String well;
   final Map<String, ProductionWellCheckData> wellChecks;
+  final String hoursSincePrevious;
   final String choke;
   final String chokeType;
   final String tbg;
@@ -914,6 +938,7 @@ class ProductionHourlyCheck {
     String? time,
     String? well,
     Map<String, ProductionWellCheckData>? wellChecks,
+    String? hoursSincePrevious,
     String? choke,
     String? chokeType,
     String? tbg,
@@ -949,6 +974,7 @@ class ProductionHourlyCheck {
       time: time ?? this.time,
       well: well ?? this.well,
       wellChecks: wellChecks ?? this.wellChecks,
+      hoursSincePrevious: hoursSincePrevious ?? this.hoursSincePrevious,
       choke: choke ?? this.choke,
       chokeType: ProductionShiftHeader._normalizeChokeType(
         chokeType ?? this.chokeType,
@@ -992,6 +1018,7 @@ class ProductionHourlyCheck {
       'wellChecks': wellChecks.map(
         (key, value) => MapEntry(key, value.toJson()),
       ),
+      'hoursSincePrevious': hoursSincePrevious,
       'choke': choke,
       'chokeType': chokeType,
       'tbg': tbg,
@@ -1062,6 +1089,7 @@ class ProductionReportRow {
     required this.currentWaterBbl,
     required this.currentOilBbl,
     required this.currentGasAccum,
+    this.hoursSincePrevious = 0,
     required this.waterHauled,
     required this.oilHauled,
     required this.waterPumped,
@@ -1110,6 +1138,7 @@ class ProductionReportRow {
       currentWaterBbl: asDouble(json['currentWaterBbl']),
       currentOilBbl: asDouble(json['currentOilBbl']),
       currentGasAccum: asDouble(json['currentGasAccum']),
+      hoursSincePrevious: asDouble(json['hoursSincePrevious']),
       waterHauled: asDouble(json['waterHauled']),
       oilHauled: asDouble(json['oilHauled']),
       waterPumped: asDouble(json['waterPumped']),
@@ -1150,6 +1179,7 @@ class ProductionReportRow {
   final double currentWaterBbl;
   final double currentOilBbl;
   final double currentGasAccum;
+  final double hoursSincePrevious;
   final double waterHauled;
   final double oilHauled;
   final double waterPumped;
@@ -1190,6 +1220,7 @@ class ProductionReportRow {
       'currentWaterBbl': currentWaterBbl,
       'currentOilBbl': currentOilBbl,
       'currentGasAccum': currentGasAccum,
+      'hoursSincePrevious': hoursSincePrevious,
       'waterHauled': waterHauled,
       'oilHauled': oilHauled,
       'waterPumped': waterPumped,

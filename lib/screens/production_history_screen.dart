@@ -1354,6 +1354,13 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
   }
 
   List<Widget> _quickRoundItems() {
+    int productionRowsCount(ProductionShift shift) {
+      if (shift.inventory.productionRows.isNotEmpty) {
+        return shift.inventory.productionRows.length;
+      }
+      return shift.savedRows.length;
+    }
+
     final items = <Widget>[];
     if (_detail.liveShift != null) {
       final liveShift = _detail.liveShift!;
@@ -1369,7 +1376,10 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
               _detail.job.startedDateLabel(liveShift.header.date),
             ),
             _labelValue('Checks Saved', '${liveShift.hourlyChecks.length}'),
-            _labelValue('Saved Report Rows', '${liveShift.savedRows.length}'),
+            _labelValue(
+              'Saved Report Rows',
+              '${productionRowsCount(liveShift)}',
+            ),
             _labelValue('Wells', _joinWells(liveShift.header.wells)),
           ],
         ),
@@ -1388,7 +1398,7 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
             ),
             _labelValue(
               'Saved Report Rows',
-              '${shift.productionShift.savedRows.length}',
+              '${productionRowsCount(shift.productionShift)}',
             ),
             _labelValue(
               'Wells',
@@ -1402,14 +1412,21 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
   }
 
   List<Widget> _productionReportItems() {
+    int productionRowsCount(ProductionShift shift) {
+      if (shift.inventory.productionRows.isNotEmpty) {
+        return shift.inventory.productionRows.length;
+      }
+      return shift.savedRows.length;
+    }
+
     final items = <Widget>[];
     if (_detail.liveShift != null && _detail.liveReportText.trim().isNotEmpty) {
       items.add(
         _itemCard(
           title: 'Current Active Shift Report',
-          subtitle: _detail.liveShift!.savedRows.isEmpty
+          subtitle: productionRowsCount(_detail.liveShift!) == 0
               ? 'No saved report rows yet'
-              : '${_detail.liveShift!.savedRows.length} saved row${_detail.liveShift!.savedRows.length == 1 ? '' : 's'}',
+              : '${productionRowsCount(_detail.liveShift!)} saved row${productionRowsCount(_detail.liveShift!) == 1 ? '' : 's'}',
           footer: SelectableText(
             _detail.liveReportText,
             style: const TextStyle(fontSize: 13.5, height: 1.35),
@@ -1423,7 +1440,7 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
           title:
               shift.date.trim().isEmpty ? 'Archived Report' : shift.date.trim(),
           subtitle:
-              '${shift.productionShift.savedRows.length} saved row${shift.productionShift.savedRows.length == 1 ? '' : 's'}',
+              '${productionRowsCount(shift.productionShift)} saved row${productionRowsCount(shift.productionShift) == 1 ? '' : 's'}',
           footer: SelectableText(
             shift.productionReportText.trim().isEmpty
                 ? 'No saved Production Report rows yet. Save hours in Quick Round first.'

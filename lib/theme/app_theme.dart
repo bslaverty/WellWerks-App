@@ -37,56 +37,56 @@ class AppThemeCatalog {
   static const negative = AppThemeOption(
     id: 'negative',
     label: 'Negative',
-    brightness: Brightness.light,
-    background: Color(0xFFF5F4EF),
-    surface: Color(0xFFFFFFFF),
-    accent: Color(0xFF141414),
-    text: Color(0xFF1A1A1A),
-    subtleText: Color(0xFF5A5A5A),
+    brightness: Brightness.dark,
+    background: Color(0xFF101011),
+    surface: Color(0xFF1B1B1D),
+    accent: Color(0xFFD2AF7B),
+    text: Colors.white,
+    subtleText: Color(0xFFBABABA),
   );
 
   static const osu = AppThemeOption(
     id: 'osu',
     label: 'OSU',
     brightness: Brightness.dark,
-    background: Color(0xFF0A0A0A),
-    surface: Color(0xFF161616),
-    accent: Color(0xFFFF6A13),
+    background: Color(0xFF090909),
+    surface: Color(0xFF151515),
+    accent: Color(0xFFCDA56A),
     text: Colors.white,
-    subtleText: Color(0xFFC3C3C3),
+    subtleText: Color(0xFFBDBDBD),
   );
 
   static const ou = AppThemeOption(
     id: 'ou',
     label: 'OU',
-    brightness: Brightness.light,
-    background: Color(0xFFF3EEDD),
-    surface: Color(0xFFFFF8EA),
-    accent: Color(0xFF841617),
-    text: Color(0xFF1A1A1A),
-    subtleText: Color(0xFF55514A),
+    brightness: Brightness.dark,
+    background: Color(0xFF0E0D0C),
+    surface: Color(0xFF1A1816),
+    accent: Color(0xFFD0AA72),
+    text: Colors.white,
+    subtleText: Color(0xFFB7B3AE),
   );
 
   static const military = AppThemeOption(
     id: 'military',
     label: 'Military',
     brightness: Brightness.dark,
-    background: Color(0xFF2E3628),
-    surface: Color(0xFF3A4331),
-    accent: Color(0xFFC19A6B),
+    background: Color(0xFF12110F),
+    surface: Color(0xFF1D1B17),
+    accent: Color(0xFFC9A170),
     text: Colors.white,
-    subtleText: Color(0xFFC4C4C4),
+    subtleText: Color(0xFFC0BCB6),
   );
 
   static const highVisibility = AppThemeOption(
     id: 'high_visibility',
     label: 'High Visibility',
     brightness: Brightness.dark,
-    background: Color(0xFF050505),
-    surface: Color(0xFF171717),
-    accent: Color(0xFFFFE500),
+    background: Color(0xFF070707),
+    surface: Color(0xFF171615),
+    accent: Color(0xFFD8B379),
     text: Colors.white,
-    subtleText: Color(0xFFD0D0D0),
+    subtleText: Color(0xFFC6C1BB),
   );
 
   static const options = <AppThemeOption>[
