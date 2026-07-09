@@ -1340,6 +1340,9 @@ class _JsaScreenState extends State<JsaScreen> {
 
   Widget _previewLine(String label, String value) {
     final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return const SizedBox.shrink();
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: RichText(
@@ -1375,7 +1378,7 @@ class _JsaScreenState extends State<JsaScreen> {
         padding: const EdgeInsets.only(bottom: 12),
         child: Text(title,
             style: TextStyle(
-                color: gold, fontSize: 18, fontWeight: FontWeight.bold)),
+                color: gold, fontSize: 18, fontWeight: FontWeight.w800)),
       );
 
   Widget _infoCard(String title, List<String> items) => Card(

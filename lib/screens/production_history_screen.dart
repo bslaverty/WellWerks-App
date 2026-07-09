@@ -528,33 +528,35 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   }
 
   Widget _contentChip(_HistoryContentFilter value, String label) {
+    final colors = Theme.of(context).colorScheme;
     final selected = _contentFilter == value;
     return ChoiceChip(
       selected: selected,
       label: Text(label),
       onSelected: (_) => setState(() => _contentFilter = value),
-      selectedColor: const Color(0xFFCDA56A),
+      selectedColor: colors.primary,
       labelStyle: TextStyle(
         color: selected ? Colors.black : Colors.white,
         fontWeight: FontWeight.w700,
       ),
-      side: const BorderSide(color: Color(0xFFCDA56A)),
+      side: BorderSide(color: colors.primary),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
     );
   }
 
   Widget _filterChip(_HistoryStatusFilter value, String label) {
+    final colors = Theme.of(context).colorScheme;
     final selected = _statusFilter == value;
     return ChoiceChip(
       selected: selected,
       label: Text(label),
       onSelected: (_) => setState(() => _statusFilter = value),
-      selectedColor: const Color(0xFFCDA56A),
+      selectedColor: colors.primary,
       labelStyle: TextStyle(
         color: selected ? Colors.black : Colors.white,
         fontWeight: FontWeight.w700,
       ),
-      side: const BorderSide(color: Color(0xFFCDA56A)),
+      side: BorderSide(color: colors.primary),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
     );
   }
@@ -578,8 +580,9 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   }
 
   Widget _jobCard(_HistoryJobRecord job) {
-    final statusColor =
-        job.isActive ? const Color(0xFFCDA56A) : const Color(0xFF5E646C);
+    final colors = Theme.of(context).colorScheme;
+    final borderColor = Theme.of(context).dividerColor;
+    final statusColor = job.isActive ? colors.primary : borderColor;
     final companyTitle = <String?>[
       job.activeJob?.company,
       job.endedJob?.company,
@@ -592,7 +595,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      color: job.isActive ? const Color(0xFF17130E) : null,
+      color: job.isActive ? colors.primary.withValues(alpha: 0.08) : null,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () async {
@@ -617,8 +620,8 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
                       children: [
                         Text(
                           companyTitle,
-                          style: const TextStyle(
-                            color: Color(0xFFCDA56A),
+                          style: TextStyle(
+                            color: colors.primary,
                             fontSize: 18,
                             fontWeight: FontWeight.w800,
                           ),
@@ -705,6 +708,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   }
 
   Widget _jsaSectionCard(List<JsaDraft> drafts) {
+    final colors = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       child: Padding(
@@ -712,10 +716,10 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'JSA Records',
               style: TextStyle(
-                color: Color(0xFFCDA56A),
+                color: colors.primary,
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
               ),
@@ -742,6 +746,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   }
 
   Widget _jobBoxInventorySectionCard(List<JobBoxInventoryRecord> records) {
+    final colors = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       child: Padding(
@@ -749,10 +754,10 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Job Box Inventory Records',
               style: TextStyle(
-                color: Color(0xFFCDA56A),
+                color: colors.primary,
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
               ),
@@ -779,15 +784,17 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   }
 
   Widget _jobBoxInventoryCard(JobBoxInventoryRecord record) {
+    final colors = Theme.of(context).colorScheme;
+    final borderColor = Theme.of(context).dividerColor;
     final visibleItems = record.visibleItems;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1D20),
+        color: colors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF2A2E33)),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -796,8 +803,8 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
             record.date.trim().isEmpty
                 ? 'Inventory Record'
                 : record.date.trim(),
-            style: const TextStyle(
-              color: Color(0xFFCDA56A),
+            style: TextStyle(
+              color: colors.primary,
               fontSize: 16,
               fontWeight: FontWeight.w800,
             ),
@@ -829,6 +836,8 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   }
 
   Widget _jsaCard(JsaDraft draft) {
+    final colors = Theme.of(context).colorScheme;
+    final borderColor = Theme.of(context).dividerColor;
     final linkedJob = _linkedJobForDraft(draft);
     final customer = (linkedJob?.customer ?? '').trim();
     final company = draft.company.trim();
@@ -841,17 +850,17 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1D20),
+        color: colors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF2A2E33)),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            draft.date.trim().isEmpty ? '-' : draft.date.trim(),
-            style: const TextStyle(
-              color: Color(0xFFCDA56A),
+            draft.date.trim().isEmpty ? 'JSA Record' : draft.date.trim(),
+            style: TextStyle(
+              color: colors.primary,
               fontSize: 16,
               fontWeight: FontWeight.w800,
             ),
@@ -885,6 +894,9 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   }
 
   Widget _infoLine(String label, String value) {
+    if (value.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -900,9 +912,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
               ),
             ),
           ),
-          Expanded(
-            child: Text(value.isEmpty ? '-' : value),
-          ),
+          Expanded(child: Text(value)),
         ],
       ),
     );

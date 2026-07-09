@@ -71,8 +71,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   final _recoveryState = RecoveryStateService();
   JobSetup? _activeJob;
 
-  static const _gold = Color(0xFFCDA56A);
-  static const _bg = Color(0xFF101113);
+  Color get _gold => Theme.of(context).colorScheme.primary;
+  Color get _bg => Theme.of(context).colorScheme.surface;
 
   @override
   void initState() {
@@ -1401,8 +1401,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       constraints: BoxConstraints(minHeight: sectionHeight),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFF121417),
-        border: Border.all(color: const Color(0xFF3A3A3A)),
+        color: _bg,
+        border: Border.all(color: Theme.of(context).dividerColor),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -1425,7 +1425,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
 
   ButtonStyle _compactFilledStyle({bool highlighted = false}) {
     return FilledButton.styleFrom(
-      backgroundColor: highlighted ? _gold : const Color(0xFF1A1D21),
+      backgroundColor: highlighted ? _gold : _bg,
       foregroundColor: highlighted ? Colors.black : Colors.white,
       minimumSize: const Size(148, 46),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -1438,7 +1438,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     return OutlinedButton.styleFrom(
       foregroundColor: Colors.white,
       side: BorderSide(
-        color: highlighted ? _gold : const Color(0xFF4A4A4A),
+        color: highlighted ? _gold : Theme.of(context).dividerColor,
         width: highlighted ? 1.4 : 1,
       ),
       minimumSize: const Size(148, 46),
@@ -1465,9 +1465,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF121417),
-        titleTextStyle: const TextStyle(
-          color: Color(0xFFCDA56A),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        titleTextStyle: TextStyle(
+          color: Theme.of(context).colorScheme.primary,
           fontSize: 20,
           fontWeight: FontWeight.bold,
         ),
@@ -1492,7 +1492,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1A1D21),
+                      color: Theme.of(context).colorScheme.surface,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: const Color(0xFF3A3A3A)),
                     ),
@@ -4178,14 +4178,15 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   }
 
   List<Widget> _libraryButtons(String group, List<_EquipmentType> types) {
+    final colors = Theme.of(context).colorScheme;
     return [
       SizedBox(
         width: 84,
         child: Center(
           child: Text(group.toUpperCase(),
               textAlign: TextAlign.center,
-              style:
-                  const TextStyle(color: _gold, fontWeight: FontWeight.bold)),
+              style: TextStyle(
+                  color: colors.primary, fontWeight: FontWeight.bold)),
         ),
       ),
       for (final type in types)
@@ -4196,7 +4197,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
             child: OutlinedButton(
               onPressed: () => _addItem(type),
               style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0xFF3A3A3A)),
+                side: BorderSide(color: Theme.of(context).dividerColor),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
                 padding: const EdgeInsets.all(8),
@@ -4221,23 +4222,24 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   }
 
   Widget _jobInfoSection() {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFF121417),
-          border: Border.all(color: const Color(0xFF3A3A3A)),
+          color: _bg,
+          border: Border.all(color: Theme.of(context).dividerColor),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Job Info',
               style: TextStyle(
-                color: Color(0xFFCDA56A),
+                color: colors.primary,
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
               ),
@@ -4300,9 +4302,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     final drawIronLabel = _drawIronMode ? 'Stop Draw Iron' : 'Start Draw Iron';
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      decoration: const BoxDecoration(
-        color: Color(0xFF0D0D0F),
-        border: Border(bottom: BorderSide(color: Color(0xFF2E2E2E))),
+      decoration: BoxDecoration(
+        color: _bg,
+        border:
+            Border(bottom: BorderSide(color: Theme.of(context).dividerColor)),
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -4449,9 +4452,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A1D21),
+                  color: _bg,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFF4A4A4A)),
+                  border: Border.all(color: Theme.of(context).dividerColor),
                 ),
                 child: const Row(
                   children: [
@@ -4479,9 +4482,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     final locked = _selectedItem?.locked ?? false;
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      decoration: const BoxDecoration(
-        color: Color(0xFF111315),
-        border: Border(bottom: BorderSide(color: Color(0xFF2A2A2A))),
+      decoration: BoxDecoration(
+        color: _bg,
+        border:
+            Border(bottom: BorderSide(color: Theme.of(context).dividerColor)),
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -4564,9 +4568,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       curve: Curves.easeOut,
       height: _showSideLibrary ? 360 : 56,
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0D0F),
+        color: _bg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF3A3A3A)),
+        border: Border.all(color: Theme.of(context).dividerColor),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.35),
@@ -4584,13 +4588,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               child: Row(
                 children: [
-                  const Icon(Icons.view_carousel_outlined, color: _gold),
+                  Icon(Icons.view_carousel_outlined, color: _gold),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       _showSideLibrary ? 'Close Library' : 'Open Library',
-                      style: const TextStyle(
-                        color: Color(0xFFCDA56A),
+                      style: TextStyle(
+                        color: _gold,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -4641,7 +4645,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF14171B),
+        color: _bg,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: _gold, width: 1.5),
       ),
@@ -4650,9 +4654,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.edit_road, color: _gold),
+              Icon(Icons.edit_road, color: _gold),
               const SizedBox(width: 8),
-              const Text(
+              Text(
                 'DRAW IRON ACTIVE',
                 style: TextStyle(
                   color: _gold,

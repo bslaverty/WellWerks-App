@@ -38,9 +38,10 @@ class _ActiveShiftScreenState extends State<ActiveShiftScreen> {
   }
 
   void _showQuickActions() {
+    final colors = Theme.of(context).colorScheme;
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF17181A),
+      backgroundColor: colors.surface,
       showDragHandle: true,
       builder: (_) => SafeArea(
         child: Padding(
@@ -156,7 +157,7 @@ class _ActiveShiftScreenState extends State<ActiveShiftScreen> {
         padding: const EdgeInsets.all(18),
         children: [
           Card(
-            color: const Color(0xFF17181A),
+            color: Theme.of(context).colorScheme.surface,
             child: Padding(
               padding: const EdgeInsets.all(18),
               child: Column(
@@ -263,7 +264,7 @@ class _ActiveShiftScreenState extends State<ActiveShiftScreen> {
                     child: Text(
                         'No rounds saved yet. Tap Quick Round to enter your first set of readings.'))),
           ..._readings.take(10).map((r) => Card(
-                color: const Color(0xFF17181A),
+                color: Theme.of(context).colorScheme.surface,
                 child: ListTile(
                   title: Text(r.roundLabel.isEmpty
                       ? DateFormat('h:mm a').format(r.timestamp)
@@ -286,8 +287,9 @@ class _InfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Card(
-      color: const Color(0xFF17181A),
+      color: colors.surface,
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(
@@ -320,9 +322,9 @@ class _StatusTile extends StatelessWidget {
       margin: const EdgeInsets.only(right: 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF111111),
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF333333)),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label,

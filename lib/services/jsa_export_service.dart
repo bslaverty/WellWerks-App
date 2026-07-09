@@ -123,18 +123,24 @@ class JsaExportService {
   }
 
   pw.Widget _infoSection(JsaDraft draft) {
-    final rows = <List<String>>[
-      ['Date', _safe(draft.date)],
-      ['Time', _safe(draft.time)],
-      ['Company', _safe(draft.company)],
-      ['Location / Pad', _safe(draft.location)],
-      ['County', _safe(draft.county)],
-      ['City, State', _safe(draft.cityState)],
-      ['GPS Coordinates', _safe(draft.gpsCoordinates)],
-      ['Temperature', _safe(draft.weatherTemperature)],
-      ['Wind', _safe(draft.weatherWind)],
-      ['Conditions', _safe(draft.weatherConditions)],
-    ];
+    final rows = <List<String>>[];
+    void addRow(String label, String value) {
+      final trimmed = value.trim();
+      if (trimmed.isNotEmpty) {
+        rows.add([label, trimmed]);
+      }
+    }
+
+    addRow('Date', draft.date);
+    addRow('Time', draft.time);
+    addRow('Company', draft.company);
+    addRow('Location / Pad', draft.location);
+    addRow('County', draft.county);
+    addRow('City, State', draft.cityState);
+    addRow('GPS Coordinates', draft.gpsCoordinates);
+    addRow('Temperature', draft.weatherTemperature);
+    addRow('Wind', draft.weatherWind);
+    addRow('Conditions', draft.weatherConditions);
 
     return _sectionCard(
       'Job Information',
