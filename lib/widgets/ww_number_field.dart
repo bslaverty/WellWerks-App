@@ -92,6 +92,7 @@ class WwGaugeField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: TextField(
@@ -120,18 +121,18 @@ class WwGaugeField extends StatelessWidget {
                 ),
           border: OutlineInputBorder(
             borderSide: BorderSide(
-              color: active ? const Color(0xFFCDA56A) : const Color(0xFF4A4A4A),
+              color: active ? accent : const Color(0xFF4A4A4A),
               width: active ? 1.8 : 1.0,
             ),
           ),
           enabledBorder: OutlineInputBorder(
             borderSide: BorderSide(
-              color: active ? const Color(0xFFCDA56A) : const Color(0xFF4A4A4A),
+              color: active ? accent : const Color(0xFF4A4A4A),
               width: active ? 1.8 : 1.0,
             ),
           ),
-          focusedBorder: const OutlineInputBorder(
-            borderSide: BorderSide(color: Color(0xFFCDA56A), width: 2.0),
+          focusedBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: accent, width: 2.0),
           ),
         ),
         onTap: onTap,

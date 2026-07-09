@@ -8,7 +8,14 @@ class SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 22, bottom: 8),
-      child: Text(text.toUpperCase(), style: const TextStyle(color: Color(0xFFCDA56A), fontWeight: FontWeight.w900, letterSpacing: .8)),
+      child: Text(
+        text.toUpperCase(),
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.w900,
+          letterSpacing: .8,
+        ),
+      ),
     );
   }
 }

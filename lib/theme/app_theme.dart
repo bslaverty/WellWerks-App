@@ -9,7 +9,7 @@ class AppThemeOption {
     required this.surface,
     required this.accent,
     required this.text,
-    required this.appBar,
+    required this.subtleText,
   });
 
   final String id;
@@ -19,7 +19,7 @@ class AppThemeOption {
   final Color surface;
   final Color accent;
   final Color text;
-  final Color appBar;
+  final Color subtleText;
 }
 
 class AppThemeCatalog {
@@ -31,7 +31,7 @@ class AppThemeCatalog {
     surface: Color(0xFF17191D),
     accent: Color(0xFFCDA56A),
     text: Colors.white,
-    appBar: Color(0xFF0D0D0F),
+    subtleText: Color(0xFFB9B9B9),
   );
 
   static const negative = AppThemeOption(
@@ -40,9 +40,9 @@ class AppThemeCatalog {
     brightness: Brightness.light,
     background: Color(0xFFF5F4EF),
     surface: Color(0xFFFFFFFF),
-    accent: Color(0xFFCDA56A),
+    accent: Color(0xFF141414),
     text: Color(0xFF1A1A1A),
-    appBar: Color(0xFFE8E6DF),
+    subtleText: Color(0xFF5A5A5A),
   );
 
   static const osu = AppThemeOption(
@@ -53,7 +53,7 @@ class AppThemeCatalog {
     surface: Color(0xFF161616),
     accent: Color(0xFFFF6A13),
     text: Colors.white,
-    appBar: Color(0xFF0F0F0F),
+    subtleText: Color(0xFFC3C3C3),
   );
 
   static const ou = AppThemeOption(
@@ -64,7 +64,7 @@ class AppThemeCatalog {
     surface: Color(0xFFFFF8EA),
     accent: Color(0xFF841617),
     text: Color(0xFF1A1A1A),
-    appBar: Color(0xFFF8F3E4),
+    subtleText: Color(0xFF55514A),
   );
 
   static const military = AppThemeOption(
@@ -75,7 +75,7 @@ class AppThemeCatalog {
     surface: Color(0xFF3A4331),
     accent: Color(0xFFC19A6B),
     text: Colors.white,
-    appBar: Color(0xFF303828),
+    subtleText: Color(0xFFC4C4C4),
   );
 
   static const highVisibility = AppThemeOption(
@@ -86,7 +86,7 @@ class AppThemeCatalog {
     surface: Color(0xFF171717),
     accent: Color(0xFFFFE500),
     text: Colors.white,
-    appBar: Color(0xFF080808),
+    subtleText: Color(0xFFD0D0D0),
   );
 
   static const options = <AppThemeOption>[
@@ -109,18 +109,22 @@ class AppThemeCatalog {
 
 ThemeData buildAppTheme(String themeId) {
   final option = AppThemeCatalog.fromId(themeId);
+  final onAccent =
+      option.brightness == Brightness.dark ? Colors.black : Colors.white;
+  const appBarBlack = Color(0xFF000000);
   final scheme = ColorScheme(
     brightness: option.brightness,
     primary: option.accent,
-    onPrimary:
-        option.brightness == Brightness.dark ? Colors.black : Colors.white,
+    onPrimary: onAccent,
     secondary: option.accent,
-    onSecondary:
-        option.brightness == Brightness.dark ? Colors.black : Colors.white,
+    onSecondary: onAccent,
+    tertiary: option.accent,
+    onTertiary: onAccent,
     error: Colors.red.shade700,
     onError: Colors.white,
     surface: option.surface,
     onSurface: option.text,
+    onSurfaceVariant: option.subtleText,
   );
 
   final base = ThemeData(
@@ -128,15 +132,19 @@ ThemeData buildAppTheme(String themeId) {
     brightness: option.brightness,
     colorScheme: scheme,
     scaffoldBackgroundColor: option.background,
+    canvasColor: option.background,
+    dividerColor: option.accent.withValues(alpha: 0.28),
+    iconTheme: IconThemeData(color: option.accent),
     fontFamily: 'Arial',
   );
 
   return base.copyWith(
     appBarTheme: AppBarTheme(
-      backgroundColor: option.appBar,
-      foregroundColor: option.text,
+      backgroundColor: appBarBlack,
+      foregroundColor: option.accent,
       elevation: 0,
-      iconTheme: IconThemeData(color: option.text),
+      iconTheme: IconThemeData(color: option.accent),
+      actionsIconTheme: IconThemeData(color: option.accent),
       titleTextStyle: TextStyle(
         color: option.accent,
         fontWeight: FontWeight.w800,
@@ -148,14 +156,19 @@ ThemeData buildAppTheme(String themeId) {
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ),
-    dividerColor: option.accent.withValues(alpha: 0.28),
     textTheme: base.textTheme.apply(
       bodyColor: option.text,
       displayColor: option.text,
     ),
+    textSelectionTheme: TextSelectionThemeData(
+      cursorColor: option.accent,
+      selectionColor: option.accent.withValues(alpha: 0.35),
+      selectionHandleColor: option.accent,
+    ),
     inputDecorationTheme: InputDecorationTheme(
       labelStyle: TextStyle(color: option.text.withValues(alpha: 0.85)),
       hintStyle: TextStyle(color: option.text.withValues(alpha: 0.6)),
+      helperStyle: TextStyle(color: option.subtleText),
       filled: true,
       fillColor: option.surface,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -167,12 +180,20 @@ ThemeData buildAppTheme(String themeId) {
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: option.accent, width: 1.4),
       ),
+      iconColor: option.accent,
+      prefixIconColor: option.accent,
+      suffixIconColor: option.accent,
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: option.accent,
-        foregroundColor:
-            option.brightness == Brightness.dark ? Colors.black : Colors.white,
+        foregroundColor: onAccent,
+      ),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: option.accent,
+        foregroundColor: onAccent,
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
@@ -181,9 +202,64 @@ ThemeData buildAppTheme(String themeId) {
         foregroundColor: option.text,
       ),
     ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        foregroundColor: option.accent,
+      ),
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return option.accent;
+        }
+        return option.subtleText;
+      }),
+      trackColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return option.accent.withValues(alpha: 0.45);
+        }
+        return option.subtleText.withValues(alpha: 0.35);
+      }),
+    ),
+    checkboxTheme: CheckboxThemeData(
+      fillColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) return option.accent;
+        return option.surface;
+      }),
+      checkColor: WidgetStatePropertyAll<Color>(onAccent),
+      side: BorderSide(color: option.accent.withValues(alpha: 0.7)),
+    ),
+    radioTheme: RadioThemeData(
+      fillColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) return option.accent;
+        return option.subtleText;
+      }),
+    ),
+    progressIndicatorTheme: ProgressIndicatorThemeData(
+      color: option.accent,
+      circularTrackColor: option.subtleText.withValues(alpha: 0.25),
+      linearTrackColor: option.subtleText.withValues(alpha: 0.25),
+    ),
+    dropdownMenuTheme: DropdownMenuThemeData(
+      inputDecorationTheme: InputDecorationTheme(
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: option.accent.withValues(alpha: 0.35)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: option.accent, width: 1.4),
+        ),
+      ),
+      textStyle: TextStyle(color: option.text),
+    ),
     snackBarTheme: SnackBarThemeData(
       backgroundColor: option.surface,
       contentTextStyle: TextStyle(color: option.text),
+    ),
+    dividerTheme: DividerThemeData(
+      color: option.accent.withValues(alpha: 0.28),
+      thickness: 1,
     ),
     chipTheme: base.chipTheme.copyWith(
       selectedColor: option.accent.withValues(alpha: 0.28),
@@ -191,6 +267,7 @@ ThemeData buildAppTheme(String themeId) {
       side: BorderSide(color: option.accent.withValues(alpha: 0.35)),
       labelStyle: TextStyle(color: option.text),
       secondaryLabelStyle: TextStyle(color: option.text),
+      backgroundColor: option.surface,
     ),
   );
 }

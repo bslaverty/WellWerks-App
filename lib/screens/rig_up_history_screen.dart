@@ -14,7 +14,7 @@ class RigUpHistoryScreen extends StatefulWidget {
 }
 
 class _RigUpHistoryScreenState extends State<RigUpHistoryScreen> {
-  static const Color _gold = Color(0xFFCDA56A);
+  Color get _gold => Theme.of(context).colorScheme.primary;
 
   final _recoveryState = RecoveryStateService();
   final _inventoryService = RigUpInventoryService();
@@ -125,13 +125,12 @@ class _RigUpHistoryScreenState extends State<RigUpHistoryScreen> {
                   margin: const EdgeInsets.only(bottom: 10),
                   child: ListTile(
                     onTap: id.isEmpty ? null : () => _openRecord(id),
-                    leading:
-                        const Icon(Icons.inventory_2_outlined, color: _gold),
+                    leading: Icon(Icons.inventory_2_outlined, color: _gold),
                     title: Text(
                       customer.isNotEmpty
                           ? customer
                           : (company.isEmpty ? 'Not entered' : company),
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: _gold,
                         fontWeight: FontWeight.w800,
                       ),

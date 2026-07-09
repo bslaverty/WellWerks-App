@@ -14,9 +14,11 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  static const _gold = Color(0xFFCDA56A);
-  static const _bg = Color(0xFF0E0F10);
-  static const _card = Color(0xFF17191D);
+  Color get _accent => Theme.of(context).colorScheme.primary;
+  Color get _bg => Theme.of(context).scaffoldBackgroundColor;
+  Color get _card => Theme.of(context).cardColor;
+  Color get _text => Theme.of(context).colorScheme.onSurface;
+  Color get _subtle => Theme.of(context).colorScheme.onSurfaceVariant;
 
   final _service = AppSettingsService();
   AppSettingsData? _settings;
@@ -92,7 +94,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       decoration: BoxDecoration(
         color: _card,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _gold.withValues(alpha: 0.35)),
+        border: Border.all(color: _accent.withValues(alpha: 0.35)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -101,8 +103,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Text(
               title,
-              style: const TextStyle(
-                color: _gold,
+              style: TextStyle(
+                color: _accent,
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
               ),
@@ -120,7 +122,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     for (int i = 0; i < children.length; i++) {
       out.add(children[i]);
       if (i != children.length - 1) {
-        out.add(Divider(color: _gold.withValues(alpha: 0.25), height: 10));
+        out.add(Divider(color: _accent.withValues(alpha: 0.25), height: 10));
       }
     }
     return out;
@@ -134,11 +136,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }) {
     return SwitchListTile.adaptive(
       contentPadding: EdgeInsets.zero,
-      title: Text(title, style: const TextStyle(color: Colors.white)),
-      subtitle: Text(subtitle, style: const TextStyle(color: Colors.white70)),
+      title: Text(title, style: TextStyle(color: _text)),
+      subtitle: Text(subtitle, style: TextStyle(color: _subtle)),
       value: value,
-      activeThumbColor: _gold,
-      activeTrackColor: _gold.withValues(alpha: 0.45),
       onChanged: onChanged,
     );
   }
@@ -153,23 +153,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title,
-            style: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w700)),
+        Text(
+          title,
+          style: TextStyle(color: _text, fontWeight: FontWeight.w700),
+        ),
         const SizedBox(height: 2),
-        Text(subtitle,
-            style: const TextStyle(color: Colors.white70, fontSize: 12)),
+        Text(subtitle, style: TextStyle(color: _subtle, fontSize: 12)),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           initialValue: value,
           items: items,
           onChanged: onChanged,
-          dropdownColor: const Color(0xFF1D2024),
-          style: const TextStyle(color: Colors.white),
+          dropdownColor: _card,
+          style: TextStyle(color: _text),
           decoration: const InputDecoration(
             isDense: true,
-            filled: true,
-            fillColor: Color(0xFF111317),
             border: OutlineInputBorder(),
           ),
         ),
@@ -181,10 +179,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final s = _settings;
     if (_loading || s == null) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: _bg,
-        appBar: AppHeader(title: 'WellWerks Settings', showBack: true),
-        body: Center(child: CircularProgressIndicator()),
+        appBar: const AppHeader(title: 'WellWerks Settings', showBack: true),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -198,17 +196,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             margin: const EdgeInsets.only(bottom: 14),
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFF14171A),
+              color: _card,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _gold.withValues(alpha: 0.35)),
+              border: Border.all(color: _accent.withValues(alpha: 0.35)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'WellWerks Settings',
                   style: TextStyle(
-                    color: _gold,
+                    color: _accent,
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
                   ),
@@ -216,7 +214,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 6),
                 Text(
                   'Version: $_appVersionLabel',
-                  style: const TextStyle(color: Colors.white70),
+                  style: TextStyle(color: _subtle),
                 ),
               ],
             ),
@@ -491,15 +489,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.info_outline, color: _gold),
-                title: const Text('About WellWerks',
-                    style: TextStyle(color: Colors.white)),
-                subtitle: const Text(
+                leading: Icon(Icons.info_outline, color: _accent),
+                title: Text('About WellWerks', style: TextStyle(color: _text)),
+                subtitle: Text(
                   'App info, support, privacy policy, and terms.',
-                  style: TextStyle(color: Colors.white70),
+                  style: TextStyle(color: _subtle),
                 ),
-                trailing:
-                    const Icon(Icons.chevron_right, color: Colors.white70),
+                trailing: Icon(Icons.chevron_right, color: _subtle),
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const AboutScreen()),

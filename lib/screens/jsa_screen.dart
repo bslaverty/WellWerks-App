@@ -42,7 +42,7 @@ enum _JsaShareFormat {
 }
 
 class _JsaScreenState extends State<JsaScreen> {
-  static const gold = Color(0xFFCDA56A);
+  Color get gold => Theme.of(context).colorScheme.primary;
 
   final _storage = JsaStorageService();
   final _exportService = const JsaExportService();
@@ -707,10 +707,10 @@ class _JsaScreenState extends State<JsaScreen> {
   Widget _activeJobBanner() {
     final activeJob = _activeJob;
     if (activeJob == null) {
-      return const Card(
-        margin: EdgeInsets.only(bottom: 16),
+      return Card(
+        margin: const EdgeInsets.only(bottom: 16),
         child: Padding(
-          padding: EdgeInsets.all(14),
+          padding: const EdgeInsets.all(14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -718,8 +718,8 @@ class _JsaScreenState extends State<JsaScreen> {
                 'Active Job',
                 style: TextStyle(color: gold, fontWeight: FontWeight.bold),
               ),
-              SizedBox(height: 8),
-              Text(
+              const SizedBox(height: 8),
+              const Text(
                 'No active job found. Start a job first so this JSA can save under the current job.',
                 style: TextStyle(color: Colors.white70),
               ),
@@ -736,7 +736,7 @@ class _JsaScreenState extends State<JsaScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Active Job',
               style: TextStyle(color: gold, fontWeight: FontWeight.bold),
             ),
@@ -745,7 +745,7 @@ class _JsaScreenState extends State<JsaScreen> {
               activeJob.company.trim().isEmpty
                   ? 'No company entered'
                   : activeJob.company,
-              style: const TextStyle(color: gold, fontWeight: FontWeight.bold),
+              style: TextStyle(color: gold, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -1178,7 +1178,7 @@ class _JsaScreenState extends State<JsaScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'WellWerks JSA',
               style: TextStyle(
                 color: gold,
@@ -1304,7 +1304,7 @@ class _JsaScreenState extends State<JsaScreen> {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               color: gold,
               fontWeight: FontWeight.w800,
               fontSize: 18,
@@ -1347,7 +1347,7 @@ class _JsaScreenState extends State<JsaScreen> {
           children: [
             TextSpan(
               text: '$label: ',
-              style: const TextStyle(
+              style: TextStyle(
                 color: gold,
                 fontWeight: FontWeight.w700,
               ),
@@ -1374,7 +1374,7 @@ class _JsaScreenState extends State<JsaScreen> {
   Widget _section(String title) => Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Text(title,
-            style: const TextStyle(
+            style: TextStyle(
                 color: gold, fontSize: 18, fontWeight: FontWeight.bold)),
       );
 
@@ -1386,8 +1386,7 @@ class _JsaScreenState extends State<JsaScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(title,
-                  style: const TextStyle(
-                      color: gold, fontWeight: FontWeight.bold)),
+                  style: TextStyle(color: gold, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               if (items.isEmpty) const Text('None selected.'),
               for (final item in items)
@@ -1408,8 +1407,7 @@ class _JsaScreenState extends State<JsaScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Employee ${index + 1}',
-                  style: const TextStyle(
-                      color: gold, fontWeight: FontWeight.bold)),
+                  style: TextStyle(color: gold, fontWeight: FontWeight.bold)),
               const SizedBox(height: 10),
               TextField(
                   controller: _employeeNames[index],

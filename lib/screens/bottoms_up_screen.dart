@@ -27,7 +27,7 @@ class _SizeOption {
 }
 
 class _BottomsUpScreenState extends State<BottomsUpScreen> {
-  static const _gold = Color(0xFFCDA56A);
+  Color get _gold => Theme.of(context).colorScheme.primary;
 
   static const _tubingSizes = <_PipeOption>[
     _PipeOption('2-3/8" EUE', 0.00387),
@@ -160,15 +160,18 @@ Estimated Arrival: $arrivalTime''';
     return InputDecoration(
       labelText: label,
       filled: true,
-      fillColor: const Color(0xFF111317),
-      labelStyle: const TextStyle(color: Colors.white70),
+      fillColor: Theme.of(context).cardColor,
+      labelStyle:
+          TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFF3A3A3A)),
+        borderSide: BorderSide(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.35),
+        ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: _gold, width: 1.4),
+        borderSide: BorderSide(color: _gold, width: 1.4),
       ),
     );
   }
@@ -183,16 +186,16 @@ Estimated Arrival: $arrivalTime''';
       initialValue: value,
       items: items,
       onChanged: onChanged,
-      dropdownColor: const Color(0xFF1A1D21),
+      dropdownColor: Theme.of(context).cardColor,
       iconEnabledColor: _gold,
-      style: const TextStyle(color: Colors.white),
+      style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
       decoration: _fieldDecoration(label),
     );
   }
 
   Widget _sectionCard({required Widget child}) {
     return Card(
-      color: const Color(0xFF14171A),
+      color: Theme.of(context).cardColor,
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: child,
