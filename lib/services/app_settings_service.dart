@@ -374,6 +374,7 @@ class AppSettingsData {
     final normalized = (value ?? '').trim().toLowerCase();
     switch (normalized) {
       case 'negative':
+      case 'patriot':
       case 'osu':
       case 'ou':
       case 'military':

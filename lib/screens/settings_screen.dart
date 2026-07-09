@@ -474,13 +474,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     value: 'negative',
                     child: Text('Midnight'),
                   ),
-                  DropdownMenuItem(value: 'osu', child: Text('Industrial')),
-                  DropdownMenuItem(value: 'ou', child: Text('Forest')),
-                  DropdownMenuItem(value: 'military', child: Text('Patriot')),
+                  DropdownMenuItem(value: 'patriot', child: Text('Patriot')),
                   DropdownMenuItem(
                     value: 'high_visibility',
                     child: Text('Light'),
                   ),
+                  DropdownMenuItem(value: 'military', child: Text('Military')),
+                  DropdownMenuItem(value: 'ou', child: Text('OU')),
+                  DropdownMenuItem(value: 'osu', child: Text('OSU')),
                 ],
                 onChanged: (value) {
                   if (value == null) return;

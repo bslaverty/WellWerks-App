@@ -41,48 +41,60 @@ class AppThemeCatalog {
     id: 'negative',
     label: 'Midnight',
     brightness: Brightness.dark,
-    background: Color(0xFF0B1017),
-    surface: Color(0xFF151D28),
-    appBarBackground: Color(0xFF0A1017),
-    accent: Color(0xFF7A9CBF),
+    background: Color(0xFF0D131A),
+    surface: Color(0xFF1A232D),
+    appBarBackground: Color(0xFF0B1118),
+    accent: Color(0xFF7897B6),
     text: Colors.white,
-    subtleText: Color(0xFFB7C2CF),
+    subtleText: Color(0xFFB2C0CE),
+  );
+
+  static const patriot = AppThemeOption(
+    id: 'patriot',
+    label: 'Patriot',
+    brightness: Brightness.dark,
+    background: Color(0xFF0C1626),
+    surface: Color(0xFF18273C),
+    appBarBackground: Color(0xFF0A1526),
+    accent: Color(0xFFB15D5D),
+    text: Colors.white,
+    subtleText: Color(0xFFC4CEDC),
   );
 
   static const osu = AppThemeOption(
     id: 'osu',
-    label: 'Industrial',
+    label: 'OSU',
     brightness: Brightness.dark,
-    background: Color(0xFF111417),
-    surface: Color(0xFF1B2126),
-    appBarBackground: Color(0xFF101418),
-    accent: Color(0xFFF08B3D),
+    background: Color(0xFF120E0C),
+    surface: Color(0xFF231913),
+    appBarBackground: Color(0xFF110D0B),
+    accent: Color(0xFFDC7A28),
     text: Colors.white,
-    subtleText: Color(0xFFC1C8CF),
+    subtleText: Color(0xFFC2B6AE),
   );
 
   static const ou = AppThemeOption(
     id: 'ou',
-    label: 'Forest',
+    label: 'OU',
     brightness: Brightness.dark,
-    background: Color(0xFF0E1411),
-    surface: Color(0xFF19231D),
-    appBarBackground: Color(0xFF0E1511),
-    accent: Color(0xFFC7A56F),
+    background: Color(0xFF160E10),
+    surface: Color(0xFF28191E),
+    appBarBackground: Color(0xFF140D0F),
+    accent: Color(0xFFB04A54),
     text: Colors.white,
-    subtleText: Color(0xFFBBC5BC),
+    subtleText: Color(0xFFE3D7CA),
   );
 
   static const military = AppThemeOption(
     id: 'military',
-    label: 'Patriot',
+    label: 'Military',
     brightness: Brightness.dark,
-    background: Color(0xFF0C1220),
-    surface: Color(0xFF172033),
-    appBarBackground: Color(0xFF0B1220),
-    accent: Color(0xFFB55A5A),
+    background: Color(0xFF10150F),
+    surface: Color(0xFF1C251A),
+    appBarBackground: Color(0xFF0F150E),
+    accent: Color(0xFFC1A06E),
     text: Colors.white,
-    subtleText: Color(0xFFBCC6D6),
+    subtleText: Color(0xFFBAC3B2),
   );
 
   static const highVisibility = AppThemeOption(
@@ -100,10 +112,11 @@ class AppThemeCatalog {
   static const options = <AppThemeOption>[
     wellWerksDefault,
     negative,
-    osu,
-    ou,
-    military,
+    patriot,
     highVisibility,
+    military,
+    ou,
+    osu,
   ];
 
   static AppThemeOption fromId(String id) {
