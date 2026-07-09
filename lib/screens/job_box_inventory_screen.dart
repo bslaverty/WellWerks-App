@@ -75,10 +75,33 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
               for (final item in JobBoxInventoryCatalog.defaultItems)
                 item.copyWith(quantity: 0),
             ]
-          : record.items;
+          : _mergeWithDefaultItems(record.items);
       _loading = false;
     });
     await _persistWorkingDraft();
+  }
+
+  List<JobBoxInventoryItem> _mergeWithDefaultItems(
+      List<JobBoxInventoryItem> savedItems) {
+    final savedByKey = {
+      for (final item in savedItems) item.key: item,
+    };
+    final defaults = [
+      for (final item in JobBoxInventoryCatalog.defaultItems)
+        (savedByKey[item.key] ?? item).copyWith(
+          section: item.section,
+          isDefault: true,
+          canDelete: false,
+        ),
+    ];
+    final defaultKeys = {
+      for (final item in JobBoxInventoryCatalog.defaultItems) item.key,
+    };
+    final custom = savedItems
+        .where((item) => !defaultKeys.contains(item.key))
+        .map((item) => item.copyWith(canDelete: true))
+        .toList();
+    return [...defaults, ...custom];
   }
 
   JobBoxInventoryRecord _buildRecord({String? id}) {
@@ -279,10 +302,13 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
   }
 
   Widget _sectionCard(String title, List<JobBoxInventoryItem> items) {
-    if (items.isEmpty && _hideZeroQuantityItems) return const SizedBox.shrink();
-    final visible = _hideZeroQuantityItems
-        ? items.where((item) => item.quantity > 0).toList()
-        : items;
+    final hideZeros = _hideZeroQuantityItems &&
+        title !=
+            JobBoxInventoryCatalog.sectionLabel(
+                JobBoxInventoryCatalog.positiveChokesSection);
+    if (items.isEmpty && hideZeros) return const SizedBox.shrink();
+    final visible =
+        hideZeros ? items.where((item) => item.quantity > 0).toList() : items;
     if (visible.isEmpty) return const SizedBox.shrink();
     return Card(
       margin: const EdgeInsets.only(bottom: 14),
@@ -394,8 +420,8 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
     required Color accent,
   }) {
     return SizedBox(
-      width: 50,
-      height: 50,
+      width: 56,
+      height: 56,
       child: FilledButton(
         onPressed: enabled ? onPressed : null,
         style: FilledButton.styleFrom(

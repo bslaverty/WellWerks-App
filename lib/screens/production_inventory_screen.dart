@@ -58,6 +58,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   bool _loading = true;
   bool _saving = false;
   ProductionShift _activeShift = ProductionShift.empty();
+  JobSetup? _activeJobSetup;
   final Set<TextEditingController> _missingControllers =
       <TextEditingController>{};
   final Set<TextEditingController> _invalidControllers =
@@ -102,6 +103,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   Future<void> _load() async {
     final shift = await _service.loadActiveShift();
     final activeJob = await _jobStorage.loadActiveJob();
+    _activeJobSetup = activeJob;
     final settings = await _settingsService.load();
     _layoutProfiles = await _layoutService.loadProfiles();
     final activeLayoutId = await _layoutService.loadActiveProfileId();
@@ -391,6 +393,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
 
   Future<void> _saveInventory() async {
     final activeJob = await _jobStorage.loadActiveJob();
+    _activeJobSetup = activeJob;
     if (_useJobSetupTanks && activeJob != null) {
       setState(() {
         _applyJobSetupDefaults(activeJob);
@@ -720,7 +723,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   void _addWell() {
-    if (_useJobSetupTanks) return;
+    if (_useJobSetupTanks && _activeJobSetup != null) return;
     setState(() {
       _wellControllers.add(
         TextEditingController(text: 'Well ${_wellControllers.length + 1}'),
@@ -731,7 +734,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   void _removeWell(int index) {
-    if (_useJobSetupTanks) return;
+    if (_useJobSetupTanks && _activeJobSetup != null) return;
     if (_wellControllers.length == 1) return;
     setState(() {
       final controller = _wellControllers.removeAt(index);
@@ -743,7 +746,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   void _addTank(List<_TankControllers> list, String label) {
-    if (_useJobSetupTanks) return;
+    if (_useJobSetupTanks && _activeJobSetup != null) return;
     setState(() {
       list.add(_TankControllers(
         name: TextEditingController(text: '$label ${list.length + 1}'),
@@ -757,7 +760,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   void _removeTank(List<_TankControllers> list, int index) {
-    if (_useJobSetupTanks) return;
+    if (_useJobSetupTanks && _activeJobSetup != null) return;
     if (list.length == 1) return;
     setState(() {
       final tank = list.removeAt(index);
@@ -889,9 +892,11 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                       ),
                     ),
                     IconButton(
-                      onPressed: _useJobSetupTanks || tanks.length == 1
-                          ? null
-                          : () => _removeTank(tanks, i),
+                      onPressed:
+                          (_useJobSetupTanks && _activeJobSetup != null) ||
+                                  tanks.length == 1
+                              ? null
+                              : () => _removeTank(tanks, i),
                       icon: const Icon(Icons.remove_circle_outline),
                     ),
                   ],
@@ -899,7 +904,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                 _textField(
                   'Tank Name',
                   tanks[i].name,
-                  enabled: !_useJobSetupTanks,
+                  enabled: !(_useJobSetupTanks && _activeJobSetup != null),
                 ),
                 ..._gaugeInputFields(tanks[i]),
                 WwNumberField(
@@ -936,8 +941,9 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
       SizedBox(
         width: double.infinity,
         child: OutlinedButton.icon(
-          onPressed:
-              _useJobSetupTanks ? null : () => _addTank(tanks, tankLabel),
+          onPressed: (_useJobSetupTanks && _activeJobSetup != null)
+              ? null
+              : () => _addTank(tanks, tankLabel),
           icon: const Icon(Icons.add),
           label: Text('Add $tankLabel'),
         ),
@@ -969,6 +975,8 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                 .map((row) => row.waterProduction)
                 .reduce((a, b) => a + b) /
             avgWaterRateRows.length;
+    final recentRows = List<ProductionReportRow>.from(_productionRows)
+      ..sort((a, b) => b.hourIndex.compareTo(a.hourIndex));
 
     return _section('Running Production Totals', [
       Text(
@@ -986,6 +994,29 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
           'Water currently on location: ${_fmt(latest?.currentWaterBbl ?? double.nan)} BBL'),
       Text('Oil production rate: ${_fmt(avgOilRate)} BBL/hr'),
       Text('Water production rate: ${_fmt(avgWaterRate)} BBL/hr'),
+      const SizedBox(height: 12),
+      const Text(
+        'Recent Historical Readings',
+        style: TextStyle(
+          color: Color(0xFFCDA56A),
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      const SizedBox(height: 8),
+      if (recentRows.isEmpty)
+        const Text(
+          'No readings saved yet. Save a Quick Round entry to begin history.',
+          style: TextStyle(color: Colors.white70),
+        )
+      else
+        for (final row in recentRows.take(10))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              '${row.time} • ${row.well} • Oil ${_fmt(row.oilProduction)} / Water ${_fmt(row.waterProduction)} BBL/hr',
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ),
     ]);
   }
 
@@ -1281,14 +1312,20 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                 Expanded(
                   child: Column(
                     children: [
-                      _textField('Well ${i + 1}', _wellControllers[i]),
+                      _textField(
+                        'Well ${i + 1}',
+                        _wellControllers[i],
+                        enabled:
+                            !(_useJobSetupTanks && _activeJobSetup != null),
+                      ),
                       _wellChokeField(i),
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
                 IconButton(
-                  onPressed: _useJobSetupTanks || _wellControllers.length == 1
+                  onPressed: (_useJobSetupTanks && _activeJobSetup != null) ||
+                          _wellControllers.length == 1
                       ? null
                       : () => _removeWell(i),
                   icon: const Icon(Icons.remove_circle_outline),
@@ -1298,7 +1335,9 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: _useJobSetupTanks ? null : _addWell,
+              onPressed: (_useJobSetupTanks && _activeJobSetup != null)
+                  ? null
+                  : _addWell,
               icon: const Icon(Icons.add),
               label: const Text('Add Well'),
             ),

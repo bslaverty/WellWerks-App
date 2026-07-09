@@ -654,6 +654,18 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   double _hourlyGas(int index) {
+    final currentWell = _controllers[index].well;
+    final hasPrevious = _latestSavedBefore(index, currentWell) != null;
+    if (!hasPrevious) {
+      return double.nan;
+    }
+    final intervalHours =
+        double.tryParse(_controllers[index].hoursSincePrevious.text.trim()) ??
+            0;
+    if (intervalHours <= 0) {
+      return double.nan;
+    }
+
     if (!_useGasAccumulator) {
       if (_controllers[index].salesGasRate.text.trim().isEmpty) {
         return double.nan;
@@ -665,10 +677,11 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     if (previous.isNaN) {
       return double.nan;
     }
-    return ProductionMath.hourlyGas(
+    final intervalGas = ProductionMath.hourlyGas(
       currentGasAccum: _n(_controllers[index].currentGasAccum.text),
       previousGasAccum: previous,
     );
+    return intervalGas / intervalHours;
   }
 
   double _gas24Hour(int index) {
@@ -684,38 +697,72 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   double _waterProduction(int index) {
     final check = _controllers[index];
+    final currentWell = check.well;
+    final hasPrevious = _latestSavedBefore(index, currentWell) != null;
+    if (!hasPrevious) {
+      return double.nan;
+    }
+    final intervalHours =
+        double.tryParse(check.hoursSincePrevious.text.trim()) ?? 0;
+    if (intervalHours <= 0) {
+      return double.nan;
+    }
+
     final current = _currentWaterBbl(index);
     final previous = _previousWaterBbl(index);
     if (current.isNaN || previous.isNaN) {
       return double.nan;
     }
-    return ProductionMath.waterProduction(
+    final intervalVolume = ProductionMath.waterProduction(
       currentWaterBbl: current,
       previousWaterBbl: previous,
       waterHauled: _n(check.waterHauled.text),
       waterPumped: _n(check.waterPumped.text),
-      preRoundWaterHauled: _n(_shift.inventory.waterHauledBeforeRound),
-      preRoundWaterPumped: _n(_shift.inventory.waterPumpedBeforeRound),
-      isFirstHour: index == 0,
-    ).clamp(0, double.infinity).toDouble();
+      preRoundWaterHauled: 0,
+      preRoundWaterPumped: 0,
+      isFirstHour: false,
+    );
+    if (intervalVolume < 0) {
+      return double.nan;
+    }
+    return (intervalVolume / intervalHours)
+        .clamp(0, double.infinity)
+        .toDouble();
   }
 
   double _oilProduction(int index) {
     final check = _controllers[index];
+    final currentWell = check.well;
+    final hasPrevious = _latestSavedBefore(index, currentWell) != null;
+    if (!hasPrevious) {
+      return double.nan;
+    }
+    final intervalHours =
+        double.tryParse(check.hoursSincePrevious.text.trim()) ?? 0;
+    if (intervalHours <= 0) {
+      return double.nan;
+    }
+
     final current = _currentOilBbl(index);
     final previous = _previousOilBbl(index);
     if (current.isNaN || previous.isNaN) {
       return double.nan;
     }
-    return ProductionMath.oilProduction(
+    final intervalVolume = ProductionMath.oilProduction(
       currentOilBbl: current,
       previousOilBbl: previous,
       oilHauled: _n(check.oilHauled.text),
       oilPumped: _n(check.oilPumped.text),
-      preRoundOilHauled: _n(_shift.inventory.oilHauledBeforeRound),
-      preRoundOilPumped: _n(_shift.inventory.oilPumpedBeforeRound),
-      isFirstHour: index == 0,
-    ).clamp(0, double.infinity).toDouble();
+      preRoundOilHauled: 0,
+      preRoundOilPumped: 0,
+      isFirstHour: false,
+    );
+    if (intervalVolume < 0) {
+      return double.nan;
+    }
+    return (intervalVolume / intervalHours)
+        .clamp(0, double.infinity)
+        .toDouble();
   }
 
   String _gaugeText(
