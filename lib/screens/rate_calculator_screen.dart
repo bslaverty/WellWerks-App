@@ -148,9 +148,11 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
       _persistTimerState();
+      _saveRateLogState();
     }
     if (state == AppLifecycleState.resumed) {
       _restoreTimerState();
+      _loadRateLogState();
     }
   }
 
@@ -1087,6 +1089,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   @override
   void dispose() {
     _persistTimerState();
+    _saveRateLogState();
     WidgetsBinding.instance.removeObserver(this);
     _countdownTimer?.cancel();
     minutes.removeListener(_handleMinutesChanged);
