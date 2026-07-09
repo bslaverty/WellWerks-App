@@ -16,7 +16,11 @@ workflows:
           set -e
           VERSION_LINE=$(grep '^version:' pubspec.yaml | awk '{print $2}')
           APP_VERSION_NAME=${VERSION_LINE%%+*}
-          APP_BUILD_NUMBER=${BUILD_NUMBER:-${PROJECT_BUILD_NUMBER:-$BUILD_NUMBER_FALLBACK}}
+          PUBSPEC_BUILD_NUMBER=${VERSION_LINE#*+}
+          if [ "$PUBSPEC_BUILD_NUMBER" = "$VERSION_LINE" ]; then
+            PUBSPEC_BUILD_NUMBER="$BUILD_NUMBER_FALLBACK"
+          fi
+          APP_BUILD_NUMBER=${APP_STORE_BUILD_NUMBER:-$PUBSPEC_BUILD_NUMBER}
 
           echo "Using build-name: $APP_VERSION_NAME"
           echo "Using build-number: $APP_BUILD_NUMBER"
@@ -55,7 +59,11 @@ workflows:
           set -e
           VERSION_LINE=$(grep '^version:' pubspec.yaml | awk '{print $2}')
           APP_VERSION_NAME=${VERSION_LINE%%+*}
-          APP_BUILD_NUMBER=${BUILD_NUMBER:-${PROJECT_BUILD_NUMBER:-$BUILD_NUMBER_FALLBACK}}
+          PUBSPEC_BUILD_NUMBER=${VERSION_LINE#*+}
+          if [ "$PUBSPEC_BUILD_NUMBER" = "$VERSION_LINE" ]; then
+            PUBSPEC_BUILD_NUMBER="$BUILD_NUMBER_FALLBACK"
+          fi
+          APP_BUILD_NUMBER=${APP_STORE_BUILD_NUMBER:-$PUBSPEC_BUILD_NUMBER}
 
           echo "Using build-name: $APP_VERSION_NAME"
           echo "Using build-number: $APP_BUILD_NUMBER"
