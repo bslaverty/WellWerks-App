@@ -112,7 +112,8 @@ ThemeData buildAppTheme(String themeId) {
   final scheme = ColorScheme(
     brightness: option.brightness,
     primary: option.accent,
-    onPrimary: option.brightness == Brightness.dark ? Colors.black : Colors.white,
+    onPrimary:
+        option.brightness == Brightness.dark ? Colors.black : Colors.white,
     secondary: option.accent,
     onSecondary:
         option.brightness == Brightness.dark ? Colors.black : Colors.white,
