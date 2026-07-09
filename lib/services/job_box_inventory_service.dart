@@ -7,6 +7,8 @@ import '../models/job_box_inventory.dart';
 class JobBoxInventoryService {
   static const _draftKey = 'wellwerks_job_box_inventory_working_draft_v1';
   static const _recordsKey = 'wellwerks_job_box_inventory_records_v1';
+  static const _hideZeroPreferenceKey =
+      'wellwerks_job_box_inventory_hide_zero_v1';
 
   Future<Map<String, dynamic>> _loadRecordsMap(SharedPreferences prefs) async {
     final raw = prefs.getString(_recordsKey);
@@ -46,6 +48,16 @@ class JobBoxInventoryService {
   Future<void> clearWorkingDraft() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_draftKey);
+  }
+
+  Future<bool> loadHideZeroPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_hideZeroPreferenceKey) ?? false;
+  }
+
+  Future<void> saveHideZeroPreference(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_hideZeroPreferenceKey, value);
   }
 
   Future<JobBoxInventoryRecord?> loadRecord(String recordId) async {

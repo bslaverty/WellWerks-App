@@ -49,11 +49,14 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
   Future<void> _load() async {
     JobBoxInventoryRecord? record;
     final initialId = widget.initialRecordId?.trim() ?? '';
+    final hideZeroPreference = await _service.loadHideZeroPreference();
     if (initialId.isNotEmpty) {
       record = await _service.loadRecord(initialId);
     }
     record ??= await _service.loadWorkingDraft();
-    record ??= JobBoxInventoryRecord.createDefault();
+    record ??= JobBoxInventoryRecord.createDefault().copyWith(
+      hideZeroQuantityItems: hideZeroPreference,
+    );
 
     if (!mounted) return;
     setState(() {
@@ -341,16 +344,18 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
             ),
           ),
           const SizedBox(width: 10),
-          _stepButton(
-            icon: Icons.remove,
-            onPressed: item.quantity <= 0
-                ? null
-                : () => _updateItemQuantity(item.key, -1),
+          _quantityStepButton(
+            symbol: '−',
+            enabled: item.quantity > 0,
+            onPressed: () => _updateItemQuantity(item.key, -1),
+            accent: accent,
           ),
           const SizedBox(width: 8),
-          _stepButton(
-            icon: Icons.add,
+          _quantityStepButton(
+            symbol: '+',
+            enabled: true,
             onPressed: () => _updateItemQuantity(item.key, 1),
+            accent: accent,
           ),
           if (item.canDelete) ...[
             const SizedBox(width: 8),
@@ -372,6 +377,39 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
       child: IconButton.filledTonal(
         onPressed: onPressed,
         icon: Icon(icon),
+      ),
+    );
+  }
+
+  Widget _quantityStepButton({
+    required String symbol,
+    required bool enabled,
+    required VoidCallback onPressed,
+    required Color accent,
+  }) {
+    return SizedBox(
+      width: 50,
+      height: 50,
+      child: FilledButton(
+        onPressed: enabled ? onPressed : null,
+        style: FilledButton.styleFrom(
+          backgroundColor: accent,
+          foregroundColor: Colors.black,
+          disabledBackgroundColor: accent.withValues(alpha: 0.55),
+          disabledForegroundColor: Colors.black.withValues(alpha: 0.7),
+          padding: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: Text(
+          symbol,
+          style: const TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.w900,
+            height: 1,
+          ),
+        ),
       ),
     );
   }
@@ -459,9 +497,10 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
           contentPadding: EdgeInsets.zero,
           title: const Text('Hide Zero Quantity Items'),
           value: _hideZeroQuantityItems,
-          onChanged: (value) {
+          onChanged: (value) async {
             setState(() => _hideZeroQuantityItems = value);
-            _persistWorkingDraft();
+            await _service.saveHideZeroPreference(value);
+            await _persistWorkingDraft();
           },
         ),
       ],

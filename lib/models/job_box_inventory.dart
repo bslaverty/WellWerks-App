@@ -313,7 +313,7 @@ class JobBoxInventoryRecord {
       date: json['date'] as String? ?? '',
       wellNames: json['wellNames'] as String? ?? '',
       jobBoxNumber: json['jobBoxNumber'] as String? ?? '',
-      hideZeroQuantityItems: json['hideZeroQuantityItems'] as bool? ?? true,
+      hideZeroQuantityItems: json['hideZeroQuantityItems'] as bool? ?? false,
       items: ((json['items'] as List?) ?? const [])
           .map((item) => JobBoxInventoryItem.fromJson(
               Map<String, dynamic>.from(item as Map)))
@@ -332,7 +332,7 @@ class JobBoxInventoryRecord {
       date: DateFormat('MM/dd/yyyy').format(now),
       wellNames: '',
       jobBoxNumber: '',
-      hideZeroQuantityItems: true,
+      hideZeroQuantityItems: false,
       items: [
         for (final item in JobBoxInventoryCatalog.defaultItems)
           item.copyWith(quantity: 0),
