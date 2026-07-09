@@ -50,7 +50,9 @@ class _JsaScreenState extends State<JsaScreen> {
   final _recoveryState = RecoveryStateService();
   final _exportImageKey = GlobalKey();
   final _location = TextEditingController();
-  final _wellName = TextEditingController();
+  final _county = TextEditingController();
+  final _cityState = TextEditingController();
+  final _gpsCoordinates = TextEditingController();
   final _notes = TextEditingController();
   final _weatherTemperature = TextEditingController();
   final _weatherConditions = TextEditingController();
@@ -384,11 +386,14 @@ class _JsaScreenState extends State<JsaScreen> {
     return '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
   }
 
-  String _composeWellNameFromAddress(Map<String, dynamic> address) {
-    final county = (address['county'] ?? address['state_district'] ?? '')
+  String _countyFromAddress(Map<String, dynamic> address) {
+    return (address['county'] ?? address['state_district'] ?? '')
         .toString()
         .trim();
-    final town = (address['city'] ??
+  }
+
+  String _cityStateFromAddress(Map<String, dynamic> address) {
+    final city = (address['city'] ??
             address['town'] ??
             address['village'] ??
             address['hamlet'] ??
@@ -396,11 +401,9 @@ class _JsaScreenState extends State<JsaScreen> {
         .toString()
         .trim();
     final state = (address['state'] ?? '').toString().trim();
-    final parts = <String>[];
-    if (county.isNotEmpty) parts.add(county);
-    if (town.isNotEmpty && !parts.contains(town)) parts.add(town);
-    if (state.isNotEmpty && !parts.contains(state)) parts.add(state);
-    return parts.join(', ');
+    if (city.isEmpty) return state;
+    if (state.isEmpty) return city;
+    return '$city, $state';
   }
 
   Future<Position> _ensurePosition() async {
@@ -425,10 +428,17 @@ class _JsaScreenState extends State<JsaScreen> {
 
   Future<void> _copyGpsCoordinates() async {
     try {
-      final position = _currentPosition ?? await _ensurePosition();
-      _currentPosition = position;
+      final current = _gpsCoordinates.text.trim();
+      final fallbackPosition = _currentPosition ?? await _ensurePosition();
+      _currentPosition = fallbackPosition;
+      final textToCopy = current.isNotEmpty
+          ? current
+          : _formatGpsCoordinates(fallbackPosition);
+      if (current.isEmpty) {
+        _gpsCoordinates.text = textToCopy;
+      }
       await Clipboard.setData(
-        ClipboardData(text: _formatGpsCoordinates(position)),
+        ClipboardData(text: textToCopy),
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -456,15 +466,22 @@ class _JsaScreenState extends State<JsaScreen> {
         reverseUri,
         headers: const {'User-Agent': 'WellWerks/1.0'},
       );
+      final coordsText = _formatGpsCoordinates(position);
+      if (_settings.jsaAutoLocation || _gpsCoordinates.text.trim().isEmpty) {
+        _gpsCoordinates.text = coordsText;
+      }
       if (reverseResponse.statusCode == 200) {
         final reverseMap =
             jsonDecode(reverseResponse.body) as Map<String, dynamic>;
         final address = reverseMap['address'] as Map<String, dynamic>?;
-        final wellName =
-            address == null ? '' : _composeWellNameFromAddress(address);
-        if (wellName.isNotEmpty &&
-            (_settings.jsaAutoLocation || _wellName.text.trim().isEmpty)) {
-          _wellName.text = wellName;
+        final countyText = address == null ? '' : _countyFromAddress(address);
+        final cityStateText =
+            address == null ? '' : _cityStateFromAddress(address);
+        if (_settings.jsaAutoLocation || _county.text.trim().isEmpty) {
+          _county.text = countyText;
+        }
+        if (_settings.jsaAutoLocation || _cityState.text.trim().isEmpty) {
+          _cityState.text = cityStateText;
         }
       }
 
@@ -508,7 +525,9 @@ class _JsaScreenState extends State<JsaScreen> {
 
   void _clearFormValues({required bool resetDateTime}) {
     _location.clear();
-    _wellName.clear();
+    _county.clear();
+    _cityState.clear();
+    _gpsCoordinates.clear();
     _notes.clear();
     _weatherTemperature.clear();
     _weatherConditions.clear();
@@ -542,7 +561,9 @@ class _JsaScreenState extends State<JsaScreen> {
     }
     if (_selectedTasks.isEmpty) _selectedTasks.add('Flowback');
     _location.text = draft.location;
-    _wellName.text = draft.wellName;
+    _county.text = draft.county;
+    _cityState.text = draft.cityState;
+    _gpsCoordinates.text = draft.gpsCoordinates;
     _notes.text = draft.notes;
     _weatherTemperature.text = draft.weatherTemperature;
     _weatherConditions.text = draft.weatherConditions;
@@ -577,7 +598,9 @@ class _JsaScreenState extends State<JsaScreen> {
   @override
   void dispose() {
     _location.dispose();
-    _wellName.dispose();
+    _county.dispose();
+    _cityState.dispose();
+    _gpsCoordinates.dispose();
     _notes.dispose();
     _weatherTemperature.dispose();
     _weatherConditions.dispose();
@@ -641,7 +664,9 @@ class _JsaScreenState extends State<JsaScreen> {
       time:
           '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}',
       location: _location.text.trim(),
-      wellName: _wellName.text.trim(),
+      county: _county.text.trim(),
+      cityState: _cityState.text.trim(),
+      gpsCoordinates: _gpsCoordinates.text.trim(),
       task: _tasks.join(', '),
       tasks: _tasks,
       steps: _steps,
@@ -723,34 +748,15 @@ class _JsaScreenState extends State<JsaScreen> {
               style: const TextStyle(color: gold, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 10,
-              runSpacing: 8,
-              children: [
-                _jobChip('Pad', activeJob.padName),
-                _jobChip('Well', activeJob.primaryWell),
-                _jobChip('Shift', activeJob.shift),
-              ],
+            const Text(
+              'JSA will save under this active job.',
+              style: TextStyle(color: Colors.white70),
             ),
           ],
         ),
       ),
     );
   }
-
-  Widget _jobChip(String label, String value) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: gold.withValues(alpha: 0.35)),
-        ),
-        child: Text(
-          '$label: ${value.trim().isEmpty ? 'Not entered' : value.trim()}',
-          style: const TextStyle(
-              color: Colors.white70, fontWeight: FontWeight.w600),
-        ),
-      );
 
   Future<Uint8List?> _captureExportImageBytes(JsaDraft draft) async {
     setState(() => _exportPreviewDraft = draft);
@@ -975,14 +981,6 @@ class _JsaScreenState extends State<JsaScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: _wellName,
-                decoration: const InputDecoration(
-                  labelText: 'Well Name',
-                  helperText: 'Auto-filled from GPS when available',
-                ),
-              ),
-              const SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(
@@ -994,6 +992,37 @@ class _JsaScreenState extends State<JsaScreen> {
                       child: OutlinedButton(
                           onPressed: _pickTime,
                           child: Text('Time: $timeText'))),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _county,
+                readOnly: true,
+                decoration: const InputDecoration(labelText: 'County'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _cityState,
+                readOnly: true,
+                decoration: const InputDecoration(labelText: 'City, State'),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _gpsCoordinates,
+                      readOnly: true,
+                      decoration:
+                          const InputDecoration(labelText: 'GPS Coordinates'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  IconButton.filled(
+                    onPressed: _copyGpsCoordinates,
+                    icon: const Icon(Icons.copy),
+                    tooltip: 'Copy GPS Coordinates',
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -1033,15 +1062,6 @@ class _JsaScreenState extends State<JsaScreen> {
                         )
                       : const Icon(Icons.cloud_sync_outlined),
                   label: const Text('Refresh Weather'),
-                ),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _copyGpsCoordinates,
-                  icon: const Icon(Icons.copy),
-                  label: const Text('Copy GPS Coordinates'),
                 ),
               ),
               const SizedBox(height: 18),
@@ -1135,7 +1155,9 @@ class _JsaScreenState extends State<JsaScreen> {
           time:
               '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}',
           location: _location.text.trim(),
-          wellName: _wellName.text.trim(),
+          county: _county.text.trim(),
+          cityState: _cityState.text.trim(),
+          gpsCoordinates: _gpsCoordinates.text.trim(),
           task: _tasks.join(', '),
           tasks: _tasks,
           steps: _steps,
@@ -1166,9 +1188,7 @@ class _JsaScreenState extends State<JsaScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              exportDraft.company.trim().isEmpty
-                  ? '-'
-                  : exportDraft.company.trim(),
+              exportDraft.company.trim(),
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
@@ -1179,19 +1199,14 @@ class _JsaScreenState extends State<JsaScreen> {
             _exportPreviewSection('Job Information', [
               _previewLine('Date', exportDraft.date),
               _previewLine('Time', exportDraft.time),
-              _previewLine('Location', exportDraft.location),
+              _previewLine('Company', exportDraft.company),
+              _previewLine('Location / Pad', exportDraft.location),
+              _previewLine('County', exportDraft.county),
+              _previewLine('City, State', exportDraft.cityState),
+              _previewLine('GPS Coordinates', exportDraft.gpsCoordinates),
               _previewLine('Temperature', exportDraft.weatherTemperature),
-              _previewLine('Conditions', exportDraft.weatherConditions),
               _previewLine('Wind', exportDraft.weatherWind),
-              _previewLine('Pad', _activeJob?.padName ?? ''),
-              _previewLine(
-                'Well',
-                exportDraft.wellName.trim().isEmpty
-                    ? (_activeJob?.primaryWell ?? '')
-                    : exportDraft.wellName,
-              ),
-              _previewLine('Customer', _activeJob?.customer ?? ''),
-              _previewLine('Lease', _activeJob?.leaseName ?? ''),
+              _previewLine('Conditions', exportDraft.weatherConditions),
             ]),
             _exportPreviewSection(
                 'Selected Steps', _previewBullets(exportDraft.tasks)),
@@ -1266,9 +1281,7 @@ class _JsaScreenState extends State<JsaScreen> {
             ]),
             _exportPreviewSection('Notes / Comments', [
               Text(
-                exportDraft.notes.trim().isEmpty
-                    ? '-'
-                    : exportDraft.notes.trim(),
+                exportDraft.notes.trim(),
                 style: const TextStyle(color: Colors.white70),
               ),
             ]),
@@ -1340,7 +1353,7 @@ class _JsaScreenState extends State<JsaScreen> {
               ),
             ),
             TextSpan(
-              text: trimmed.isEmpty ? '-' : trimmed,
+              text: trimmed,
               style: const TextStyle(color: Colors.white70),
             ),
           ],

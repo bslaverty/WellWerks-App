@@ -28,8 +28,9 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return AppBar(
-      backgroundColor: const Color(0xFF0D0D0F),
+      backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
       elevation: 0,
       leading: showBack
           ? IconButton(
@@ -50,8 +51,8 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
               errorBuilder: (_, __, ___) => const SizedBox()),
           const SizedBox(width: 10),
           Text(title,
-              style: const TextStyle(
-                  color: Color(0xFFCDA56A), fontWeight: FontWeight.w800)),
+              style: TextStyle(
+                  color: colors.primary, fontWeight: FontWeight.w800)),
         ],
       ),
       centerTitle: true,

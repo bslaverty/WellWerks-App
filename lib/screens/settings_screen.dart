@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/app_settings_service.dart';
+import '../services/app_theme_controller.dart';
 import '../widgets/app_header.dart';
 import 'about_support_screen.dart';
 
@@ -46,6 +47,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _save(AppSettingsData next) async {
     await _service.save(next);
+    AppThemeController.instance.setTheme(next.appTheme);
     if (!mounted) return;
     setState(() => _settings = next);
   }
@@ -467,10 +469,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: s.appTheme,
                 items: const [
                   DropdownMenuItem(
-                    value: 'wellwerks_dark',
-                    child: Text('WellWerks Dark'),
+                    value: 'wellwerks_default',
+                    child: Text('WellWerks Default'),
                   ),
-                  DropdownMenuItem(value: 'dark', child: Text('Classic Dark')),
+                  DropdownMenuItem(
+                    value: 'negative',
+                    child: Text('Negative'),
+                  ),
+                  DropdownMenuItem(value: 'osu', child: Text('OSU')),
+                  DropdownMenuItem(value: 'ou', child: Text('OU')),
+                  DropdownMenuItem(value: 'military', child: Text('Military')),
+                  DropdownMenuItem(
+                    value: 'high_visibility',
+                    child: Text('High Visibility'),
+                  ),
                 ],
                 onChanged: (value) {
                   if (value == null) return;

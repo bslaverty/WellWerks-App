@@ -34,7 +34,7 @@ class JsaExportService {
         build: (context) => [
           _header(draft),
           pw.SizedBox(height: 10),
-          _infoSection(draft, activeJob),
+          _infoSection(draft),
           pw.SizedBox(height: 10),
           _listSection('Selected Steps', draft.tasks),
           _listSection('Basic Steps', draft.steps),
@@ -122,22 +122,18 @@ class JsaExportService {
     );
   }
 
-  pw.Widget _infoSection(JsaDraft draft, JobSetup? activeJob) {
+  pw.Widget _infoSection(JsaDraft draft) {
     final rows = <List<String>>[
       ['Date', _safe(draft.date)],
       ['Time', _safe(draft.time)],
       ['Company', _safe(draft.company)],
-      ['Location', _safe(draft.location)],
-      ['Pad', _safe(activeJob?.padName ?? '')],
-      [
-        'Well',
-        _safe(draft.wellName.isEmpty
-            ? (activeJob?.primaryWell ?? '')
-            : draft.wellName)
-      ],
-      ['Customer', _safe(activeJob?.customer ?? '')],
-      ['Lease', _safe(activeJob?.leaseName ?? '')],
-      ['Shift', _safe(activeJob?.shift ?? '')],
+      ['Location / Pad', _safe(draft.location)],
+      ['County', _safe(draft.county)],
+      ['City, State', _safe(draft.cityState)],
+      ['GPS Coordinates', _safe(draft.gpsCoordinates)],
+      ['Temperature', _safe(draft.weatherTemperature)],
+      ['Wind', _safe(draft.weatherWind)],
+      ['Conditions', _safe(draft.weatherConditions)],
     ];
 
     return _sectionCard(
@@ -289,6 +285,6 @@ class JsaExportService {
 
   String _safe(String value) {
     final trimmed = value.trim();
-    return trimmed.isEmpty ? '-' : trimmed;
+    return trimmed;
   }
 }

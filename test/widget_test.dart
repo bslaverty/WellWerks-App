@@ -956,17 +956,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Active Job'), findsOneWidget);
-    expect(find.textContaining('Pad: JSA Pad'), findsOneWidget);
-    expect(find.textContaining('Well: JSA 1'), findsOneWidget);
-    expect(find.textContaining('Shift: Night'), findsOneWidget);
+    expect(
+      find.text('JSA will save under this active job.'),
+      findsOneWidget,
+    );
 
     await tester.enterText(
       labeledTextField('Location / Pad').first,
       'JSA Pad',
-    );
-    await tester.enterText(
-      labeledTextField('Well Name').first,
-      'JSA 1',
     );
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
@@ -978,7 +975,6 @@ void main() {
         date: '2026-07-05',
         time: 'Night',
         location: 'JSA Pad',
-        wellName: 'JSA 1',
         task: 'Flowback',
         steps: const ['Monitor well flow'],
         hazards: const ['High pressure'],

@@ -67,7 +67,10 @@ class JsaDraft {
     required this.date,
     required this.time,
     required this.location,
-    required this.wellName,
+    this.county = '',
+    this.cityState = '',
+    this.gpsCoordinates = '',
+    this.wellName = '',
     required this.task,
     List<String>? tasks,
     required this.steps,
@@ -85,6 +88,9 @@ class JsaDraft {
   String date;
   String time;
   String location;
+  String county;
+  String cityState;
+  String gpsCoordinates;
   String wellName;
   String task;
   List<String> tasks;
@@ -103,6 +109,9 @@ class JsaDraft {
         'date': date,
         'time': time,
         'location': location,
+        'county': county,
+        'cityState': cityState,
+        'gpsCoordinates': gpsCoordinates,
         'wellName': wellName,
         'task': task,
         'tasks': tasks,
@@ -122,6 +131,9 @@ class JsaDraft {
         date: json['date'] as String? ?? '',
         time: json['time'] as String? ?? '',
         location: json['location'] as String? ?? '',
+        county: json['county'] as String? ?? '',
+        cityState: json['cityState'] as String? ?? '',
+        gpsCoordinates: json['gpsCoordinates'] as String? ?? '',
         wellName: json['wellName'] as String? ?? '',
         task: json['task'] as String? ?? '',
         tasks: List<String>.from(json['tasks'] as List? ??

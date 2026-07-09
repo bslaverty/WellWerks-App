@@ -30,7 +30,7 @@ class AppSettingsDefaults {
   static const historyRetentionDays = 30;
   static const historyExportMode = 'csv';
   static const appNotifications = true;
-  static const appTheme = 'wellwerks_dark';
+  static const appTheme = 'wellwerks_default';
   static const optionalReportSections = [
     'vru',
     'flare',
@@ -372,7 +372,20 @@ class AppSettingsData {
 
   static String _normalizeTheme(String? value) {
     final normalized = (value ?? '').trim().toLowerCase();
-    return normalized == 'dark' ? 'dark' : 'wellwerks_dark';
+    switch (normalized) {
+      case 'negative':
+      case 'osu':
+      case 'ou':
+      case 'military':
+      case 'high_visibility':
+      case 'wellwerks_default':
+        return normalized;
+      case 'wellwerks_dark':
+      case 'dark':
+        return 'wellwerks_default';
+      default:
+        return AppSettingsDefaults.appTheme;
+    }
   }
 
   static List<String> _normalizeOptionalSections(List<String> value) {
