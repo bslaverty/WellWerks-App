@@ -102,6 +102,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   bool _rateLogEnabled = false;
   bool _rateLogExpanded = false;
   final List<_RateLogEntry> _rateLogEntries = <_RateLogEntry>[];
+  DateTime? _lastCalculatedAt;
 
   static const int _minMinutes = 1;
   static const int _maxMinutes = 60;
@@ -185,38 +186,64 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     _saveDisplayUnit();
   }
 
+  void _showShareMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   Future<void> _shareRateLog() async {
-    if (!_canShareRateUpdate) return;
+    if (!_canShareRateUpdate) {
+      _showShareMessage('Calculate a rate before sharing.');
+      return;
+    }
 
     String text;
     if (_rateLogEntries.isNotEmpty) {
       final selectedEntries = <_RateLogEntry>[];
-      final newest = _rateLogEntries.first;
-      selectedEntries.add(newest);
-      for (int i = 1; i < _rateLogEntries.length; i++) {
+      for (int i = 0; i < _rateLogEntries.length; i++) {
         final entry = _rateLogEntries[i];
         if (entry.selected) {
           selectedEntries.add(entry);
         }
       }
-      final lines = selectedEntries
-          .map(
-            (entry) =>
-                '${_formatLogTimestamp(entry.timestamp)} - ${_formatRateForUnit(entry.rateValue, entry.rateUnit)} ${entry.rateUnit}',
-          )
-          .join('\n');
-      text = '${widget.config.title} Rates\n\n$lines';
+
+      if (selectedEntries.isNotEmpty) {
+        final lines = selectedEntries
+            .map(
+              (entry) =>
+                  '${_formatLogTimestamp(entry.timestamp)} - ${_formatRateForUnit(entry.rateValue, entry.rateUnit)} ${entry.rateUnit}',
+            )
+            .join('\n');
+        text = '${widget.config.title} Rates\n\n$lines';
+      } else if (_hasCalculatedResult) {
+        final value = _selectedRateValue ?? 0;
+        final unit = _selectedRateUnitLabel;
+        final stamp = _lastCalculatedAt ?? DateTime.now();
+        text =
+            '${widget.config.title} Rate\n\nTime: ${_formatLogTimestamp(stamp)}\nRate: ${_formatRateForUnit(value, unit)} $unit';
+      } else {
+        _showShareMessage('Calculate a rate before sharing.');
+        return;
+      }
     } else {
       final value = _selectedRateValue ?? 0;
       final unit = _selectedRateUnitLabel;
+      final stamp = _lastCalculatedAt ?? DateTime.now();
       text =
-          '${widget.config.title} Rate\n\nTime: ${_formatLogTimestamp(DateTime.now())}\nRate: ${_formatRateForUnit(value, unit)} $unit';
+          '${widget.config.title} Rate\n\nTime: ${_formatLogTimestamp(stamp)}\nRate: ${_formatRateForUnit(value, unit)} $unit';
     }
 
-    await Share.share(
-      text,
-      subject: 'WellWerks Rate Log',
-    );
+    try {
+      await Share.share(
+        text,
+        subject: 'WellWerks Rate Log',
+      );
+    } catch (err) {
+      debugPrint('Rate share failed: $err');
+      _showShareMessage('Unable to open share options.');
+    }
   }
 
   Future<void> _clearRateLogWithConfirmation() async {
@@ -856,6 +883,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
       bblPerMin = perMin;
       bblPerHr = perHour;
       bblPerDay = perMin * 1440;
+      _lastCalculatedAt = DateTime.now();
       _timerFinished = false;
       _thirtySecondAlertShown = false;
       _remainingSeconds = _minutesToDurationSeconds();
@@ -1340,7 +1368,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
-                    onPressed: _canShareRateUpdate ? _shareRateLog : null,
+                    onPressed: _shareRateLog,
                     icon: const Icon(Icons.share_outlined),
                     label: const Text('Share / Send'),
                   ),
