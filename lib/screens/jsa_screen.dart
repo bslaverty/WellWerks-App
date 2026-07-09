@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_gallery_saver/image_gallery_saver.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
@@ -15,6 +17,7 @@ import '../services/jsa_export_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/jsa_storage_service.dart';
 import '../services/recovery_state_service.dart';
+import '../services/app_settings_service.dart';
 import '../widgets/app_header.dart';
 
 class JsaScreen extends StatefulWidget {
@@ -48,6 +51,9 @@ class _JsaScreenState extends State<JsaScreen> {
   final _location = TextEditingController();
   final _wellName = TextEditingController();
   final _notes = TextEditingController();
+  final _weatherTemperature = TextEditingController();
+  final _weatherConditions = TextEditingController();
+  final _weatherWind = TextEditingController();
 
   final _employeeNames = List.generate(6, (_) => TextEditingController());
   final _employeeCompanies = List.generate(6, (_) => TextEditingController());
@@ -67,6 +73,9 @@ class _JsaScreenState extends State<JsaScreen> {
   TimeOfDay _time = TimeOfDay.now();
   final Set<String> _selectedTasks = {'Flowback'};
   bool _exporting = false;
+  bool _weatherLoading = false;
+  final _settingsService = AppSettingsService();
+  late AppSettingsData _settings;
 
   final _companies = const [
     'Mach Energy',
@@ -240,8 +249,39 @@ class _JsaScreenState extends State<JsaScreen> {
   @override
   void initState() {
     super.initState();
+    _settings = const AppSettingsData(
+      defaultGasUnit: AppSettingsDefaults.gasUnit,
+      defaultGaugeType: AppSettingsDefaults.gaugeType,
+      defaultBblPerInch: AppSettingsDefaults.bblPerInch,
+      defaultGasCalculationMethod: AppSettingsDefaults.gasCalculationMethod,
+      defaultChokeDisplay: AppSettingsDefaults.chokeDisplay,
+      defaultOptionalReportSections: AppSettingsDefaults.optionalReportSections,
+      productionActiveJobDefaults:
+          AppSettingsDefaults.productionActiveJobDefaults,
+      productionReportLayout: AppSettingsDefaults.productionReportLayout,
+      productionTextUpdateLayout:
+          AppSettingsDefaults.productionTextUpdateLayout,
+      completionsRateDisplayDefault:
+          AppSettingsDefaults.completionsRateDisplayDefault,
+      completionsTimerDefaultMinutes:
+          AppSettingsDefaults.completionsTimerDefaultMinutes,
+      jsaAutoDate: AppSettingsDefaults.jsaAutoDate,
+      jsaAutoTime: AppSettingsDefaults.jsaAutoTime,
+      jsaAutoLocation: AppSettingsDefaults.jsaAutoLocation,
+      jsaAutoWeather: AppSettingsDefaults.jsaAutoWeather,
+      jsaCompanyDefault: AppSettingsDefaults.jsaCompanyDefault,
+      layoutInventoryMode: AppSettingsDefaults.layoutInventoryMode,
+      layoutDefaultEquipment: AppSettingsDefaults.layoutDefaultEquipment,
+      chartsChloridesDefault: AppSettingsDefaults.chartsChloridesDefault,
+      chartsUnits: AppSettingsDefaults.chartsUnits,
+      historyRetentionDays: AppSettingsDefaults.historyRetentionDays,
+      historyExportMode: AppSettingsDefaults.historyExportMode,
+      appNotifications: AppSettingsDefaults.appNotifications,
+      appTheme: AppSettingsDefaults.appTheme,
+    );
     _recoveryState.saveLastModule(RecoveryModules.jsa);
     _loadDraft();
+    _loadSettingsAndAutoFill();
   }
 
   Future<void> _loadDraft() async {
@@ -282,12 +322,140 @@ class _JsaScreenState extends State<JsaScreen> {
     });
   }
 
+  Future<void> _loadSettingsAndAutoFill() async {
+    final loaded = await _settingsService.load();
+    if (!mounted) return;
+    setState(() {
+      _settings = loaded;
+      if (_company.trim().isEmpty || _company == 'Mach Energy') {
+        _company = loaded.jsaCompanyDefault;
+      }
+      if (loaded.jsaAutoDate) {
+        _date = DateTime.now();
+      }
+      if (loaded.jsaAutoTime) {
+        _time = TimeOfDay.now();
+      }
+    });
+
+    if (loaded.jsaAutoLocation || loaded.jsaAutoWeather) {
+      await _refreshWeather();
+    }
+  }
+
+  String _weatherConditionFromCode(int code) {
+    switch (code) {
+      case 0:
+        return 'Clear';
+      case 1:
+      case 2:
+      case 3:
+        return 'Partly Cloudy';
+      case 45:
+      case 48:
+        return 'Fog';
+      case 51:
+      case 53:
+      case 55:
+      case 56:
+      case 57:
+        return 'Drizzle';
+      case 61:
+      case 63:
+      case 65:
+      case 66:
+      case 67:
+        return 'Rain';
+      case 71:
+      case 73:
+      case 75:
+      case 77:
+        return 'Snow';
+      case 80:
+      case 81:
+      case 82:
+        return 'Rain Showers';
+      case 95:
+      case 96:
+      case 99:
+        return 'Thunderstorm';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  Future<void> _refreshWeather() async {
+    if (_weatherLoading) return;
+    setState(() => _weatherLoading = true);
+    try {
+      final locationEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!locationEnabled) {
+        throw StateError('Location services are disabled.');
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        throw StateError('Location permission denied.');
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      if (_settings.jsaAutoLocation || _location.text.trim().isEmpty) {
+        _location.text =
+            '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
+      }
+
+      final weatherUri = Uri.parse(
+        'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&current=temperature_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph',
+      );
+      final weatherResponse = await http.get(weatherUri);
+      if (weatherResponse.statusCode != 200) {
+        throw StateError('Unable to fetch weather.');
+      }
+
+      final weatherMap =
+          jsonDecode(weatherResponse.body) as Map<String, dynamic>;
+      final current =
+          weatherMap['current'] as Map<String, dynamic>? ?? <String, dynamic>{};
+
+      final temperature = (current['temperature_2m'] as num?)?.toDouble();
+      final weatherCode = (current['weather_code'] as num?)?.toInt();
+      final windSpeed = (current['wind_speed_10m'] as num?)?.toDouble();
+
+      _weatherTemperature.text =
+          temperature == null ? '' : '${temperature.toStringAsFixed(1)} F';
+      _weatherConditions.text =
+          weatherCode == null ? '' : _weatherConditionFromCode(weatherCode);
+      _weatherWind.text =
+          windSpeed == null ? '' : '${windSpeed.toStringAsFixed(1)} mph';
+    } catch (err) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to refresh weather: $err')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _weatherLoading = false);
+      }
+    }
+  }
+
   String get _draftDateKey => DateFormat('yyyy-MM-dd').format(_date);
 
   void _clearFormValues({required bool resetDateTime}) {
     _location.clear();
     _wellName.clear();
     _notes.clear();
+    _weatherTemperature.clear();
+    _weatherConditions.clear();
+    _weatherWind.clear();
     for (final controller in _employeeNames) {
       controller.clear();
     }
@@ -297,7 +465,7 @@ class _JsaScreenState extends State<JsaScreen> {
     for (final signature in _signatures) {
       signature.clear();
     }
-    _company = 'Mach Energy';
+    _company = _settings.jsaCompanyDefault;
     _selectedTasks
       ..clear()
       ..add('Flowback');
@@ -319,6 +487,9 @@ class _JsaScreenState extends State<JsaScreen> {
     _location.text = draft.location;
     _wellName.text = draft.wellName;
     _notes.text = draft.notes;
+    _weatherTemperature.text = draft.weatherTemperature;
+    _weatherConditions.text = draft.weatherConditions;
+    _weatherWind.text = draft.weatherWind;
     _date = DateTime.tryParse(draft.date) ?? _date;
     final parts = draft.time.split(':');
     if (parts.length >= 2) {
@@ -351,6 +522,9 @@ class _JsaScreenState extends State<JsaScreen> {
     _location.dispose();
     _wellName.dispose();
     _notes.dispose();
+    _weatherTemperature.dispose();
+    _weatherConditions.dispose();
+    _weatherWind.dispose();
     for (final controller in _employeeNames) {
       controller.dispose();
     }
@@ -418,6 +592,9 @@ class _JsaScreenState extends State<JsaScreen> {
       recommendations: _recommendations,
       employees: employees,
       notes: _notes.text.trim(),
+      weatherTemperature: _weatherTemperature.text.trim(),
+      weatherConditions: _weatherConditions.text.trim(),
+      weatherWind: _weatherWind.text.trim(),
     );
   }
 
@@ -755,6 +932,45 @@ class _JsaScreenState extends State<JsaScreen> {
                           child: Text('Time: $timeText'))),
                 ],
               ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _weatherTemperature,
+                      decoration:
+                          const InputDecoration(labelText: 'Temperature'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _weatherWind,
+                      decoration: const InputDecoration(labelText: 'Wind'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _weatherConditions,
+                decoration: const InputDecoration(labelText: 'Conditions'),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _weatherLoading ? null : _refreshWeather,
+                  icon: _weatherLoading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.cloud_sync_outlined),
+                  label: const Text('Refresh Weather'),
+                ),
+              ),
               const SizedBox(height: 18),
               _section('JSA Steps / Tasks'),
               const Text('Select everything that applies to this job.',
@@ -854,6 +1070,9 @@ class _JsaScreenState extends State<JsaScreen> {
           recommendations: _recommendations,
           employees: const [],
           notes: _notes.text.trim(),
+          weatherTemperature: _weatherTemperature.text.trim(),
+          weatherConditions: _weatherConditions.text.trim(),
+          weatherWind: _weatherWind.text.trim(),
         );
 
     return Material(
@@ -888,6 +1107,9 @@ class _JsaScreenState extends State<JsaScreen> {
               _previewLine('Date', exportDraft.date),
               _previewLine('Time', exportDraft.time),
               _previewLine('Location', exportDraft.location),
+              _previewLine('Temperature', exportDraft.weatherTemperature),
+              _previewLine('Conditions', exportDraft.weatherConditions),
+              _previewLine('Wind', exportDraft.weatherWind),
               _previewLine('Pad', _activeJob?.padName ?? ''),
               _previewLine(
                 'Well',

@@ -13,6 +13,24 @@ class AppSettingsDefaults {
   static const bblPerInch = '1.67';
   static const gasCalculationMethod = 'accumulator';
   static const chokeDisplay = 'ADJ';
+  static const productionActiveJobDefaults = true;
+  static const productionReportLayout = 'standard';
+  static const productionTextUpdateLayout = 'standard';
+  static const completionsRateDisplayDefault = 'bbl_min';
+  static const completionsTimerDefaultMinutes = 10;
+  static const jsaAutoDate = true;
+  static const jsaAutoTime = true;
+  static const jsaAutoLocation = false;
+  static const jsaAutoWeather = false;
+  static const jsaCompanyDefault = 'Mach Energy';
+  static const layoutInventoryMode = 'standard';
+  static const layoutDefaultEquipment = 'flowback';
+  static const chartsChloridesDefault = 'ppm';
+  static const chartsUnits = 'field';
+  static const historyRetentionDays = 30;
+  static const historyExportMode = 'csv';
+  static const appNotifications = true;
+  static const appTheme = 'wellwerks_dark';
   static const optionalReportSections = [
     'vru',
     'flare',
@@ -43,6 +61,28 @@ class AppSettingsData {
     required this.defaultGasCalculationMethod,
     required this.defaultChokeDisplay,
     required this.defaultOptionalReportSections,
+    this.productionActiveJobDefaults =
+        AppSettingsDefaults.productionActiveJobDefaults,
+    this.productionReportLayout = AppSettingsDefaults.productionReportLayout,
+    this.productionTextUpdateLayout =
+        AppSettingsDefaults.productionTextUpdateLayout,
+    this.completionsRateDisplayDefault =
+        AppSettingsDefaults.completionsRateDisplayDefault,
+    this.completionsTimerDefaultMinutes =
+        AppSettingsDefaults.completionsTimerDefaultMinutes,
+    this.jsaAutoDate = AppSettingsDefaults.jsaAutoDate,
+    this.jsaAutoTime = AppSettingsDefaults.jsaAutoTime,
+    this.jsaAutoLocation = AppSettingsDefaults.jsaAutoLocation,
+    this.jsaAutoWeather = AppSettingsDefaults.jsaAutoWeather,
+    this.jsaCompanyDefault = AppSettingsDefaults.jsaCompanyDefault,
+    this.layoutInventoryMode = AppSettingsDefaults.layoutInventoryMode,
+    this.layoutDefaultEquipment = AppSettingsDefaults.layoutDefaultEquipment,
+    this.chartsChloridesDefault = AppSettingsDefaults.chartsChloridesDefault,
+    this.chartsUnits = AppSettingsDefaults.chartsUnits,
+    this.historyRetentionDays = AppSettingsDefaults.historyRetentionDays,
+    this.historyExportMode = AppSettingsDefaults.historyExportMode,
+    this.appNotifications = AppSettingsDefaults.appNotifications,
+    this.appTheme = AppSettingsDefaults.appTheme,
   });
 
   final String defaultGasUnit;
@@ -51,6 +91,24 @@ class AppSettingsData {
   final String defaultGasCalculationMethod;
   final String defaultChokeDisplay;
   final List<String> defaultOptionalReportSections;
+  final bool productionActiveJobDefaults;
+  final String productionReportLayout;
+  final String productionTextUpdateLayout;
+  final String completionsRateDisplayDefault;
+  final int completionsTimerDefaultMinutes;
+  final bool jsaAutoDate;
+  final bool jsaAutoTime;
+  final bool jsaAutoLocation;
+  final bool jsaAutoWeather;
+  final String jsaCompanyDefault;
+  final String layoutInventoryMode;
+  final String layoutDefaultEquipment;
+  final String chartsChloridesDefault;
+  final String chartsUnits;
+  final int historyRetentionDays;
+  final String historyExportMode;
+  final bool appNotifications;
+  final String appTheme;
 
   static const optionalReportSectionOptions = [
     AppOptionalReportSection(id: 'vru', label: 'VRU'),
@@ -70,6 +128,24 @@ class AppSettingsData {
     String? defaultGasCalculationMethod,
     String? defaultChokeDisplay,
     List<String>? defaultOptionalReportSections,
+    bool? productionActiveJobDefaults,
+    String? productionReportLayout,
+    String? productionTextUpdateLayout,
+    String? completionsRateDisplayDefault,
+    int? completionsTimerDefaultMinutes,
+    bool? jsaAutoDate,
+    bool? jsaAutoTime,
+    bool? jsaAutoLocation,
+    bool? jsaAutoWeather,
+    String? jsaCompanyDefault,
+    String? layoutInventoryMode,
+    String? layoutDefaultEquipment,
+    String? chartsChloridesDefault,
+    String? chartsUnits,
+    int? historyRetentionDays,
+    String? historyExportMode,
+    bool? appNotifications,
+    String? appTheme,
   }) {
     return AppSettingsData(
       defaultGasUnit: defaultGasUnit ?? this.defaultGasUnit,
@@ -80,6 +156,31 @@ class AppSettingsData {
       defaultChokeDisplay: defaultChokeDisplay ?? this.defaultChokeDisplay,
       defaultOptionalReportSections:
           defaultOptionalReportSections ?? this.defaultOptionalReportSections,
+      productionActiveJobDefaults:
+          productionActiveJobDefaults ?? this.productionActiveJobDefaults,
+      productionReportLayout:
+          productionReportLayout ?? this.productionReportLayout,
+      productionTextUpdateLayout:
+          productionTextUpdateLayout ?? this.productionTextUpdateLayout,
+      completionsRateDisplayDefault:
+          completionsRateDisplayDefault ?? this.completionsRateDisplayDefault,
+      completionsTimerDefaultMinutes:
+          completionsTimerDefaultMinutes ?? this.completionsTimerDefaultMinutes,
+      jsaAutoDate: jsaAutoDate ?? this.jsaAutoDate,
+      jsaAutoTime: jsaAutoTime ?? this.jsaAutoTime,
+      jsaAutoLocation: jsaAutoLocation ?? this.jsaAutoLocation,
+      jsaAutoWeather: jsaAutoWeather ?? this.jsaAutoWeather,
+      jsaCompanyDefault: jsaCompanyDefault ?? this.jsaCompanyDefault,
+      layoutInventoryMode: layoutInventoryMode ?? this.layoutInventoryMode,
+      layoutDefaultEquipment:
+          layoutDefaultEquipment ?? this.layoutDefaultEquipment,
+      chartsChloridesDefault:
+          chartsChloridesDefault ?? this.chartsChloridesDefault,
+      chartsUnits: chartsUnits ?? this.chartsUnits,
+      historyRetentionDays: historyRetentionDays ?? this.historyRetentionDays,
+      historyExportMode: historyExportMode ?? this.historyExportMode,
+      appNotifications: appNotifications ?? this.appNotifications,
+      appTheme: appTheme ?? this.appTheme,
     );
   }
 
@@ -90,6 +191,24 @@ class AppSettingsData {
         'defaultGasCalculationMethod': defaultGasCalculationMethod,
         'defaultChokeDisplay': defaultChokeDisplay,
         'defaultOptionalReportSections': defaultOptionalReportSections,
+        'productionActiveJobDefaults': productionActiveJobDefaults,
+        'productionReportLayout': productionReportLayout,
+        'productionTextUpdateLayout': productionTextUpdateLayout,
+        'completionsRateDisplayDefault': completionsRateDisplayDefault,
+        'completionsTimerDefaultMinutes': completionsTimerDefaultMinutes,
+        'jsaAutoDate': jsaAutoDate,
+        'jsaAutoTime': jsaAutoTime,
+        'jsaAutoLocation': jsaAutoLocation,
+        'jsaAutoWeather': jsaAutoWeather,
+        'jsaCompanyDefault': jsaCompanyDefault,
+        'layoutInventoryMode': layoutInventoryMode,
+        'layoutDefaultEquipment': layoutDefaultEquipment,
+        'chartsChloridesDefault': chartsChloridesDefault,
+        'chartsUnits': chartsUnits,
+        'historyRetentionDays': historyRetentionDays,
+        'historyExportMode': historyExportMode,
+        'appNotifications': appNotifications,
+        'appTheme': appTheme,
       };
 
   factory AppSettingsData.fromJson(Map<String, dynamic> json) {
@@ -104,6 +223,47 @@ class AppSettingsData {
       ),
       defaultChokeDisplay:
           _normalizeChokeDisplay(json['defaultChokeDisplay'] as String?),
+      productionActiveJobDefaults:
+          json['productionActiveJobDefaults'] as bool? ??
+              AppSettingsDefaults.productionActiveJobDefaults,
+      productionReportLayout:
+          _normalizeProductionReportLayout(json['productionReportLayout']),
+      productionTextUpdateLayout: _normalizeTextUpdateLayout(
+        json['productionTextUpdateLayout'],
+      ),
+      completionsRateDisplayDefault: _normalizeRateDisplayDefault(
+        json['completionsRateDisplayDefault'],
+      ),
+      completionsTimerDefaultMinutes: _normalizeTimerDefaultMinutes(
+        json['completionsTimerDefaultMinutes'],
+      ),
+      jsaAutoDate:
+          json['jsaAutoDate'] as bool? ?? AppSettingsDefaults.jsaAutoDate,
+      jsaAutoTime:
+          json['jsaAutoTime'] as bool? ?? AppSettingsDefaults.jsaAutoTime,
+      jsaAutoLocation: json['jsaAutoLocation'] as bool? ??
+          AppSettingsDefaults.jsaAutoLocation,
+      jsaAutoWeather:
+          json['jsaAutoWeather'] as bool? ?? AppSettingsDefaults.jsaAutoWeather,
+      jsaCompanyDefault:
+          _normalizeCompanyDefault(json['jsaCompanyDefault'] as String?),
+      layoutInventoryMode:
+          _normalizeLayoutInventoryMode(json['layoutInventoryMode'] as String?),
+      layoutDefaultEquipment: _normalizeDefaultEquipment(
+        json['layoutDefaultEquipment'] as String?,
+      ),
+      chartsChloridesDefault: _normalizeChloridesDefault(
+        json['chartsChloridesDefault'] as String?,
+      ),
+      chartsUnits: _normalizeChartsUnits(json['chartsUnits'] as String?),
+      historyRetentionDays: _normalizeHistoryRetentionDays(
+        json['historyRetentionDays'],
+      ),
+      historyExportMode:
+          _normalizeHistoryExportMode(json['historyExportMode'] as String?),
+      appNotifications: json['appNotifications'] as bool? ??
+          AppSettingsDefaults.appNotifications,
+      appTheme: _normalizeTheme(json['appTheme'] as String?),
       defaultOptionalReportSections: _normalizeOptionalSections(
         (json['defaultOptionalReportSections'] as List?)
                 ?.map((item) => item?.toString() ?? '')
@@ -143,6 +303,76 @@ class AppSettingsData {
   static String _normalizeChokeDisplay(String? value) {
     final normalized = (value ?? '').trim().toUpperCase();
     return normalized == 'POS' ? 'POS' : 'ADJ';
+  }
+
+  static String _normalizeProductionReportLayout(dynamic value) {
+    final normalized = (value?.toString() ?? '').trim().toLowerCase();
+    return normalized == 'detailed' ? 'detailed' : 'standard';
+  }
+
+  static String _normalizeTextUpdateLayout(dynamic value) {
+    final normalized = (value?.toString() ?? '').trim().toLowerCase();
+    return normalized == 'compact' ? 'compact' : 'standard';
+  }
+
+  static String _normalizeRateDisplayDefault(dynamic value) {
+    final normalized = (value?.toString() ?? '').trim().toLowerCase();
+    return normalized == 'bbl_hr' ? 'bbl_hr' : 'bbl_min';
+  }
+
+  static int _normalizeTimerDefaultMinutes(dynamic value) {
+    final parsed = (value is num)
+        ? value.toInt()
+        : int.tryParse((value ?? '').toString().trim());
+    if (parsed == null || parsed < 1 || parsed > 60) {
+      return AppSettingsDefaults.completionsTimerDefaultMinutes;
+    }
+    return parsed;
+  }
+
+  static String _normalizeCompanyDefault(String? value) {
+    final trimmed = (value ?? '').trim();
+    return trimmed.isEmpty ? AppSettingsDefaults.jsaCompanyDefault : trimmed;
+  }
+
+  static String _normalizeLayoutInventoryMode(String? value) {
+    final normalized = (value ?? '').trim().toLowerCase();
+    return normalized == 'compact' ? 'compact' : 'standard';
+  }
+
+  static String _normalizeDefaultEquipment(String? value) {
+    final normalized = (value ?? '').trim().toLowerCase();
+    return normalized == 'full' ? 'full' : 'flowback';
+  }
+
+  static String _normalizeChloridesDefault(String? value) {
+    final normalized = (value ?? '').trim().toLowerCase();
+    return normalized == 'mg_l' ? 'mg_l' : 'ppm';
+  }
+
+  static String _normalizeChartsUnits(String? value) {
+    final normalized = (value ?? '').trim().toLowerCase();
+    return normalized == 'metric' ? 'metric' : 'field';
+  }
+
+  static int _normalizeHistoryRetentionDays(dynamic value) {
+    final parsed = (value is num)
+        ? value.toInt()
+        : int.tryParse((value ?? '').toString().trim());
+    if (parsed == null || parsed < 7 || parsed > 3650) {
+      return AppSettingsDefaults.historyRetentionDays;
+    }
+    return parsed;
+  }
+
+  static String _normalizeHistoryExportMode(String? value) {
+    final normalized = (value ?? '').trim().toLowerCase();
+    return normalized == 'json' ? 'json' : 'csv';
+  }
+
+  static String _normalizeTheme(String? value) {
+    final normalized = (value ?? '').trim().toLowerCase();
+    return normalized == 'dark' ? 'dark' : 'wellwerks_dark';
   }
 
   static List<String> _normalizeOptionalSections(List<String> value) {
@@ -198,6 +428,28 @@ class AppSettingsService {
       defaultGasCalculationMethod: AppSettingsDefaults.gasCalculationMethod,
       defaultChokeDisplay: AppSettingsDefaults.chokeDisplay,
       defaultOptionalReportSections: AppSettingsDefaults.optionalReportSections,
+      productionActiveJobDefaults:
+          AppSettingsDefaults.productionActiveJobDefaults,
+      productionReportLayout: AppSettingsDefaults.productionReportLayout,
+      productionTextUpdateLayout:
+          AppSettingsDefaults.productionTextUpdateLayout,
+      completionsRateDisplayDefault:
+          AppSettingsDefaults.completionsRateDisplayDefault,
+      completionsTimerDefaultMinutes:
+          AppSettingsDefaults.completionsTimerDefaultMinutes,
+      jsaAutoDate: AppSettingsDefaults.jsaAutoDate,
+      jsaAutoTime: AppSettingsDefaults.jsaAutoTime,
+      jsaAutoLocation: AppSettingsDefaults.jsaAutoLocation,
+      jsaAutoWeather: AppSettingsDefaults.jsaAutoWeather,
+      jsaCompanyDefault: AppSettingsDefaults.jsaCompanyDefault,
+      layoutInventoryMode: AppSettingsDefaults.layoutInventoryMode,
+      layoutDefaultEquipment: AppSettingsDefaults.layoutDefaultEquipment,
+      chartsChloridesDefault: AppSettingsDefaults.chartsChloridesDefault,
+      chartsUnits: AppSettingsDefaults.chartsUnits,
+      historyRetentionDays: AppSettingsDefaults.historyRetentionDays,
+      historyExportMode: AppSettingsDefaults.historyExportMode,
+      appNotifications: AppSettingsDefaults.appNotifications,
+      appTheme: AppSettingsDefaults.appTheme,
     );
   }
 

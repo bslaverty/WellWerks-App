@@ -2,9 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
+import '../services/app_settings_service.dart';
 import '../data/tank_charts.dart';
 import '../widgets/app_header.dart';
 import '../widgets/ww_number_field.dart';
@@ -87,8 +88,10 @@ class RateCalculatorScreen extends StatefulWidget {
   State<RateCalculatorScreen> createState() => _RateCalculatorScreenState();
 }
 
-class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
+class _RateCalculatorScreenState extends State<RateCalculatorScreen>
+    with WidgetsBindingObserver {
   static const _timerMinutesPrefKey = 'wellwerks_rate_timer_minutes';
+  final _settingsService = AppSettingsService();
 
   final startGauge = TextEditingController();
   final endGauge = TextEditingController();
@@ -103,6 +106,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   bool _rateLogEnabled = false;
   bool _rateLogExpanded = false;
   final List<_RateLogEntry> _rateLogEntries = <_RateLogEntry>[];
+  DateTime? _timerStartedAt;
+  DateTime? _timerEndsAt;
 
   static const int _minMinutes = 1;
   static const int _maxMinutes = 60;
@@ -116,12 +121,37 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     factor = TextEditingController(
         text: (widget.config.defaultFactor ?? 1.67).toString());
     minutes.addListener(_handleMinutesChanged);
-    _loadSavedTimerMinutes();
+    _loadSavedTimerMinutes().then((_) => _restoreTimerState());
     _loadSavedDisplayUnit();
     _loadRateLogState();
+  }
+
+  String get _timerRunningPrefKey =>
+      'wellwerks_rate_timer_running_$_calculatorStorageId';
+
+  String get _timerStartPrefKey =>
+      'wellwerks_rate_timer_start_ms_$_calculatorStorageId';
+
+  String get _timerEndPrefKey =>
+      'wellwerks_rate_timer_end_ms_$_calculatorStorageId';
+
+  String get _timerMinutesDuringRunPrefKey =>
+      'wellwerks_rate_timer_minutes_run_$_calculatorStorageId';
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _persistTimerState();
+    }
+    if (state == AppLifecycleState.resumed) {
+      _restoreTimerState();
+    }
   }
 
   String get _calculatorStorageId {
@@ -207,9 +237,11 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   Future<void> _loadSavedDisplayUnit() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_displayUnitPrefKey);
+    final settings = await _settingsService.load();
     if (!mounted) return;
     setState(() {
-      _rateDisplayUnit = saved == 'bbl_hr'
+      final resolved = saved ?? settings.completionsRateDisplayDefault;
+      _rateDisplayUnit = resolved == 'bbl_hr'
           ? _RateDisplayUnit.bblPerHr
           : _RateDisplayUnit.bblPerMin;
     });
@@ -267,7 +299,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     );
   }
 
-  Future<void> _shareRateLog() async {
+  Future<void> _copyRateUpdate() async {
     if (_rateLogEntries.isEmpty) {
       _showShareMessage('Calculate a rate before sharing.');
       return;
@@ -292,14 +324,123 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     final text = '${widget.config.title} Rates\n\n$lines';
 
     try {
-      await Share.share(
-        text,
-        subject: 'WellWerks Rate Log',
-      );
+      await Clipboard.setData(ClipboardData(text: text));
+      _showShareMessage('Rate update copied to clipboard.');
     } catch (err) {
-      debugPrint('Rate share failed: $err');
-      _showShareMessage('Unable to open share options.');
+      debugPrint('Rate copy failed: $err');
+      _showShareMessage('Unable to copy rate update.');
     }
+  }
+
+  Future<void> _persistTimerState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final running = _timerRunning;
+    await prefs.setBool(_timerRunningPrefKey, running);
+    await prefs.setInt(_timerMinutesDuringRunPrefKey, _selectedMinutes);
+    if (running && _timerStartedAt != null && _timerEndsAt != null) {
+      await prefs.setInt(
+        _timerStartPrefKey,
+        _timerStartedAt!.millisecondsSinceEpoch,
+      );
+      await prefs.setInt(
+          _timerEndPrefKey, _timerEndsAt!.millisecondsSinceEpoch);
+    }
+  }
+
+  Future<void> _clearTimerStatePersistence() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_timerRunningPrefKey, false);
+    await prefs.remove(_timerStartPrefKey);
+    await prefs.remove(_timerEndPrefKey);
+  }
+
+  Future<void> _restoreTimerState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final running = prefs.getBool(_timerRunningPrefKey) ?? false;
+    final startMs = prefs.getInt(_timerStartPrefKey);
+    final endMs = prefs.getInt(_timerEndPrefKey);
+    final savedRunMinutes = prefs.getInt(_timerMinutesDuringRunPrefKey);
+
+    if (savedRunMinutes != null &&
+        savedRunMinutes >= _minMinutes &&
+        savedRunMinutes <= _maxMinutes) {
+      minutes.text = savedRunMinutes.toString();
+    }
+
+    if (!running || startMs == null || endMs == null) {
+      if (!mounted) return;
+      setState(() {
+        _timerStartedAt = null;
+        _timerEndsAt = null;
+      });
+      return;
+    }
+
+    final now = DateTime.now();
+    final start = DateTime.fromMillisecondsSinceEpoch(startMs);
+    final end = DateTime.fromMillisecondsSinceEpoch(endMs);
+    final remaining = end.difference(now).inSeconds;
+
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+
+    if (!mounted) return;
+
+    if (remaining <= 0) {
+      setState(() {
+        _timerStartedAt = start;
+        _timerEndsAt = end;
+        _remainingSeconds = 0;
+        _timerFinished = true;
+        _thirtySecondAlertShown = true;
+      });
+      await _clearTimerStatePersistence();
+      return;
+    }
+
+    setState(() {
+      _timerStartedAt = start;
+      _timerEndsAt = end;
+      _remainingSeconds = remaining;
+      _timerFinished = false;
+      _thirtySecondAlertShown = remaining <= 30;
+    });
+
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _syncTimerFromClock(timer);
+    });
+  }
+
+  void _syncTimerFromClock(Timer timer) {
+    final end = _timerEndsAt;
+    if (!mounted || end == null) {
+      timer.cancel();
+      _countdownTimer = null;
+      return;
+    }
+
+    final nextSeconds = end.difference(DateTime.now()).inSeconds;
+    if (nextSeconds <= 0) {
+      timer.cancel();
+      _countdownTimer = null;
+      setState(() {
+        _remainingSeconds = 0;
+        _timerFinished = true;
+        _thirtySecondAlertShown = true;
+      });
+      _clearTimerStatePersistence();
+      _vibrateThreeQuickTimes();
+      return;
+    }
+
+    if (nextSeconds == 30 && !_thirtySecondAlertShown) {
+      _thirtySecondAlertShown = true;
+      _vibrateOnce();
+    }
+
+    setState(() {
+      _remainingSeconds = nextSeconds;
+    });
   }
 
   Future<void> _clearRateLogWithConfirmation() async {
@@ -349,6 +490,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     final prefs = await SharedPreferences.getInstance();
     final savedText = prefs.getString(_timerMinutesPrefKey);
     final savedLegacyInt = prefs.getInt(_timerMinutesPrefKey);
+    final settings = await _settingsService.load();
     if (!mounted) return;
 
     if (savedText != null && savedText.trim().isNotEmpty) {
@@ -370,7 +512,10 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
       return;
     }
 
-    minutes.text = _minMinutes.toString();
+    final fallback = settings.completionsTimerDefaultMinutes
+        .clamp(_minMinutes, _maxMinutes)
+        .toString();
+    minutes.text = fallback;
     _remainingSeconds = _minutesToDurationSeconds();
   }
 
@@ -439,51 +584,30 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     }
 
     _countdownTimer?.cancel();
+    final now = DateTime.now();
+    final endAt = now.add(Duration(seconds: configuredSeconds));
     setState(() {
+      _timerStartedAt = now;
+      _timerEndsAt = endAt;
       _remainingSeconds = configuredSeconds;
       _thirtySecondAlertShown = false;
       _timerFinished = false;
     });
+    _persistTimerState();
 
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        _countdownTimer = null;
-        return;
-      }
-
-      final nextSeconds = _remainingSeconds - 1;
-      if (nextSeconds <= 0) {
-        timer.cancel();
-        _countdownTimer = null;
-        setState(() {
-          _remainingSeconds = 0;
-          _timerFinished = true;
-        });
-        _vibrateThreeQuickTimes();
-        return;
-      }
-
-      if (nextSeconds == 30 && !_thirtySecondAlertShown) {
-        _thirtySecondAlertShown = true;
-        setState(() {
-          _remainingSeconds = nextSeconds;
-        });
-        _vibrateOnce();
-        return;
-      }
-
-      setState(() {
-        _remainingSeconds = nextSeconds;
-      });
+      _syncTimerFromClock(timer);
     });
   }
 
   void _cancelTimedRate() {
     _countdownTimer?.cancel();
     _countdownTimer = null;
+    _clearTimerStatePersistence();
     final configuredSeconds = _minutesToDurationSeconds();
     setState(() {
+      _timerStartedAt = null;
+      _timerEndsAt = null;
       _remainingSeconds = configuredSeconds;
       _thirtySecondAlertShown = false;
       _timerFinished = false;
@@ -886,7 +1010,10 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   void _resetTimedRateWorkflow() {
     _countdownTimer?.cancel();
     _countdownTimer = null;
+    _clearTimerStatePersistence();
     setState(() {
+      _timerStartedAt = null;
+      _timerEndsAt = null;
       startGauge.clear();
       endGauge.clear();
       bblPerMin = null;
@@ -959,6 +1086,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
 
   @override
   void dispose() {
+    _persistTimerState();
+    WidgetsBinding.instance.removeObserver(this);
     _countdownTimer?.cancel();
     minutes.removeListener(_handleMinutesChanged);
     startGauge.dispose();
@@ -1083,9 +1212,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                     if (_rateLogEnabled && _rateLogEntries.isNotEmpty)
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: _shareRateLog,
+                          onPressed: _copyRateUpdate,
                           icon: const Icon(Icons.share_outlined),
-                          label: const Text('Share / Send'),
+                          label: const Text('Copy Update'),
                         ),
                       ),
                     if (_rateLogEnabled && _rateLogEntries.isNotEmpty)

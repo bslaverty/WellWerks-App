@@ -75,6 +75,9 @@ class JsaDraft {
     required this.recommendations,
     required this.employees,
     required this.notes,
+    this.weatherTemperature = '',
+    this.weatherConditions = '',
+    this.weatherWind = '',
   }) : tasks = tasks ?? (task.isEmpty ? <String>[] : <String>[task]);
 
   String activeJobId;
@@ -90,6 +93,9 @@ class JsaDraft {
   List<String> recommendations;
   List<JsaEmployee> employees;
   String notes;
+  String weatherTemperature;
+  String weatherConditions;
+  String weatherWind;
 
   Map<String, dynamic> toJson() => {
         'activeJobId': activeJobId,
@@ -105,6 +111,9 @@ class JsaDraft {
         'recommendations': recommendations,
         'employees': employees.map((e) => e.toJson()).toList(),
         'notes': notes,
+        'weatherTemperature': weatherTemperature,
+        'weatherConditions': weatherConditions,
+        'weatherWind': weatherWind,
       };
 
   factory JsaDraft.fromJson(Map<String, dynamic> json) => JsaDraft(
@@ -128,5 +137,8 @@ class JsaDraft {
                 JsaEmployee.fromJson(Map<String, dynamic>.from(e as Map)))
             .toList(),
         notes: json['notes'] as String? ?? '',
+        weatherTemperature: json['weatherTemperature'] as String? ?? '',
+        weatherConditions: json['weatherConditions'] as String? ?? '',
+        weatherWind: json['weatherWind'] as String? ?? '',
       );
 }
