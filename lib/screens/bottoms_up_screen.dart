@@ -16,12 +16,39 @@ class _PipeOption {
   final String label;
   final double capacity;
   final bool custom;
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+
+import '../widgets/app_header.dart';
+import '../widgets/ww_number_field.dart';
+
+class BottomsUpScreen extends StatefulWidget {
+  const BottomsUpScreen({super.key});
+
+  @override
+  State<BottomsUpScreen> createState() => _BottomsUpScreenState();
+}
+
+class _PipeOption {
+  final String label;
+  final double capacity;
+  final bool custom;
 
   const _PipeOption(this.label, this.capacity, {this.custom = false});
 }
 
+class _SizeOption {
+  final String label;
+
+  const _SizeOption(this.label);
+}
+
 class _BottomsUpScreenState extends State<BottomsUpScreen> {
-  static const _pipes = <_PipeOption>[
+  static const _gold = Color(0xFFCDA56A);
+  static const _panel = Color(0xFF15181C);
+
+  static const _tubingSizes = <_PipeOption>[
     _PipeOption('2-3/8" EUE', 0.00387),
     _PipeOption('2-7/8" EUE', 0.00579),
     _PipeOption('3-1/2"', 0.00870),
@@ -33,9 +60,20 @@ class _BottomsUpScreenState extends State<BottomsUpScreen> {
     _PipeOption('Custom Capacity', 0, custom: true),
   ];
 
-  _PipeOption selectedPipe = _pipes[1];
-  final capacity =
-      TextEditingController(text: _pipes[1].capacity.toStringAsFixed(5));
+  static const _casingSizes = <_SizeOption>[
+    _SizeOption('4-1/2" Casing'),
+    _SizeOption('5" Casing'),
+    _SizeOption('5-1/2" Casing'),
+    _SizeOption('7" Casing'),
+    _SizeOption('9-5/8" Casing'),
+  ];
+
+  _PipeOption selectedTubing = _tubingSizes[1];
+  _SizeOption selectedCasing = _casingSizes[2];
+
+  final capacity = TextEditingController(
+    text: _tubingSizes[1].capacity.toStringAsFixed(5),
+  );
   final length = TextEditingController();
   final pumpRate = TextEditingController();
   final lagFactor = TextEditingController(text: '1.00');
@@ -75,14 +113,14 @@ class _BottomsUpScreenState extends State<BottomsUpScreen> {
   @override
   void initState() {
     super.initState();
-    for (final c in [capacity, length, pumpRate, lagFactor]) {
-      c.addListener(() => setState(() {}));
+    for (final controller in [capacity, length, pumpRate, lagFactor]) {
+      controller.addListener(() => setState(() {}));
     }
   }
 
-  void _selectPipe(_PipeOption pipe) {
+  void _selectTubing(_PipeOption pipe) {
     setState(() {
-      selectedPipe = pipe;
+      selectedTubing = pipe;
       if (!pipe.custom) {
         capacity.text = pipe.capacity.toStringAsFixed(5);
       } else {
@@ -91,10 +129,15 @@ class _BottomsUpScreenState extends State<BottomsUpScreen> {
     });
   }
 
+  void _selectCasing(_SizeOption casing) {
+    setState(() => selectedCasing = casing);
+  }
+
   void clearAll() {
     setState(() {
-      selectedPipe = _pipes[1];
-      capacity.text = _pipes[1].capacity.toStringAsFixed(5);
+      selectedTubing = _tubingSizes[1];
+      selectedCasing = _casingSizes[2];
+      capacity.text = _tubingSizes[1].capacity.toStringAsFixed(5);
       length.clear();
       pumpRate.clear();
       lagFactor.text = '1.00';
@@ -105,8 +148,10 @@ class _BottomsUpScreenState extends State<BottomsUpScreen> {
     final volume = pipeVolume;
     final mins = bottomsUpMinutes;
     if (volume == null || mins == null) return;
+
     final text = '''Bottoms Up
-Pipe: ${selectedPipe.label}
+Tubing: ${selectedTubing.label}
+Casing: ${selectedCasing.label}
 Capacity: ${_capacity.toStringAsFixed(5)} BBL/ft
 Length: ${_length.toStringAsFixed(0)} ft
 Pump Rate: ${_pumpRate.toStringAsFixed(2)} BBL/min
@@ -114,6 +159,7 @@ Lag Factor: ${_lag.toStringAsFixed(2)}
 Pipe Volume: ${volume.toStringAsFixed(2)} BBL
 Bottoms Up: ${mins.toStringAsFixed(2)} min ($hourMinuteText)
 Estimated Arrival: $arrivalTime''';
+
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -127,6 +173,50 @@ Estimated Arrival: $arrivalTime''';
     pumpRate.dispose();
     lagFactor.dispose();
     super.dispose();
+  }
+
+  InputDecoration _fieldDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      filled: true,
+      fillColor: const Color(0xFF111317),
+      labelStyle: const TextStyle(color: Colors.white70),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFF3A3A3A)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: _gold, width: 1.4),
+      ),
+    );
+  }
+
+  Widget _dropdownField<T>({
+    required String label,
+    required T value,
+    required List<DropdownMenuItem<T>> items,
+    required ValueChanged<T?> onChanged,
+  }) {
+    return DropdownButtonFormField<T>(
+      initialValue: value,
+      items: items,
+      onChanged: onChanged,
+      dropdownColor: const Color(0xFF1A1D21),
+      iconEnabledColor: _gold,
+      style: const TextStyle(color: Colors.white),
+      decoration: _fieldDecoration(label),
+    );
+  }
+
+  Widget _sectionCard({required Widget child}) {
+    return Card(
+      color: const Color(0xFF14171A),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: child,
+      ),
+    );
   }
 
   @override
@@ -144,18 +234,42 @@ Estimated Arrival: $arrivalTime''';
             style: TextStyle(color: Colors.white70),
           ),
           const SizedBox(height: 14),
-          DropdownButtonFormField<_PipeOption>(
-            initialValue: selectedPipe,
-            decoration: const InputDecoration(labelText: 'Pipe Size'),
-            items: _pipes
-                .map((p) => DropdownMenuItem<_PipeOption>(
-                      value: p,
-                      child: Text(p.label),
-                    ))
-                .toList(),
-            onChanged: (p) {
-              if (p != null) _selectPipe(p);
-            },
+          _sectionCard(
+            child: Column(
+              children: [
+                _dropdownField<_PipeOption>(
+                  label: 'Tubing Size',
+                  value: selectedTubing,
+                  items: _tubingSizes
+                      .map(
+                        (pipe) => DropdownMenuItem<_PipeOption>(
+                          value: pipe,
+                          child: Text(pipe.label),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (pipe) {
+                    if (pipe != null) _selectTubing(pipe);
+                  },
+                ),
+                const SizedBox(height: 12),
+                _dropdownField<_SizeOption>(
+                  label: 'Casing Size',
+                  value: selectedCasing,
+                  items: _casingSizes
+                      .map(
+                        (casing) => DropdownMenuItem<_SizeOption>(
+                          value: casing,
+                          child: Text(casing.label),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (casing) {
+                    if (casing != null) _selectCasing(casing);
+                  },
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           WwNumberField(
@@ -187,22 +301,24 @@ Estimated Arrival: $arrivalTime''';
               child: Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
-                    'Enter depth and pump rate in BBL/min to calculate bottoms up.',
-                    style: TextStyle(color: Colors.white70)),
+                  'Enter depth and pump rate in BBL/min to calculate bottoms up.',
+                  style: TextStyle(color: Colors.white70),
+                ),
               ),
             )
           else ...[
             _ResultCard(
-                label: 'Pipe Volume',
-                value: volume.toStringAsFixed(2),
-                unit: 'BBL'),
+              label: 'Pipe Volume',
+              value: volume.toStringAsFixed(2),
+              unit: 'BBL',
+            ),
             _ResultCard(
-                label: 'Bottoms Up',
-                value: mins.toStringAsFixed(2),
-                unit: 'min'),
+              label: 'Bottoms Up',
+              value: mins.toStringAsFixed(2),
+              unit: 'min',
+            ),
             _ResultCard(label: 'Bottoms Up', value: hourMinuteText, unit: ''),
-            _ResultCard(
-                label: 'Estimated Arrival', value: arrivalTime, unit: ''),
+            _ResultCard(label: 'Estimated Arrival', value: arrivalTime, unit: ''),
           ],
           const SizedBox(height: 8),
           FilledButton.icon(
@@ -227,8 +343,11 @@ class _ResultCard extends StatelessWidget {
   final String value;
   final String unit;
 
-  const _ResultCard(
-      {required this.label, required this.value, required this.unit});
+  const _ResultCard({
+    required this.label,
+    required this.value,
+    required this.unit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -238,15 +357,18 @@ class _ResultCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label,
-                style: const TextStyle(color: Colors.white70, fontSize: 14)),
+            Text(
+              label,
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
             const SizedBox(height: 4),
             Text(
               unit.isEmpty ? value : '$value $unit',
               style: const TextStyle(
-                  color: Color(0xFFCDA56A),
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold),
+                color: Color(0xFFCDA56A),
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         ),

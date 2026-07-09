@@ -8,6 +8,7 @@ import 'package:wellwerks/models/production_shift.dart';
 import 'package:wellwerks/models/job_setup.dart';
 import 'package:wellwerks/models/jsa_draft.dart';
 import 'package:wellwerks/screens/chart_reference_screen.dart';
+import 'package:wellwerks/screens/bottoms_up_screen.dart';
 import 'package:wellwerks/screens/equipment_layout_screen.dart';
 import 'package:wellwerks/screens/jsa_screen.dart';
 import 'package:wellwerks/screens/pressure_entry_screen.dart';
@@ -113,6 +114,17 @@ void main() {
   testWidgets('WellWerks app builds', (WidgetTester tester) async {
     await tester.pumpWidget(const WellWerksApp());
     expect(find.text('WellWerks Toolbox'), findsOneWidget);
+  });
+
+  testWidgets('Bottoms Up shows tubing and casing selectors', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: BottomsUpScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Tubing Size'), findsOneWidget);
+    expect(find.text('Casing Size'), findsOneWidget);
+    expect(find.text('Copy Results'), findsOneWidget);
   });
 
   testWidgets('Wide layout shows persistent equipment library', (
