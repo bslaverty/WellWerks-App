@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
@@ -102,7 +103,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   bool _rateLogEnabled = false;
   bool _rateLogExpanded = false;
   final List<_RateLogEntry> _rateLogEntries = <_RateLogEntry>[];
-  DateTime? _lastCalculatedAt;
 
   static const int _minMinutes = 1;
   static const int _maxMinutes = 60;
@@ -121,13 +121,87 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
     minutes.addListener(_handleMinutesChanged);
     _loadSavedTimerMinutes();
     _loadSavedDisplayUnit();
+    _loadRateLogState();
   }
 
-  String get _displayUnitPrefKey {
-    final source = (widget.config.chartId ?? widget.config.title)
+  String get _calculatorStorageId {
+    return (widget.config.chartId ?? widget.config.title)
         .toLowerCase()
         .replaceAll(RegExp(r'[^a-z0-9]+'), '_');
-    return 'wellwerks_rate_display_unit_$source';
+  }
+
+  String get _rateLogEnabledPrefKey =>
+      'wellwerks_rate_log_enabled_$_calculatorStorageId';
+
+  String get _rateLogEntriesPrefKey =>
+      'wellwerks_rate_log_entries_$_calculatorStorageId';
+
+  String get _displayUnitPrefKey {
+    return 'wellwerks_rate_display_unit_$_calculatorStorageId';
+  }
+
+  Future<void> _loadRateLogState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedEnabled = prefs.getBool(_rateLogEnabledPrefKey) ?? false;
+    final rawEntries = prefs.getString(_rateLogEntriesPrefKey);
+
+    final loadedEntries = <_RateLogEntry>[];
+    if (rawEntries != null && rawEntries.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawEntries);
+        if (decoded is List) {
+          for (final item in decoded) {
+            if (item is! Map) continue;
+            final timestampMs = item['timestampMs'];
+            final rateValue = item['rateValue'];
+            final rateUnit = item['rateUnit'];
+            final selected = item['selected'];
+            if (timestampMs is! int) continue;
+            if (rateValue is! num) continue;
+            if (rateUnit is! String || rateUnit.isEmpty) continue;
+            loadedEntries.add(
+              _RateLogEntry(
+                timestamp: DateTime.fromMillisecondsSinceEpoch(timestampMs),
+                rateValue: rateValue.toDouble(),
+                rateUnit: rateUnit,
+                selected: selected is bool ? selected : true,
+              ),
+            );
+          }
+        }
+      } catch (_) {
+        // Ignore malformed persisted data and start with an empty log.
+      }
+    }
+
+    if (loadedEntries.isNotEmpty) {
+      loadedEntries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      loadedEntries[0] = loadedEntries[0].copyWith(selected: true);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _rateLogEnabled = savedEnabled;
+      _rateLogEntries
+        ..clear()
+        ..addAll(loadedEntries);
+    });
+  }
+
+  Future<void> _saveRateLogState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_rateLogEnabledPrefKey, _rateLogEnabled);
+    final payload = _rateLogEntries
+        .map(
+          (entry) => <String, Object>{
+            'timestampMs': entry.timestamp.millisecondsSinceEpoch,
+            'rateValue': entry.rateValue,
+            'rateUnit': entry.rateUnit,
+            'selected': entry.selected,
+          },
+        )
+        .toList();
+    await prefs.setString(_rateLogEntriesPrefKey, jsonEncode(payload));
   }
 
   Future<void> _loadSavedDisplayUnit() async {
@@ -194,46 +268,28 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   }
 
   Future<void> _shareRateLog() async {
-    if (!_canShareRateUpdate) {
+    if (_rateLogEntries.isEmpty) {
       _showShareMessage('Calculate a rate before sharing.');
       return;
     }
 
-    String text;
-    if (_rateLogEntries.isNotEmpty) {
-      final selectedEntries = <_RateLogEntry>[];
-      for (int i = 0; i < _rateLogEntries.length; i++) {
-        final entry = _rateLogEntries[i];
-        if (entry.selected) {
-          selectedEntries.add(entry);
-        }
+    final selectedEntries = <_RateLogEntry>[];
+    final newest = _rateLogEntries.first;
+    selectedEntries.add(newest);
+    for (int i = 1; i < _rateLogEntries.length; i++) {
+      final entry = _rateLogEntries[i];
+      if (entry.selected) {
+        selectedEntries.add(entry);
       }
-
-      if (selectedEntries.isNotEmpty) {
-        final lines = selectedEntries
-            .map(
-              (entry) =>
-                  '${_formatLogTimestamp(entry.timestamp)} - ${_formatRateForUnit(entry.rateValue, entry.rateUnit)} ${entry.rateUnit}',
-            )
-            .join('\n');
-        text = '${widget.config.title} Rates\n\n$lines';
-      } else if (_hasCalculatedResult) {
-        final value = _selectedRateValue ?? 0;
-        final unit = _selectedRateUnitLabel;
-        final stamp = _lastCalculatedAt ?? DateTime.now();
-        text =
-            '${widget.config.title} Rate\n\nTime: ${_formatLogTimestamp(stamp)}\nRate: ${_formatRateForUnit(value, unit)} $unit';
-      } else {
-        _showShareMessage('Calculate a rate before sharing.');
-        return;
-      }
-    } else {
-      final value = _selectedRateValue ?? 0;
-      final unit = _selectedRateUnitLabel;
-      final stamp = _lastCalculatedAt ?? DateTime.now();
-      text =
-          '${widget.config.title} Rate\n\nTime: ${_formatLogTimestamp(stamp)}\nRate: ${_formatRateForUnit(value, unit)} $unit';
     }
+
+    final lines = selectedEntries
+        .map(
+          (entry) =>
+              '${_formatLogTimestamp(entry.timestamp)} - ${_formatRateForUnit(entry.rateValue, entry.rateUnit)} ${entry.rateUnit}',
+        )
+        .join('\n');
+    final text = '${widget.config.title} Rates\n\n$lines';
 
     try {
       await Share.share(
@@ -273,6 +329,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
       _rateLogEntries.clear();
       _rateLogExpanded = false;
     });
+    await _saveRateLogState();
   }
 
   void _toggleRateLogEntrySelection(int index) {
@@ -283,6 +340,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
       final entry = _rateLogEntries[index];
       _rateLogEntries[index] = entry.copyWith(selected: !entry.selected);
     });
+    _saveRateLogState();
   }
 
   bool get _timerRunning => _countdownTimer != null;
@@ -441,11 +499,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
 
   bool get _showResetButton =>
       bblPerMin != null || bblPerHr != null || bblPerDay != null;
-
-  bool get _hasCalculatedResult => bblPerMin != null && bblPerHr != null;
-
-  bool get _canShareRateUpdate =>
-      _rateLogEntries.isNotEmpty || _hasCalculatedResult;
 
   String get _timerStatusText {
     if (_timerRunning) return 'Timer running...';
@@ -883,7 +936,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
       bblPerMin = perMin;
       bblPerHr = perHour;
       bblPerDay = perMin * 1440;
-      _lastCalculatedAt = DateTime.now();
       _timerFinished = false;
       _thirtySecondAlertShown = false;
       _remainingSeconds = _minutesToDurationSeconds();
@@ -900,6 +952,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
             selected: true,
           ),
         );
+        _saveRateLogState();
       }
     });
   }
@@ -1027,14 +1080,16 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                 child: Row(
                   children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _shareRateLog,
-                        icon: const Icon(Icons.share_outlined),
-                        label: const Text('Share / Send'),
+                    if (_rateLogEnabled && _rateLogEntries.isNotEmpty)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _shareRateLog,
+                          icon: const Icon(Icons.share_outlined),
+                          label: const Text('Share / Send'),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
+                    if (_rateLogEnabled && _rateLogEntries.isNotEmpty)
+                      const SizedBox(width: 10),
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: _clearRateLogWithConfirmation,
@@ -1367,16 +1422,11 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                     child: Text(_showResetButton ? 'RESET' : 'CALCULATE'),
                   ),
                   const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: _shareRateLog,
-                    icon: const Icon(Icons.share_outlined),
-                    label: const Text('Share / Send'),
-                  ),
-                  const SizedBox(height: 10),
                   SwitchListTile.adaptive(
                     value: _rateLogEnabled,
                     onChanged: (value) {
                       setState(() => _rateLogEnabled = value);
+                      _saveRateLogState();
                     },
                     title: const Text('Rate Log'),
                     subtitle: const Text('Save each CALCULATE result to log'),
