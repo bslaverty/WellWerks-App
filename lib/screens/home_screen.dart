@@ -79,8 +79,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _activeJobCard(BuildContext context, JobSetup job) {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
-      color: const Color(0xFF17130E),
+      color: Theme.of(context).cardColor,
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
@@ -91,11 +92,11 @@ class _HomeScreenState extends State<HomeScreen> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Active Job',
                     style: TextStyle(
-                      color: Color(0xFFCDA56A),
+                      color: scheme.primary,
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
                     ),
@@ -105,13 +106,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFCDA56A),
+                    color: scheme.primary,
                     borderRadius: BorderRadius.circular(999),
                   ),
-                  child: const Text(
+                  child: Text(
                     'ACTIVE',
                     style: TextStyle(
-                      color: Colors.black,
+                      color: scheme.onPrimary,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.4,
                     ),
@@ -125,15 +126,15 @@ class _HomeScreenState extends State<HomeScreen> {
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 12),
-            _infoLine('Company', job.company),
-            _infoLine('Pad', job.padName),
-            _infoLine('Well', job.primaryWell),
-            _infoLine('Shift', job.shift),
-            _infoLine('Started', _startedText(job)),
-            _infoLine('Status', 'Active'),
+            _infoLine(context, 'Company', job.company),
+            _infoLine(context, 'Pad', job.padName),
+            _infoLine(context, 'Well', job.primaryWell),
+            _infoLine(context, 'Shift', job.shift),
+            _infoLine(context, 'Started', _startedText(job)),
+            _infoLine(context, 'Status', 'Active'),
             if (_lastModule.trim().isNotEmpty) ...[
               const SizedBox(height: 4),
-              _infoLine('Continue To', _moduleLabel(_lastModule)),
+              _infoLine(context, 'Continue To', _moduleLabel(_lastModule)),
             ],
             const SizedBox(height: 18),
             SizedBox(
@@ -157,7 +158,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _infoLine(String label, String value) {
+  Widget _infoLine(BuildContext context, String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -167,8 +168,8 @@ class _HomeScreenState extends State<HomeScreen> {
             width: 96,
             child: Text(
               label,
-              style: const TextStyle(
-                color: Colors.white70,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -353,11 +354,14 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.all(18),
         children: [
           if (_activeJob != null) _activeJobCard(context, _activeJob!),
-          const Padding(
-            padding: EdgeInsets.only(bottom: 14),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
             child: Text(
               'Choose a module for production, completions, charts, layouts, and safety.',
-              style: TextStyle(color: Colors.white70, fontSize: 15),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 15,
+              ),
             ),
           ),
           ToolCard(

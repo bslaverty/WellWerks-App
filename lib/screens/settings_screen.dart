@@ -468,18 +468,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 items: const [
                   DropdownMenuItem(
                     value: 'wellwerks_default',
-                    child: Text('WellWerks Default'),
+                    child: Text('WellWerks Classic'),
                   ),
                   DropdownMenuItem(
                     value: 'negative',
-                    child: Text('Negative'),
+                    child: Text('Midnight'),
                   ),
-                  DropdownMenuItem(value: 'osu', child: Text('OSU')),
-                  DropdownMenuItem(value: 'ou', child: Text('OU')),
-                  DropdownMenuItem(value: 'military', child: Text('Military')),
+                  DropdownMenuItem(value: 'osu', child: Text('Industrial')),
+                  DropdownMenuItem(value: 'ou', child: Text('Forest')),
+                  DropdownMenuItem(value: 'military', child: Text('Patriot')),
                   DropdownMenuItem(
                     value: 'high_visibility',
-                    child: Text('High Visibility'),
+                    child: Text('Light'),
                   ),
                 ],
                 onChanged: (value) {

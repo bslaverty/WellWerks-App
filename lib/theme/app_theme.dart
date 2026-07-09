@@ -7,6 +7,7 @@ class AppThemeOption {
     required this.brightness,
     required this.background,
     required this.surface,
+    required this.appBarBackground,
     required this.accent,
     required this.text,
     required this.subtleText,
@@ -17,6 +18,7 @@ class AppThemeOption {
   final Brightness brightness;
   final Color background;
   final Color surface;
+  final Color appBarBackground;
   final Color accent;
   final Color text;
   final Color subtleText;
@@ -25,68 +27,74 @@ class AppThemeOption {
 class AppThemeCatalog {
   static const wellWerksDefault = AppThemeOption(
     id: 'wellwerks_default',
-    label: 'WellWerks Default',
+    label: 'WellWerks Classic',
     brightness: Brightness.dark,
-    background: Color(0xFF0C0C0D),
-    surface: Color(0xFF17191D),
+    background: Color(0xFF0B0B0C),
+    surface: Color(0xFF171513),
+    appBarBackground: Color(0xFF0A0908),
     accent: Color(0xFFCDA56A),
     text: Colors.white,
-    subtleText: Color(0xFFB9B9B9),
+    subtleText: Color(0xFFC1B9AE),
   );
 
   static const negative = AppThemeOption(
     id: 'negative',
-    label: 'Negative',
+    label: 'Midnight',
     brightness: Brightness.dark,
-    background: Color(0xFF08090A),
-    surface: Color(0xFF16181B),
-    accent: Color(0xFFE0C08F),
+    background: Color(0xFF0B1017),
+    surface: Color(0xFF151D28),
+    appBarBackground: Color(0xFF0A1017),
+    accent: Color(0xFF7A9CBF),
     text: Colors.white,
-    subtleText: Color(0xFFBABABA),
+    subtleText: Color(0xFFB7C2CF),
   );
 
   static const osu = AppThemeOption(
     id: 'osu',
-    label: 'OSU',
+    label: 'Industrial',
     brightness: Brightness.dark,
-    background: Color(0xFF0E0A07),
-    surface: Color(0xFF221A12),
-    accent: Color(0xFFCE9A58),
+    background: Color(0xFF111417),
+    surface: Color(0xFF1B2126),
+    appBarBackground: Color(0xFF101418),
+    accent: Color(0xFFF08B3D),
     text: Colors.white,
-    subtleText: Color(0xFFBDBDBD),
+    subtleText: Color(0xFFC1C8CF),
   );
 
   static const ou = AppThemeOption(
     id: 'ou',
-    label: 'OU',
+    label: 'Forest',
     brightness: Brightness.dark,
-    background: Color(0xFF0A0C10),
-    surface: Color(0xFF161D26),
-    accent: Color(0xFFC7A779),
+    background: Color(0xFF0E1411),
+    surface: Color(0xFF19231D),
+    appBarBackground: Color(0xFF0E1511),
+    accent: Color(0xFFC7A56F),
     text: Colors.white,
-    subtleText: Color(0xFFB7B3AE),
+    subtleText: Color(0xFFBBC5BC),
   );
 
   static const military = AppThemeOption(
     id: 'military',
-    label: 'Military',
+    label: 'Patriot',
     brightness: Brightness.dark,
-    background: Color(0xFF11130F),
-    surface: Color(0xFF1A2119),
-    accent: Color(0xFFBE9A69),
+    background: Color(0xFF0C1220),
+    surface: Color(0xFF172033),
+    appBarBackground: Color(0xFF0B1220),
+    accent: Color(0xFFB55A5A),
     text: Colors.white,
-    subtleText: Color(0xFFC0BCB6),
+    subtleText: Color(0xFFBCC6D6),
   );
 
   static const highVisibility = AppThemeOption(
     id: 'high_visibility',
-    label: 'High Visibility',
-    brightness: Brightness.dark,
-    background: Color(0xFF090808),
-    surface: Color(0xFF1F1711),
-    accent: Color(0xFFF2C982),
-    text: Colors.white,
-    subtleText: Color(0xFFC6C1BB),
+    label: 'Light',
+    brightness: Brightness.light,
+    background: Color(0xFFF3F2EF),
+    surface: Color(0xFFFFFFFF),
+    appBarBackground: Color(0xFFF8F6F2),
+    accent: Color(0xFFC09A63),
+    text: Color(0xFF1A1A1A),
+    subtleText: Color(0xFF5A5A5A),
   );
 
   static const options = <AppThemeOption>[
@@ -110,8 +118,7 @@ class AppThemeCatalog {
 ThemeData buildAppTheme(String themeId) {
   final option = AppThemeCatalog.fromId(themeId);
   final onAccent =
-      option.brightness == Brightness.dark ? Colors.black : Colors.white;
-  const appBarBlack = Color(0xFF000000);
+      option.accent.computeLuminance() > 0.5 ? Colors.black : Colors.white;
   final scheme = ColorScheme(
     brightness: option.brightness,
     primary: option.accent,
@@ -140,7 +147,7 @@ ThemeData buildAppTheme(String themeId) {
 
   return base.copyWith(
     appBarTheme: AppBarTheme(
-      backgroundColor: appBarBlack,
+      backgroundColor: option.appBarBackground,
       foregroundColor: option.accent,
       elevation: 0,
       iconTheme: IconThemeData(color: option.accent),
@@ -154,7 +161,7 @@ ThemeData buildAppTheme(String themeId) {
     cardTheme: CardThemeData(
       color: option.surface,
       elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
     textTheme: base.textTheme.apply(
       bodyColor: option.text,
@@ -200,6 +207,7 @@ ThemeData buildAppTheme(String themeId) {
       style: OutlinedButton.styleFrom(
         side: BorderSide(color: option.accent.withValues(alpha: 0.7)),
         foregroundColor: option.text,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
     iconButtonTheme: IconButtonThemeData(
@@ -256,6 +264,63 @@ ThemeData buildAppTheme(String themeId) {
     snackBarTheme: SnackBarThemeData(
       backgroundColor: option.surface,
       contentTextStyle: TextStyle(color: option.text),
+    ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: option.surface,
+      textStyle: TextStyle(color: option.text),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: option.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      titleTextStyle: TextStyle(
+        color: option.text,
+        fontSize: 20,
+        fontWeight: FontWeight.w800,
+      ),
+      contentTextStyle: TextStyle(color: option.text),
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: option.surface,
+      modalBackgroundColor: option.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: option.surface,
+      indicatorColor: option.accent.withValues(alpha: 0.2),
+      iconTheme: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return IconThemeData(color: option.accent);
+        }
+        return IconThemeData(color: option.subtleText);
+      }),
+      labelTextStyle: WidgetStateProperty.resolveWith((states) {
+        return TextStyle(
+          color: states.contains(WidgetState.selected)
+              ? option.accent
+              : option.subtleText,
+          fontWeight: states.contains(WidgetState.selected)
+              ? FontWeight.w700
+              : FontWeight.w600,
+        );
+      }),
+    ),
+    bottomNavigationBarTheme: BottomNavigationBarThemeData(
+      backgroundColor: option.surface,
+      selectedItemColor: option.accent,
+      unselectedItemColor: option.subtleText,
+      selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
+    ),
+    listTileTheme: ListTileThemeData(
+      iconColor: option.accent,
+      textColor: option.text,
+      tileColor: option.surface,
+    ),
+    floatingActionButtonTheme: FloatingActionButtonThemeData(
+      backgroundColor: option.accent,
+      foregroundColor: onAccent,
     ),
     dividerTheme: DividerThemeData(
       color: option.accent.withValues(alpha: 0.28),
