@@ -17,11 +17,27 @@ class _RateLogEntry {
     required this.timestamp,
     required this.rateValue,
     required this.rateUnit,
+    this.selected = true,
   });
 
   final DateTime timestamp;
   final double rateValue;
   final String rateUnit;
+  final bool selected;
+
+  _RateLogEntry copyWith({
+    DateTime? timestamp,
+    double? rateValue,
+    String? rateUnit,
+    bool? selected,
+  }) {
+    return _RateLogEntry(
+      timestamp: timestamp ?? this.timestamp,
+      rateValue: rateValue ?? this.rateValue,
+      rateUnit: rateUnit ?? this.rateUnit,
+      selected: selected ?? this.selected,
+    );
+  }
 }
 
 class RateCalculatorConfig {
@@ -149,9 +165,18 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   }
 
   String _formatLogTimestamp(DateTime value) {
-    final h = value.hour.toString().padLeft(2, '0');
+    final hour24 = value.hour;
+    final hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12;
+    final period = hour24 >= 12 ? 'PM' : 'AM';
     final m = value.minute.toString().padLeft(2, '0');
-    return '$h:$m';
+    return '$hour12:$m $period';
+  }
+
+  String _formatRateForUnit(double value, String unit) {
+    if (unit == 'BBL/hr') {
+      return value.toStringAsFixed(1);
+    }
+    return value.toStringAsFixed(3);
   }
 
   void _setDisplayUnit(_RateDisplayUnit unit) {
@@ -161,17 +186,76 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
   }
 
   Future<void> _shareRateLog() async {
-    if (_rateLogEntries.isEmpty) return;
-    final text = _rateLogEntries.map((entry) {
-      final value = entry.rateUnit == 'BBL/hr'
-          ? entry.rateValue.toStringAsFixed(1)
-          : entry.rateValue.toStringAsFixed(3);
-      return '${_formatLogTimestamp(entry.timestamp)} - $value ${entry.rateUnit}';
-    }).join('\n');
+    if (!_canShareRateUpdate) return;
+
+    String text;
+    if (_rateLogEntries.isNotEmpty) {
+      final selectedEntries = <_RateLogEntry>[];
+      final newest = _rateLogEntries.first;
+      selectedEntries.add(newest);
+      for (int i = 1; i < _rateLogEntries.length; i++) {
+        final entry = _rateLogEntries[i];
+        if (entry.selected) {
+          selectedEntries.add(entry);
+        }
+      }
+      final lines = selectedEntries
+          .map(
+            (entry) =>
+                '${_formatLogTimestamp(entry.timestamp)} - ${_formatRateForUnit(entry.rateValue, entry.rateUnit)} ${entry.rateUnit}',
+          )
+          .join('\n');
+      text = '${widget.config.title} Rates\n\n$lines';
+    } else {
+      final value = _selectedRateValue ?? 0;
+      final unit = _selectedRateUnitLabel;
+      text =
+          '${widget.config.title} Rate\n\nTime: ${_formatLogTimestamp(DateTime.now())}\nRate: ${_formatRateForUnit(value, unit)} $unit';
+    }
+
     await Share.share(
       text,
       subject: 'WellWerks Rate Log',
     );
+  }
+
+  Future<void> _clearRateLogWithConfirmation() async {
+    if (_rateLogEntries.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Clear Rate Log?'),
+            content: const Text(
+              'This will permanently remove all logged rates.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Clear Log'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed) return;
+    setState(() {
+      _rateLogEntries.clear();
+      _rateLogExpanded = false;
+    });
+  }
+
+  void _toggleRateLogEntrySelection(int index) {
+    if (index <= 0 || index >= _rateLogEntries.length) {
+      return;
+    }
+    setState(() {
+      final entry = _rateLogEntries[index];
+      _rateLogEntries[index] = entry.copyWith(selected: !entry.selected);
+    });
   }
 
   bool get _timerRunning => _countdownTimer != null;
@@ -330,6 +414,11 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
 
   bool get _showResetButton =>
       bblPerMin != null || bblPerHr != null || bblPerDay != null;
+
+  bool get _hasCalculatedResult => bblPerMin != null && bblPerHr != null;
+
+  bool get _canShareRateUpdate =>
+      _rateLogEntries.isNotEmpty || _hasCalculatedResult;
 
   String get _timerStatusText {
     if (_timerRunning) return 'Timer running...';
@@ -780,6 +869,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
             timestamp: DateTime.now(),
             rateValue: value,
             rateUnit: _selectedRateUnitLabel,
+            selected: true,
           ),
         );
       }
@@ -919,12 +1009,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _rateLogEntries.clear();
-                            _rateLogExpanded = false;
-                          });
-                        },
+                        onPressed: _clearRateLogWithConfirmation,
                         icon: const Icon(Icons.delete_outline),
                         label: const Text('Clear Log'),
                       ),
@@ -939,14 +1024,38 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                   itemCount: _rateLogEntries.length,
                   itemBuilder: (context, index) {
                     final entry = _rateLogEntries[index];
-                    final value = entry.rateUnit == 'BBL/hr'
-                        ? entry.rateValue.toStringAsFixed(1)
-                        : entry.rateValue.toStringAsFixed(3);
+                    final value =
+                        _formatRateForUnit(entry.rateValue, entry.rateUnit);
+                    final isNewest = index == 0;
+                    final isSelected = isNewest ? true : entry.selected;
                     return Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                      child: Text(
-                        '${_formatLogTimestamp(entry.timestamp)} - $value ${entry.rateUnit}',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () => _toggleRateLogEntrySelection(index),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 8,
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '${_formatLogTimestamp(entry.timestamp)} - $value ${entry.rateUnit}',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                              if (isSelected)
+                                const Icon(
+                                  Icons.check,
+                                  color: Color(0xFFCDA56A),
+                                  size: 18,
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
                     );
                   },
@@ -1228,6 +1337,12 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen> {
                         ? _resetTimedRateWorkflow
                         : (_canCalculate ? calculate : null),
                     child: Text(_showResetButton ? 'RESET' : 'CALCULATE'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: _canShareRateUpdate ? _shareRateLog : null,
+                    icon: const Icon(Icons.share_outlined),
+                    label: const Text('Share / Send'),
                   ),
                   const SizedBox(height: 10),
                   SwitchListTile.adaptive(
