@@ -10,6 +10,7 @@ import 'package:wellwerks/models/jsa_draft.dart';
 import 'package:wellwerks/screens/chart_reference_screen.dart';
 import 'package:wellwerks/screens/bottoms_up_screen.dart';
 import 'package:wellwerks/screens/equipment_layout_screen.dart';
+import 'package:wellwerks/screens/job_box_inventory_screen.dart';
 import 'package:wellwerks/screens/jsa_screen.dart';
 import 'package:wellwerks/screens/pressure_entry_screen.dart';
 import 'package:wellwerks/screens/production_history_screen.dart';
@@ -17,6 +18,7 @@ import 'package:wellwerks/screens/production_inventory_screen.dart';
 import 'package:wellwerks/screens/shift_report_screen.dart';
 import 'package:wellwerks/screens/text_update_screen.dart';
 import 'package:wellwerks/services/job_history_service.dart';
+import 'package:wellwerks/services/job_box_inventory_service.dart';
 import 'package:wellwerks/services/job_storage_service.dart';
 import 'package:wellwerks/services/jsa_storage_service.dart';
 import 'package:wellwerks/services/production_shift_service.dart';
@@ -934,6 +936,50 @@ void main() {
 
     final afterDelete = await JobHistoryService().loadHistory();
     expect(afterDelete, isEmpty);
+  });
+
+  testWidgets('Job Box Inventory saves to history and reopens', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+
+    final inventoryService = JobBoxInventoryService();
+
+    await tester.pumpWidget(const MaterialApp(home: JobBoxInventoryScreen()));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(labeledTextField('Date').first, '07/09/2026');
+    await tester.enterText(
+      labeledTextField('Well Name(s)').first,
+      'Inventory Well',
+    );
+    await tester.enterText(
+      labeledTextField('Job Box Number').first,
+      'JB-101',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Save to History'));
+    await tester.pumpAndSettle();
+
+    final records = await inventoryService.loadAllRecords();
+    expect(records, isNotEmpty);
+    expect(records.first.wellNames, 'Inventory Well');
+    expect(records.first.jobBoxNumber, 'JB-101');
+
+    await tester.pumpWidget(const MaterialApp(home: ProductionHistoryScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Job Box Inventory Records'), findsOneWidget);
+    expect(find.text('Inventory Well'), findsOneWidget);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: JobBoxInventoryScreen(initialRecordId: records.first.id),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Job Box Inventory'), findsWidgets);
+    expect(find.text('JB-101'), findsOneWidget);
   });
 
   testWidgets('JSA saves under the current active job', (

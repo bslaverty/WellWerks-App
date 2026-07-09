@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../models/job_box_inventory.dart';
 import '../models/job_history.dart';
 import '../models/job_setup.dart';
 import '../models/jsa_draft.dart';
 import '../models/production_shift.dart';
 import '../services/export_service.dart';
 import '../services/job_history_service.dart';
+import '../services/job_box_inventory_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/job_serializer.dart';
 import '../services/jsa_export_service.dart';
@@ -15,6 +17,7 @@ import '../services/jsa_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/recovery_state_service.dart';
 import '../widgets/app_header.dart';
+import 'job_box_inventory_screen.dart';
 import 'jsa_screen.dart';
 import 'pressure_entry_screen.dart';
 
@@ -36,6 +39,7 @@ enum _HistoryJobAction { duplicate, delete, resume }
 
 class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   final _historyService = JobHistoryService();
+  final _jobBoxInventoryService = JobBoxInventoryService();
   final _jobStorage = JobStorageService();
   final _shiftService = ProductionShiftService();
   final _jsaStorage = JsaStorageService();
@@ -49,6 +53,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
 
   List<_HistoryJobRecord> _jobs = const [];
   List<JsaDraft> _jsaDrafts = const [];
+  List<JobBoxInventoryRecord> _jobBoxInventoryRecords = const [];
   bool _loading = true;
   bool _sharingJsa = false;
   _HistoryContentFilter _contentFilter = _HistoryContentFilter.all;
@@ -75,6 +80,8 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
     final activeJob = await _jobStorage.loadActiveJob();
     final lastEndedJob = await _jobStorage.loadLastEndedJob();
     final history = await _historyService.loadHistory();
+    final jobBoxInventoryRecords =
+        await _jobBoxInventoryService.loadAllRecords();
     List<JsaDraft> jsaDrafts = const [];
     try {
       jsaDrafts = await _jsaStorage.loadAllDrafts();
@@ -90,6 +97,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
     setState(() {
       _jobs = jobs;
       _jsaDrafts = jsaDrafts;
+      _jobBoxInventoryRecords = jobBoxInventoryRecords;
       _loading = false;
     });
   }
@@ -255,6 +263,41 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
         setState(() => _sharingJsa = false);
       }
     }
+  }
+
+  Future<void> _openJobBoxInventory(JobBoxInventoryRecord? record) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => JobBoxInventoryScreen(initialRecordId: record?.id),
+      ),
+    );
+    await _load();
+  }
+
+  Future<void> _deleteJobBoxInventory(JobBoxInventoryRecord record) async {
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Delete Job Box Inventory?'),
+            content: Text(
+                'Delete the saved inventory record for ${record.date.isEmpty ? 'this date' : record.date}?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!confirmed) return;
+    await _jobBoxInventoryService.deleteRecord(record.id);
+    await _load();
   }
 
   Future<void> _handleJobAction(
@@ -698,6 +741,93 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
     );
   }
 
+  Widget _jobBoxInventorySectionCard(List<JobBoxInventoryRecord> records) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Job Box Inventory Records',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              records.isEmpty
+                  ? 'No saved Job Box Inventory records found.'
+                  : '${records.length} saved Job Box Inventory record${records.length == 1 ? '' : 's'}',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 12),
+            if (records.isEmpty)
+              const Text(
+                'Open Job Box Inventory and save a record to see it here in History.',
+                style: TextStyle(color: Colors.white70),
+              )
+            else
+              for (final record in records) _jobBoxInventoryCard(record),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _jobBoxInventoryCard(JobBoxInventoryRecord record) {
+    final visibleItems = record.visibleItems;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1D20),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF2A2E33)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            record.date.trim().isEmpty
+                ? 'Inventory Record'
+                : record.date.trim(),
+            style: const TextStyle(
+              color: Color(0xFFCDA56A),
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _infoLine('Well(s)', record.wellNames),
+          _infoLine('Job Box', record.jobBoxNumber),
+          _infoLine('Visible Items', '${visibleItems.length}'),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: () => _openJobBoxInventory(record),
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Open / Edit'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _deleteJobBoxInventory(record),
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Delete'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _jsaCard(JsaDraft draft) {
     final linkedJob = _linkedJobForDraft(draft);
     final customer = (linkedJob?.customer ?? '').trim();
@@ -789,12 +919,14 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
 
     final visibleJobs = _visibleJobs;
     final visibleJsas = _visibleJsas;
+    final visibleJobBoxInventoryRecords = _jobBoxInventoryRecords;
     final showJobs = _contentFilter == _HistoryContentFilter.all ||
         _contentFilter == _HistoryContentFilter.jobs;
     final showJsas = _contentFilter == _HistoryContentFilter.all ||
         _contentFilter == _HistoryContentFilter.jsa;
     final hasVisibleContent = (showJobs && visibleJobs.isNotEmpty) ||
-        (showJsas && visibleJsas.isNotEmpty);
+        (showJsas && visibleJsas.isNotEmpty) ||
+        visibleJobBoxInventoryRecords.isNotEmpty;
 
     return Scaffold(
       appBar: const AppHeader(title: 'History', showBack: true),
@@ -807,6 +939,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
             for (final job in visibleJobs) _jobCard(job),
           ],
           if (showJsas) _jsaSectionCard(visibleJsas),
+          _jobBoxInventorySectionCard(visibleJobBoxInventoryRecords),
         ],
       ),
     );

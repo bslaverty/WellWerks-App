@@ -8,6 +8,7 @@ import '../widgets/app_header.dart';
 import '../widgets/tool_card.dart';
 import 'job_management_screen.dart';
 import 'pressure_entry_screen.dart';
+import 'job_box_inventory_screen.dart';
 import 'production_inventory_screen.dart';
 import 'production_history_screen.dart';
 import 'report_template_screen.dart';
@@ -228,6 +229,12 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
             title: 'Oil Inventory',
             subtitle: 'Set company, wells, and starting oil inventory',
             onTap: () => _open(context, const ProductionInventoryScreen()),
+          ),
+          ToolCard(
+            icon: Icons.inventory_2_outlined,
+            title: 'Job Box Inventory',
+            subtitle: 'Track common job box items and copy updates',
+            onTap: () => _open(context, const JobBoxInventoryScreen()),
           ),
           ToolCard(
             icon: Icons.history,
