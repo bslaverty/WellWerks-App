@@ -61,7 +61,7 @@ class JobBoxInventoryCatalog {
   static const positiveChokesSection = 'positive_chokes';
   static const customSection = 'custom';
 
-  static const defaultItems = <JobBoxInventoryItem>[
+  static const _mainDefaultItems = <JobBoxInventoryItem>[
     JobBoxInventoryItem(
       key: '916m_x_916m_ac',
       name: '9/16 M x 9/16 M AC',
@@ -222,22 +222,19 @@ class JobBoxInventoryCatalog {
       isDefault: true,
       canDelete: false,
     ),
-    JobBoxInventoryItem(
-      key: '13_64',
-      name: '13/64',
-      quantity: 0,
-      section: positiveChokesSection,
-      isDefault: true,
-      canDelete: false,
-    ),
-    JobBoxInventoryItem(
-      key: '14_64',
-      name: '14/64',
-      quantity: 0,
-      section: positiveChokesSection,
-      isDefault: true,
-      canDelete: false,
-    ),
+  ];
+
+  static final defaultItems = <JobBoxInventoryItem>[
+    ..._mainDefaultItems,
+    for (var size = 13; size <= 64; size++)
+      JobBoxInventoryItem(
+        key: '${size}_64',
+        name: '$size/64',
+        quantity: 0,
+        section: positiveChokesSection,
+        isDefault: true,
+        canDelete: false,
+      ),
   ];
 
   static String sectionLabel(String section) {
@@ -255,6 +252,7 @@ class JobBoxInventoryCatalog {
 class JobBoxInventoryRecord {
   const JobBoxInventoryRecord({
     required this.id,
+    required this.customer,
     required this.date,
     required this.wellNames,
     required this.jobBoxNumber,
@@ -265,6 +263,7 @@ class JobBoxInventoryRecord {
   });
 
   final String id;
+  final String customer;
   final String date;
   final String wellNames;
   final String jobBoxNumber;
@@ -275,6 +274,7 @@ class JobBoxInventoryRecord {
 
   JobBoxInventoryRecord copyWith({
     String? id,
+    String? customer,
     String? date,
     String? wellNames,
     String? jobBoxNumber,
@@ -285,6 +285,7 @@ class JobBoxInventoryRecord {
   }) {
     return JobBoxInventoryRecord(
       id: id ?? this.id,
+      customer: customer ?? this.customer,
       date: date ?? this.date,
       wellNames: wellNames ?? this.wellNames,
       jobBoxNumber: jobBoxNumber ?? this.jobBoxNumber,
@@ -298,6 +299,7 @@ class JobBoxInventoryRecord {
 
   Map<String, dynamic> toJson() => {
         'id': id,
+        'customer': customer,
         'date': date,
         'wellNames': wellNames,
         'jobBoxNumber': jobBoxNumber,
@@ -310,6 +312,7 @@ class JobBoxInventoryRecord {
   factory JobBoxInventoryRecord.fromJson(Map<String, dynamic> json) {
     return JobBoxInventoryRecord(
       id: json['id'] as String? ?? '',
+      customer: json['customer'] as String? ?? '',
       date: json['date'] as String? ?? '',
       wellNames: json['wellNames'] as String? ?? '',
       jobBoxNumber: json['jobBoxNumber'] as String? ?? '',
@@ -329,6 +332,7 @@ class JobBoxInventoryRecord {
     final now = DateTime.now();
     return JobBoxInventoryRecord(
       id: '',
+      customer: '',
       date: DateFormat('MM/dd/yyyy').format(now),
       wellNames: '',
       jobBoxNumber: '',

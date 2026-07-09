@@ -17,13 +17,14 @@ class JobBoxInventoryScreen extends StatefulWidget {
 
 class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
   final _service = JobBoxInventoryService();
+  final _customerController = TextEditingController();
   final _dateController = TextEditingController();
   final _wellNamesController = TextEditingController();
   final _jobBoxNumberController = TextEditingController();
 
   bool _loading = true;
   bool _saving = false;
-  bool _hideZeroQuantityItems = true;
+  bool _hideZeroQuantityItems = false;
   String _recordId = '';
   DateTime _createdAt = DateTime.now();
   DateTime _updatedAt = DateTime.now();
@@ -40,6 +41,7 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
 
   @override
   void dispose() {
+    _customerController.dispose();
     _dateController.dispose();
     _wellNamesController.dispose();
     _jobBoxNumberController.dispose();
@@ -63,6 +65,7 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
       _recordId = record!.id;
       _createdAt = record.createdAt;
       _updatedAt = record.updatedAt;
+      _customerController.text = record.customer;
       _dateController.text = record.date;
       _wellNamesController.text = record.wellNames;
       _jobBoxNumberController.text = record.jobBoxNumber;
@@ -81,6 +84,7 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
   JobBoxInventoryRecord _buildRecord({String? id}) {
     return JobBoxInventoryRecord(
       id: id ?? _recordId,
+      customer: _customerController.text.trim(),
       date: _dateController.text.trim(),
       wellNames: _wellNamesController.text.trim(),
       jobBoxNumber: _jobBoxNumberController.text.trim(),
@@ -232,6 +236,8 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
     final buffer = StringBuffer()
       ..writeln('Job Box Inventory')
       ..writeln()
+      ..writeln(
+          'Customer: ${_customerController.text.trim().isEmpty ? '-' : _customerController.text.trim()}')
       ..writeln('Date: ${_formatGpsDate()}')
       ..writeln(
           'Well(s): ${_wellNamesController.text.trim().isEmpty ? '-' : _wellNamesController.text.trim()}')
@@ -325,6 +331,13 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
             ),
           ),
           const SizedBox(width: 10),
+          _quantityStepButton(
+            symbol: '−',
+            enabled: item.quantity > 0,
+            onPressed: () => _updateItemQuantity(item.key, -1),
+            accent: accent,
+          ),
+          const SizedBox(width: 8),
           Container(
             width: 54,
             alignment: Alignment.center,
@@ -342,13 +355,6 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
                 fontWeight: FontWeight.w800,
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          _quantityStepButton(
-            symbol: '−',
-            enabled: item.quantity > 0,
-            onPressed: () => _updateItemQuantity(item.key, -1),
-            accent: accent,
           ),
           const SizedBox(width: 8),
           _quantityStepButton(
@@ -422,9 +428,8 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
         child: Column(
           children: [
             TextField(
-              controller: _dateController,
-              decoration: const InputDecoration(labelText: 'Date'),
-              keyboardType: TextInputType.datetime,
+              controller: _customerController,
+              decoration: const InputDecoration(labelText: 'Customer'),
               onChanged: (_) => _setHeaderChanged(),
             ),
             const SizedBox(height: 12),
@@ -437,6 +442,13 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
             TextField(
               controller: _jobBoxNumberController,
               decoration: const InputDecoration(labelText: 'Job Box Number'),
+              onChanged: (_) => _setHeaderChanged(),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _dateController,
+              decoration: const InputDecoration(labelText: 'Date'),
+              keyboardType: TextInputType.datetime,
               onChanged: (_) => _setHeaderChanged(),
             ),
           ],
