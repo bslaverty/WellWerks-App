@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_gallery_saver/image_gallery_saver.dart';
@@ -74,6 +75,7 @@ class _JsaScreenState extends State<JsaScreen> {
   final Set<String> _selectedTasks = {'Flowback'};
   bool _exporting = false;
   bool _weatherLoading = false;
+  Position? _currentPosition;
   final _settingsService = AppSettingsService();
   late AppSettingsData _settings;
 
@@ -312,12 +314,6 @@ class _JsaScreenState extends State<JsaScreen> {
               ? targetJob.company
               : _company;
         }
-        if (_location.text.trim().isEmpty) {
-          _location.text = targetJob.padName;
-        }
-        if (_wellName.text.trim().isEmpty) {
-          _wellName.text = targetJob.primaryWell;
-        }
       }
     });
   }
@@ -339,7 +335,7 @@ class _JsaScreenState extends State<JsaScreen> {
     });
 
     if (loaded.jsaAutoLocation || loaded.jsaAutoWeather) {
-      await _refreshWeather();
+      await _refreshLocationWeather();
     }
   }
 
@@ -384,31 +380,92 @@ class _JsaScreenState extends State<JsaScreen> {
     }
   }
 
-  Future<void> _refreshWeather() async {
+  String _formatGpsCoordinates(Position position) {
+    return '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
+  }
+
+  String _composeWellNameFromAddress(Map<String, dynamic> address) {
+    final county = (address['county'] ?? address['state_district'] ?? '')
+        .toString()
+        .trim();
+    final town = (address['city'] ??
+            address['town'] ??
+            address['village'] ??
+            address['hamlet'] ??
+            '')
+        .toString()
+        .trim();
+    final state = (address['state'] ?? '').toString().trim();
+    final parts = <String>[];
+    if (county.isNotEmpty) parts.add(county);
+    if (town.isNotEmpty && !parts.contains(town)) parts.add(town);
+    if (state.isNotEmpty && !parts.contains(state)) parts.add(state);
+    return parts.join(', ');
+  }
+
+  Future<Position> _ensurePosition() async {
+    final locationEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!locationEnabled) {
+      throw StateError('Location services are disabled.');
+    }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      throw StateError('Location permission denied.');
+    }
+
+    return Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+    );
+  }
+
+  Future<void> _copyGpsCoordinates() async {
+    try {
+      final position = _currentPosition ?? await _ensurePosition();
+      _currentPosition = position;
+      await Clipboard.setData(
+        ClipboardData(text: _formatGpsCoordinates(position)),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('GPS coordinates copied to clipboard.')),
+      );
+    } catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unable to copy GPS coordinates: $err')),
+      );
+    }
+  }
+
+  Future<void> _refreshLocationWeather() async {
     if (_weatherLoading) return;
     setState(() => _weatherLoading = true);
     try {
-      final locationEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!locationEnabled) {
-        throw StateError('Location services are disabled.');
-      }
+      final position = await _ensurePosition();
+      _currentPosition = position;
 
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        throw StateError('Location permission denied.');
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings:
-            const LocationSettings(accuracy: LocationAccuracy.high),
+      final reverseUri = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${position.latitude}&lon=${position.longitude}&addressdetails=1',
       );
-      if (_settings.jsaAutoLocation || _location.text.trim().isEmpty) {
-        _location.text =
-            '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
+      final reverseResponse = await http.get(
+        reverseUri,
+        headers: const {'User-Agent': 'WellWerks/1.0'},
+      );
+      if (reverseResponse.statusCode == 200) {
+        final reverseMap =
+            jsonDecode(reverseResponse.body) as Map<String, dynamic>;
+        final address = reverseMap['address'] as Map<String, dynamic>?;
+        final wellName =
+            address == null ? '' : _composeWellNameFromAddress(address);
+        if (wellName.isNotEmpty &&
+            (_settings.jsaAutoLocation || _wellName.text.trim().isEmpty)) {
+          _wellName.text = wellName;
+        }
       }
 
       final weatherUri = Uri.parse(
@@ -911,13 +968,20 @@ class _JsaScreenState extends State<JsaScreen> {
               ),
               const SizedBox(height: 12),
               TextField(
-                  controller: _location,
-                  decoration:
-                      const InputDecoration(labelText: 'Location / Pad')),
+                controller: _location,
+                decoration: const InputDecoration(
+                  labelText: 'Location / Pad',
+                  helperText: 'Lease name, pad name, or job location',
+                ),
+              ),
               const SizedBox(height: 12),
               TextField(
-                  controller: _wellName,
-                  decoration: const InputDecoration(labelText: 'Well Name')),
+                controller: _wellName,
+                decoration: const InputDecoration(
+                  labelText: 'Well Name',
+                  helperText: 'Auto-filled from GPS when available',
+                ),
+              ),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -960,7 +1024,7 @@ class _JsaScreenState extends State<JsaScreen> {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: _weatherLoading ? null : _refreshWeather,
+                  onPressed: _weatherLoading ? null : _refreshLocationWeather,
                   icon: _weatherLoading
                       ? const SizedBox(
                           width: 18,
@@ -969,6 +1033,15 @@ class _JsaScreenState extends State<JsaScreen> {
                         )
                       : const Icon(Icons.cloud_sync_outlined),
                   label: const Text('Refresh Weather'),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _copyGpsCoordinates,
+                  icon: const Icon(Icons.copy),
+                  label: const Text('Copy GPS Coordinates'),
                 ),
               ),
               const SizedBox(height: 18),

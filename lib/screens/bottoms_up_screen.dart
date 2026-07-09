@@ -16,24 +16,6 @@ class _PipeOption {
   final String label;
   final double capacity;
   final bool custom;
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
-
-import '../widgets/app_header.dart';
-import '../widgets/ww_number_field.dart';
-
-class BottomsUpScreen extends StatefulWidget {
-  const BottomsUpScreen({super.key});
-
-  @override
-  State<BottomsUpScreen> createState() => _BottomsUpScreenState();
-}
-
-class _PipeOption {
-  final String label;
-  final double capacity;
-  final bool custom;
 
   const _PipeOption(this.label, this.capacity, {this.custom = false});
 }
@@ -46,7 +28,6 @@ class _SizeOption {
 
 class _BottomsUpScreenState extends State<BottomsUpScreen> {
   static const _gold = Color(0xFFCDA56A);
-  static const _panel = Color(0xFF15181C);
 
   static const _tubingSizes = <_PipeOption>[
     _PipeOption('2-3/8" EUE', 0.00387),
@@ -105,9 +86,9 @@ class _BottomsUpScreenState extends State<BottomsUpScreen> {
     final mins = bottomsUpMinutes;
     if (mins == null) return '--';
     final totalMinutes = mins.round();
-    final h = totalMinutes ~/ 60;
-    final m = totalMinutes % 60;
-    return h > 0 ? '$h hr $m min' : '$m min';
+    final hours = totalMinutes ~/ 60;
+    final minutes = totalMinutes % 60;
+    return hours > 0 ? '$hours hr $minutes min' : '$minutes min';
   }
 
   @override
@@ -318,7 +299,8 @@ Estimated Arrival: $arrivalTime''';
               unit: 'min',
             ),
             _ResultCard(label: 'Bottoms Up', value: hourMinuteText, unit: ''),
-            _ResultCard(label: 'Estimated Arrival', value: arrivalTime, unit: ''),
+            _ResultCard(
+                label: 'Estimated Arrival', value: arrivalTime, unit: ''),
           ],
           const SizedBox(height: 8),
           FilledButton.icon(

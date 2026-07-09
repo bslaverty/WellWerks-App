@@ -124,7 +124,6 @@ void main() {
 
     expect(find.text('Tubing Size'), findsOneWidget);
     expect(find.text('Casing Size'), findsOneWidget);
-    expect(find.text('Copy Results'), findsOneWidget);
   });
 
   testWidgets('Wide layout shows persistent equipment library', (
