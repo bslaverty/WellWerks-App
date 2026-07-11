@@ -15,6 +15,8 @@ import 'package:signature/signature.dart';
 import '../models/job_setup.dart';
 import '../models/jsa_draft.dart';
 import '../services/jsa_export_service.dart';
+import '../services/active_company_service.dart';
+import '../services/job_profile_defaults_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/jsa_storage_service.dart';
 import '../services/recovery_state_service.dart';
@@ -79,15 +81,10 @@ class _JsaScreenState extends State<JsaScreen> {
   bool _weatherLoading = false;
   Position? _currentPosition;
   final _settingsService = AppSettingsService();
+  final _activeCompanyService = ActiveCompanyService.instance;
   late AppSettingsData _settings;
 
-  final _companies = const [
-    'Mach Energy',
-    'Continental',
-    'Devon',
-    'XTO',
-    'Custom',
-  ];
+  final _companies = JobProfileDefaultsService.sharedCompanyOptionsAlphabetized;
 
   final Map<String, Map<String, List<String>>> _taskLibrary = const {
     'Flowback': {
@@ -312,9 +309,9 @@ class _JsaScreenState extends State<JsaScreen> {
       }
       if (targetJob != null) {
         if (_company == 'Mach Energy' || _company == 'Custom') {
-          _company = _companies.contains(targetJob.company)
-              ? targetJob.company
-              : _company;
+          final normalized =
+              JobProfileDefaultsService().normalizeCompany(targetJob.company);
+          _company = _companies.contains(normalized) ? normalized : _company;
         }
       }
     });
@@ -322,11 +319,17 @@ class _JsaScreenState extends State<JsaScreen> {
 
   Future<void> _loadSettingsAndAutoFill() async {
     final loaded = await _settingsService.load();
+    final activeCompany = await _activeCompanyService.ensureLoaded();
     if (!mounted) return;
     setState(() {
       _settings = loaded;
-      if (_company.trim().isEmpty || _company == 'Mach Energy') {
-        _company = loaded.jsaCompanyDefault;
+      final fromGlobal = activeCompany.trim();
+      if ((fromGlobal.isNotEmpty && _companies.contains(fromGlobal)) ||
+          _company.trim().isEmpty ||
+          _company == 'Mach Energy') {
+        _company = (fromGlobal.isNotEmpty && _companies.contains(fromGlobal))
+            ? fromGlobal
+            : loaded.jsaCompanyDefault;
       }
       if (loaded.jsaAutoDate) {
         _date = DateTime.now();
@@ -541,7 +544,10 @@ class _JsaScreenState extends State<JsaScreen> {
     for (final signature in _signatures) {
       signature.clear();
     }
-    _company = _settings.jsaCompanyDefault;
+    final activeCompany = _activeCompanyService.activeCompany.value;
+    _company = activeCompany.trim().isNotEmpty
+        ? activeCompany
+        : _settings.jsaCompanyDefault;
     _selectedTasks
       ..clear()
       ..add('Flowback');
@@ -552,7 +558,13 @@ class _JsaScreenState extends State<JsaScreen> {
   }
 
   void _applyDraft(JsaDraft draft) {
-    _company = _companies.contains(draft.company) ? draft.company : 'Custom';
+    final normalized =
+        JobProfileDefaultsService().normalizeCompany(draft.company);
+    _company = _companies.contains(normalized)
+        ? normalized
+        : (_activeCompanyService.activeCompany.value.trim().isNotEmpty
+            ? _activeCompanyService.activeCompany.value
+            : 'Custom');
     _selectedTasks
       ..clear()
       ..addAll(draft.tasks.where(_taskLibrary.containsKey));
@@ -969,7 +981,11 @@ class _JsaScreenState extends State<JsaScreen> {
                 items: _companies
                     .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                     .toList(),
-                onChanged: (v) => setState(() => _company = v ?? _company),
+                onChanged: (v) async {
+                  final selected = v ?? _company;
+                  setState(() => _company = selected);
+                  await _activeCompanyService.setIfValidCandidate(selected);
+                },
                 decoration: const InputDecoration(labelText: 'Company'),
               ),
               const SizedBox(height: 12),

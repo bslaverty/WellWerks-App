@@ -36,6 +36,7 @@ class AppSettingsDefaults {
   static const rateTimerCompleteEnabled = true;
   static const rateTimerSoundEnabled = true;
   static const appTheme = 'wellwerks_default';
+  static const activeCompany = '';
   static const optionalReportSections = [
     'vru',
     'flare',
@@ -95,6 +96,7 @@ class AppSettingsData {
         AppSettingsDefaults.rateTimerCompleteEnabled,
     this.rateTimerSoundEnabled = AppSettingsDefaults.rateTimerSoundEnabled,
     this.appTheme = AppSettingsDefaults.appTheme,
+    this.activeCompany = AppSettingsDefaults.activeCompany,
   });
 
   final String defaultGasUnit;
@@ -126,6 +128,7 @@ class AppSettingsData {
   final bool rateTimerCompleteEnabled;
   final bool rateTimerSoundEnabled;
   final String appTheme;
+  final String activeCompany;
 
   static const optionalReportSectionOptions = [
     AppOptionalReportSection(id: 'vru', label: 'VRU'),
@@ -168,6 +171,7 @@ class AppSettingsData {
     bool? rateTimerCompleteEnabled,
     bool? rateTimerSoundEnabled,
     String? appTheme,
+    String? activeCompany,
   }) {
     return AppSettingsData(
       defaultGasUnit: defaultGasUnit ?? this.defaultGasUnit,
@@ -212,6 +216,7 @@ class AppSettingsData {
       rateTimerSoundEnabled:
           rateTimerSoundEnabled ?? this.rateTimerSoundEnabled,
       appTheme: appTheme ?? this.appTheme,
+      activeCompany: activeCompany ?? this.activeCompany,
     );
   }
 
@@ -245,6 +250,7 @@ class AppSettingsData {
         'rateTimerCompleteEnabled': rateTimerCompleteEnabled,
         'rateTimerSoundEnabled': rateTimerSoundEnabled,
         'appTheme': appTheme,
+        'activeCompany': activeCompany,
       };
 
   factory AppSettingsData.fromJson(Map<String, dynamic> json) {
@@ -312,6 +318,7 @@ class AppSettingsData {
       rateTimerSoundEnabled: json['rateTimerSoundEnabled'] as bool? ??
           AppSettingsDefaults.rateTimerSoundEnabled,
       appTheme: _normalizeTheme(json['appTheme'] as String?),
+      activeCompany: _normalizeActiveCompany(json['activeCompany'] as String?),
       defaultOptionalReportSections: _normalizeOptionalSections(
         (json['defaultOptionalReportSections'] as List?)
                 ?.map((item) => item?.toString() ?? '')
@@ -445,6 +452,10 @@ class AppSettingsData {
     }
   }
 
+  static String _normalizeActiveCompany(String? value) {
+    return (value ?? '').trim();
+  }
+
   static List<String> _normalizeOptionalSections(List<String> value) {
     final allowed = optionalReportSectionOptions.map((item) => item.id).toSet();
     final normalized = value
@@ -526,6 +537,7 @@ class AppSettingsService {
       rateTimerCompleteEnabled: AppSettingsDefaults.rateTimerCompleteEnabled,
       rateTimerSoundEnabled: AppSettingsDefaults.rateTimerSoundEnabled,
       appTheme: AppSettingsDefaults.appTheme,
+      activeCompany: AppSettingsDefaults.activeCompany,
     );
   }
 

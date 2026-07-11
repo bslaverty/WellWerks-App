@@ -105,5 +105,41 @@ void main() {
       expect(
           highVisTheme.radioTheme.fillColor?.resolve(selected), highVisPrimary);
     });
+
+    test('classic, OU, and OSU switch selected thumb uses each theme accent',
+        () {
+      const selected = <WidgetState>{WidgetState.selected};
+
+      final classicTheme = buildAppTheme('wellwerks_default');
+      final ouTheme = buildAppTheme('ou');
+      final osuTheme = buildAppTheme('osu');
+
+      expect(
+        classicTheme.switchTheme.thumbColor?.resolve(selected),
+        AppThemeCatalog.wellWerksDefault.accent,
+      );
+      expect(
+        ouTheme.switchTheme.thumbColor?.resolve(selected),
+        AppThemeCatalog.ou.accent,
+      );
+      expect(
+        osuTheme.switchTheme.thumbColor?.resolve(selected),
+        AppThemeCatalog.osu.accent,
+      );
+    });
+
+    test('cupertino override primary color follows selected theme accent', () {
+      final osuTheme = buildAppTheme('osu');
+      final ouTheme = buildAppTheme('ou');
+
+      expect(
+        osuTheme.cupertinoOverrideTheme?.primaryColor,
+        AppThemeCatalog.osu.accent,
+      );
+      expect(
+        ouTheme.cupertinoOverrideTheme?.primaryColor,
+        AppThemeCatalog.ou.accent,
+      );
+    });
   });
 }

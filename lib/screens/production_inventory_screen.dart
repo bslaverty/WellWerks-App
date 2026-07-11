@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../models/job_setup.dart';
 import '../models/production_shift.dart';
+import '../services/active_company_service.dart';
 import '../services/app_settings_service.dart';
 import '../services/job_history_service.dart';
+import '../services/job_profile_defaults_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/report_profile_service.dart';
@@ -26,18 +28,15 @@ class ProductionInventoryScreen extends StatefulWidget {
 }
 
 class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
-  static const List<String> _companyProfiles = <String>[
-    'Mach Energy',
-    'Continental Resources',
-    'Flywheel Energy',
-    'Custom',
-  ];
+  static const List<String> _companyProfiles =
+      JobProfileDefaultsService.productionCompanyProfiles;
 
   final _service = ProductionShiftService();
   final _historyService = JobHistoryService();
   final _settingsService = AppSettingsService();
   final _layoutService = ReportProfileService();
   final _jobStorage = JobStorageService();
+  final _activeCompanyService = ActiveCompanyService.instance;
 
   final _company = TextEditingController();
   final _pad = TextEditingController();
@@ -123,6 +122,11 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     }
     _defaultBblPerInch = settings.defaultBblPerInch;
     _defaultChokeDisplay = settings.defaultChokeDisplay;
+    final activeCompany = await _activeCompanyService.ensureLoaded();
+    if (_company.text.trim().isEmpty && activeCompany.trim().isNotEmpty) {
+      _company.text = activeCompany;
+      _selectedCompanyProfile = _normalizedCompanyProfile(activeCompany);
+    }
     if (_isEffectivelyEmptyShift(shift)) {
       _gaugeEntryType = settings.defaultGaugeType;
       _gasUnit = settings.defaultGasUnit;
@@ -592,6 +596,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
 
     setState(() => _saving = true);
     await _service.saveActiveShift(updated);
+    await _activeCompanyService.setIfValidCandidate(updated.header.company);
     if (!mounted) return;
     setState(() {
       _activeShift = updated;
@@ -1251,6 +1256,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                   }
                 }
               });
+              _activeCompanyService.setIfValidCandidate(_company.text);
             },
           ),
           const SizedBox(height: 12),

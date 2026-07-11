@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 class AppThemeOption {
@@ -170,6 +171,15 @@ ThemeData buildAppTheme(String themeId) {
     useMaterial3: true,
     brightness: option.brightness,
     colorScheme: scheme,
+    cupertinoOverrideTheme: CupertinoThemeData(
+      primaryColor: option.accent,
+      scaffoldBackgroundColor: option.background,
+      barBackgroundColor: option.surface,
+      textTheme: CupertinoTextThemeData(
+        primaryColor: option.accent,
+        textStyle: TextStyle(color: option.text),
+      ),
+    ),
     scaffoldBackgroundColor: option.background,
     canvasColor: option.background,
     dividerColor: option.accent.withValues(alpha: 0.28),

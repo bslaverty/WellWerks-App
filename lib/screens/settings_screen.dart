@@ -151,6 +151,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       subtitle: Text(subtitle, style: TextStyle(color: _subtle)),
       value: value,
       onChanged: onChanged,
+      activeThumbColor: _accent,
+      activeTrackColor: _accent.withValues(alpha: 0.45),
     );
   }
 

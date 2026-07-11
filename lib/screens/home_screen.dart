@@ -5,6 +5,7 @@ import '../widgets/app_header.dart';
 import '../widgets/tool_card.dart';
 import '../models/job_setup.dart';
 import '../services/app_settings_service.dart';
+import '../services/active_company_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/rate_timer_notification_service.dart';
 import '../services/rate_timer_service.dart';
@@ -46,20 +47,40 @@ class _HomeScreenState extends State<HomeScreen> {
   final _rateTimerService = RateTimerService();
   final _settingsService = AppSettingsService();
   final _rateTimerNotifications = RateTimerNotificationService.instance;
+  final _activeCompanyService = ActiveCompanyService.instance;
 
   JobSetup? _activeJob;
   String _lastModule = '';
+  String _activeCompany = '';
+  List<String> _companyOptions = const [];
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
+    _activeCompanyService.activeCompany
+        .addListener(_handleActiveCompanyChanged);
     _loadRecovery();
+  }
+
+  @override
+  void dispose() {
+    _activeCompanyService.activeCompany
+        .removeListener(_handleActiveCompanyChanged);
+    super.dispose();
+  }
+
+  void _handleActiveCompanyChanged() {
+    if (!mounted) return;
+    setState(() {
+      _activeCompany = _activeCompanyService.activeCompany.value;
+    });
   }
 
   Future<void> _loadRecovery() async {
     final activeJob = await _jobStorage.loadActiveJob();
     final lastActiveJobId = await _jobStorage.loadLastActiveJobId();
+    final activeCompany = await _activeCompanyService.ensureLoaded();
     final snapshot = await _recoveryState.loadSnapshot(
       lastActiveJobId: lastActiveJobId,
     );
@@ -69,9 +90,65 @@ class _HomeScreenState extends State<HomeScreen> {
           ? activeJob
           : activeJob;
       _lastModule = snapshot.lastModule;
+      _activeCompany = activeCompany;
+      _companyOptions = _activeCompanyService.companyOptions;
       _loading = false;
     });
     _handlePendingRateTimerAction();
+  }
+
+  Widget _activeCompanyCard(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 14),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Active Company',
+              style: TextStyle(
+                color: scheme.primary,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              initialValue:
+                  _activeCompany.trim().isEmpty ? null : _activeCompany,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Select Company',
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                const DropdownMenuItem<String>(
+                  value: '',
+                  child: Text('Select Company'),
+                ),
+                for (final company in _companyOptions)
+                  DropdownMenuItem<String>(
+                    value: company,
+                    child: Text(company),
+                  ),
+              ],
+              onChanged: (value) async {
+                final selected = (value ?? '').trim();
+                await _activeCompanyService.setActiveCompany(selected);
+                if (!context.mounted) return;
+                final label = selected.isEmpty ? 'Select Company' : selected;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Active Company: $label')),
+                );
+                await _loadRecovery();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _handlePendingRateTimerAction() async {
@@ -420,6 +497,7 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.all(18),
         children: [
           if (_activeJob != null) _activeJobCard(context, _activeJob!),
+          _activeCompanyCard(context),
           Padding(
             padding: const EdgeInsets.only(bottom: 14),
             child: Text(

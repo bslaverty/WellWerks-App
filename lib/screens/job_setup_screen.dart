@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/job_setup.dart';
+import '../services/active_company_service.dart';
 import '../services/job_profile_defaults_service.dart';
 import '../services/job_storage_service.dart';
 import '../widgets/app_header.dart';
@@ -26,6 +27,7 @@ class JobSetupScreen extends StatefulWidget {
 class _JobSetupScreenState extends State<JobSetupScreen> {
   final _storage = JobStorageService();
   final _profileDefaults = JobProfileDefaultsService();
+  final _activeCompanyService = ActiveCompanyService.instance;
   final _page = PageController();
   Timer? _autoSaveTimer;
 
@@ -123,9 +125,15 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   Future<void> _load() async {
+    await _activeCompanyService.ensureLoaded();
     final active = await _storage.loadActiveJob();
     if (active != null) {
       _applyJobToForm(active);
+    } else {
+      final globalCompany = _activeCompanyService.activeCompany.value;
+      if (globalCompany.trim().isNotEmpty) {
+        company = globalCompany;
+      }
     }
 
     if (!mounted) return;
@@ -218,7 +226,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   void _resetFormForNewJob() {
-    company = 'Mach Energy';
+    final globalCompany = _activeCompanyService.activeCompany.value.trim();
+    company = globalCompany.isEmpty ? 'Mach Energy' : globalCompany;
     jobType = JobProfileDefaultsService.jobTypeSingleWell;
     final defaults = _profileDefaults.profileForCompany(company);
     wellFieldKeys = List<String>.from(defaults.wellFieldKeys);
@@ -634,20 +643,15 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                           initialValue: company,
                           decoration:
                               const InputDecoration(labelText: 'Company'),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'Mach Energy',
-                              child: Text('Mach Energy'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Continental Resources',
-                              child: Text('Continental Resources'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Custom',
-                              child: Text('Custom'),
-                            ),
-                          ],
+                          items: JobProfileDefaultsService
+                              .productionCompanyProfiles
+                              .map(
+                                (profile) => DropdownMenuItem(
+                                  value: profile,
+                                  child: Text(profile),
+                                ),
+                              )
+                              .toList(),
                           onChanged: (value) {
                             final nextCompany = _profileDefaults
                                 .normalizeCompany(value ?? 'Mach Energy');
@@ -660,6 +664,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                               activeEquipmentSections = List<String>.from(
                                   defaults.defaultActiveSections);
                             });
+                            _activeCompanyService
+                                .setIfValidCandidate(nextCompany);
                             _scheduleAutoSave();
                           },
                         ),

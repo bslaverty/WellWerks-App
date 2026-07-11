@@ -23,6 +23,33 @@ class JobProfileDefaultsService {
   static const String companyMach = 'Mach Energy';
   static const String companyFlywheel = 'Flywheel Energy';
   static const String companyCustom = 'Custom';
+  static const String companyDevon = 'Devon';
+  static const String companyXto = 'XTO';
+
+  static const List<String> productionCompanyProfiles = <String>[
+    companyMach,
+    companyContinental,
+    companyFlywheel,
+    companyCustom,
+  ];
+
+  static const List<String> sharedCompanyOptions = <String>[
+    companyMach,
+    companyContinental,
+    companyDevon,
+    companyFlywheel,
+    companyXto,
+    companyCustom,
+  ];
+
+  static const List<String> sharedCompanyOptionsAlphabetized = <String>[
+    companyContinental,
+    companyCustom,
+    companyDevon,
+    companyFlywheel,
+    companyMach,
+    companyXto,
+  ];
 
   static const String jobTypeSingleWell = 'singleWell';
   static const String jobTypeMultiWellPad = 'multiWellPad';
