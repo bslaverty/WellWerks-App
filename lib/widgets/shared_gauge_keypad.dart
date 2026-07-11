@@ -104,8 +104,7 @@ class SharedGaugeKeypad extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed:
-                      primaryActionEnabled ? onPrimaryAction : null,
+                  onPressed: primaryActionEnabled ? onPrimaryAction : null,
                   style: FilledButton.styleFrom(
                     backgroundColor: scheme.primary,
                     foregroundColor: scheme.onPrimary,
@@ -164,8 +163,10 @@ class SharedGaugeKeypad extends StatelessWidget {
           side: BorderSide(color: scheme.primary),
           backgroundColor: scheme.surface,
           foregroundColor: scheme.onSurface,
-          padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 10, vertical: 6),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          padding:
+              EdgeInsets.symmetric(horizontal: compact ? 8 : 10, vertical: 6),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
         child: Text(
           label,

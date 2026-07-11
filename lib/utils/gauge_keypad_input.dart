@@ -17,7 +17,8 @@ class GaugeKeypadInput {
 
   static TextEditingValue insert(TextEditingValue value, String raw) {
     final text = value.text;
-    final start = value.selection.start < 0 ? text.length : value.selection.start;
+    final start =
+        value.selection.start < 0 ? text.length : value.selection.start;
     final end = value.selection.end < 0 ? text.length : value.selection.end;
 
     final insertText = _insertToken(text, raw);
@@ -25,7 +26,8 @@ class GaugeKeypadInput {
 
     return TextEditingValue(
       text: next,
-      selection: TextSelection.collapsed(offset: _safeOffset(next, start + insertText.length)),
+      selection: TextSelection.collapsed(
+          offset: _safeOffset(next, start + insertText.length)),
     );
   }
 
@@ -33,11 +35,13 @@ class GaugeKeypadInput {
     final text = value.text;
     if (text.isEmpty) return value;
 
-    final start = value.selection.start < 0 ? text.length : value.selection.start;
+    final start =
+        value.selection.start < 0 ? text.length : value.selection.start;
     final end = value.selection.end < 0 ? text.length : value.selection.end;
 
     if (start != end) {
-      final updated = _trimTrailingSpaceOnDelete(text.replaceRange(start, end, ''));
+      final updated =
+          _trimTrailingSpaceOnDelete(text.replaceRange(start, end, ''));
       return TextEditingValue(
         text: updated,
         selection: TextSelection.collapsed(offset: _safeOffset(updated, start)),
@@ -46,10 +50,12 @@ class GaugeKeypadInput {
 
     if (start == 0) return value;
 
-    final updated = _trimTrailingSpaceOnDelete(text.replaceRange(start - 1, start, ''));
+    final updated =
+        _trimTrailingSpaceOnDelete(text.replaceRange(start - 1, start, ''));
     return TextEditingValue(
       text: updated,
-      selection: TextSelection.collapsed(offset: _safeOffset(updated, start - 1)),
+      selection:
+          TextSelection.collapsed(offset: _safeOffset(updated, start - 1)),
     );
   }
 

@@ -142,7 +142,8 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _showGasTank2 = saved['showGasTank2'] as bool? ?? false;
       _showWaterTank = saved['showWaterTank'] as bool? ?? false;
       _showWaterTank2 = saved['showWaterTank2'] as bool? ?? false;
-      _waterTankType = _normalizeWaterTankType(saved['waterTankType'] as String?);
+      _waterTankType =
+          _normalizeWaterTankType(saved['waterTankType'] as String?);
       _waterTank2Type =
           _normalizeWaterTankType(saved['waterTank2Type'] as String?);
       _choke = normalizedChoke;
@@ -445,8 +446,8 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     }
     if (_showWaterTank) {
       final gauge = _parseGaugeOrNull(_water1Gauge.text);
-      lines.add(
-          _inventoryLine('Water Tank', gauge, _flowbackWaterChart(_waterTankType)));
+      lines.add(_inventoryLine(
+          'Water Tank', gauge, _flowbackWaterChart(_waterTankType)));
     }
     if (_showWaterTank2) {
       final gauge = _parseGaugeOrNull(_water2Gauge.text);
@@ -621,7 +622,8 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     final scheme = Theme.of(context).colorScheme;
     final gauge = _parseGaugeOrNull(controller.text);
     final gaugeText = gauge == null ? '—' : '${_fmtTrim(gauge)}"';
-    final barrelText = gauge == null ? '—' : '${_fmtTrim(chart.barrelsAt(gauge))} bbl';
+    final barrelText =
+        gauge == null ? '—' : '${_fmtTrim(chart.barrelsAt(gauge))} bbl';
 
     return Card(
       child: Padding(
@@ -686,176 +688,110 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'DRILLOUT SHIFT CHANGE',
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _customer,
-                    onChanged: (_) => _saveSetup(),
-                    decoration:
-                        const InputDecoration(labelText: 'Company / Customer'),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _wellName,
-                    onChanged: (_) => _saveSetup(),
-                    decoration: const InputDecoration(labelText: 'Well Name'),
-                  ),
-                  const SizedBox(height: 8),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.schedule),
-                    title: const Text('Shift Change Time'),
-                    subtitle: Text(_formatTime(_selectedTime)),
-                    trailing: FilledButton(
-                      onPressed: _pickTime,
-                      child: const Text('Select'),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.tune),
-                    title: const Text('Choke Selector'),
-                    subtitle: Text(formatChokeDisplay(_choke)),
-                    trailing: FilledButton(
-                      onPressed: _pickChoke,
-                      child: const Text('Select'),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _rate,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                        labelText: 'Rate Override (bbl/min)'),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _surfaceTotalFluid,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                        labelText: 'Surface Total Fluid (bbl)'),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _waterHauled,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration:
-                        const InputDecoration(labelText: 'Water Hauled (bbl)'),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _oilHauled,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration:
-                        const InputDecoration(labelText: 'Oil Hauled (bbl)'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Tank Inventory',
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
-                  ),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<String>(
-                    initialValue: _primaryTank,
-                    decoration: const InputDecoration(
-                      labelText: 'Primary Drillout Tank',
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'sandx', child: Text('SandX')),
-                      DropdownMenuItem(value: 'fs3', child: Text('FS3')),
-                      DropdownMenuItem(
-                          value: 'flowback500',
-                          child: Text('Flowback Tank - V Bottom')),
-                      DropdownMenuItem(
-                          value: 'flowback_round_bottom',
-                          child: Text('Flowback Tank - Round Bottom')),
-                    ],
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setState(() => _primaryTank = value);
-                      _saveSetup();
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                  _gaugeCard(
-                    title: _primaryTankLabel(),
-                    chart: _primaryChart(),
-                    controller: _primaryGauge,
-                    target: _DrilloutGaugeTarget.primary,
-                  ),
-                  SwitchListTile.adaptive(
-                    value: _showGasTank,
-                    onChanged: (value) {
-                      setState(() => _showGasTank = value);
-                      _saveSetup();
-                    },
-                    title: const Text('Gas Tank'),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  if (_showGasTank)
-                    _gaugeCard(
-                      title: 'Gas Tank',
-                      chart: flowbackGasTankChart,
-                      controller: _gas1Gauge,
-                      target: _DrilloutGaugeTarget.gas1,
-                    ),
-                  SwitchListTile.adaptive(
-                    value: _showGasTank2,
-                    onChanged: (value) {
-                      setState(() => _showGasTank2 = value);
-                      _saveSetup();
-                    },
-                    title: const Text('Gas Tank 2'),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  if (_showGasTank2)
-                    _gaugeCard(
-                      title: 'Gas Tank 2',
-                      chart: flowbackGasTankChart,
-                      controller: _gas2Gauge,
-                      target: _DrilloutGaugeTarget.gas2,
-                    ),
-                  SwitchListTile.adaptive(
-                    value: _showWaterTank,
-                    onChanged: (value) {
-                      setState(() => _showWaterTank = value);
-                      _saveSetup();
-                    },
-                    title: const Text('Water Tank'),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  if (_showWaterTank)
-                    Column(
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        DropdownButtonFormField<String>(
-                          initialValue: _waterTankType,
+                        const Text(
+                          'DRILLOUT SHIFT CHANGE',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w900, fontSize: 20),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _customer,
+                          onChanged: (_) => _saveSetup(),
                           decoration: const InputDecoration(
-                            labelText: 'Water Tank Type',
+                              labelText: 'Company / Customer'),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _wellName,
+                          onChanged: (_) => _saveSetup(),
+                          decoration:
+                              const InputDecoration(labelText: 'Well Name'),
+                        ),
+                        const SizedBox(height: 8),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.schedule),
+                          title: const Text('Shift Change Time'),
+                          subtitle: Text(_formatTime(_selectedTime)),
+                          trailing: FilledButton(
+                            onPressed: _pickTime,
+                            child: const Text('Select'),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.tune),
+                          title: const Text('Choke Selector'),
+                          subtitle: Text(formatChokeDisplay(_choke)),
+                          trailing: FilledButton(
+                            onPressed: _pickChoke,
+                            child: const Text('Select'),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _rate,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          decoration: const InputDecoration(
+                              labelText: 'Rate Override (bbl/min)'),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _surfaceTotalFluid,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          decoration: const InputDecoration(
+                              labelText: 'Surface Total Fluid (bbl)'),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _waterHauled,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          decoration: const InputDecoration(
+                              labelText: 'Water Hauled (bbl)'),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _oilHauled,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          decoration: const InputDecoration(
+                              labelText: 'Oil Hauled (bbl)'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Tank Inventory',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w900, fontSize: 18),
+                        ),
+                        const SizedBox(height: 10),
+                        DropdownButtonFormField<String>(
+                          initialValue: _primaryTank,
+                          decoration: const InputDecoration(
+                            labelText: 'Primary Drillout Tank',
                           ),
                           items: const [
+                            DropdownMenuItem(
+                                value: 'sandx', child: Text('SandX')),
+                            DropdownMenuItem(value: 'fs3', child: Text('FS3')),
                             DropdownMenuItem(
                                 value: 'flowback500',
                                 child: Text('Flowback Tank - V Bottom')),
@@ -865,99 +801,173 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                           ],
                           onChanged: (value) {
                             if (value == null) return;
-                            setState(() => _waterTankType = value);
+                            setState(() => _primaryTank = value);
                             _saveSetup();
                           },
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
                         _gaugeCard(
-                          title: 'Water Tank (${_waterTypeLabel(_waterTankType)})',
-                          chart: _flowbackWaterChart(_waterTankType),
-                          controller: _water1Gauge,
-                          target: _DrilloutGaugeTarget.water1,
+                          title: _primaryTankLabel(),
+                          chart: _primaryChart(),
+                          controller: _primaryGauge,
+                          target: _DrilloutGaugeTarget.primary,
                         ),
-                      ],
-                    ),
-                  SwitchListTile.adaptive(
-                    value: _showWaterTank2,
-                    onChanged: (value) {
-                      setState(() => _showWaterTank2 = value);
-                      _saveSetup();
-                    },
-                    title: const Text('Water Tank 2'),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  if (_showWaterTank2)
-                    Column(
-                      children: [
-                        DropdownButtonFormField<String>(
-                          initialValue: _waterTank2Type,
-                          decoration: const InputDecoration(
-                            labelText: 'Water Tank 2 Type',
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                                value: 'flowback500',
-                                child: Text('Flowback Tank - V Bottom')),
-                            DropdownMenuItem(
-                                value: 'flowback_round_bottom',
-                                child: Text('Flowback Tank - Round Bottom')),
-                          ],
+                        SwitchListTile.adaptive(
+                          value: _showGasTank,
                           onChanged: (value) {
-                            if (value == null) return;
-                            setState(() => _waterTank2Type = value);
+                            setState(() => _showGasTank = value);
                             _saveSetup();
                           },
+                          title: const Text('Gas Tank'),
+                          contentPadding: EdgeInsets.zero,
                         ),
-                        const SizedBox(height: 8),
-                        _gaugeCard(
-                          title: 'Water Tank 2 (${_waterTypeLabel(_waterTank2Type)})',
-                          chart: _flowbackWaterChart(_waterTank2Type),
-                          controller: _water2Gauge,
-                          target: _DrilloutGaugeTarget.water2,
+                        if (_showGasTank)
+                          _gaugeCard(
+                            title: 'Gas Tank',
+                            chart: flowbackGasTankChart,
+                            controller: _gas1Gauge,
+                            target: _DrilloutGaugeTarget.gas1,
+                          ),
+                        SwitchListTile.adaptive(
+                          value: _showGasTank2,
+                          onChanged: (value) {
+                            setState(() => _showGasTank2 = value);
+                            _saveSetup();
+                          },
+                          title: const Text('Gas Tank 2'),
+                          contentPadding: EdgeInsets.zero,
                         ),
+                        if (_showGasTank2)
+                          _gaugeCard(
+                            title: 'Gas Tank 2',
+                            chart: flowbackGasTankChart,
+                            controller: _gas2Gauge,
+                            target: _DrilloutGaugeTarget.gas2,
+                          ),
+                        SwitchListTile.adaptive(
+                          value: _showWaterTank,
+                          onChanged: (value) {
+                            setState(() => _showWaterTank = value);
+                            _saveSetup();
+                          },
+                          title: const Text('Water Tank'),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        if (_showWaterTank)
+                          Column(
+                            children: [
+                              DropdownButtonFormField<String>(
+                                initialValue: _waterTankType,
+                                decoration: const InputDecoration(
+                                  labelText: 'Water Tank Type',
+                                ),
+                                items: const [
+                                  DropdownMenuItem(
+                                      value: 'flowback500',
+                                      child: Text('Flowback Tank - V Bottom')),
+                                  DropdownMenuItem(
+                                      value: 'flowback_round_bottom',
+                                      child:
+                                          Text('Flowback Tank - Round Bottom')),
+                                ],
+                                onChanged: (value) {
+                                  if (value == null) return;
+                                  setState(() => _waterTankType = value);
+                                  _saveSetup();
+                                },
+                              ),
+                              const SizedBox(height: 8),
+                              _gaugeCard(
+                                title:
+                                    'Water Tank (${_waterTypeLabel(_waterTankType)})',
+                                chart: _flowbackWaterChart(_waterTankType),
+                                controller: _water1Gauge,
+                                target: _DrilloutGaugeTarget.water1,
+                              ),
+                            ],
+                          ),
+                        SwitchListTile.adaptive(
+                          value: _showWaterTank2,
+                          onChanged: (value) {
+                            setState(() => _showWaterTank2 = value);
+                            _saveSetup();
+                          },
+                          title: const Text('Water Tank 2'),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        if (_showWaterTank2)
+                          Column(
+                            children: [
+                              DropdownButtonFormField<String>(
+                                initialValue: _waterTank2Type,
+                                decoration: const InputDecoration(
+                                  labelText: 'Water Tank 2 Type',
+                                ),
+                                items: const [
+                                  DropdownMenuItem(
+                                      value: 'flowback500',
+                                      child: Text('Flowback Tank - V Bottom')),
+                                  DropdownMenuItem(
+                                      value: 'flowback_round_bottom',
+                                      child:
+                                          Text('Flowback Tank - Round Bottom')),
+                                ],
+                                onChanged: (value) {
+                                  if (value == null) return;
+                                  setState(() => _waterTank2Type = value);
+                                  _saveSetup();
+                                },
+                              ),
+                              const SizedBox(height: 8),
+                              _gaugeCard(
+                                title:
+                                    'Water Tank 2 (${_waterTypeLabel(_waterTank2Type)})',
+                                chart: _flowbackWaterChart(_waterTank2Type),
+                                controller: _water2Gauge,
+                                target: _DrilloutGaugeTarget.water2,
+                              ),
+                            ],
+                          ),
                       ],
                     ),
-                ],
-              ),
-            ),
-          ),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton.icon(
-                onPressed: _preview,
-                icon: const Icon(Icons.preview),
-                label: const Text('Preview'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _edit,
-                icon: const Icon(Icons.edit_outlined),
-                label: const Text('Edit'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _copy,
-                icon: const Icon(Icons.copy),
-                label: const Text('Copy Shift Change'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _share,
-                icon: const Icon(Icons.ios_share),
-                label: const Text('Share'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _clearCurrentShiftValues,
-                icon: const Icon(Icons.layers_clear),
-                label: const Text('Clear Current Shift Values'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _clearDrilloutSetup,
-                icon: const Icon(Icons.delete_forever),
-                label: const Text('Clear Drillout Setup'),
-              ),
-            ],
-          ),
+                  ),
+                ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _preview,
+                      icon: const Icon(Icons.preview),
+                      label: const Text('Preview'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _edit,
+                      icon: const Icon(Icons.edit_outlined),
+                      label: const Text('Edit'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _copy,
+                      icon: const Icon(Icons.copy),
+                      label: const Text('Copy Shift Change'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _share,
+                      icon: const Icon(Icons.ios_share),
+                      label: const Text('Share'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _clearCurrentShiftValues,
+                      icon: const Icon(Icons.layers_clear),
+                      label: const Text('Clear Current Shift Values'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _clearDrilloutSetup,
+                      icon: const Icon(Icons.delete_forever),
+                      label: const Text('Clear Drillout Setup'),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
