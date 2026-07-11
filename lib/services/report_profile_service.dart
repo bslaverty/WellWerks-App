@@ -101,12 +101,14 @@ class ReportProfileService {
   static const String defaultProfileId = 'default';
   static const String continentalProfileId = 'continental_resources';
   static const String machProfileId = 'mach_energy';
+  static const String flywheelProfileId = 'flywheel_energy';
   static const String customProfileId = 'custom';
 
   static const List<ReportField> availableFields = [
     ReportField(key: 'time', label: 'Time'),
     ReportField(key: 'well', label: 'Well'),
     ReportField(key: 'wellName', label: 'Well Name'),
+    ReportField(key: 'tbg', label: 'Tubing'),
     ReportField(key: 'csg', label: 'CSG'),
     ReportField(key: 'icp', label: 'ICP'),
     ReportField(key: 'chk', label: 'CHK'),
@@ -207,6 +209,32 @@ class ReportProfileService {
     'notes': 'Notes',
   };
 
+  static const List<String> _flywheelPresetKeys = [
+    'tbg',
+    'csg',
+    'chk',
+    'boph',
+    'bwph',
+    'diff',
+    'stat',
+    'temp',
+    'gasSpotRt',
+    'prop',
+  ];
+
+  static const Map<String, String> _flywheelLabels = {
+    'tbg': 'Tubing',
+    'csg': 'CSG',
+    'chk': 'Ck',
+    'boph': 'Oil',
+    'bwph': 'Wtr',
+    'diff': 'Diff',
+    'stat': 'Stat',
+    'temp': 'Temp',
+    'gasSpotRt': 'MCF',
+    'prop': 'Sand',
+  };
+
   ReportLayoutProfile defaultProfile() {
     return const ReportLayoutProfile(
       id: defaultProfileId,
@@ -239,6 +267,17 @@ class ReportProfileService {
     );
   }
 
+  ReportLayoutProfile flywheelProfile() {
+    final fields =
+        _presetFields(keys: _flywheelPresetKeys, labels: _flywheelLabels);
+    return ReportLayoutProfile(
+      id: flywheelProfileId,
+      name: 'Flywheel Energy',
+      reportFields: fields,
+      textFields: fields,
+    );
+  }
+
   ReportLayoutProfile customProfile() {
     return ReportLayoutProfile(
       id: customProfileId,
@@ -253,6 +292,7 @@ class ReportProfileService {
       defaultProfile(),
       continentalProfile(),
       machProfile(),
+      flywheelProfile(),
       customProfile(),
     ];
   }
@@ -261,6 +301,7 @@ class ReportProfileService {
     return id == defaultProfileId ||
         id == continentalProfileId ||
         id == machProfileId ||
+        id == flywheelProfileId ||
         id == customProfileId;
   }
 

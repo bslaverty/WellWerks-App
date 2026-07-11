@@ -21,6 +21,7 @@ class JobProfileDefaults {
 class JobProfileDefaultsService {
   static const String companyContinental = 'Continental Resources';
   static const String companyMach = 'Mach Energy';
+  static const String companyFlywheel = 'Flywheel Energy';
   static const String companyCustom = 'Custom';
 
   static const String jobTypeSingleWell = 'singleWell';
@@ -46,6 +47,19 @@ class JobProfileDefaultsService {
     'csg',
     'bwph',
     'boph',
+    'gasSpotRt',
+    'prop',
+  ];
+
+  static const List<String> _flywheelWellFields = <String>[
+    'tbg',
+    'csg',
+    'chk',
+    'boph',
+    'bwph',
+    'diff',
+    'stat',
+    'temp',
     'gasSpotRt',
     'prop',
   ];
@@ -81,6 +95,19 @@ class JobProfileDefaultsService {
     'prop': 'Sand',
   };
 
+  static const Map<String, String> _flywheelReportLabels = <String, String>{
+    'tbg': 'Tubing',
+    'csg': 'CSG',
+    'chk': 'Ck',
+    'boph': 'Oil',
+    'bwph': 'Wtr',
+    'diff': 'Diff',
+    'stat': 'Stat',
+    'temp': 'Temp',
+    'gasSpotRt': 'MCF',
+    'prop': 'Sand',
+  };
+
   static const Map<String, String> _continentalTextLabels = <String, String>{
     'csg': 'CSG',
     'icp': 'ICP',
@@ -105,6 +132,19 @@ class JobProfileDefaultsService {
     'prop': 'SAND',
   };
 
+  static const Map<String, String> _flywheelTextLabels = <String, String>{
+    'tbg': 'Tubing',
+    'csg': 'CSG',
+    'chk': 'Ck',
+    'boph': 'Oil',
+    'bwph': 'Wtr',
+    'diff': 'Diff',
+    'stat': 'Stat',
+    'temp': 'Temp',
+    'gasSpotRt': 'MCF',
+    'prop': 'Sand',
+  };
+
   static const Map<String, List<String>> _continentalEquipmentFields =
       <String, List<String>>{
     'RISER': <String>['Temp', 'PL'],
@@ -116,6 +156,11 @@ class JobProfileDefaultsService {
   static const Map<String, List<String>> _machEquipmentFields =
       <String, List<String>>{
     'VRU': <String>['GAS RT', 'SUCT', 'DISC'],
+    'Notes': <String>['Notes'],
+  };
+
+  static const Map<String, List<String>> _flywheelEquipmentFields =
+      <String, List<String>>{
     'Notes': <String>['Notes'],
   };
 
@@ -131,6 +176,9 @@ class JobProfileDefaultsService {
     }
     if (lower == 'mach energy' || lower == 'mach') {
       return companyMach;
+    }
+    if (lower == 'flywheel energy' || lower == 'flywheel') {
+      return companyFlywheel;
     }
     if (lower.isEmpty || lower == 'custom') {
       return companyCustom;
@@ -174,6 +222,18 @@ class JobProfileDefaultsService {
         reportLabels: _machReportLabels,
         textLabels: _machTextLabels,
         equipmentSectionFields: _machEquipmentFields,
+      );
+    }
+
+    if (normalized == companyFlywheel) {
+      return const JobProfileDefaults(
+        company: companyFlywheel,
+        wellFieldKeys: _flywheelWellFields,
+        optionalSections: _defaultSections,
+        defaultActiveSections: <String>['Notes'],
+        reportLabels: _flywheelReportLabels,
+        textLabels: _flywheelTextLabels,
+        equipmentSectionFields: _flywheelEquipmentFields,
       );
     }
 

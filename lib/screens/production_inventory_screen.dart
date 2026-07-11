@@ -26,6 +26,13 @@ class ProductionInventoryScreen extends StatefulWidget {
 }
 
 class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
+  static const List<String> _companyProfiles = <String>[
+    'Mach Energy',
+    'Continental Resources',
+    'Flywheel Energy',
+    'Custom',
+  ];
+
   final _service = ProductionShiftService();
   final _historyService = JobHistoryService();
   final _settingsService = AppSettingsService();
@@ -39,6 +46,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   String _gasUnit = 'mcfd';
   String _gasCalculationMethod = 'accumulator';
   String _layoutProfileId = 'default';
+  String _selectedCompanyProfile = 'Custom';
   bool _useJobSetupTanks = true;
   final _startingGasAccum = TextEditingController();
   final _waterHauledBeforeRound = TextEditingController();
@@ -154,6 +162,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
 
   void _setFromShift(ProductionShift shift) {
     _company.text = shift.header.company;
+    _selectedCompanyProfile = _normalizedCompanyProfile(_company.text);
     _pad.text = shift.header.pad;
     _date.text =
         shift.header.date.trim().isEmpty ? _todayDateText() : shift.header.date;
@@ -212,6 +221,31 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
       ..clear()
       ..addAll(
           _buildOilInventoryControllers(shift.inventory.oilInventoryWells));
+  }
+
+  String _normalizedCompanyProfile(String company) {
+    final lower = company.trim().toLowerCase();
+    if (lower == 'mach energy' || lower == 'mach') return 'Mach Energy';
+    if (lower == 'continental resources' || lower == 'continental') {
+      return 'Continental Resources';
+    }
+    if (lower == 'flywheel energy' || lower == 'flywheel') {
+      return 'Flywheel Energy';
+    }
+    return 'Custom';
+  }
+
+  String _layoutProfileForCompanyProfile(String profile) {
+    switch (profile) {
+      case 'Mach Energy':
+        return ReportProfileService.machProfileId;
+      case 'Continental Resources':
+        return ReportProfileService.continentalProfileId;
+      case 'Flywheel Energy':
+        return ReportProfileService.flywheelProfileId;
+      default:
+        return _layoutProfileId;
+    }
   }
 
   List<_OilInventoryControllers> _buildOilInventoryControllers(
@@ -1197,6 +1231,29 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
       children: [
         _validationCard(),
         _section('Shift Header', [
+          DropdownButtonFormField<String>(
+            initialValue: _selectedCompanyProfile,
+            decoration:
+                const InputDecoration(labelText: 'Company / Customer Profile'),
+            items: [
+              for (final profile in _companyProfiles)
+                DropdownMenuItem(value: profile, child: Text(profile)),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() {
+                _selectedCompanyProfile = value;
+                if (value != 'Custom') {
+                  _company.text = value;
+                  final mappedLayout = _layoutProfileForCompanyProfile(value);
+                  if (_layoutProfiles.any((p) => p.id == mappedLayout)) {
+                    _layoutProfileId = mappedLayout;
+                  }
+                }
+              });
+            },
+          ),
+          const SizedBox(height: 12),
           _textField('Company', _company),
           _textField('Pad Name', _pad),
           _textField('Date', _date),

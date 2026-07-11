@@ -9,6 +9,7 @@ import '../services/job_profile_defaults_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/recovery_state_service.dart';
 import '../services/report_profile_service.dart';
+import '../utils/flywheel_text_update_formatter.dart';
 import '../widgets/app_header.dart';
 
 class TextUpdateScreen extends StatefulWidget {
@@ -477,6 +478,59 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     return lines.join('\n');
   }
 
+  String _flywheelUpdateLine(String sourceTime) {
+    final parsed = _parseShiftTime(sourceTime.trim());
+    if (parsed == null) {
+      return '${sourceTime.trim()} update';
+    }
+
+    final hour12 = parsed.hour % 12 == 0 ? 12 : parsed.hour % 12;
+    final minute = parsed.minute.toString().padLeft(2, '0');
+    final marker = parsed.hour >= 12 ? 'pm' : 'am';
+    return '$hour12:$minute$marker update';
+  }
+
+  String _flywheelMcf(ProductionReportRow row) {
+    final value = _baseGasToDisplay(row.gas24HourRate);
+    if (value.isNaN || value.isInfinite) return '-';
+    return value.round().toString();
+  }
+
+  String _flywheelChoke(ProductionReportRow row) {
+    final raw = row.choke.trim();
+    return raw.isEmpty ? '-' : raw;
+  }
+
+  String _flywheelTextPreview(List<ProductionReportRow> rows) {
+    final updateRow = rows.isNotEmpty ? rows.first : _selectedRow;
+    final updateLine = _flywheelUpdateLine(updateRow?.time ?? '');
+    final locationLine = _headerPadName;
+
+    final wellBlocks = rows
+        .map(
+          (row) => FlywheelWellLineData(
+            wellName: row.well,
+            tubing: row.tbg,
+            csg: row.csg,
+            choke: _flywheelChoke(row),
+            oil: _wholeFmt(row.oilProduction),
+            water: _wholeFmt(row.waterProduction),
+            diff: row.gasDifferential,
+            stat: row.gasStatic,
+            temp: row.gasTemp,
+            mcf: _flywheelMcf(row),
+            sand: row.sandRate,
+          ),
+        )
+        .toList();
+
+    return buildFlywheelTextUpdate(
+      updateLine: updateLine,
+      locationLine: locationLine,
+      wells: wellBlocks,
+    );
+  }
+
   String _continentalTextPreview(
     JobSetup activeJob,
     List<ProductionReportRow> rows,
@@ -552,6 +606,9 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     }
 
     final activeJob = _activeJob;
+    final selectedCompany = _profileDefaults.normalizeCompany(
+      activeJob?.company ?? _shift.header.company,
+    );
     if (activeJob != null) {
       final previewRows = _orderedSelectedRows;
       final company = _profileDefaults.normalizeCompany(activeJob.company);
@@ -561,6 +618,13 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
       if (company == JobProfileDefaultsService.companyContinental) {
         return _continentalTextPreview(activeJob, previewRows);
       }
+      if (company == JobProfileDefaultsService.companyFlywheel) {
+        return _flywheelTextPreview(previewRows);
+      }
+    }
+
+    if (selectedCompany == JobProfileDefaultsService.companyFlywheel) {
+      return _flywheelTextPreview(_orderedSelectedRows);
     }
 
     final previewRows = _orderedSelectedRows;
