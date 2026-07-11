@@ -31,6 +31,7 @@ import 'settings_screen.dart';
 import 'about_support_screen.dart';
 import 'job_setup_screen.dart';
 import 'drillout_shift_change_screen.dart';
+import 'flywheel_diesel_tank_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -498,6 +499,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 subtitle:
                     'FS3, SandX, V Bottom, Round Bottom, Gas Tank, and Production Tank',
                 screen: TankChartsMenuScreen(),
+              ),
+              const ModuleTool(
+                icon: Icons.local_gas_station,
+                title: 'Flywheel Diesel Tank',
+                subtitle: '3-compartment diesel fuel calculator',
+                screen: FlywheelDieselTankScreen(),
               ),
               ModuleTool(
                 icon: Icons.table_chart,
