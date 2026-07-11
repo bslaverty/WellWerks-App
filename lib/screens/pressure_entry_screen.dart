@@ -2106,8 +2106,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
                     ? Icons.check_circle
                     : Icons.radio_button_unchecked,
                 color: _isWellEntered(hourIndex, well)
-                    ? Colors.green
-                    : Colors.white54,
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
               const SizedBox(width: 10),
               Expanded(

@@ -542,7 +542,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 items: const [
                   DropdownMenuItem(
                     value: 'wellwerks_default',
-                    child: Text('WellWerks Classic'),
+                    child: Text('Classic'),
                   ),
                   DropdownMenuItem(
                     value: 'negative',
@@ -550,12 +550,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   DropdownMenuItem(value: 'patriot', child: Text('Patriot')),
                   DropdownMenuItem(
-                    value: 'high_visibility',
+                    value: 'light',
                     child: Text('Light'),
                   ),
                   DropdownMenuItem(value: 'military', child: Text('Military')),
                   DropdownMenuItem(value: 'ou', child: Text('OU')),
                   DropdownMenuItem(value: 'osu', child: Text('OSU')),
+                  DropdownMenuItem(value: 'high_vis', child: Text('High Vis')),
                 ],
                 onChanged: (value) {
                   if (value == null) return;

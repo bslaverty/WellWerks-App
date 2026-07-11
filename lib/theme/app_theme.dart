@@ -27,7 +27,7 @@ class AppThemeOption {
 class AppThemeCatalog {
   static const wellWerksDefault = AppThemeOption(
     id: 'wellwerks_default',
-    label: 'WellWerks Classic',
+    label: 'Classic',
     brightness: Brightness.dark,
     background: Color(0xFF0B0B0C),
     surface: Color(0xFF171513),
@@ -61,28 +61,16 @@ class AppThemeCatalog {
     subtleText: Color(0xFFC4CEDC),
   );
 
-  static const osu = AppThemeOption(
-    id: 'osu',
-    label: 'OSU',
-    brightness: Brightness.dark,
-    background: Color(0xFF120E0C),
-    surface: Color(0xFF231913),
-    appBarBackground: Color(0xFF110D0B),
-    accent: Color(0xFFDC7A28),
-    text: Colors.white,
-    subtleText: Color(0xFFC2B6AE),
-  );
-
-  static const ou = AppThemeOption(
-    id: 'ou',
-    label: 'OU',
-    brightness: Brightness.dark,
-    background: Color(0xFF160E10),
-    surface: Color(0xFF28191E),
-    appBarBackground: Color(0xFF140D0F),
-    accent: Color(0xFFB04A54),
-    text: Colors.white,
-    subtleText: Color(0xFFE3D7CA),
+  static const light = AppThemeOption(
+    id: 'light',
+    label: 'Light',
+    brightness: Brightness.light,
+    background: Color(0xFFF3F2EF),
+    surface: Color(0xFFFFFFFF),
+    appBarBackground: Color(0xFFF8F6F2),
+    accent: Color(0xFFC09A63),
+    text: Color(0xFF1A1A1A),
+    subtleText: Color(0xFF5A5A5A),
   );
 
   static const military = AppThemeOption(
@@ -97,32 +85,58 @@ class AppThemeCatalog {
     subtleText: Color(0xFFBAC3B2),
   );
 
+  static const ou = AppThemeOption(
+    id: 'ou',
+    label: 'OU',
+    brightness: Brightness.dark,
+    background: Color(0xFF210E14),
+    surface: Color(0xFF4A3933),
+    appBarBackground: Color(0xFF5A1F2A),
+    accent: Color(0xFF9D2235),
+    text: Color(0xFFF6EBDD),
+    subtleText: Color(0xFFE2CEB4),
+  );
+
+  static const osu = AppThemeOption(
+    id: 'osu',
+    label: 'OSU',
+    brightness: Brightness.dark,
+    background: Color(0xFF0C0C0C),
+    surface: Color(0xFF1A1A1A),
+    appBarBackground: Color(0xFF101010),
+    accent: Color(0xFFFF7A00),
+    text: Color(0xFFF3F3F3),
+    subtleText: Color(0xFFB8B8B8),
+  );
+
   static const highVisibility = AppThemeOption(
-    id: 'high_visibility',
-    label: 'Light',
-    brightness: Brightness.light,
-    background: Color(0xFFF3F2EF),
-    surface: Color(0xFFFFFFFF),
-    appBarBackground: Color(0xFFF8F6F2),
-    accent: Color(0xFFC09A63),
-    text: Color(0xFF1A1A1A),
-    subtleText: Color(0xFF5A5A5A),
+    id: 'high_vis',
+    label: 'High Vis',
+    brightness: Brightness.dark,
+    background: Color(0xFF050505),
+    surface: Color(0xFF101010),
+    appBarBackground: Color(0xFF000000),
+    accent: Color(0xFFE9FF2F),
+    text: Color(0xFFF5F5F5),
+    subtleText: Color(0xFFD6D6D6),
   );
 
   static const options = <AppThemeOption>[
     wellWerksDefault,
     negative,
     patriot,
-    highVisibility,
+    light,
     military,
     ou,
     osu,
+    highVisibility,
   ];
 
   static AppThemeOption fromId(String id) {
     final normalized = id.trim().toLowerCase();
+    final resolved = normalized == 'high_visibility' ? 'light' : normalized;
     for (final option in options) {
-      if (option.id == normalized) return option;
+      if (option.id == resolved) return option;
     }
     return wellWerksDefault;
   }
@@ -132,8 +146,11 @@ ThemeData buildAppTheme(String themeId) {
   final option = AppThemeCatalog.fromId(themeId);
   final onAccent =
       option.accent.computeLuminance() > 0.5 ? Colors.black : Colors.white;
-  final scheme = ColorScheme(
+
+  final scheme = ColorScheme.fromSeed(
+    seedColor: option.accent,
     brightness: option.brightness,
+  ).copyWith(
     primary: option.accent,
     onPrimary: onAccent,
     secondary: option.accent,
@@ -145,6 +162,8 @@ ThemeData buildAppTheme(String themeId) {
     surface: option.surface,
     onSurface: option.text,
     onSurfaceVariant: option.subtleText,
+    outline: option.accent.withValues(alpha: 0.55),
+    outlineVariant: option.accent.withValues(alpha: 0.3),
   );
 
   final base = ThemeData(
@@ -174,7 +193,10 @@ ThemeData buildAppTheme(String themeId) {
     cardTheme: CardThemeData(
       color: option.surface,
       elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: option.accent.withValues(alpha: 0.25)),
+      ),
     ),
     textTheme: base.textTheme.apply(
       bodyColor: option.text,
@@ -194,11 +216,19 @@ ThemeData buildAppTheme(String themeId) {
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: option.accent.withValues(alpha: 0.35)),
+        borderSide: BorderSide(color: scheme.outlineVariant),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: option.accent, width: 1.4),
+        borderSide: BorderSide(color: scheme.primary, width: 1.8),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: scheme.error, width: 1.2),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: scheme.error, width: 1.8),
       ),
       iconColor: option.accent,
       prefixIconColor: option.accent,
@@ -218,9 +248,14 @@ ThemeData buildAppTheme(String themeId) {
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        side: BorderSide(color: option.accent.withValues(alpha: 0.7)),
-        foregroundColor: option.text,
+        side: BorderSide(color: option.accent.withValues(alpha: 0.8)),
+        foregroundColor: option.accent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: option.accent,
       ),
     ),
     iconButtonTheme: IconButtonThemeData(
@@ -230,31 +265,80 @@ ThemeData buildAppTheme(String themeId) {
     ),
     switchTheme: SwitchThemeData(
       thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) {
+          return option.subtleText.withValues(alpha: 0.45);
+        }
         if (states.contains(WidgetState.selected)) {
           return option.accent;
         }
         return option.subtleText;
       }),
       trackColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) {
+          return option.subtleText.withValues(alpha: 0.2);
+        }
         if (states.contains(WidgetState.selected)) {
           return option.accent.withValues(alpha: 0.45);
         }
         return option.subtleText.withValues(alpha: 0.35);
       }),
+      trackOutlineColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) return option.accent;
+        return scheme.outlineVariant;
+      }),
     ),
     checkboxTheme: CheckboxThemeData(
       fillColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) {
+          return option.subtleText.withValues(alpha: 0.2);
+        }
         if (states.contains(WidgetState.selected)) return option.accent;
         return option.surface;
       }),
       checkColor: WidgetStatePropertyAll<Color>(onAccent),
-      side: BorderSide(color: option.accent.withValues(alpha: 0.7)),
+      side: BorderSide(color: scheme.outline),
     ),
     radioTheme: RadioThemeData(
       fillColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) {
+          return option.subtleText.withValues(alpha: 0.35);
+        }
         if (states.contains(WidgetState.selected)) return option.accent;
         return option.subtleText;
       }),
+    ),
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return option.accent.withValues(alpha: 0.2);
+          }
+          return option.surface;
+        }),
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return option.accent;
+          }
+          return option.text;
+        }),
+        side: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return BorderSide(color: option.accent, width: 1.4);
+          }
+          return BorderSide(color: scheme.outlineVariant);
+        }),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+    ),
+    sliderTheme: SliderThemeData(
+      activeTrackColor: option.accent,
+      inactiveTrackColor: option.subtleText.withValues(alpha: 0.35),
+      thumbColor: option.accent,
+      overlayColor: option.accent.withValues(alpha: 0.18),
+      valueIndicatorColor: option.accent,
+      valueIndicatorTextStyle: TextStyle(color: onAccent),
     ),
     progressIndicatorTheme: ProgressIndicatorThemeData(
       color: option.accent,
@@ -269,7 +353,7 @@ ThemeData buildAppTheme(String themeId) {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: option.accent, width: 1.4),
+          borderSide: BorderSide(color: option.accent, width: 1.8),
         ),
       ),
       textStyle: TextStyle(color: option.text),
@@ -277,6 +361,7 @@ ThemeData buildAppTheme(String themeId) {
     snackBarTheme: SnackBarThemeData(
       backgroundColor: option.surface,
       contentTextStyle: TextStyle(color: option.text),
+      actionTextColor: option.accent,
     ),
     popupMenuTheme: PopupMenuThemeData(
       color: option.surface,
@@ -296,6 +381,7 @@ ThemeData buildAppTheme(String themeId) {
     bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: option.surface,
       modalBackgroundColor: option.surface,
+      dragHandleColor: option.accent.withValues(alpha: 0.75),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
@@ -341,11 +427,27 @@ ThemeData buildAppTheme(String themeId) {
     ),
     chipTheme: base.chipTheme.copyWith(
       selectedColor: option.accent.withValues(alpha: 0.28),
-      checkmarkColor: option.accent,
+      checkmarkColor: onAccent,
       side: BorderSide(color: option.accent.withValues(alpha: 0.35)),
       labelStyle: TextStyle(color: option.text),
       secondaryLabelStyle: TextStyle(color: option.text),
       backgroundColor: option.surface,
+    ),
+    timePickerTheme: TimePickerThemeData(
+      backgroundColor: option.surface,
+      hourMinuteColor: option.accent.withValues(alpha: 0.18),
+      hourMinuteTextColor: option.text,
+      dayPeriodColor: option.surface,
+      dayPeriodTextColor: option.text,
+      dialBackgroundColor: option.surface,
+      dialHandColor: option.accent,
+      dialTextColor: option.text,
+      entryModeIconColor: option.accent,
+      helpTextStyle:
+          TextStyle(color: option.accent, fontWeight: FontWeight.w700),
+      confirmButtonStyle: TextButton.styleFrom(foregroundColor: option.accent),
+      cancelButtonStyle:
+          TextButton.styleFrom(foregroundColor: option.subtleText),
     ),
   );
 }

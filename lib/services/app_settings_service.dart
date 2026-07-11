@@ -431,9 +431,12 @@ class AppSettingsData {
       case 'osu':
       case 'ou':
       case 'military':
-      case 'high_visibility':
+      case 'light':
+      case 'high_vis':
       case 'wellwerks_default':
         return normalized;
+      case 'high_visibility':
+        return 'light';
       case 'wellwerks_dark':
       case 'dark':
         return 'wellwerks_default';

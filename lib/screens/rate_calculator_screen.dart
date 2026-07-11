@@ -1243,11 +1243,14 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                   label: const Text('BBL/min'),
                   onSelected: (_) =>
                       _setDisplayUnit(_RateDisplayUnit.bblPerMin),
-                  selectedColor: const Color(0xFFCDA56A),
+                  selectedColor: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.28),
                   labelStyle: TextStyle(
                     color: _rateDisplayUnit == _RateDisplayUnit.bblPerMin
-                        ? Colors.black
-                        : Colors.white,
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -1255,11 +1258,14 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                   selected: _rateDisplayUnit == _RateDisplayUnit.bblPerHr,
                   label: const Text('BBL/hr'),
                   onSelected: (_) => _setDisplayUnit(_RateDisplayUnit.bblPerHr),
-                  selectedColor: const Color(0xFFCDA56A),
+                  selectedColor: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.28),
                   labelStyle: TextStyle(
                     color: _rateDisplayUnit == _RateDisplayUnit.bblPerHr
-                        ? Colors.black
-                        : Colors.white,
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -1506,7 +1512,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                     },
                     title: const Text('Rate Log'),
                     subtitle: const Text('Save each CALCULATE result to log'),
-                    activeThumbColor: const Color(0xFFCDA56A),
                   ),
                   if (error != null)
                     Card(

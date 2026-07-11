@@ -3879,19 +3879,20 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
         children: [
           for (final tab in tabs) ...[
             ChoiceChip(
-              selectedColor: const Color(0xFFCDA56A),
+              selectedColor:
+                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.28),
               labelStyle: TextStyle(
                 color: _mobileDrawerSection == tab.value
-                    ? Colors.black
-                    : Colors.white,
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.onSurface,
                 fontWeight: FontWeight.w700,
               ),
               side: BorderSide(
                 color: _mobileDrawerSection == tab.value
-                    ? const Color(0xFFCDA56A)
-                    : const Color(0xFF4A4A4A),
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.outlineVariant,
               ),
-              backgroundColor: const Color(0xFF1A1D21),
+              backgroundColor: Theme.of(context).colorScheme.surface,
               selected: _mobileDrawerSection == tab.value,
               label: Text(tab.key),
               onSelected: (_) => setState(() {
