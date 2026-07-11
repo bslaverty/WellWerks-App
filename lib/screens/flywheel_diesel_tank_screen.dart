@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../data/flywheel_diesel_charts.dart';
 import '../services/app_settings_service.dart';
@@ -18,6 +19,7 @@ class _FlywheelDieselTankScreenState extends State<FlywheelDieselTankScreen> {
   final _settingsService = AppSettingsService();
 
   String _timeFormat = '12h';
+  DateTime? _textTimestamp;
 
   int? _comp1Feet;
   int? _comp1Inches;
@@ -84,19 +86,25 @@ class _FlywheelDieselTankScreenState extends State<FlywheelDieselTankScreen> {
     return NumberFormat('#,##0').format(value);
   }
 
-  String _timeLine() {
-    final now = DateTime.now();
+  String _timeLine([DateTime? value]) {
+    final now = value ?? DateTime.now();
     if (_timeFormat == '24h') {
       return DateFormat('HH:mm').format(now);
     }
     return DateFormat('h:mm a').format(now);
   }
 
-  String _copyText() {
+  DateTime _ensureTextTimestamp() {
+    _textTimestamp ??= DateTime.now();
+    return _textTimestamp!;
+  }
+
+  String _dieselText() {
+    final stamp = _ensureTextTimestamp();
     final lines = <String>[
       'Flywheel',
       'Diesel Tank Totals',
-      _timeLine(),
+      _timeLine(stamp),
       '',
       'Compartment 1: ${_fmtInt(_comp1Gallons)} gal',
       'Compartment 2: ${_fmtInt(_comp2Gallons)} gal',
@@ -107,12 +115,35 @@ class _FlywheelDieselTankScreenState extends State<FlywheelDieselTankScreen> {
     return lines.join('\n');
   }
 
+  Future<void> _previewDieselText() async {
+    final text = _dieselText();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Preview Diesel Text'),
+        content: SingleChildScrollView(child: Text(text)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _copyDieselTotals() async {
-    await Clipboard.setData(ClipboardData(text: _copyText()));
+    await Clipboard.setData(ClipboardData(text: _dieselText()));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Diesel totals copied to clipboard.')),
     );
+  }
+
+  Future<void> _shareDieselTotals() async {
+    final text = _dieselText();
+    await Share.share(text, subject: 'Flywheel Diesel Tank Totals');
   }
 
   Future<void> _clearReadings() async {
@@ -148,6 +179,7 @@ class _FlywheelDieselTankScreenState extends State<FlywheelDieselTankScreen> {
       _comp3Feet = null;
       _comp3Inches = null;
       _comp3Quarter = 0;
+      _textTimestamp = null;
     });
   }
 
@@ -312,10 +344,18 @@ class _FlywheelDieselTankScreenState extends State<FlywheelDieselTankScreen> {
             inches: _comp1Inches,
             quarter: _comp1Quarter,
             gallons: _comp1Gallons,
-            onFeetChanged: (value) => setState(() => _comp1Feet = value),
-            onInchesChanged: (value) => setState(() => _comp1Inches = value),
-            onQuarterChanged: (value) =>
-                setState(() => _comp1Quarter = value ?? 0),
+            onFeetChanged: (value) => setState(() {
+              _comp1Feet = value;
+              _textTimestamp = null;
+            }),
+            onInchesChanged: (value) => setState(() {
+              _comp1Inches = value;
+              _textTimestamp = null;
+            }),
+            onQuarterChanged: (value) => setState(() {
+              _comp1Quarter = value ?? 0;
+              _textTimestamp = null;
+            }),
           ),
           _gaugeCard(
             title: 'Compartment 2',
@@ -326,10 +366,18 @@ class _FlywheelDieselTankScreenState extends State<FlywheelDieselTankScreen> {
             inches: _comp2Inches,
             quarter: _comp2Quarter,
             gallons: _comp2Gallons,
-            onFeetChanged: (value) => setState(() => _comp2Feet = value),
-            onInchesChanged: (value) => setState(() => _comp2Inches = value),
-            onQuarterChanged: (value) =>
-                setState(() => _comp2Quarter = value ?? 0),
+            onFeetChanged: (value) => setState(() {
+              _comp2Feet = value;
+              _textTimestamp = null;
+            }),
+            onInchesChanged: (value) => setState(() {
+              _comp2Inches = value;
+              _textTimestamp = null;
+            }),
+            onQuarterChanged: (value) => setState(() {
+              _comp2Quarter = value ?? 0;
+              _textTimestamp = null;
+            }),
           ),
           _gaugeCard(
             title: 'Compartment 3',
@@ -340,19 +388,37 @@ class _FlywheelDieselTankScreenState extends State<FlywheelDieselTankScreen> {
             inches: _comp3Inches,
             quarter: _comp3Quarter,
             gallons: _comp3Gallons,
-            onFeetChanged: (value) => setState(() => _comp3Feet = value),
-            onInchesChanged: (value) => setState(() => _comp3Inches = value),
-            onQuarterChanged: (value) =>
-                setState(() => _comp3Quarter = value ?? 0),
+            onFeetChanged: (value) => setState(() {
+              _comp3Feet = value;
+              _textTimestamp = null;
+            }),
+            onInchesChanged: (value) => setState(() {
+              _comp3Inches = value;
+              _textTimestamp = null;
+            }),
+            onQuarterChanged: (value) => setState(() {
+              _comp3Quarter = value ?? 0;
+              _textTimestamp = null;
+            }),
           ),
           Wrap(
             spacing: 10,
             runSpacing: 10,
             children: [
               FilledButton.icon(
+                onPressed: _previewDieselText,
+                icon: const Icon(Icons.preview),
+                label: const Text('Preview Diesel Text'),
+              ),
+              FilledButton.icon(
                 onPressed: _copyDieselTotals,
                 icon: const Icon(Icons.copy),
                 label: const Text('Copy Diesel Totals'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _shareDieselTotals,
+                icon: const Icon(Icons.ios_share),
+                label: const Text('Share Diesel Totals'),
               ),
               OutlinedButton.icon(
                 onPressed: _clearReadings,

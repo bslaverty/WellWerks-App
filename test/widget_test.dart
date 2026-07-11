@@ -389,7 +389,6 @@ void main() {
     expect(labeledTextField('Well Name'), findsNothing);
     expect(find.textContaining('Bow 21-3'), findsWidgets);
 
-    await tester.enterText(labeledTextField('Choke Value').first, '35');
     await tester.enterText(labeledTextField('TBG').first, '1200');
     await tester.enterText(labeledTextField('CSG').first, '2888');
     await tester.enterText(labeledTextField('Current Gas Accum').first, '8003');

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../widgets/app_header.dart';
+import '../widgets/choke_selector_sheet.dart';
 
 class MultipleChokeScreen extends StatefulWidget {
   const MultipleChokeScreen({super.key});
@@ -100,13 +101,26 @@ class _MultipleChokeScreenState extends State<MultipleChokeScreen> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  PopupMenuButton<int>(
-                    tooltip: 'Common sizes',
-                    icon: const Icon(Icons.arrow_drop_down_circle_outlined),
-                    onSelected: (size) => setState(() => chokes[i].text = size.toString()),
-                    itemBuilder: (_) => commonChokes
-                        .map((size) => PopupMenuItem(value: size, child: Text('$size/64')))
-                        .toList(),
+                  IconButton(
+                    tooltip: 'Select choke',
+                    icon: const Icon(Icons.tune),
+                    onPressed: () async {
+                      final current = int.tryParse(chokes[i].text.trim());
+                      final picked = await showChokeSelectorSheet(
+                        context,
+                        initial: ChokeSelection(
+                          type: ChokeTypes.positive,
+                          size64: (current != null && current >= 2 && current <= 64)
+                              ? current
+                              : commonChokes.first,
+                        ),
+                        allowNone: false,
+                        positiveSizes: commonChokes,
+                        adjustableSizes: commonChokes,
+                      );
+                      if (!mounted || picked == null || picked.size64 == null) return;
+                      setState(() => chokes[i].text = picked.size64.toString());
+                    },
                   ),
                   IconButton(
                     icon: const Icon(Icons.delete_outline),

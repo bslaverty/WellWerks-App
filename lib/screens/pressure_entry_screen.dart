@@ -10,6 +10,7 @@ import '../services/recovery_state_service.dart';
 import '../services/round_storage_service.dart';
 import 'shift_report_screen.dart';
 import '../widgets/app_header.dart';
+import '../widgets/choke_selector_sheet.dart';
 import '../widgets/ww_number_field.dart';
 
 class PressureEntryScreen extends StatefulWidget {
@@ -1749,16 +1750,16 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         },
       ),
       const SizedBox(height: 12),
-      Text(
-        'Choke Type: ${controller.chokeType}',
-        style: const TextStyle(color: Colors.white70),
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Choke Selector'),
+        subtitle: Text(_quickRoundChokeSummary(controller)),
+        trailing: FilledButton(
+          onPressed: () => _pickHourlyChoke(controller),
+          child: const Text('Select'),
+        ),
       ),
       const SizedBox(height: 8),
-      _field(
-        'Choke Value',
-        controller.choke,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      ),
       _field(
         'Hours Since Previous Reading',
         controller.hoursSincePrevious,
@@ -1825,6 +1826,45 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       ]),
       _oilCushionSection(index),
     ]);
+  }
+
+  ChokeSelection _selectionForController(_HourlyCheckControllers controller) {
+    final raw = controller.choke.text.trim();
+    final match = RegExp(r'(\d{1,2})').firstMatch(raw);
+    final size = int.tryParse(match?.group(1) ?? '');
+    if (size == null || size < 2 || size > 64 || raw.isEmpty) {
+      return const ChokeSelection(type: ChokeTypes.none);
+    }
+    final type =
+        controller.chokeType.trim().toUpperCase() == ChokeTypes.positive
+            ? ChokeTypes.positive
+            : ChokeTypes.adjustable;
+    return ChokeSelection(type: type, size64: size);
+  }
+
+  String _quickRoundChokeSummary(_HourlyCheckControllers controller) {
+    final selection = _selectionForController(controller);
+    if (selection.isNone) return 'None / Clear';
+    return formatChokeDisplay(selection);
+  }
+
+  Future<void> _pickHourlyChoke(_HourlyCheckControllers controller) async {
+    final picked = await showChokeSelectorSheet(
+      context,
+      initial: _selectionForController(controller),
+      allowNone: true,
+    );
+    if (!mounted || picked == null) return;
+
+    setState(() {
+      if (picked.isNone || picked.size64 == null) {
+        controller.choke.clear();
+        return;
+      }
+      controller.chokeType = picked.type == ChokeTypes.positive ? 'POS' : 'ADJ';
+      controller.choke.text = '${picked.size64}/64"';
+    });
+    await _persistShift();
   }
 
   Widget _hourProgressSection() {

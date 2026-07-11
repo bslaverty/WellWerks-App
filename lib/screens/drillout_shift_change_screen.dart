@@ -10,7 +10,11 @@ import '../data/tank_charts.dart';
 import '../models/job_setup.dart';
 import '../services/app_settings_service.dart';
 import '../services/job_storage_service.dart';
+import '../utils/gauge_parser.dart';
 import '../widgets/app_header.dart';
+import '../widgets/choke_selector_sheet.dart';
+import '../widgets/time_wheel_picker_sheet.dart';
+import '../widgets/ww_number_field.dart';
 
 class DrilloutShiftChangeScreen extends StatefulWidget {
   const DrilloutShiftChangeScreen({super.key});
@@ -46,7 +50,8 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   bool _showGasTank2 = false;
   bool _showWaterTank = false;
   bool _showWaterTank2 = false;
-  int? _selectedChoke64;
+
+  ChokeSelection _choke = const ChokeSelection(type: ChokeTypes.none);
   String _textTimeFormat = '12h';
   DateTime _selectedTime = DateTime.now();
   String _editedText = '';
@@ -96,6 +101,22 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
 
     final latestRate = _latestBblPerMinuteFromLogs(prefs);
 
+    final savedTypeRaw =
+        (saved['chokeType'] as String? ?? '').trim().toUpperCase();
+    final savedType = savedTypeRaw == ChokeTypes.adjustable ||
+            savedTypeRaw == ChokeTypes.positive ||
+            savedTypeRaw == ChokeTypes.none
+        ? savedTypeRaw
+        : ChokeTypes.none;
+    int? savedSize = saved['chokeSize'] as int?;
+
+    // Backward compatibility with prior drillout key.
+    savedSize ??= saved['choke64'] as int?;
+
+    final normalizedChoke = savedType == ChokeTypes.none || savedSize == null
+        ? const ChokeSelection(type: ChokeTypes.none)
+        : ChokeSelection(type: savedType, size64: savedSize.clamp(2, 64));
+
     if (!mounted) return;
     setState(() {
       _activeJob = activeJob;
@@ -107,11 +128,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _showGasTank2 = saved['showGasTank2'] as bool? ?? false;
       _showWaterTank = saved['showWaterTank'] as bool? ?? false;
       _showWaterTank2 = saved['showWaterTank2'] as bool? ?? false;
-
-      final chokeValue = saved['choke64'];
-      if (chokeValue is int && chokeValue >= 2 && chokeValue <= 64) {
-        _selectedChoke64 = chokeValue;
-      }
+      _choke = normalizedChoke;
 
       if (_rate.text.trim().isEmpty && latestRate != null) {
         _rate.text = _fmtTrim(latestRate);
@@ -131,7 +148,8 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         'showGasTank2': _showGasTank2,
         'showWaterTank': _showWaterTank,
         'showWaterTank2': _showWaterTank2,
-        'choke64': _selectedChoke64,
+        'chokeType': _choke.type,
+        'chokeSize': _choke.size64,
       }),
     );
   }
@@ -196,11 +214,13 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   }
 
   Future<void> _pickTime() async {
-    final picked = await showTimePicker(
-      context: context,
+    final picked = await showTimeWheelPickerSheet(
+      context,
       initialTime:
           TimeOfDay(hour: _selectedTime.hour, minute: _selectedTime.minute),
+      use24Hour: _textTimeFormat == '24h',
     );
+
     if (!mounted || picked == null) return;
     setState(() {
       _selectedTime = DateTime(
@@ -214,83 +234,21 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   }
 
   Future<void> _pickChoke() async {
-    final selected = await showModalBottomSheet<int>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) {
-        final choices = <int>[-1, ...List<int>.generate(63, (i) => i + 2)];
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Select Choke',
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
-                ),
-                const SizedBox(height: 10),
-                Flexible(
-                  child: GridView.builder(
-                    shrinkWrap: true,
-                    itemCount: choices.length,
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 4,
-                      mainAxisSpacing: 8,
-                      crossAxisSpacing: 8,
-                      childAspectRatio: 2.1,
-                    ),
-                    itemBuilder: (context, index) {
-                      final value = choices[index];
-                      final isClear = value == -1;
-                      final isSelected = isClear
-                          ? _selectedChoke64 == null
-                          : _selectedChoke64 == value;
-                      final label = isClear ? 'None / Clear' : '$value/64"';
-                      return FilledButton(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: isSelected
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerHighest,
-                          foregroundColor: isSelected
-                              ? Theme.of(context).colorScheme.onPrimary
-                              : Theme.of(context).colorScheme.onSurface,
-                          minimumSize: const Size(0, 52),
-                        ),
-                        onPressed: () => Navigator.of(context).pop(value),
-                        child: Text(
-                          label,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+    final picked = await showChokeSelectorSheet(
+      context,
+      initial: _choke,
+      allowNone: true,
     );
+    if (!mounted || picked == null) return;
 
-    if (!mounted || selected == null) return;
     setState(() {
-      _selectedChoke64 = selected == -1 ? null : selected;
+      _choke = picked;
     });
     await _saveSetup();
   }
 
   double _parseGauge(String value) {
-    return double.tryParse(value.trim()) ?? 0;
+    return parseGaugeInput(value);
   }
 
   TankChart _primaryChart() {
@@ -317,11 +275,6 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     }
   }
 
-  String _formatChoke() {
-    if (_selectedChoke64 == null) return '--';
-    return '$_selectedChoke64/64"';
-  }
-
   String _inventoryLine(String label, double gauge, double bbl) {
     return '$label: ${_fmtTrim(gauge)}" / ${bbl.round()} bbl';
   }
@@ -337,7 +290,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _wellName.text.trim(),
       _formatTime(_selectedTime),
       '',
-      'Choke: ${_formatChoke()}',
+      if (!_choke.isNone) 'Choke: ${formatChokeDisplay(_choke)}',
       'Rate: ${_fmtTrim(double.tryParse(_rate.text.trim()) ?? 0)} bbl/min',
       '',
       'Surface Total Fluid: ${_fmtWholeBbl(_surfaceTotalFluid.text)} bbl',
@@ -505,7 +458,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _showGasTank2 = false;
       _showWaterTank = false;
       _showWaterTank2 = false;
-      _selectedChoke64 = null;
+      _choke = const ChokeSelection(type: ChokeTypes.none);
       _selectedTime = DateTime.now();
       _rate.clear();
       _surfaceTotalFluid.clear();
@@ -547,17 +500,13 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            TextField(
+            WwNumberField(
+              label: 'Gauge',
               controller: controller,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+              hintText: '30.25',
+              allowDecimal: true,
               onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: 'Gauge',
-                hintText: '30.25',
-              ),
             ),
-            const SizedBox(height: 10),
             Text(
               'Gauge: ${_fmtTrim(gauge)}"   •   Barrels: ${_fmtTrim(barrels)} bbl',
               style: TextStyle(
@@ -621,18 +570,20 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                   const SizedBox(height: 8),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.access_time),
+                    leading: const Icon(Icons.schedule),
                     title: const Text('Shift Change Time'),
                     subtitle: Text(_formatTime(_selectedTime)),
-                    trailing: const Icon(Icons.edit),
-                    onTap: _pickTime,
+                    trailing: FilledButton(
+                      onPressed: _pickTime,
+                      child: const Text('Select'),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.tune),
                     title: const Text('Choke Selector'),
-                    subtitle: Text(_formatChoke()),
+                    subtitle: Text(formatChokeDisplay(_choke)),
                     trailing: FilledButton(
                       onPressed: _pickChoke,
                       child: const Text('Select'),
