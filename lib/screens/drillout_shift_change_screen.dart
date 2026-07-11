@@ -10,11 +10,15 @@ import '../data/tank_charts.dart';
 import '../models/job_setup.dart';
 import '../services/app_settings_service.dart';
 import '../services/job_storage_service.dart';
+import '../utils/gauge_keypad_input.dart';
 import '../utils/gauge_parser.dart';
 import '../widgets/app_header.dart';
 import '../widgets/choke_selector_sheet.dart';
+import '../widgets/shared_gauge_keypad.dart';
 import '../widgets/time_wheel_picker_sheet.dart';
 import '../widgets/ww_number_field.dart';
+
+enum _DrilloutGaugeTarget { primary, gas1, gas2, water1, water2 }
 
 class DrilloutShiftChangeScreen extends StatefulWidget {
   const DrilloutShiftChangeScreen({super.key});
@@ -51,6 +55,9 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   bool _showGasTank2 = false;
   bool _showWaterTank = false;
   bool _showWaterTank2 = false;
+  String _waterTankType = 'flowback_round_bottom';
+  String _waterTank2Type = 'flowback_round_bottom';
+  _DrilloutGaugeTarget? _activeGaugeTarget;
 
   ChokeSelection _choke = const ChokeSelection(type: ChokeTypes.none);
   String _textTimeFormat = '12h';
@@ -130,11 +137,14 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _textTimeFormat = settings.textTimeFormat;
       _customer.text = customerText;
       _wellName.text = wellText;
-      _primaryTank = (saved['primaryTank'] as String? ?? 'sandx').trim();
+      _primaryTank = _normalizePrimaryTank(saved['primaryTank'] as String?);
       _showGasTank = saved['showGasTank'] as bool? ?? false;
       _showGasTank2 = saved['showGasTank2'] as bool? ?? false;
       _showWaterTank = saved['showWaterTank'] as bool? ?? false;
       _showWaterTank2 = saved['showWaterTank2'] as bool? ?? false;
+      _waterTankType = _normalizeWaterTankType(saved['waterTankType'] as String?);
+      _waterTank2Type =
+          _normalizeWaterTankType(saved['waterTank2Type'] as String?);
       _choke = normalizedChoke;
       _selectedTime = DateTime(2000, 1, 1, savedHour);
 
@@ -156,6 +166,8 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         'showGasTank2': _showGasTank2,
         'showWaterTank': _showWaterTank,
         'showWaterTank2': _showWaterTank2,
+        'waterTankType': _waterTankType,
+        'waterTank2Type': _waterTank2Type,
         'selectedHour': _selectedTime.hour,
         'chokeType': _choke.type,
         'chokeSize': _choke.size64,
@@ -256,16 +268,124 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     await _saveSetup();
   }
 
-  double _parseGauge(String value) {
-    return parseGaugeInput(value);
+  double? _parseGaugeOrNull(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    final parsed = parseGaugeInput(trimmed);
+    if (parsed.isNaN || parsed.isInfinite) return null;
+    return parsed;
+  }
+
+  String _normalizePrimaryTank(String? raw) {
+    switch ((raw ?? '').trim()) {
+      case 'fs3':
+        return 'fs3';
+      case 'flowback500':
+        return 'flowback500';
+      case 'flowback_round_bottom':
+        return 'flowback_round_bottom';
+      case 'sand_tank':
+      case 'sandx':
+      default:
+        return 'sandx';
+    }
+  }
+
+  String _normalizeWaterTankType(String? raw) {
+    switch ((raw ?? '').trim()) {
+      case 'flowback500':
+        return 'flowback500';
+      case 'flowback_round_bottom':
+      default:
+        return 'flowback_round_bottom';
+    }
+  }
+
+  TankChart _flowbackWaterChart(String typeId) {
+    return typeId == 'flowback500'
+        ? flowback500Chart
+        : flowbackRoundBottomChart;
+  }
+
+  String _waterTypeLabel(String typeId) {
+    return typeId == 'flowback500'
+        ? 'Flowback Tank - V Bottom'
+        : 'Flowback Tank - Round Bottom';
+  }
+
+  TextEditingController? get _activeGaugeController {
+    switch (_activeGaugeTarget) {
+      case _DrilloutGaugeTarget.primary:
+        return _primaryGauge;
+      case _DrilloutGaugeTarget.gas1:
+        return _gas1Gauge;
+      case _DrilloutGaugeTarget.gas2:
+        return _gas2Gauge;
+      case _DrilloutGaugeTarget.water1:
+        return _water1Gauge;
+      case _DrilloutGaugeTarget.water2:
+        return _water2Gauge;
+      case null:
+        return null;
+    }
+  }
+
+  String get _activeGaugeLabel {
+    switch (_activeGaugeTarget) {
+      case _DrilloutGaugeTarget.primary:
+        return _primaryTankLabel();
+      case _DrilloutGaugeTarget.gas1:
+        return 'Gas Tank';
+      case _DrilloutGaugeTarget.gas2:
+        return 'Gas Tank 2';
+      case _DrilloutGaugeTarget.water1:
+        return 'Water Tank';
+      case _DrilloutGaugeTarget.water2:
+        return 'Water Tank 2';
+      case null:
+        return '';
+    }
+  }
+
+  void _setActiveGauge(_DrilloutGaugeTarget target) {
+    FocusScope.of(context).unfocus();
+    setState(() => _activeGaugeTarget = target);
+  }
+
+  void _insertGaugeText(String raw) {
+    final controller = _activeGaugeController;
+    if (controller == null) return;
+    setState(() {
+      controller.value = GaugeKeypadInput.insert(controller.value, raw);
+    });
+  }
+
+  void _backspaceGauge() {
+    final controller = _activeGaugeController;
+    if (controller == null || controller.text.isEmpty) return;
+    setState(() {
+      controller.value = GaugeKeypadInput.backspace(controller.value);
+    });
+  }
+
+  void _clearActiveGauge() {
+    final controller = _activeGaugeController;
+    if (controller == null) return;
+    setState(controller.clear);
+  }
+
+  void _closeGaugeKeypad() {
+    setState(() => _activeGaugeTarget = null);
   }
 
   TankChart _primaryChart() {
     switch (_primaryTank) {
       case 'fs3':
         return fs3Chart;
-      case 'sand_tank':
-        return sandXChart;
+      case 'flowback500':
+        return flowback500Chart;
+      case 'flowback_round_bottom':
+        return flowbackRoundBottomChart;
       case 'sandx':
       default:
         return sandXChart;
@@ -276,21 +396,25 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     switch (_primaryTank) {
       case 'fs3':
         return 'FS3';
-      case 'sand_tank':
-        return 'Sand Tank';
+      case 'flowback500':
+        return 'Flowback Tank - V Bottom';
+      case 'flowback_round_bottom':
+        return 'Flowback Tank - Round Bottom';
       case 'sandx':
       default:
         return 'SandX';
     }
   }
 
-  String _inventoryLine(String label, double gauge, double bbl) {
-    return '$label: ${_fmtTrim(gauge)}" / ${bbl.round()} bbl';
+  String _inventoryLine(String label, double? gauge, TankChart chart) {
+    if (gauge == null) {
+      return '$label: — / — bbl';
+    }
+    return '$label: ${_fmtTrim(gauge)}" / ${chart.barrelsAt(gauge).round()} bbl';
   }
 
   String _composeText() {
-    final primaryGauge = _parseGauge(_primaryGauge.text);
-    final primaryBbl = _primaryChart().barrelsAt(primaryGauge);
+    final primaryGauge = _parseGaugeOrNull(_primaryGauge.text);
 
     final lines = <String>[
       'DRILLOUT SHIFT CHANGE',
@@ -308,28 +432,26 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       '',
       'Tank Inventory',
       '',
-      _inventoryLine(_primaryTankLabel(), primaryGauge, primaryBbl),
+      _inventoryLine(_primaryTankLabel(), primaryGauge, _primaryChart()),
     ];
 
     if (_showGasTank) {
-      final gauge = _parseGauge(_gas1Gauge.text);
-      lines.add(_inventoryLine(
-          'Gas Tank', gauge, flowbackGasTankChart.barrelsAt(gauge)));
+      final gauge = _parseGaugeOrNull(_gas1Gauge.text);
+      lines.add(_inventoryLine('Gas Tank', gauge, flowbackGasTankChart));
     }
     if (_showGasTank2) {
-      final gauge = _parseGauge(_gas2Gauge.text);
-      lines.add(_inventoryLine(
-          'Gas Tank 2', gauge, flowbackGasTankChart.barrelsAt(gauge)));
+      final gauge = _parseGaugeOrNull(_gas2Gauge.text);
+      lines.add(_inventoryLine('Gas Tank 2', gauge, flowbackGasTankChart));
     }
     if (_showWaterTank) {
-      final gauge = _parseGauge(_water1Gauge.text);
-      lines.add(_inventoryLine(
-          'Water Tank', gauge, flowbackRoundBottomChart.barrelsAt(gauge)));
+      final gauge = _parseGaugeOrNull(_water1Gauge.text);
+      lines.add(
+          _inventoryLine('Water Tank', gauge, _flowbackWaterChart(_waterTankType)));
     }
     if (_showWaterTank2) {
-      final gauge = _parseGauge(_water2Gauge.text);
+      final gauge = _parseGaugeOrNull(_water2Gauge.text);
       lines.add(_inventoryLine(
-          'Water Tank 2', gauge, flowbackRoundBottomChart.barrelsAt(gauge)));
+          'Water Tank 2', gauge, _flowbackWaterChart(_waterTank2Type)));
     }
 
     return lines
@@ -433,6 +555,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _water1Gauge.clear();
       _water2Gauge.clear();
       _editedText = '';
+      _activeGaugeTarget = null;
     });
     await _saveSetup();
   }
@@ -468,6 +591,8 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _showGasTank2 = false;
       _showWaterTank = false;
       _showWaterTank2 = false;
+      _waterTankType = 'flowback_round_bottom';
+      _waterTank2Type = 'flowback_round_bottom';
       _choke = const ChokeSelection(type: ChokeTypes.none);
       _selectedTime = DateTime(2000, 1, 1, _defaultShiftHour);
       _rate.clear();
@@ -480,6 +605,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _water1Gauge.clear();
       _water2Gauge.clear();
       _editedText = '';
+      _activeGaugeTarget = null;
     });
 
     await _clearSavedSetup();
@@ -490,10 +616,12 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     required String title,
     required TankChart chart,
     required TextEditingController controller,
+    required _DrilloutGaugeTarget target,
   }) {
     final scheme = Theme.of(context).colorScheme;
-    final gauge = _parseGauge(controller.text);
-    final barrels = chart.barrelsAt(gauge);
+    final gauge = _parseGaugeOrNull(controller.text);
+    final gaugeText = gauge == null ? '—' : '${_fmtTrim(gauge)}"';
+    final barrelText = gauge == null ? '—' : '${_fmtTrim(chart.barrelsAt(gauge))} bbl';
 
     return Card(
       child: Padding(
@@ -510,15 +638,16 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            WwNumberField(
+            WwGaugeField(
               label: 'Gauge',
               controller: controller,
               hintText: '30.25',
-              allowDecimal: true,
+              active: _activeGaugeTarget == target,
+              onTap: () => _setActiveGauge(target),
               onChanged: (_) => setState(() {}),
             ),
             Text(
-              'Gauge: ${_fmtTrim(gauge)}"   •   Barrels: ${_fmtTrim(barrels)} bbl',
+              'Gauge: $gaugeText   •   Barrels: $barrelText',
               style: TextStyle(
                 color: scheme.onSurface,
                 fontSize: 15,
@@ -551,9 +680,12 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const AppHeader(title: 'Drillout Shift Change', showBack: true),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: Column(
         children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
           Card(
             child: Padding(
               padding: const EdgeInsets.all(14),
@@ -655,7 +787,11 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                       DropdownMenuItem(value: 'sandx', child: Text('SandX')),
                       DropdownMenuItem(value: 'fs3', child: Text('FS3')),
                       DropdownMenuItem(
-                          value: 'sand_tank', child: Text('Sand Tank')),
+                          value: 'flowback500',
+                          child: Text('Flowback Tank - V Bottom')),
+                      DropdownMenuItem(
+                          value: 'flowback_round_bottom',
+                          child: Text('Flowback Tank - Round Bottom')),
                     ],
                     onChanged: (value) {
                       if (value == null) return;
@@ -668,6 +804,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                     title: _primaryTankLabel(),
                     chart: _primaryChart(),
                     controller: _primaryGauge,
+                    target: _DrilloutGaugeTarget.primary,
                   ),
                   SwitchListTile.adaptive(
                     value: _showGasTank,
@@ -683,6 +820,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                       title: 'Gas Tank',
                       chart: flowbackGasTankChart,
                       controller: _gas1Gauge,
+                      target: _DrilloutGaugeTarget.gas1,
                     ),
                   SwitchListTile.adaptive(
                     value: _showGasTank2,
@@ -698,6 +836,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                       title: 'Gas Tank 2',
                       chart: flowbackGasTankChart,
                       controller: _gas2Gauge,
+                      target: _DrilloutGaugeTarget.gas2,
                     ),
                   SwitchListTile.adaptive(
                     value: _showWaterTank,
@@ -709,10 +848,35 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                     contentPadding: EdgeInsets.zero,
                   ),
                   if (_showWaterTank)
-                    _gaugeCard(
-                      title: 'Water Tank',
-                      chart: flowbackRoundBottomChart,
-                      controller: _water1Gauge,
+                    Column(
+                      children: [
+                        DropdownButtonFormField<String>(
+                          initialValue: _waterTankType,
+                          decoration: const InputDecoration(
+                            labelText: 'Water Tank Type',
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                                value: 'flowback500',
+                                child: Text('Flowback Tank - V Bottom')),
+                            DropdownMenuItem(
+                                value: 'flowback_round_bottom',
+                                child: Text('Flowback Tank - Round Bottom')),
+                          ],
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setState(() => _waterTankType = value);
+                            _saveSetup();
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        _gaugeCard(
+                          title: 'Water Tank (${_waterTypeLabel(_waterTankType)})',
+                          chart: _flowbackWaterChart(_waterTankType),
+                          controller: _water1Gauge,
+                          target: _DrilloutGaugeTarget.water1,
+                        ),
+                      ],
                     ),
                   SwitchListTile.adaptive(
                     value: _showWaterTank2,
@@ -724,10 +888,35 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                     contentPadding: EdgeInsets.zero,
                   ),
                   if (_showWaterTank2)
-                    _gaugeCard(
-                      title: 'Water Tank 2',
-                      chart: flowbackRoundBottomChart,
-                      controller: _water2Gauge,
+                    Column(
+                      children: [
+                        DropdownButtonFormField<String>(
+                          initialValue: _waterTank2Type,
+                          decoration: const InputDecoration(
+                            labelText: 'Water Tank 2 Type',
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                                value: 'flowback500',
+                                child: Text('Flowback Tank - V Bottom')),
+                            DropdownMenuItem(
+                                value: 'flowback_round_bottom',
+                                child: Text('Flowback Tank - Round Bottom')),
+                          ],
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setState(() => _waterTank2Type = value);
+                            _saveSetup();
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        _gaugeCard(
+                          title: 'Water Tank 2 (${_waterTypeLabel(_waterTank2Type)})',
+                          chart: _flowbackWaterChart(_waterTank2Type),
+                          controller: _water2Gauge,
+                          target: _DrilloutGaugeTarget.water2,
+                        ),
+                      ],
                     ),
                 ],
               ),
@@ -769,6 +958,17 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
               ),
             ],
           ),
+              ],
+            ),
+          ),
+          if (_activeGaugeTarget != null)
+            SharedGaugeKeypad(
+              activeFieldLabel: _activeGaugeLabel,
+              onInsert: _insertGaugeText,
+              onBackspace: _backspaceGauge,
+              onClear: _clearActiveGauge,
+              onDone: _closeGaugeKeypad,
+            ),
         ],
       ),
     );

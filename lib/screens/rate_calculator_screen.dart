@@ -10,8 +10,10 @@ import '../services/job_storage_service.dart';
 import '../services/rate_timer_notification_service.dart';
 import '../services/rate_timer_service.dart';
 import '../data/tank_charts.dart';
+import '../utils/gauge_keypad_input.dart';
 import '../utils/gauge_parser.dart';
 import '../widgets/app_header.dart';
+import '../widgets/shared_gauge_keypad.dart';
 import '../widgets/ww_number_field.dart';
 
 enum _KeypadTarget { start, end }
@@ -908,11 +910,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     }
   }
 
-  bool get _isGaugeMode {
-    return _activeKeypadTarget == _KeypadTarget.start ||
-        _activeKeypadTarget == _KeypadTarget.end;
-  }
-
   void _setActiveKeypad(_KeypadTarget target) {
     FocusScope.of(context).unfocus();
     setState(() => _activeKeypadTarget = target);
@@ -1058,72 +1055,18 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   void _insertKeypadText(String raw) {
     final controller = _activeKeypadController;
     if (controller == null) return;
-
-    final isGaugeFraction = _isGaugeMode && RegExp(r'^\d+/\d+$').hasMatch(raw);
-    final insertText = raw == 'Space'
-        ? ' '
-        : (isGaugeFraction ? _fractionInsertText(controller.text, raw) : raw);
-    final selection = controller.selection;
-    final text = controller.text;
-    final start = selection.start < 0 ? text.length : selection.start;
-    final end = selection.end < 0 ? text.length : selection.end;
-    final next = _normalizeSpaces(text.replaceRange(start, end, insertText));
-    final cursor = start + insertText.length;
-
     setState(() {
-      controller.value = TextEditingValue(
-        text: next,
-        selection: TextSelection.collapsed(offset: cursor),
-      );
+      controller.value = GaugeKeypadInput.insert(controller.value, raw);
     });
   }
 
   void _backspaceKeypad() {
     final controller = _activeKeypadController;
     if (controller == null) return;
-    final text = controller.text;
-    if (text.isEmpty) return;
-
-    final selection = controller.selection;
-    final start = selection.start < 0 ? text.length : selection.start;
-    final end = selection.end < 0 ? text.length : selection.end;
-
+    if (controller.text.isEmpty) return;
     setState(() {
-      if (start != end) {
-        final updated = _trimTrailingSpaceOnDelete(
-          text.replaceRange(start, end, ''),
-        );
-        controller.value = TextEditingValue(
-          text: updated,
-          selection: TextSelection.collapsed(
-            offset: start > updated.length ? updated.length : start,
-          ),
-        );
-      } else if (start > 0) {
-        final updated = _trimTrailingSpaceOnDelete(
-          text.replaceRange(start - 1, start, ''),
-        );
-        final nextCursor =
-            (start - 1) > updated.length ? updated.length : (start - 1);
-        controller.value = TextEditingValue(
-          text: updated,
-          selection: TextSelection.collapsed(offset: nextCursor),
-        );
-      }
+      controller.value = GaugeKeypadInput.backspace(controller.value);
     });
-  }
-
-  String _fractionInsertText(String currentText, String fraction) {
-    if (currentText.isEmpty) return fraction;
-    return currentText.endsWith(' ') ? fraction : ' $fraction';
-  }
-
-  String _normalizeSpaces(String value) {
-    return value.replaceAll(RegExp(r' {2,}'), ' ');
-  }
-
-  String _trimTrailingSpaceOnDelete(String value) {
-    return value.replaceFirst(RegExp(r'\s+$'), '');
   }
 
   void _clearActiveInput() {
@@ -1451,187 +1394,21 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     );
   }
 
-  Widget _gaugeKeyButton(String label,
-      {VoidCallback? onPressed, bool compact = false}) {
-    return SizedBox(
-      height: compact ? 34 : 40,
-      child: OutlinedButton(
-        onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          side: const BorderSide(color: Color(0xFFCDA56A)),
-          backgroundColor: const Color(0xFF15181C),
-          foregroundColor: Colors.white,
-          padding:
-              EdgeInsets.symmetric(horizontal: compact ? 8 : 10, vertical: 6),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: compact ? 12 : 16, fontWeight: FontWeight.w700)),
-      ),
-    );
-  }
-
-  Widget _keypadRow(List<Widget> children) {
-    return Row(
-      children: [
-        for (int i = 0; i < children.length; i++) ...[
-          Expanded(child: children[i]),
-          if (i != children.length - 1) const SizedBox(width: 6),
-        ],
-      ],
-    );
-  }
-
-  Widget _keypadNumericButton(String value) {
-    return _gaugeKeyButton(
-      value,
-      onPressed: () => _insertKeypadText(value),
-    );
-  }
-
-  Widget _keypadCalculateButton() {
-    return SizedBox(
-      height: 40,
-      child: FilledButton(
-        onPressed: _canCalculate ? calculate : null,
-        style: FilledButton.styleFrom(
-          backgroundColor: const Color(0xFFCDA56A),
-          foregroundColor: Colors.black,
-          disabledBackgroundColor: const Color(0xFF3A3A3A),
-          disabledForegroundColor: const Color(0xFF9BA0A7),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          textStyle: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        child: const Text('CALCULATE'),
-      ),
-    );
-  }
-
   Widget _sharedGaugeKeypad() {
     if (_activeKeypadTarget == null) return const SizedBox.shrink();
     final activeLabel = _activeKeypadTarget == _KeypadTarget.start
         ? 'Starting Gauge'
         : 'Ending Gauge';
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF0F1114),
-        border: Border(top: BorderSide(color: Color(0xFF3A3A3A))),
-      ),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '${_isGaugeMode ? 'Gauge' : 'Number'} Keypad • $activeLabel',
-                    style: const TextStyle(
-                      color: Color(0xFFCDA56A),
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                TextButton(
-                    onPressed: _clearActiveInput, child: const Text('CLR')),
-                const SizedBox(width: 6),
-                FilledButton(
-                    onPressed: _closeKeypad, child: const Text('Done')),
-              ],
-            ),
-            if (_isGaugeMode) ...[
-              const SizedBox(height: 6),
-              _keypadRow([
-                _gaugeKeyButton(
-                  '1/8',
-                  compact: true,
-                  onPressed: () => _insertKeypadText('1/8'),
-                ),
-                _gaugeKeyButton(
-                  '1/4',
-                  compact: true,
-                  onPressed: () => _insertKeypadText('1/4'),
-                ),
-                _gaugeKeyButton(
-                  '3/8',
-                  compact: true,
-                  onPressed: () => _insertKeypadText('3/8'),
-                ),
-                _gaugeKeyButton(
-                  '1/2',
-                  compact: true,
-                  onPressed: () => _insertKeypadText('1/2'),
-                ),
-                _gaugeKeyButton(
-                  '5/8',
-                  compact: true,
-                  onPressed: () => _insertKeypadText('5/8'),
-                ),
-              ]),
-              const SizedBox(height: 6),
-              _keypadRow([
-                _gaugeKeyButton(
-                  '3/4',
-                  compact: true,
-                  onPressed: () => _insertKeypadText('3/4'),
-                ),
-                _gaugeKeyButton(
-                  '7/8',
-                  compact: true,
-                  onPressed: () => _insertKeypadText('7/8'),
-                ),
-                _gaugeKeyButton(
-                  'Space',
-                  compact: true,
-                  onPressed: () => _insertKeypadText('Space'),
-                ),
-                _gaugeKeyButton(
-                  'Backspace',
-                  compact: true,
-                  onPressed: _backspaceKeypad,
-                ),
-                _keypadCalculateButton(),
-              ]),
-              const SizedBox(height: 8),
-              _keypadRow([
-                _keypadNumericButton('1'),
-                _keypadNumericButton('2'),
-                _keypadNumericButton('3'),
-              ]),
-              const SizedBox(height: 6),
-              _keypadRow([
-                _keypadNumericButton('4'),
-                _keypadNumericButton('5'),
-                _keypadNumericButton('6'),
-              ]),
-              const SizedBox(height: 6),
-              _keypadRow([
-                _keypadNumericButton('7'),
-                _keypadNumericButton('8'),
-                _keypadNumericButton('9'),
-              ]),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  const Spacer(),
-                  Expanded(child: _keypadNumericButton('0')),
-                  const Spacer(),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
+    return SharedGaugeKeypad(
+      activeFieldLabel: activeLabel,
+      onInsert: _insertKeypadText,
+      onBackspace: _backspaceKeypad,
+      onClear: _clearActiveInput,
+      onDone: _closeKeypad,
+      showPrimaryAction: !_showResetButton,
+      primaryActionEnabled: _canCalculate,
+      primaryActionLabel: 'Calculate Rate',
+      onPrimaryAction: calculate,
     );
   }
 
