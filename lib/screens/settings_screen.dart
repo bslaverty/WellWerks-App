@@ -318,6 +318,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _save(s.copyWith(completionsTimerDefaultMinutes: parsed));
                 },
               ),
+              _dropdownTile(
+                title: 'Text Update Time Format',
+                subtitle:
+                    'Controls copied/shared text times (12-hour or 24-hour).',
+                value: s.textTimeFormat,
+                items: const [
+                  DropdownMenuItem(value: '12h', child: Text('12-Hour Clock')),
+                  DropdownMenuItem(value: '24h', child: Text('24-Hour Clock')),
+                ],
+                onChanged: (value) {
+                  if (value == null) return;
+                  _save(s.copyWith(textTimeFormat: value));
+                },
+              ),
             ],
           ),
           _sectionCard(

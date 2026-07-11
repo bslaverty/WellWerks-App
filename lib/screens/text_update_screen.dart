@@ -142,9 +142,54 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   bool get _showEcdSection => _settings.isOptionalSectionEnabled('ecd');
 
   String _fmtTimeLabel(String value) {
-    final parts = value.trim().split(' ');
-    if (parts.length != 2) return value.toUpperCase();
-    return '${parts[0]}:00 ${parts[1].toUpperCase()}';
+    final raw = value.trim();
+    final parsed = _parseShiftTime(raw);
+    if (parsed == null) {
+      return raw.toUpperCase();
+    }
+    if (_settings.textTimeFormat == '24h') {
+      final hh = parsed.hour.toString().padLeft(2, '0');
+      final mm = parsed.minute.toString().padLeft(2, '0');
+      return '$hh:$mm';
+    }
+    final period = parsed.hour >= 12 ? 'PM' : 'AM';
+    final hour12 = parsed.hour % 12 == 0 ? 12 : parsed.hour % 12;
+    final mm = parsed.minute.toString().padLeft(2, '0');
+    return '$hour12:$mm $period';
+  }
+
+  DateTime? _parseShiftTime(String value) {
+    final upper = value.trim().toUpperCase();
+    if (upper.isEmpty) return null;
+
+    final twelve = RegExp(r'^(\d{1,2})(?::(\d{2}))?\s*([AP]M)$');
+    final twelveMatch = twelve.firstMatch(upper);
+    if (twelveMatch != null) {
+      final hourRaw = int.tryParse(twelveMatch.group(1) ?? '');
+      final minuteRaw = int.tryParse(twelveMatch.group(2) ?? '00') ?? 0;
+      final marker = twelveMatch.group(3) ?? 'AM';
+      if (hourRaw == null || hourRaw < 1 || hourRaw > 12 || minuteRaw > 59) {
+        return null;
+      }
+      var hour = hourRaw % 12;
+      if (marker == 'PM') {
+        hour += 12;
+      }
+      return DateTime(2000, 1, 1, hour, minuteRaw);
+    }
+
+    final twentyFour = RegExp(r'^(\d{1,2}):(\d{2})$');
+    final twentyFourMatch = twentyFour.firstMatch(upper);
+    if (twentyFourMatch != null) {
+      final hour = int.tryParse(twentyFourMatch.group(1) ?? '');
+      final minute = int.tryParse(twentyFourMatch.group(2) ?? '');
+      if (hour == null || minute == null || hour > 23 || minute > 59) {
+        return null;
+      }
+      return DateTime(2000, 1, 1, hour, minute);
+    }
+
+    return null;
   }
 
   String get _headerCompanyName {

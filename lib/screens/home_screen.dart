@@ -30,6 +30,7 @@ import 'conversion_calculator_screen.dart';
 import 'settings_screen.dart';
 import 'about_support_screen.dart';
 import 'job_setup_screen.dart';
+import 'drillout_shift_change_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -464,6 +465,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: 'Multiple Choke Calculator',
                 subtitle: 'Equivalent choke and total flow area',
                 screen: MultipleChokeScreen(),
+              ),
+              const ModuleTool(
+                icon: Icons.text_snippet_outlined,
+                title: 'Drillout Shift Change',
+                subtitle: 'Build, preview, copy, and share drillout shift text',
+                screen: DrilloutShiftChangeScreen(),
               ),
               const ModuleTool(
                 icon: Icons.straighten,

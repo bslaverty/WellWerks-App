@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/tank_charts.dart';
 import '../models/job_setup.dart';
+import '../services/app_settings_service.dart';
 import '../services/job_storage_service.dart';
 import '../widgets/app_header.dart';
 import '../widgets/tank_gauge_entry_card.dart';
@@ -22,13 +23,14 @@ class DrilloutShiftChangeScreen extends StatefulWidget {
 
 class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   static const _prefsBase = 'wellwerks_drillout_shift_change_v1';
+  static const _rateLogPrefix = 'wellwerks_rate_log_entries_';
 
   final _jobStorage = JobStorageService();
+  final _settingsService = AppSettingsService();
 
   final _customer = TextEditingController();
   final _wellName = TextEditingController();
   final _time = TextEditingController();
-  final _choke64 = TextEditingController();
   final _rate = TextEditingController();
   final _surfaceTotalFluid = TextEditingController();
   final _waterHauled = TextEditingController();
@@ -51,12 +53,16 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   bool _showGasTank2 = false;
   bool _showWaterTank = false;
   bool _showWaterTank2 = false;
+  int? _selectedChoke64;
+  String _textTimeFormat = '12h';
+  DateTime _selectedTime = DateTime.now();
   String _editedText = '';
 
   @override
   void initState() {
     super.initState();
-    _time.text = DateFormat('h:mm a').format(DateTime.now());
+    _selectedTime = DateTime.now();
+    _time.text = _formatSelectedTime(_selectedTime);
     _load();
   }
 
@@ -68,6 +74,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
 
   Future<void> _load() async {
     final activeJob = await _jobStorage.loadActiveJob();
+    final settings = await _settingsService.load();
     final prefs = await SharedPreferences.getInstance();
     final jobScopedKey = activeJob == null || activeJob.id.trim().isEmpty
         ? _prefsBase
@@ -86,6 +93,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     if (!mounted) return;
     setState(() {
       _activeJob = activeJob;
+      _textTimeFormat = settings.textTimeFormat;
       _customer.text = activeJob?.customer.trim().isNotEmpty == true
           ? activeJob!.customer.trim()
           : activeJob?.company.trim() ?? '';
@@ -96,6 +104,17 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _showGasTank2 = saved['showGasTank2'] as bool? ?? false;
       _showWaterTank = saved['showWaterTank'] as bool? ?? false;
       _showWaterTank2 = saved['showWaterTank2'] as bool? ?? false;
+      final chokeValue = saved['choke64'];
+      if (chokeValue is int && chokeValue >= 2 && chokeValue <= 64) {
+        _selectedChoke64 = chokeValue;
+      }
+
+      final latestRate = _latestBblPerMinuteFromLogs(prefs);
+      if (latestRate != null) {
+        _rate.text = _fmtTrim(latestRate);
+      }
+
+      _time.text = _formatSelectedTime(_selectedTime);
     });
   }
 
@@ -109,8 +128,80 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         'showGasTank2': _showGasTank2,
         'showWaterTank': _showWaterTank,
         'showWaterTank2': _showWaterTank2,
+        'choke64': _selectedChoke64,
       }),
     );
+  }
+
+  double? _latestBblPerMinuteFromLogs(SharedPreferences prefs) {
+    DateTime? newest;
+    double? newestRate;
+    for (final key in prefs.getKeys()) {
+      if (!key.startsWith(_rateLogPrefix)) continue;
+      final rawEntries = prefs.getString(key);
+      if (rawEntries == null || rawEntries.trim().isEmpty) continue;
+      try {
+        final decoded = jsonDecode(rawEntries);
+        if (decoded is! List) continue;
+        for (final item in decoded) {
+          if (item is! Map) continue;
+          final timestampMs = item['timestampMs'];
+          final rateValue = item['rateValue'];
+          final rateUnit = (item['rateUnit'] as String? ?? '').toLowerCase();
+          if (timestampMs is! int || rateValue is! num || rateUnit.isEmpty) {
+            continue;
+          }
+          final timestamp = DateTime.fromMillisecondsSinceEpoch(timestampMs);
+          final asBblPerMin = rateUnit.contains('/hr')
+              ? rateValue.toDouble() / 60
+              : rateValue.toDouble();
+          if (newest == null || timestamp.isAfter(newest)) {
+            newest = timestamp;
+            newestRate = asBblPerMin;
+          }
+        }
+      } catch (_) {
+        // Ignore malformed persisted log data from older builds.
+      }
+    }
+    return newestRate;
+  }
+
+  String _fmtTrim(double value) {
+    if (value.isNaN || value.isInfinite) return '0';
+    final fixed = value.toStringAsFixed(2);
+    return fixed.replaceFirst(RegExp(r'\.00$'), '').replaceFirst(RegExp(r'0$'), '');
+  }
+
+  String _fmtWholeBbl(String raw) {
+    final parsed = double.tryParse(raw.trim()) ?? 0;
+    return parsed.round().toString();
+  }
+
+  String _formatSelectedTime(DateTime value) {
+    if (_textTimeFormat == '24h') {
+      return DateFormat('HH:mm').format(value);
+    }
+    return DateFormat('h:mm a').format(value);
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime:
+          TimeOfDay(hour: _selectedTime.hour, minute: _selectedTime.minute),
+    );
+    if (!mounted || picked == null) return;
+    setState(() {
+      _selectedTime = DateTime(
+        _selectedTime.year,
+        _selectedTime.month,
+        _selectedTime.day,
+        picked.hour,
+        picked.minute,
+      );
+      _time.text = _formatSelectedTime(_selectedTime);
+    });
   }
 
   double _parseGauge(String wholeRaw, String fractionRaw) {
@@ -156,19 +247,13 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   }
 
   String _formatChoke() {
-    final raw = _choke64.text.trim();
-    if (raw.isEmpty) return '';
-    final parsed = int.tryParse(raw);
-    if (parsed == null) return raw;
-    final clamped = parsed.clamp(0, 64);
-    return '$clamped/64"';
+    if (_selectedChoke64 == null) return '--';
+    return '$_selectedChoke64/64"';
   }
 
   String _inventoryLine(String label, double gauge, double bbl) {
-    final gaugeText = gauge % 1 == 0
-        ? '${gauge.toStringAsFixed(0)}"'
-        : '${gauge.toStringAsFixed(2)}"';
-    return '$label: $gaugeText / ${bbl.toStringAsFixed(2)} bbl';
+    final gaugeText = '${_fmtTrim(gauge)}"';
+    return '$label: $gaugeText / ${bbl.round()} bbl';
   }
 
   String _composeText() {
@@ -180,14 +265,14 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       '',
       _customer.text.trim(),
       _wellName.text.trim(),
-      _time.text.trim(),
+      _formatSelectedTime(_selectedTime),
       '',
       'Choke: ${_formatChoke()}',
-      'Rate: ${_rate.text.trim()}',
+      'Rate: ${_fmtTrim(double.tryParse(_rate.text.trim()) ?? 0)} bbl/min',
       '',
-      'Surface Total Fluid: ${_surfaceTotalFluid.text.trim()} bbl',
-      'Water Hauled: ${_waterHauled.text.trim()} bbl',
-      'Oil Hauled: ${_oilHauled.text.trim()} bbl',
+      'Surface Total Fluid: ${_fmtWholeBbl(_surfaceTotalFluid.text)} bbl',
+      'Water Hauled: ${_fmtWholeBbl(_waterHauled.text)} bbl',
+      'Oil Hauled: ${_fmtWholeBbl(_oilHauled.text)} bbl',
       '',
       'Tank Inventory',
       '',
@@ -305,7 +390,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     if (!confirmed || !mounted) return;
 
     setState(() {
-      _choke64.clear();
+      _selectedChoke64 = null;
       _rate.clear();
       _surfaceTotalFluid.clear();
       _waterHauled.clear();
@@ -320,9 +405,11 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _water1Frac.clear();
       _water2Whole.clear();
       _water2Frac.clear();
-      _time.text = DateFormat('h:mm a').format(DateTime.now());
+      _selectedTime = DateTime.now();
+      _time.text = _formatSelectedTime(_selectedTime);
       _editedText = '';
     });
+    _saveTankVisibility();
   }
 
   @override
@@ -330,7 +417,6 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     _customer.dispose();
     _wellName.dispose();
     _time.dispose();
-    _choke64.dispose();
     _rate.dispose();
     _surfaceTotalFluid.dispose();
     _waterHauled.dispose();
@@ -375,17 +461,40 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                       decoration:
                           const InputDecoration(labelText: 'Well Name')),
                   const SizedBox(height: 8),
-                  TextField(
-                      controller: _time,
-                      decoration: const InputDecoration(labelText: 'Time')),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.access_time),
+                    title: const Text('Shift Change Time'),
+                    subtitle: Text(_time.text),
+                    trailing: const Icon(Icons.edit),
+                    onTap: _pickTime,
+                  ),
                   const SizedBox(height: 8),
-                  TextField(
-                    controller: _choke64,
-                    keyboardType: TextInputType.number,
+                  DropdownButtonFormField<int?>(
+                    initialValue: _selectedChoke64,
                     decoration: const InputDecoration(
-                      labelText: 'Choke (64ths)',
-                      hintText: '35',
+                      labelText: 'Choke',
                     ),
+                    items: [
+                      const DropdownMenuItem<int?>(
+                        value: null,
+                        child: Text('None'),
+                      ),
+                      ...List<DropdownMenuItem<int?>>.generate(
+                        32,
+                        (index) {
+                          final choke = (index + 1) * 2;
+                          return DropdownMenuItem<int?>(
+                            value: choke,
+                            child: Text('$choke/64"'),
+                          );
+                        },
+                      ),
+                    ],
+                    onChanged: (value) {
+                      setState(() => _selectedChoke64 = value);
+                      _saveTankVisibility();
+                    },
                   ),
                   const SizedBox(height: 8),
                   TextField(

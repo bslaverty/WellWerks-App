@@ -30,6 +30,7 @@ class AppSettingsDefaults {
   static const historyRetentionDays = 30;
   static const historyExportMode = 'csv';
   static const appNotifications = true;
+  static const textTimeFormat = '12h';
   static const rateTimerNotificationsEnabled = true;
   static const rateTimerWarningEnabled = true;
   static const rateTimerCompleteEnabled = true;
@@ -86,6 +87,7 @@ class AppSettingsData {
     this.historyRetentionDays = AppSettingsDefaults.historyRetentionDays,
     this.historyExportMode = AppSettingsDefaults.historyExportMode,
     this.appNotifications = AppSettingsDefaults.appNotifications,
+    this.textTimeFormat = AppSettingsDefaults.textTimeFormat,
     this.rateTimerNotificationsEnabled =
         AppSettingsDefaults.rateTimerNotificationsEnabled,
     this.rateTimerWarningEnabled = AppSettingsDefaults.rateTimerWarningEnabled,
@@ -118,6 +120,7 @@ class AppSettingsData {
   final int historyRetentionDays;
   final String historyExportMode;
   final bool appNotifications;
+  final String textTimeFormat;
   final bool rateTimerNotificationsEnabled;
   final bool rateTimerWarningEnabled;
   final bool rateTimerCompleteEnabled;
@@ -159,6 +162,7 @@ class AppSettingsData {
     int? historyRetentionDays,
     String? historyExportMode,
     bool? appNotifications,
+    String? textTimeFormat,
     bool? rateTimerNotificationsEnabled,
     bool? rateTimerWarningEnabled,
     bool? rateTimerCompleteEnabled,
@@ -198,6 +202,7 @@ class AppSettingsData {
       historyRetentionDays: historyRetentionDays ?? this.historyRetentionDays,
       historyExportMode: historyExportMode ?? this.historyExportMode,
       appNotifications: appNotifications ?? this.appNotifications,
+      textTimeFormat: textTimeFormat ?? this.textTimeFormat,
       rateTimerNotificationsEnabled:
           rateTimerNotificationsEnabled ?? this.rateTimerNotificationsEnabled,
       rateTimerWarningEnabled:
@@ -234,6 +239,7 @@ class AppSettingsData {
         'historyRetentionDays': historyRetentionDays,
         'historyExportMode': historyExportMode,
         'appNotifications': appNotifications,
+        'textTimeFormat': textTimeFormat,
         'rateTimerNotificationsEnabled': rateTimerNotificationsEnabled,
         'rateTimerWarningEnabled': rateTimerWarningEnabled,
         'rateTimerCompleteEnabled': rateTimerCompleteEnabled,
@@ -293,6 +299,9 @@ class AppSettingsData {
           _normalizeHistoryExportMode(json['historyExportMode'] as String?),
       appNotifications: json['appNotifications'] as bool? ??
           AppSettingsDefaults.appNotifications,
+      textTimeFormat: _normalizeTextTimeFormat(
+        json['textTimeFormat'] as String?,
+      ),
       rateTimerNotificationsEnabled:
           json['rateTimerNotificationsEnabled'] as bool? ??
               AppSettingsDefaults.rateTimerNotificationsEnabled,
@@ -409,6 +418,11 @@ class AppSettingsData {
     return normalized == 'json' ? 'json' : 'csv';
   }
 
+  static String _normalizeTextTimeFormat(String? value) {
+    final normalized = (value ?? '').trim().toLowerCase();
+    return normalized == '24h' ? '24h' : '12h';
+  }
+
   static String _normalizeTheme(String? value) {
     final normalized = (value ?? '').trim().toLowerCase();
     switch (normalized) {
@@ -502,6 +516,7 @@ class AppSettingsService {
       historyRetentionDays: AppSettingsDefaults.historyRetentionDays,
       historyExportMode: AppSettingsDefaults.historyExportMode,
       appNotifications: AppSettingsDefaults.appNotifications,
+      textTimeFormat: AppSettingsDefaults.textTimeFormat,
       rateTimerNotificationsEnabled:
           AppSettingsDefaults.rateTimerNotificationsEnabled,
       rateTimerWarningEnabled: AppSettingsDefaults.rateTimerWarningEnabled,

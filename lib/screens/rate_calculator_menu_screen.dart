@@ -46,6 +46,15 @@ class RateCalculatorMenuScreen extends StatelessWidget {
                       '500 BBL Flowback Tank', 'flowback500')),
             ),
             ToolCard(
+              icon: Icons.speed,
+              title: 'Flowback Tank - Round Bottom',
+              subtitle: 'Flowback round-bottom strapping chart',
+              onTap: () => _open(
+                  context,
+                  const RateCalculatorConfig.chart(
+                      'Flowback Tank - Round Bottom', 'flowback_round_bottom')),
+            ),
+            ToolCard(
               icon: Icons.oil_barrel,
               title: 'Production Tank',
               subtitle: 'Default 1.67 BBL/in, editable',
