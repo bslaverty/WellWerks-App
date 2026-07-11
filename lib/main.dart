@@ -9,6 +9,7 @@ import 'theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await RateTimerNotificationService.instance.ensureInitialized();
+  await RateTimerNotificationService.instance.syncQuickRoundReminderFromPrefs();
   final settings = await AppSettingsService().load();
   AppThemeController.instance.setTheme(settings.appTheme);
   runApp(const WellWerksApp());

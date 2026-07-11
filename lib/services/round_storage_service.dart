@@ -13,7 +13,8 @@ class RoundStorageService {
     if (raw == null || raw.isEmpty) return [];
     final list = jsonDecode(raw) as List<dynamic>;
     return list
-        .map((item) => RoundReading.fromJson(Map<String, dynamic>.from(item as Map)))
+        .map((item) =>
+            RoundReading.fromJson(Map<String, dynamic>.from(item as Map)))
         .toList()
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
   }

@@ -11,9 +11,36 @@ class MultipleChokeScreen extends StatefulWidget {
 }
 
 class _MultipleChokeScreenState extends State<MultipleChokeScreen> {
-  final List<TextEditingController> chokes = List.generate(5, (_) => TextEditingController());
+  final List<TextEditingController> chokes =
+      List.generate(5, (_) => TextEditingController());
 
-  final List<int> commonChokes = const [12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 60, 64];
+  final List<int> commonChokes = const [
+    12,
+    14,
+    16,
+    18,
+    20,
+    22,
+    24,
+    26,
+    28,
+    30,
+    32,
+    34,
+    36,
+    38,
+    40,
+    42,
+    44,
+    46,
+    48,
+    50,
+    52,
+    54,
+    56,
+    60,
+    64
+  ];
 
   List<double> get values => chokes
       .map((c) => double.tryParse(c.text.trim()))
@@ -92,7 +119,8 @@ class _MultipleChokeScreenState extends State<MultipleChokeScreen> {
                   Expanded(
                     child: TextField(
                       controller: chokes[i],
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       decoration: InputDecoration(
                         labelText: 'Choke ${i + 1}',
                         suffixText: '/64',
@@ -110,15 +138,18 @@ class _MultipleChokeScreenState extends State<MultipleChokeScreen> {
                         context,
                         initial: ChokeSelection(
                           type: ChokeTypes.positive,
-                          size64: (current != null && current >= 2 && current <= 64)
-                              ? current
-                              : commonChokes.first,
+                          size64:
+                              (current != null && current >= 2 && current <= 64)
+                                  ? current
+                                  : commonChokes.first,
                         ),
                         allowNone: false,
                         positiveSizes: commonChokes,
                         adjustableSizes: commonChokes,
                       );
-                      if (!mounted || picked == null || picked.size64 == null) return;
+                      if (!mounted || picked == null || picked.size64 == null) {
+                        return;
+                      }
                       setState(() => chokes[i].text = picked.size64.toString());
                     },
                   ),
@@ -156,16 +187,23 @@ class _MultipleChokeScreenState extends State<MultipleChokeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Equivalent Choke', style: TextStyle(color: Color(0xFFCDA56A), fontWeight: FontWeight.bold)),
+                    const Text('Equivalent Choke',
+                        style: TextStyle(
+                            color: Color(0xFFCDA56A),
+                            fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     Text(
                       '${equiv.toStringAsFixed(1)}/64',
-                      style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w900),
+                      style: const TextStyle(
+                          fontSize: 34, fontWeight: FontWeight.w900),
                     ),
                     const SizedBox(height: 12),
-                    Text('Total flow area: ${area!.toStringAsFixed(4)} sq in', style: const TextStyle(fontSize: 16)),
+                    Text('Total flow area: ${area!.toStringAsFixed(4)} sq in',
+                        style: const TextStyle(fontSize: 16)),
                     const SizedBox(height: 6),
-                    Text('Chokes entered: ${values.map((v) => '${v.toStringAsFixed(v % 1 == 0 ? 0 : 1)}/64').join(', ')}', style: const TextStyle(color: Colors.white70)),
+                    Text(
+                        'Chokes entered: ${values.map((v) => '${v.toStringAsFixed(v % 1 == 0 ? 0 : 1)}/64').join(', ')}',
+                        style: const TextStyle(color: Colors.white70)),
                   ],
                 ),
               ),
@@ -174,7 +212,8 @@ class _MultipleChokeScreenState extends State<MultipleChokeScreen> {
             const Card(
               child: Padding(
                 padding: EdgeInsets.all(18),
-                child: Text('Enter at least one choke size to calculate.', style: TextStyle(color: Colors.white70)),
+                child: Text('Enter at least one choke size to calculate.',
+                    style: TextStyle(color: Colors.white70)),
               ),
             ),
         ],

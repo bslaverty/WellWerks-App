@@ -71,7 +71,8 @@ class RoundReading {
 
   factory RoundReading.fromJson(Map<String, dynamic> json) => RoundReading(
         id: json['id'] as String? ?? '',
-        timestamp: DateTime.tryParse(json['timestamp'] as String? ?? '') ?? DateTime.now(),
+        timestamp: DateTime.tryParse(json['timestamp'] as String? ?? '') ??
+            DateTime.now(),
         roundLabel: json['roundLabel'] as String? ?? '',
         oilRate: json['oilRate'] as String? ?? '',
         waterRate: json['waterRate'] as String? ?? '',

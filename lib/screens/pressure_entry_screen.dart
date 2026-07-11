@@ -6,8 +6,10 @@ import '../models/production_shift.dart';
 import '../models/round_reading.dart';
 import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
+import '../services/rate_timer_notification_service.dart';
 import '../services/recovery_state_service.dart';
 import '../services/round_storage_service.dart';
+import '../utils/quick_round_reminder_utils.dart';
 import 'shift_report_screen.dart';
 import '../widgets/app_header.dart';
 import '../widgets/choke_selector_sheet.dart';
@@ -34,6 +36,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   final Set<TextEditingController> _invalidHourControllers =
       <TextEditingController>{};
   String? _hourValidationMessage;
+  bool _hourlyQuickRoundReminderEnabled = false;
+  int _quickRoundReminderMinute = 0;
 
   late ProductionShift _shift;
   JobSetup? _activeJob;
@@ -98,11 +102,227 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     _shift = shift;
     _activeJob = activeJob;
     _rebuildControllers();
+    final prefs = await SharedPreferences.getInstance();
+    final savedReminderEnabled = prefs.getBool(
+            RateTimerNotificationService.quickRoundReminderEnabledKey) ??
+        false;
+    final savedReminderMinute = normalizeQuickRoundReminderMinute(
+      prefs.getInt(RateTimerNotificationService.quickRoundReminderMinuteKey) ??
+          0,
+    );
     if (!mounted) return;
     setState(() {
       _activeHourIndex = _firstIncompleteHourIndex();
+      _hourlyQuickRoundReminderEnabled = savedReminderEnabled;
+      _quickRoundReminderMinute = savedReminderMinute;
       _loading = false;
     });
+  }
+
+  Future<void> _saveQuickRoundReminderSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(
+      RateTimerNotificationService.quickRoundReminderEnabledKey,
+      _hourlyQuickRoundReminderEnabled,
+    );
+    await prefs.setInt(
+      RateTimerNotificationService.quickRoundReminderMinuteKey,
+      _quickRoundReminderMinute,
+    );
+  }
+
+  void _showReminderMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _setHourlyQuickRoundReminderEnabled(bool enabled) async {
+    if (enabled == _hourlyQuickRoundReminderEnabled) return;
+
+    if (!enabled) {
+      await RateTimerNotificationService.instance.cancelQuickRoundReminder();
+      if (!mounted) return;
+      setState(() => _hourlyQuickRoundReminderEnabled = false);
+      await _saveQuickRoundReminderSettings();
+      _showReminderMessage('Quick Round reminder turned off.');
+      return;
+    }
+
+    final granted = await RateTimerNotificationService.instance
+        .requestNotificationPermission();
+    if (!granted) {
+      if (!mounted) return;
+      setState(() => _hourlyQuickRoundReminderEnabled = false);
+      await _saveQuickRoundReminderSettings();
+      _showReminderMessage(
+          'Notifications must be enabled for the Quick Round reminder.');
+      return;
+    }
+
+    try {
+      await RateTimerNotificationService.instance.scheduleQuickRoundReminder(
+        minute: _quickRoundReminderMinute,
+      );
+      if (!mounted) return;
+      setState(() => _hourlyQuickRoundReminderEnabled = true);
+      await _saveQuickRoundReminderSettings();
+      _showReminderMessage(
+        'Quick Round reminder set for :${formatQuickRoundReminderMinute(_quickRoundReminderMinute)} every hour.',
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _hourlyQuickRoundReminderEnabled = false);
+      await _saveQuickRoundReminderSettings();
+      _showReminderMessage('Unable to enable Quick Round reminder. Try again.');
+    }
+  }
+
+  Future<void> _pickQuickRoundReminderMinute() async {
+    final selected = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) {
+        final scheme = Theme.of(context).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Select Reminder Minute',
+                  style: TextStyle(
+                    color: scheme.primary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 420,
+                  child: ListView.separated(
+                    itemCount: 60,
+                    separatorBuilder: (_, __) => const SizedBox(height: 6),
+                    itemBuilder: (context, minute) {
+                      final selected = minute == _quickRoundReminderMinute;
+                      return Material(
+                        color: selected
+                            ? scheme.primaryContainer
+                            : scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => Navigator.of(context).pop(minute),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 14,
+                            ),
+                            child: Row(
+                              children: [
+                                Text(
+                                  ':${formatQuickRoundReminderMinute(minute)}',
+                                  style: TextStyle(
+                                    color: selected
+                                        ? scheme.onPrimaryContainer
+                                        : scheme.onSurface,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const Spacer(),
+                                if (selected)
+                                  Icon(
+                                    Icons.check_circle,
+                                    color: scheme.primary,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || selected == null) return;
+    final nextMinute = normalizeQuickRoundReminderMinute(selected);
+    final oldMinute = _quickRoundReminderMinute;
+
+    setState(() => _quickRoundReminderMinute = nextMinute);
+    await _saveQuickRoundReminderSettings();
+
+    if (!_hourlyQuickRoundReminderEnabled) return;
+
+    try {
+      await RateTimerNotificationService.instance.scheduleQuickRoundReminder(
+        minute: nextMinute,
+      );
+      _showReminderMessage(
+        'Quick Round reminder set for :${formatQuickRoundReminderMinute(nextMinute)} every hour.',
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _quickRoundReminderMinute = oldMinute);
+      await _saveQuickRoundReminderSettings();
+      _showReminderMessage('Unable to update Quick Round reminder minute.');
+    }
+  }
+
+  Widget _quickRoundReminderSetupCard() {
+    final scheme = Theme.of(context).colorScheme;
+    final minuteText =
+        formatQuickRoundReminderMinute(_quickRoundReminderMinute);
+
+    return Card(
+      margin: const EdgeInsets.only(top: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SwitchListTile.adaptive(
+              value: _hourlyQuickRoundReminderEnabled,
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                'Hourly Quick Round Reminder',
+                style: TextStyle(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              subtitle: Text(
+                _hourlyQuickRoundReminderEnabled
+                    ? 'Every hour at :$minuteText'
+                    : 'Off',
+              ),
+              onChanged: _setHourlyQuickRoundReminderEnabled,
+            ),
+            if (_hourlyQuickRoundReminderEnabled) ...[
+              const SizedBox(height: 8),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Reminder Minute'),
+                subtitle: Text('Every hour at :$minuteText'),
+                trailing: FilledButton(
+                  onPressed: _pickQuickRoundReminderMinute,
+                  child: Text(':$minuteText'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Future<ProductionShift> _migrateLegacyInventory(ProductionShift shift) async {
@@ -2201,6 +2421,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
                 label: const Text('Clear Round'),
               ),
             ),
+            _quickRoundReminderSetupCard(),
           ]),
           _inventorySummary(),
           if (_shift.hourlyChecks.isEmpty)

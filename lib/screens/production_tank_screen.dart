@@ -33,7 +33,9 @@ class _ProductionTankScreenState extends State<ProductionTankScreen> {
     final t = double.tryParse(top.text) ?? 0;
     final b = double.tryParse(bottom.text) ?? 0;
     final h = double.tryParse(hours.text) ?? 0;
-    if (top.text.trim().isEmpty || bottom.text.trim().isEmpty || hours.text.trim().isEmpty) {
+    if (top.text.trim().isEmpty ||
+        bottom.text.trim().isEmpty ||
+        hours.text.trim().isEmpty) {
       setState(() {
         bbl = null;
         rate = null;
@@ -77,15 +79,22 @@ class _ProductionTankScreenState extends State<ProductionTankScreen> {
           ),
           WwNumberField(label: 'Top Gauge', controller: top, autofocus: true),
           WwNumberField(label: 'Bottom Gauge', controller: bottom),
-          WwNumberField(label: 'Hours', controller: hours, textInputAction: TextInputAction.done),
+          WwNumberField(
+              label: 'Hours',
+              controller: hours,
+              textInputAction: TextInputAction.done),
           const SizedBox(height: 4),
           FilledButton(onPressed: calculate, child: const Text('Calculate')),
           const SizedBox(height: 8),
-          OutlinedButton.icon(onPressed: clearInputs, icon: const Icon(Icons.clear), label: const Text('Clear Gauges')), 
+          OutlinedButton.icon(
+              onPressed: clearInputs,
+              icon: const Icon(Icons.clear),
+              label: const Text('Clear Gauges')),
           if (error != null)
             Card(
               color: const Color(0xFF3A1E1E),
-              child: Padding(padding: const EdgeInsets.all(14), child: Text(error!)),
+              child: Padding(
+                  padding: const EdgeInsets.all(14), child: Text(error!)),
             ),
           if (bbl != null)
             Card(
@@ -93,7 +102,8 @@ class _ProductionTankScreenState extends State<ProductionTankScreen> {
                 padding: const EdgeInsets.all(18),
                 child: Text(
                   '${bbl!.toStringAsFixed(1)} BBL\n${rate!.toStringAsFixed(1)} BBL/hr',
-                  style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      fontSize: 26, fontWeight: FontWeight.bold),
                 ),
               ),
             ),
