@@ -6,6 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 import '../services/app_settings_service.dart';
+import '../services/job_storage_service.dart';
+import '../services/rate_timer_notification_service.dart';
+import '../services/rate_timer_service.dart';
 import '../data/tank_charts.dart';
 import '../widgets/app_header.dart';
 import '../widgets/ww_number_field.dart';
@@ -53,6 +56,23 @@ class RateCalculatorConfig {
       : chartId = null;
 
   bool get usesChart => chartId != null;
+
+  static RateCalculatorConfig? fromStorageId(String storageId) {
+    switch (storageId) {
+      case 'fs3':
+        return const RateCalculatorConfig.chart('FS3 Tank', 'fs3');
+      case 'sandx':
+        return const RateCalculatorConfig.chart('SandX G3', 'sandx');
+      case 'flowback500':
+        return const RateCalculatorConfig.chart(
+            '500 BBL Flowback Tank', 'flowback500');
+      case 'production_tank':
+        return const RateCalculatorConfig.linear('Production Tank',
+            defaultFactor: 1.67);
+      default:
+        return null;
+    }
+  }
 }
 
 class RateCalculatorScreen extends StatefulWidget {
@@ -92,6 +112,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     with WidgetsBindingObserver {
   static const _timerMinutesPrefKey = 'wellwerks_rate_timer_minutes';
   final _settingsService = AppSettingsService();
+  final _jobStorage = JobStorageService();
+  final _rateTimerService = RateTimerService();
+  final _rateTimerNotifications = RateTimerNotificationService.instance;
 
   final startGauge = TextEditingController();
   final endGauge = TextEditingController();
@@ -106,8 +129,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   bool _rateLogEnabled = false;
   bool _rateLogExpanded = false;
   final List<_RateLogEntry> _rateLogEntries = <_RateLogEntry>[];
-  DateTime? _timerStartedAt;
   DateTime? _timerEndsAt;
+  RateTimerState? _activeTimerState;
 
   static const int _minMinutes = 1;
   static const int _maxMinutes = 60;
@@ -125,22 +148,13 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     factor = TextEditingController(
         text: (widget.config.defaultFactor ?? 1.67).toString());
     minutes.addListener(_handleMinutesChanged);
-    _loadSavedTimerMinutes().then((_) => _restoreTimerState());
+    _loadSavedTimerMinutes().then((_) async {
+      await _applyPendingNotificationAction();
+      await _restoreTimerState();
+    });
     _loadSavedDisplayUnit();
     _loadRateLogState();
   }
-
-  String get _timerRunningPrefKey =>
-      'wellwerks_rate_timer_running_$_calculatorStorageId';
-
-  String get _timerStartPrefKey =>
-      'wellwerks_rate_timer_start_ms_$_calculatorStorageId';
-
-  String get _timerEndPrefKey =>
-      'wellwerks_rate_timer_end_ms_$_calculatorStorageId';
-
-  String get _timerMinutesDuringRunPrefKey =>
-      'wellwerks_rate_timer_minutes_run_$_calculatorStorageId';
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -151,6 +165,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       _saveRateLogState();
     }
     if (state == AppLifecycleState.resumed) {
+      _applyPendingNotificationAction();
       _restoreTimerState();
       _loadRateLogState();
     }
@@ -335,74 +350,62 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   }
 
   Future<void> _persistTimerState() async {
-    final prefs = await SharedPreferences.getInstance();
-    final running = _timerRunning;
-    await prefs.setBool(_timerRunningPrefKey, running);
-    await prefs.setInt(_timerMinutesDuringRunPrefKey, _selectedMinutes);
-    if (running && _timerStartedAt != null && _timerEndsAt != null) {
-      await prefs.setInt(
-        _timerStartPrefKey,
-        _timerStartedAt!.millisecondsSinceEpoch,
-      );
-      await prefs.setInt(
-          _timerEndPrefKey, _timerEndsAt!.millisecondsSinceEpoch);
+    final active = _activeTimerState;
+    if (_timerRunning && active != null) {
+      await _rateTimerService.saveActiveTimer(active);
     }
   }
 
-  Future<void> _clearTimerStatePersistence() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_timerRunningPrefKey, false);
-    await prefs.remove(_timerStartPrefKey);
-    await prefs.remove(_timerEndPrefKey);
+  Future<void> _clearTimerStatePersistence({bool forceAll = false}) async {
+    final active = await _rateTimerService.loadActiveTimer();
+    if (active != null) {
+      if (!forceAll && active.calculatorId != _calculatorStorageId) {
+        return;
+      }
+      await _rateTimerNotifications.cancelNotifications(active);
+    }
+    await _rateTimerService.clearActiveTimer();
   }
 
   Future<void> _restoreTimerState() async {
-    final prefs = await SharedPreferences.getInstance();
-    final running = prefs.getBool(_timerRunningPrefKey) ?? false;
-    final startMs = prefs.getInt(_timerStartPrefKey);
-    final endMs = prefs.getInt(_timerEndPrefKey);
-    final savedRunMinutes = prefs.getInt(_timerMinutesDuringRunPrefKey);
-
-    if (savedRunMinutes != null &&
-        savedRunMinutes >= _minMinutes &&
-        savedRunMinutes <= _maxMinutes) {
-      minutes.text = savedRunMinutes.toString();
-    }
-
-    if (!running || startMs == null || endMs == null) {
-      if (!mounted) return;
-      setState(() {
-        _timerStartedAt = null;
-        _timerEndsAt = null;
-      });
-      return;
-    }
-
+    final active = await _rateTimerService.loadActiveTimer();
     final now = DateTime.now();
-    final start = DateTime.fromMillisecondsSinceEpoch(startMs);
-    final end = DateTime.fromMillisecondsSinceEpoch(endMs);
-    final remaining = end.difference(now).inSeconds;
+    final remaining = active?.remainingSecondsAt(now) ?? 0;
 
     _countdownTimer?.cancel();
     _countdownTimer = null;
 
     if (!mounted) return;
 
-    if (remaining <= 0) {
+    if (active == null || remaining <= 0) {
       setState(() {
-        _timerStartedAt = start;
-        _timerEndsAt = end;
+        _activeTimerState = null;
+        _timerEndsAt = null;
         _remainingSeconds = 0;
-        _timerFinished = true;
-        _thirtySecondAlertShown = true;
+        _timerFinished = false;
+        _thirtySecondAlertShown = false;
       });
-      await _clearTimerStatePersistence();
+      if (active != null) {
+        await _rateTimerNotifications.cancelNotifications(active);
+      }
+      await _rateTimerService.clearActiveTimer();
+      return;
+    }
+
+    if (active.calculatorId != _calculatorStorageId) {
+      setState(() {
+        _activeTimerState = active;
+        _timerEndsAt = null;
+        _remainingSeconds = 0;
+        _timerFinished = false;
+        _thirtySecondAlertShown = false;
+      });
       return;
     }
 
     setState(() {
-      _timerStartedAt = start;
-      _timerEndsAt = end;
+      _activeTimerState = active;
+      _timerEndsAt = active.endsAt;
       _remainingSeconds = remaining;
       _timerFinished = false;
       _thirtySecondAlertShown = remaining <= 30;
@@ -585,21 +588,171 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       return;
     }
 
-    _countdownTimer?.cancel();
+    _startTimedRateWithConflictHandling(configuredSeconds);
+  }
+
+  Future<void> _startTimedRateWithConflictHandling(
+      int configuredSeconds) async {
+    final existing = await _rateTimerService.loadActiveTimer();
     final now = DateTime.now();
-    final endAt = now.add(Duration(seconds: configuredSeconds));
+    if (existing != null && existing.isRunningAt(now)) {
+      if (existing.calculatorId == _calculatorStorageId) {
+        await _startFreshTimer(configuredSeconds);
+        return;
+      }
+      if (!mounted) return;
+      final restart = await _showTimerAlreadyRunningDialog(existing);
+      if (restart == true) {
+        await _rateTimerNotifications.cancelNotifications(existing);
+        await _rateTimerService.clearActiveTimer();
+        await _startFreshTimer(configuredSeconds);
+      }
+      return;
+    }
+    await _startFreshTimer(configuredSeconds);
+  }
+
+  Future<void> _startFreshTimer(int configuredSeconds) async {
+    final activeJob = await _jobStorage.loadActiveJob();
+    final wellOrJob = (activeJob?.primaryWell.trim().isNotEmpty ?? false)
+        ? activeJob!.primaryWell.trim()
+        : (activeJob?.padName.trim().isNotEmpty ?? false)
+            ? activeJob!.padName.trim()
+            : widget.config.title;
+
+    final state = await _rateTimerService.createState(
+      calculatorId: _calculatorStorageId,
+      calculatorTitle: widget.config.title,
+      wellOrJob: wellOrJob,
+      durationSeconds: configuredSeconds,
+    );
+    final settings = await _settingsService.load();
+    final permissionResult =
+        await _rateTimerNotifications.ensurePermissionIfNeeded();
+    if (settings.rateTimerNotificationsEnabled &&
+        !permissionResult &&
+        mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Timer started. Notifications are disabled. Open Settings > Notifications to enable alerts.',
+          ),
+        ),
+      );
+    }
+
+    await _rateTimerService.saveActiveTimer(state);
+    await _rateTimerNotifications.scheduleNotifications(
+        timer: state, settings: settings);
+
+    _countdownTimer?.cancel();
     setState(() {
-      _timerStartedAt = now;
-      _timerEndsAt = endAt;
+      _activeTimerState = state;
+      _timerEndsAt = state.endsAt;
       _remainingSeconds = configuredSeconds;
       _thirtySecondAlertShown = false;
       _timerFinished = false;
     });
-    _persistTimerState();
 
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       _syncTimerFromClock(timer);
     });
+  }
+
+  Future<bool?> _showTimerAlreadyRunningDialog(RateTimerState existing) async {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) {
+        final remaining = existing.remainingSecondsAt(DateTime.now());
+        final mm = (remaining ~/ 60).toString().padLeft(2, '0');
+        final ss = (remaining % 60).toString().padLeft(2, '0');
+        return AlertDialog(
+          title: const Text('Rate Timer Already Running'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('A timer is currently active for:'),
+              const SizedBox(height: 8),
+              Text(
+                existing.wellOrJob.isEmpty
+                    ? existing.calculatorTitle
+                    : existing.wellOrJob,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 12),
+              const Text('Remaining Time:'),
+              const SizedBox(height: 6),
+              Text(
+                '$mm:$ss',
+                style:
+                    const TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(false);
+                _openActiveRateCalculator(existing);
+              },
+              child: const Text('Continue Current'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Restart Timer'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _openActiveRateCalculator(RateTimerState state) {
+    final config = RateCalculatorConfig.fromStorageId(state.calculatorId);
+    if (config == null || !mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => RateCalculatorScreen(config: config),
+      ),
+    );
+  }
+
+  Future<void> _applyPendingNotificationAction() async {
+    final action = await _rateTimerService.consumePendingAction();
+    if (action == null) return;
+    final targetCalculatorId =
+        (action.payload['calculatorId'] as String? ?? '').trim();
+
+    if (action.type == RateTimerPendingActionType.openCalculator) {
+      final config = RateCalculatorConfig.fromStorageId(targetCalculatorId);
+      if (config != null &&
+          mounted &&
+          targetCalculatorId != _calculatorStorageId) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+              builder: (_) => RateCalculatorScreen(config: config)),
+        );
+      }
+      return;
+    }
+
+    if (targetCalculatorId != _calculatorStorageId) {
+      return;
+    }
+
+    if (action.type == RateTimerPendingActionType.stopTimer) {
+      _cancelTimedRate();
+      return;
+    }
+
+    if (action.type == RateTimerPendingActionType.restartTimer) {
+      final duration = (action.payload['durationSeconds'] as num?)?.toInt() ??
+          _minutesToDurationSeconds();
+      final safeDuration =
+          duration <= 0 ? _minutesToDurationSeconds() : duration;
+      await _startFreshTimer(safeDuration);
+    }
   }
 
   void _cancelTimedRate() {
@@ -608,7 +761,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     _clearTimerStatePersistence();
     final configuredSeconds = _minutesToDurationSeconds();
     setState(() {
-      _timerStartedAt = null;
+      _activeTimerState = null;
       _timerEndsAt = null;
       _remainingSeconds = configuredSeconds;
       _thirtySecondAlertShown = false;
@@ -628,6 +781,10 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
   String get _timerStatusText {
     if (_timerRunning) return 'Timer running...';
+    if (_activeTimerState != null &&
+        _activeTimerState!.calculatorId != _calculatorStorageId) {
+      return 'Timer running in ${_activeTimerState!.calculatorTitle}.';
+    }
     if (_timerFinished) return 'Ready to calculate.';
     return 'Enter gauges and start timer.';
   }
@@ -683,13 +840,27 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                     _timerStatusText,
                     style: const TextStyle(color: Colors.white70),
                   ),
+                  if (_timerRunning)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        (_activeTimerState?.wellOrJob.trim().isNotEmpty ??
+                                false)
+                            ? _activeTimerState!.wellOrJob.trim()
+                            : widget.config.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: 10),
                   if (_timerRunning)
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton(
                         onPressed: _cancelTimedRate,
-                        child: const Text('Cancel'),
+                        child: const Text('Stop Timer'),
                       ),
                     )
                   else if (_timerFinished)
@@ -1014,7 +1185,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     _countdownTimer = null;
     _clearTimerStatePersistence();
     setState(() {
-      _timerStartedAt = null;
+      _activeTimerState = null;
       _timerEndsAt = null;
       startGauge.clear();
       endGauge.clear();
@@ -1060,6 +1231,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
     _countdownTimer?.cancel();
     _countdownTimer = null;
+    _clearTimerStatePersistence();
 
     setState(() {
       bblPerMin = perMin;

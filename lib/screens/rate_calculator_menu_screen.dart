@@ -7,7 +7,8 @@ class RateCalculatorMenuScreen extends StatelessWidget {
   const RateCalculatorMenuScreen({super.key});
 
   void _open(BuildContext context, RateCalculatorConfig config) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => RateCalculatorScreen(config: config)));
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => RateCalculatorScreen(config: config)));
   }
 
   @override
@@ -25,25 +26,33 @@ class RateCalculatorMenuScreen extends StatelessWidget {
               icon: Icons.speed,
               title: 'FS3 Tank',
               subtitle: 'Falcon FS3 strapping chart',
-              onTap: () => _open(context, const RateCalculatorConfig.chart('FS3 Tank', 'fs3')),
+              onTap: () => _open(
+                  context, const RateCalculatorConfig.chart('FS3 Tank', 'fs3')),
             ),
             ToolCard(
               icon: Icons.speed,
               title: 'SandX G3',
               subtitle: 'SandX G3 hopper chart',
-              onTap: () => _open(context, const RateCalculatorConfig.chart('SandX G3', 'sandx')),
+              onTap: () => _open(context,
+                  const RateCalculatorConfig.chart('SandX G3', 'sandx')),
             ),
             ToolCard(
               icon: Icons.speed,
-              title: '500 BBL Flowback Tank',
-              subtitle: '500 BBL tank strapping chart',
-              onTap: () => _open(context, const RateCalculatorConfig.chart('500 BBL Flowback Tank', 'flowback500')),
+              title: 'Flowback Tank - V Bottom',
+              subtitle: 'Flowback V-bottom strapping chart',
+              onTap: () => _open(
+                  context,
+                  const RateCalculatorConfig.chart(
+                      '500 BBL Flowback Tank', 'flowback500')),
             ),
             ToolCard(
               icon: Icons.oil_barrel,
               title: 'Production Tank',
               subtitle: 'Default 1.67 BBL/in, editable',
-              onTap: () => _open(context, const RateCalculatorConfig.linear('Production Tank', defaultFactor: 1.67)),
+              onTap: () => _open(
+                  context,
+                  const RateCalculatorConfig.linear('Production Tank',
+                      defaultFactor: 1.67)),
             ),
           ],
         ),

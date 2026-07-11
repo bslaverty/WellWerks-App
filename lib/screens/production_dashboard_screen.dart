@@ -14,6 +14,7 @@ import 'production_history_screen.dart';
 import 'report_template_screen.dart';
 import 'shift_report_screen.dart';
 import 'text_update_screen.dart';
+import 'drillout_shift_change_screen.dart';
 
 class ProductionDashboardScreen extends StatefulWidget {
   const ProductionDashboardScreen({super.key});
@@ -224,6 +225,12 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
             title: 'Text Update',
             subtitle: 'Select an hour, preview, and copy the text update',
             onTap: () => _open(context, const TextUpdateScreen()),
+          ),
+          ToolCard(
+            icon: Icons.text_snippet_outlined,
+            title: 'Drillout Shift Change',
+            subtitle: 'Build, preview, copy, and share drillout shift text',
+            onTap: () => _open(context, const DrilloutShiftChangeScreen()),
           ),
           ToolCard(
             icon: Icons.local_drink,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/app_settings_service.dart';
 import '../services/app_theme_controller.dart';
@@ -52,6 +53,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     AppThemeController.instance.setTheme(next.appTheme);
     if (!mounted) return;
     setState(() => _settings = next);
+  }
+
+  Future<void> _openSystemNotificationSettings() async {
+    final uri = Uri.parse('app-settings:');
+    final launched = await launchUrl(uri);
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open iPhone settings.')),
+      );
+    }
   }
 
   Future<void> _confirmAndRun({
@@ -132,7 +143,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required String title,
     required String subtitle,
     required bool value,
-    required ValueChanged<bool> onChanged,
+    required ValueChanged<bool>? onChanged,
   }) {
     return SwitchListTile.adaptive(
       contentPadding: EdgeInsets.zero,
@@ -460,6 +471,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: s.appNotifications,
                 onChanged: (value) =>
                     _save(s.copyWith(appNotifications: value)),
+              ),
+              _switchTile(
+                title: 'Enable Rate Timer Notifications',
+                subtitle:
+                    'Notify while app is backgrounded, locked, or closed.',
+                value: s.rateTimerNotificationsEnabled,
+                onChanged: (value) =>
+                    _save(s.copyWith(rateTimerNotificationsEnabled: value)),
+              ),
+              _switchTile(
+                title: '30-Second Warning',
+                subtitle: 'Send warning notification 30 seconds before finish.',
+                value: s.rateTimerWarningEnabled,
+                onChanged: s.rateTimerNotificationsEnabled
+                    ? (value) =>
+                        _save(s.copyWith(rateTimerWarningEnabled: value))
+                    : null,
+              ),
+              _switchTile(
+                title: 'Timer Complete Notification',
+                subtitle: 'Notify at exact timer completion.',
+                value: s.rateTimerCompleteEnabled,
+                onChanged: s.rateTimerNotificationsEnabled
+                    ? (value) =>
+                        _save(s.copyWith(rateTimerCompleteEnabled: value))
+                    : null,
+              ),
+              _switchTile(
+                title: 'Sound',
+                subtitle:
+                    'Play sound for timer notifications when allowed by iOS.',
+                value: s.rateTimerSoundEnabled,
+                onChanged: s.rateTimerNotificationsEnabled
+                    ? (value) => _save(s.copyWith(rateTimerSoundEnabled: value))
+                    : null,
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading:
+                    Icon(Icons.notifications_active_outlined, color: _accent),
+                title: Text(
+                  'Open iPhone Notification Settings',
+                  style: TextStyle(color: _text),
+                ),
+                subtitle: Text(
+                  'Use this if permission was denied and you want to enable alerts.',
+                  style: TextStyle(color: _subtle),
+                ),
+                onTap: _openSystemNotificationSettings,
               ),
               _dropdownTile(
                 title: 'Theme',

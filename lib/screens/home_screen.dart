@@ -4,9 +4,13 @@ import 'package:intl/intl.dart';
 import '../widgets/app_header.dart';
 import '../widgets/tool_card.dart';
 import '../models/job_setup.dart';
+import '../services/app_settings_service.dart';
 import '../services/job_storage_service.dart';
+import '../services/rate_timer_notification_service.dart';
+import '../services/rate_timer_service.dart';
 import '../services/recovery_state_service.dart';
 import 'module_menu_screen.dart';
+import 'rate_calculator_screen.dart';
 import 'rate_calculator_menu_screen.dart';
 import 'equipment_layout_screen.dart';
 import 'rig_up_inventory_screen.dart';
@@ -21,7 +25,7 @@ import 'gas_accum_screen.dart';
 import 'bottoms_up_screen.dart';
 import 'multiple_choke_screen.dart';
 import 'chart_reference_screen.dart';
-import '../data/tank_charts.dart';
+import 'tank_charts_menu_screen.dart';
 import 'conversion_calculator_screen.dart';
 import 'settings_screen.dart';
 import 'about_support_screen.dart';
@@ -37,6 +41,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _jobStorage = JobStorageService();
   final _recoveryState = RecoveryStateService();
+  final _rateTimerService = RateTimerService();
+  final _settingsService = AppSettingsService();
+  final _rateTimerNotifications = RateTimerNotificationService.instance;
 
   JobSetup? _activeJob;
   String _lastModule = '';
@@ -62,6 +69,63 @@ class _HomeScreenState extends State<HomeScreen> {
       _lastModule = snapshot.lastModule;
       _loading = false;
     });
+    _handlePendingRateTimerAction();
+  }
+
+  Future<void> _handlePendingRateTimerAction() async {
+    final action = await _rateTimerService.consumePendingAction();
+    if (!mounted || action == null) return;
+    final calculatorId =
+        (action.payload['calculatorId'] as String? ?? '').trim();
+    final config = RateCalculatorConfig.fromStorageId(calculatorId);
+
+    if (action.type == RateTimerPendingActionType.stopTimer) {
+      final active = await _rateTimerService.loadActiveTimer();
+      if (active != null) {
+        await _rateTimerNotifications.cancelNotifications(active);
+      }
+      await _rateTimerService.clearActiveTimer();
+      return;
+    }
+
+    if (action.type == RateTimerPendingActionType.restartTimer) {
+      if (config == null) return;
+      final active = await _rateTimerService.loadActiveTimer();
+      if (active != null) {
+        await _rateTimerNotifications.cancelNotifications(active);
+      }
+      final durationSeconds =
+          (action.payload['durationSeconds'] as num?)?.toInt() ?? 60;
+      final fresh = await _rateTimerService.createState(
+        calculatorId: calculatorId,
+        calculatorTitle:
+            (action.payload['calculatorTitle'] as String? ?? config.title),
+        wellOrJob: (action.payload['wellOrJob'] as String? ?? '').trim(),
+        durationSeconds: durationSeconds,
+      );
+      await _rateTimerService.saveActiveTimer(fresh);
+      final settings = await _settingsService.load();
+      await _rateTimerNotifications.scheduleNotifications(
+        timer: fresh,
+        settings: settings,
+      );
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => RateCalculatorScreen(config: config)),
+      );
+      if (!mounted) return;
+      await _loadRecovery();
+      return;
+    }
+
+    if (action.type == RateTimerPendingActionType.openCalculator &&
+        config != null) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => RateCalculatorScreen(config: config)),
+      );
+      if (!mounted) return;
+      await _loadRecovery();
+    }
   }
 
   Future<void> open(BuildContext context, Widget screen) async {
@@ -421,38 +485,12 @@ class _HomeScreenState extends State<HomeScreen> {
             title: 'Charts',
             subtitle: 'Tank and field chart references',
             tools: [
-              ModuleTool(
-                icon: Icons.table_chart,
-                title: 'FS3 Tank Chart',
-                subtitle: 'FS3 strapping chart reference',
-                screen: ChartReferenceScreen.tankChart(
-                  title: 'FS3 Tank Chart',
-                  chart: fs3Chart,
-                ),
-              ),
-              ModuleTool(
-                icon: Icons.table_chart,
-                title: 'SandX Tank Chart',
-                subtitle: 'SandX G3 strapping chart reference',
-                screen: ChartReferenceScreen.tankChart(
-                  title: 'SandX Tank Chart',
-                  chart: sandXChart,
-                ),
-              ),
-              ModuleTool(
-                icon: Icons.table_chart,
-                title: 'Flowback Tank Chart',
-                subtitle: '500 BBL flowback tank chart reference',
-                screen: ChartReferenceScreen.tankChart(
-                  title: 'Flowback Tank Chart',
-                  chart: flowback500Chart,
-                ),
-              ),
               const ModuleTool(
-                icon: Icons.table_chart,
-                title: 'Production Tank Chart',
-                subtitle: 'Default production tank reference values',
-                screen: ChartReferenceScreen.productionTankReference(),
+                icon: Icons.storage,
+                title: 'Tank Charts',
+                subtitle:
+                    'FS3, SandX, V Bottom, Round Bottom, Gas Tank, and Production Tank',
+                screen: TankChartsMenuScreen(),
               ),
               ModuleTool(
                 icon: Icons.table_chart,

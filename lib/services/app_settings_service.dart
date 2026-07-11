@@ -30,6 +30,10 @@ class AppSettingsDefaults {
   static const historyRetentionDays = 30;
   static const historyExportMode = 'csv';
   static const appNotifications = true;
+  static const rateTimerNotificationsEnabled = true;
+  static const rateTimerWarningEnabled = true;
+  static const rateTimerCompleteEnabled = true;
+  static const rateTimerSoundEnabled = true;
   static const appTheme = 'wellwerks_default';
   static const optionalReportSections = [
     'vru',
@@ -82,6 +86,12 @@ class AppSettingsData {
     this.historyRetentionDays = AppSettingsDefaults.historyRetentionDays,
     this.historyExportMode = AppSettingsDefaults.historyExportMode,
     this.appNotifications = AppSettingsDefaults.appNotifications,
+    this.rateTimerNotificationsEnabled =
+        AppSettingsDefaults.rateTimerNotificationsEnabled,
+    this.rateTimerWarningEnabled = AppSettingsDefaults.rateTimerWarningEnabled,
+    this.rateTimerCompleteEnabled =
+        AppSettingsDefaults.rateTimerCompleteEnabled,
+    this.rateTimerSoundEnabled = AppSettingsDefaults.rateTimerSoundEnabled,
     this.appTheme = AppSettingsDefaults.appTheme,
   });
 
@@ -108,6 +118,10 @@ class AppSettingsData {
   final int historyRetentionDays;
   final String historyExportMode;
   final bool appNotifications;
+  final bool rateTimerNotificationsEnabled;
+  final bool rateTimerWarningEnabled;
+  final bool rateTimerCompleteEnabled;
+  final bool rateTimerSoundEnabled;
   final String appTheme;
 
   static const optionalReportSectionOptions = [
@@ -145,6 +159,10 @@ class AppSettingsData {
     int? historyRetentionDays,
     String? historyExportMode,
     bool? appNotifications,
+    bool? rateTimerNotificationsEnabled,
+    bool? rateTimerWarningEnabled,
+    bool? rateTimerCompleteEnabled,
+    bool? rateTimerSoundEnabled,
     String? appTheme,
   }) {
     return AppSettingsData(
@@ -180,6 +198,14 @@ class AppSettingsData {
       historyRetentionDays: historyRetentionDays ?? this.historyRetentionDays,
       historyExportMode: historyExportMode ?? this.historyExportMode,
       appNotifications: appNotifications ?? this.appNotifications,
+      rateTimerNotificationsEnabled:
+          rateTimerNotificationsEnabled ?? this.rateTimerNotificationsEnabled,
+      rateTimerWarningEnabled:
+          rateTimerWarningEnabled ?? this.rateTimerWarningEnabled,
+      rateTimerCompleteEnabled:
+          rateTimerCompleteEnabled ?? this.rateTimerCompleteEnabled,
+      rateTimerSoundEnabled:
+          rateTimerSoundEnabled ?? this.rateTimerSoundEnabled,
       appTheme: appTheme ?? this.appTheme,
     );
   }
@@ -208,6 +234,10 @@ class AppSettingsData {
         'historyRetentionDays': historyRetentionDays,
         'historyExportMode': historyExportMode,
         'appNotifications': appNotifications,
+        'rateTimerNotificationsEnabled': rateTimerNotificationsEnabled,
+        'rateTimerWarningEnabled': rateTimerWarningEnabled,
+        'rateTimerCompleteEnabled': rateTimerCompleteEnabled,
+        'rateTimerSoundEnabled': rateTimerSoundEnabled,
         'appTheme': appTheme,
       };
 
@@ -263,6 +293,15 @@ class AppSettingsData {
           _normalizeHistoryExportMode(json['historyExportMode'] as String?),
       appNotifications: json['appNotifications'] as bool? ??
           AppSettingsDefaults.appNotifications,
+      rateTimerNotificationsEnabled:
+          json['rateTimerNotificationsEnabled'] as bool? ??
+              AppSettingsDefaults.rateTimerNotificationsEnabled,
+      rateTimerWarningEnabled: json['rateTimerWarningEnabled'] as bool? ??
+          AppSettingsDefaults.rateTimerWarningEnabled,
+      rateTimerCompleteEnabled: json['rateTimerCompleteEnabled'] as bool? ??
+          AppSettingsDefaults.rateTimerCompleteEnabled,
+      rateTimerSoundEnabled: json['rateTimerSoundEnabled'] as bool? ??
+          AppSettingsDefaults.rateTimerSoundEnabled,
       appTheme: _normalizeTheme(json['appTheme'] as String?),
       defaultOptionalReportSections: _normalizeOptionalSections(
         (json['defaultOptionalReportSections'] as List?)
@@ -463,6 +502,11 @@ class AppSettingsService {
       historyRetentionDays: AppSettingsDefaults.historyRetentionDays,
       historyExportMode: AppSettingsDefaults.historyExportMode,
       appNotifications: AppSettingsDefaults.appNotifications,
+      rateTimerNotificationsEnabled:
+          AppSettingsDefaults.rateTimerNotificationsEnabled,
+      rateTimerWarningEnabled: AppSettingsDefaults.rateTimerWarningEnabled,
+      rateTimerCompleteEnabled: AppSettingsDefaults.rateTimerCompleteEnabled,
+      rateTimerSoundEnabled: AppSettingsDefaults.rateTimerSoundEnabled,
       appTheme: AppSettingsDefaults.appTheme,
     );
   }

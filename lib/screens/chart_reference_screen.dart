@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../data/tank_charts.dart';
 import '../widgets/app_header.dart';
+import '../widgets/tank_gauge_entry_card.dart';
 
 class ChartReferenceScreen extends StatefulWidget {
   const ChartReferenceScreen({
@@ -11,6 +12,7 @@ class ChartReferenceScreen extends StatefulWidget {
     required this.title,
     required this.description,
     this.sections = const [],
+    this.tankChart,
     this.showDataPlaceholder = false,
     this.enableSearch = false,
     this.showBrixTool = false,
@@ -28,6 +30,7 @@ class ChartReferenceScreen extends StatefulWidget {
       title: title,
       description: description ??
           '${chart.name} reference values. Gauge in inches, volume in barrels.',
+      tankChart: chart,
       enableSearch: true,
       sections: [
         ChartSection(
@@ -69,6 +72,7 @@ class ChartReferenceScreen extends StatefulWidget {
             ],
           ),
         ],
+        tankChart = null,
         showDataPlaceholder = false,
         enableSearch = true,
         showBrixTool = false,
@@ -90,6 +94,7 @@ class ChartReferenceScreen extends StatefulWidget {
   final String title;
   final String description;
   final List<ChartSection> sections;
+  final TankChart? tankChart;
   final bool showDataPlaceholder;
   final bool enableSearch;
   final bool showBrixTool;
@@ -106,6 +111,8 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
       TextEditingController();
   final TextEditingController _chloridesPoundsInput = TextEditingController();
   final TextEditingController _chloridesSalinityInput = TextEditingController();
+  final TextEditingController _tankWholeInches = TextEditingController();
+  final TextEditingController _tankFractionOrDecimal = TextEditingController();
   String _chloridesInputType = 'Specific Gravity';
   ChloridesCalculationResult? _chloridesResult;
   String? _chloridesWarning;
@@ -117,6 +124,8 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
     _chloridesSpecificGravityInput.dispose();
     _chloridesPoundsInput.dispose();
     _chloridesSalinityInput.dispose();
+    _tankWholeInches.dispose();
+    _tankFractionOrDecimal.dispose();
     super.dispose();
   }
 
@@ -200,6 +209,15 @@ class _ChartReferenceScreenState extends State<ChartReferenceScreen> {
               ),
             ),
           ),
+          if (widget.tankChart != null)
+            TankGaugeEntryCard(
+              title: 'Gauge Entry',
+              chart: widget.tankChart!,
+              wholeInchesController: _tankWholeInches,
+              fractionOrDecimalController: _tankFractionOrDecimal,
+              onChanged: () => setState(() {}),
+              showDivider: false,
+            ),
           if (widget.showChloridesCalculator)
             Card(
               child: Padding(
