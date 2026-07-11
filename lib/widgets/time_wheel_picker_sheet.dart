@@ -32,23 +32,11 @@ class _TimeWheelPickerBody extends StatefulWidget {
 
 class _TimeWheelPickerBodyState extends State<_TimeWheelPickerBody> {
   late int _hourIndex;
-  late int _minuteIndex;
-  late int _periodIndex;
 
   @override
   void initState() {
     super.initState();
-    final h = widget.initialTime.hour;
-    _minuteIndex = widget.initialTime.minute;
-
-    if (widget.use24Hour) {
-      _hourIndex = h;
-      _periodIndex = 0;
-    } else {
-      _periodIndex = h >= 12 ? 1 : 0;
-      final hour12 = h % 12 == 0 ? 12 : h % 12;
-      _hourIndex = hour12 - 1;
-    }
+    _hourIndex = widget.initialTime.hour;
   }
 
   @override
@@ -78,19 +66,8 @@ class _TimeWheelPickerBodyState extends State<_TimeWheelPickerBody> {
                 ),
                 FilledButton(
                   onPressed: () {
-                    int hour;
-                    if (widget.use24Hour) {
-                      hour = _hourIndex;
-                    } else {
-                      final hour12 = _hourIndex + 1;
-                      if (_periodIndex == 0) {
-                        hour = hour12 == 12 ? 0 : hour12;
-                      } else {
-                        hour = hour12 == 12 ? 12 : hour12 + 12;
-                      }
-                    }
                     Navigator.of(context).pop(
-                      TimeOfDay(hour: hour, minute: _minuteIndex),
+                      TimeOfDay(hour: _hourIndex, minute: 0),
                     );
                   },
                   child: const Text('Confirm'),
@@ -100,101 +77,33 @@ class _TimeWheelPickerBodyState extends State<_TimeWheelPickerBody> {
             const SizedBox(height: 6),
             SizedBox(
               height: 220,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _wheelContainer(
-                      child: CupertinoPicker(
-                        itemExtent: 44,
-                        scrollController: FixedExtentScrollController(
-                          initialItem: _hourIndex,
-                        ),
-                        onSelectedItemChanged: (index) {
-                          setState(() => _hourIndex = index);
-                        },
-                        children: List.generate(
-                          widget.use24Hour ? 24 : 12,
-                          (index) {
-                            final label = widget.use24Hour
-                                ? index.toString().padLeft(2, '0')
-                                : (index + 1).toString();
-                            return Center(
-                              child: Text(
-                                label,
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
+              child: _wheelContainer(
+                child: CupertinoPicker(
+                  itemExtent: 44,
+                  scrollController: FixedExtentScrollController(
+                    initialItem: _hourIndex,
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _wheelContainer(
-                      child: CupertinoPicker(
-                        itemExtent: 44,
-                        scrollController: FixedExtentScrollController(
-                          initialItem: _minuteIndex,
-                        ),
-                        onSelectedItemChanged: (index) {
-                          setState(() => _minuteIndex = index);
-                        },
-                        children: List.generate(
-                          60,
-                          (index) => Center(
-                            child: Text(
-                              index.toString().padLeft(2, '0'),
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
+                  onSelectedItemChanged: (index) {
+                    setState(() => _hourIndex = index);
+                  },
+                  children: List.generate(
+                    24,
+                    (index) {
+                      final label = widget.use24Hour
+                          ? '${index.toString().padLeft(2, '0')}:00'
+                          : _twelveHourLabel(index);
+                      return Center(
+                        child: Text(
+                          label,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
-                  if (!widget.use24Hour) ...[
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _wheelContainer(
-                        child: CupertinoPicker(
-                          itemExtent: 44,
-                          scrollController: FixedExtentScrollController(
-                            initialItem: _periodIndex,
-                          ),
-                          onSelectedItemChanged: (index) {
-                            setState(() => _periodIndex = index);
-                          },
-                          children: const [
-                            Center(
-                              child: Text(
-                                'AM',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                            Center(
-                              child: Text(
-                                'PM',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
+                ),
               ),
             ),
           ],
@@ -211,5 +120,11 @@ class _TimeWheelPickerBodyState extends State<_TimeWheelPickerBody> {
       ),
       child: ClipRRect(borderRadius: BorderRadius.circular(14), child: child),
     );
+  }
+
+  String _twelveHourLabel(int hour24) {
+    final period = hour24 >= 12 ? 'PM' : 'AM';
+    final hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12;
+    return '$hour12:00 $period';
   }
 }

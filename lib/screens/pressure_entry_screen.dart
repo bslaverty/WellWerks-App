@@ -1859,6 +1859,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     setState(() {
       if (picked.isNone || picked.size64 == null) {
         controller.choke.clear();
+        controller.chokeType = '';
         return;
       }
       controller.chokeType = picked.type == ChokeTypes.positive ? 'POS' : 'ADJ';

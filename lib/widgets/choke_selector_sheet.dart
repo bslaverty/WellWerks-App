@@ -35,10 +35,9 @@ String formatChokeDisplay(ChokeSelection selection) {
   if (selection.type == ChokeTypes.none || selection.size64 == null) {
     return 'None / Clear';
   }
-  if (selection.type == ChokeTypes.adjustable) {
-    return 'Adjustable ${selection.size64}/64"';
-  }
-  return '${selection.size64}/64"';
+  final typeLabel =
+      selection.type == ChokeTypes.positive ? 'Positive' : 'Adjustable';
+  return '${selection.size64}/64" $typeLabel';
 }
 
 Future<ChokeSelection?> showChokeSelectorSheet(
@@ -48,17 +47,8 @@ Future<ChokeSelection?> showChokeSelectorSheet(
   List<int>? adjustableSizes,
   List<int>? positiveSizes,
 }) async {
-  final types = <String>[
-    ChokeTypes.adjustable,
-    ChokeTypes.positive,
-    if (allowNone) ChokeTypes.none,
-  ];
-
   final adjSizes = adjustableSizes ?? List<int>.generate(63, (i) => i + 2);
   final posSizes = positiveSizes ?? List<int>.generate(63, (i) => i + 2);
-
-  final initialType =
-      types.contains(initial.type) ? initial.type : ChokeTypes.adjustable;
 
   return showModalBottomSheet<ChokeSelection>(
     context: context,
@@ -66,8 +56,8 @@ Future<ChokeSelection?> showChokeSelectorSheet(
     isScrollControlled: true,
     builder: (context) {
       return _ChokeSelectorSheetBody(
-        types: types,
-        initialType: initialType,
+        allowNone: allowNone,
+        initialType: initial.type,
         initialSize64: initial.size64,
         adjustableSizes: adjSizes,
         positiveSizes: posSizes,
@@ -78,14 +68,14 @@ Future<ChokeSelection?> showChokeSelectorSheet(
 
 class _ChokeSelectorSheetBody extends StatefulWidget {
   const _ChokeSelectorSheetBody({
-    required this.types,
+    required this.allowNone,
     required this.initialType,
     required this.initialSize64,
     required this.adjustableSizes,
     required this.positiveSizes,
   });
 
-  final List<String> types;
+  final bool allowNone;
   final String initialType;
   final int? initialSize64;
   final List<int> adjustableSizes;
@@ -98,34 +88,28 @@ class _ChokeSelectorSheetBody extends StatefulWidget {
 
 class _ChokeSelectorSheetBodyState extends State<_ChokeSelectorSheetBody> {
   late String _type;
-  late int _typeIndex;
   late int _sizeIndex;
+
+  List<int?> get _sizeOptions => [
+        if (widget.allowNone) null,
+        ...List<int?>.generate(63, (i) => i + 2),
+      ];
 
   @override
   void initState() {
     super.initState();
-    _type = widget.initialType;
-    _typeIndex = widget.types.indexOf(_type);
+    _type = widget.initialType == ChokeTypes.positive
+        ? ChokeTypes.positive
+        : (widget.initialType == ChokeTypes.none
+            ? ChokeTypes.none
+            : ChokeTypes.adjustable);
 
-    final sizes = _activeSizes;
-    final initialSize = widget.initialSize64 ?? sizes.first;
-    final idx = sizes.indexOf(initialSize);
+    final initialSize = _type == ChokeTypes.none ? null : widget.initialSize64;
+    final idx = _sizeOptions.indexOf(initialSize);
     _sizeIndex = idx == -1 ? 0 : idx;
   }
 
-  List<int> get _activeSizes {
-    return _type == ChokeTypes.positive
-        ? widget.positiveSizes
-        : widget.adjustableSizes;
-  }
-
-  int get _selectedSize64 {
-    final sizes = _activeSizes;
-    if (_sizeIndex < 0 || _sizeIndex >= sizes.length) {
-      return sizes.first;
-    }
-    return sizes[_sizeIndex];
-  }
+  int? get _selectedSize64 => _sizeOptions[_sizeIndex];
 
   @override
   Widget build(BuildContext context) {
@@ -154,7 +138,8 @@ class _ChokeSelectorSheetBodyState extends State<_ChokeSelectorSheetBody> {
                 ),
                 FilledButton(
                   onPressed: () {
-                    if (_type == ChokeTypes.none) {
+                    final size = _selectedSize64;
+                    if (size == null) {
                       Navigator.of(context).pop(
                         const ChokeSelection(
                             type: ChokeTypes.none, size64: null),
@@ -162,7 +147,7 @@ class _ChokeSelectorSheetBodyState extends State<_ChokeSelectorSheetBody> {
                       return;
                     }
                     Navigator.of(context).pop(
-                      ChokeSelection(type: _type, size64: _selectedSize64),
+                      ChokeSelection(type: _type, size64: size),
                     );
                   },
                   child: const Text('Confirm'),
@@ -179,25 +164,25 @@ class _ChokeSelectorSheetBodyState extends State<_ChokeSelectorSheetBody> {
                       child: CupertinoPicker(
                         itemExtent: 44,
                         scrollController: FixedExtentScrollController(
-                            initialItem: _typeIndex),
+                            initialItem: _sizeIndex),
                         onSelectedItemChanged: (index) {
                           setState(() {
-                            _typeIndex = index;
-                            _type = widget.types[index];
-                            final sizes = _activeSizes;
-                            if (_sizeIndex >= sizes.length) {
-                              _sizeIndex = sizes.length - 1;
+                            _sizeIndex = index;
+                            if (_selectedSize64 == null) {
+                              _type = ChokeTypes.none;
+                            } else if (_type == ChokeTypes.none) {
+                              _type = ChokeTypes.positive;
                             }
                           });
                         },
-                        children: widget.types
+                        children: _sizeOptions
                             .map(
-                              (type) => Center(
+                              (size) => Center(
                                 child: Text(
-                                  chokeTypeLabel(type),
+                                  size == null ? 'None / Clear' : '$size/64"',
                                   style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w800,
                                   ),
                                 ),
                               ),
@@ -209,10 +194,10 @@ class _ChokeSelectorSheetBodyState extends State<_ChokeSelectorSheetBody> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: _wheelContainer(
-                      child: _type == ChokeTypes.none
+                      child: _selectedSize64 == null
                           ? Center(
                               child: Text(
-                                'No size',
+                                'Type cleared',
                                 style: TextStyle(
                                   color: scheme.onSurfaceVariant,
                                   fontSize: 18,
@@ -220,29 +205,43 @@ class _ChokeSelectorSheetBodyState extends State<_ChokeSelectorSheetBody> {
                                 ),
                               ),
                             )
-                          : CupertinoPicker(
-                              itemExtent: 44,
-                              scrollController: FixedExtentScrollController(
-                                initialItem: _sizeIndex,
-                              ),
-                              onSelectedItemChanged: (index) {
-                                setState(() {
-                                  _sizeIndex = index;
-                                });
-                              },
-                              children: _activeSizes
-                                  .map(
-                                    (size) => Center(
-                                      child: Text(
-                                        '$size/64"',
-                                        style: const TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
+                          : Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Text(
+                                    'Choke Type',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
                                     ),
-                                  )
-                                  .toList(),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  SegmentedButton<String>(
+                                    segments: const [
+                                      ButtonSegment<String>(
+                                        value: ChokeTypes.positive,
+                                        label: Text('Positive'),
+                                      ),
+                                      ButtonSegment<String>(
+                                        value: ChokeTypes.adjustable,
+                                        label: Text('Adjustable'),
+                                      ),
+                                    ],
+                                    selected: {
+                                      _type == ChokeTypes.positive
+                                          ? ChokeTypes.positive
+                                          : ChokeTypes.adjustable,
+                                    },
+                                    onSelectionChanged: (selected) {
+                                      setState(() {
+                                        _type = selected.first;
+                                      });
+                                    },
+                                  ),
+                                ],
+                              ),
                             ),
                     ),
                   ),

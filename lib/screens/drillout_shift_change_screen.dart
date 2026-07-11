@@ -27,6 +27,7 @@ class DrilloutShiftChangeScreen extends StatefulWidget {
 class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   static const _prefsBase = 'wellwerks_drillout_shift_change_v1';
   static const _rateLogPrefix = 'wellwerks_rate_log_entries_';
+  static const _defaultShiftHour = 5;
 
   final _jobStorage = JobStorageService();
   final _settingsService = AppSettingsService();
@@ -53,7 +54,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
 
   ChokeSelection _choke = const ChokeSelection(type: ChokeTypes.none);
   String _textTimeFormat = '12h';
-  DateTime _selectedTime = DateTime.now();
+  DateTime _selectedTime = DateTime(2000, 1, 1, _defaultShiftHour);
   String _editedText = '';
 
   @override
@@ -117,6 +118,12 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         ? const ChokeSelection(type: ChokeTypes.none)
         : ChokeSelection(type: savedType, size64: savedSize.clamp(2, 64));
 
+    final savedHourRaw = saved['selectedHour'];
+    final savedHour =
+        savedHourRaw is int && savedHourRaw >= 0 && savedHourRaw <= 23
+            ? savedHourRaw
+            : _defaultShiftHour;
+
     if (!mounted) return;
     setState(() {
       _activeJob = activeJob;
@@ -129,6 +136,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _showWaterTank = saved['showWaterTank'] as bool? ?? false;
       _showWaterTank2 = saved['showWaterTank2'] as bool? ?? false;
       _choke = normalizedChoke;
+      _selectedTime = DateTime(2000, 1, 1, savedHour);
 
       if (_rate.text.trim().isEmpty && latestRate != null) {
         _rate.text = _fmtTrim(latestRate);
@@ -148,6 +156,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         'showGasTank2': _showGasTank2,
         'showWaterTank': _showWaterTank,
         'showWaterTank2': _showWaterTank2,
+        'selectedHour': _selectedTime.hour,
         'chokeType': _choke.type,
         'chokeSize': _choke.size64,
       }),
@@ -216,8 +225,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   Future<void> _pickTime() async {
     final picked = await showTimeWheelPickerSheet(
       context,
-      initialTime:
-          TimeOfDay(hour: _selectedTime.hour, minute: _selectedTime.minute),
+      initialTime: TimeOfDay(hour: _selectedTime.hour, minute: 0),
       use24Hour: _textTimeFormat == '24h',
     );
 
@@ -228,9 +236,10 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         _selectedTime.month,
         _selectedTime.day,
         picked.hour,
-        picked.minute,
+        0,
       );
     });
+    await _saveSetup();
   }
 
   Future<void> _pickChoke() async {
@@ -413,7 +422,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     if (!confirmed || !mounted) return;
 
     setState(() {
-      _selectedTime = DateTime.now();
+      _selectedTime = DateTime(2000, 1, 1, _defaultShiftHour);
       _rate.clear();
       _surfaceTotalFluid.clear();
       _waterHauled.clear();
@@ -425,6 +434,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _water2Gauge.clear();
       _editedText = '';
     });
+    await _saveSetup();
   }
 
   Future<void> _clearDrilloutSetup() async {
@@ -459,7 +469,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _showWaterTank = false;
       _showWaterTank2 = false;
       _choke = const ChokeSelection(type: ChokeTypes.none);
-      _selectedTime = DateTime.now();
+      _selectedTime = DateTime(2000, 1, 1, _defaultShiftHour);
       _rate.clear();
       _surfaceTotalFluid.clear();
       _waterHauled.clear();
