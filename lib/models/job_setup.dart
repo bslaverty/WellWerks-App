@@ -24,6 +24,7 @@ class JobSetup {
     this.startedAt,
     this.endedAt,
     this.wells = const [],
+    this.wellEntries = const [],
     this.wellFieldKeys = const [],
     this.activeEquipmentSections = const [],
     this.sandSeparators = 0,
@@ -66,6 +67,7 @@ class JobSetup {
   final DateTime? startedAt;
   final DateTime? endedAt;
   final List<String> wells;
+  final List<JobSetupWell> wellEntries;
   final List<String> wellFieldKeys;
   final List<String> activeEquipmentSections;
   final int sandSeparators;
@@ -86,6 +88,15 @@ class JobSetup {
   final List<String> reportTimes;
 
   String get primaryWell => wells.isEmpty ? '' : wells.first;
+  List<String> get wellIds {
+    if (wellEntries.length == wells.length && wellEntries.isNotEmpty) {
+      return wellEntries.map((item) => item.id).toList();
+    }
+    return [
+      for (int i = 0; i < wells.length; i++) legacyWellId(wells[i], i),
+    ];
+  }
+
   String get well => primaryWell;
   bool get isMultiWellJob => jobType == 'multiWellPad';
   bool get isActive => status == 'active';
@@ -108,6 +119,7 @@ class JobSetup {
     Object? startedAt = _unset,
     Object? endedAt = _unset,
     List<String>? wells,
+    List<JobSetupWell>? wellEntries,
     List<String>? wellFieldKeys,
     List<String>? activeEquipmentSections,
     int? sandSeparators,
@@ -144,6 +156,7 @@ class JobSetup {
       startedAt: startedAt == _unset ? this.startedAt : startedAt as DateTime?,
       endedAt: endedAt == _unset ? this.endedAt : endedAt as DateTime?,
       wells: wells ?? this.wells,
+      wellEntries: wellEntries ?? this.wellEntries,
       wellFieldKeys: wellFieldKeys ?? this.wellFieldKeys,
       activeEquipmentSections:
           activeEquipmentSections ?? this.activeEquipmentSections,
@@ -183,6 +196,7 @@ class JobSetup {
         'startedAt': startedAt?.toIso8601String(),
         'endedAt': endedAt?.toIso8601String(),
         'wells': wells,
+        'wellEntries': wellEntries.map((item) => item.toJson()).toList(),
         'wellFieldKeys': wellFieldKeys,
         'activeEquipmentSections': activeEquipmentSections,
         'sandSeparators': sandSeparators,
@@ -219,7 +233,8 @@ class JobSetup {
         status: json['status'] as String? ?? 'active',
         startedAt: DateTime.tryParse(json['startedAt'] as String? ?? ''),
         endedAt: DateTime.tryParse(json['endedAt'] as String? ?? ''),
-        wells: List<String>.from(json['wells'] as List? ?? const []),
+        wells: _buildLegacyWells(json),
+        wellEntries: _buildWellEntries(json),
         wellFieldKeys:
             List<String>.from(json['wellFieldKeys'] as List? ?? const []),
         activeEquipmentSections: List<String>.from(
@@ -258,5 +273,99 @@ class JobSetup {
       }
     }
     return normalized.isEmpty ? List<String>.from(chemicalOptions) : normalized;
+  }
+
+  static String generateWellId() {
+    final micros = DateTime.now().microsecondsSinceEpoch;
+    return 'well_$micros';
+  }
+
+  static String legacyWellId(String name, int index) {
+    final normalized = name.trim().toLowerCase().replaceAll(
+          RegExp(r'[^a-z0-9]+'),
+          '_',
+        );
+    final safe = normalized.isEmpty ? 'well_${index + 1}' : normalized;
+    return 'legacy_${index + 1}_$safe';
+  }
+
+  static List<String> _buildLegacyWells(Map<String, dynamic> json) {
+    final entryWells = ((json['wellEntries'] as List?) ?? const [])
+        .map((item) => item is Map
+            ? JobSetupWell.fromJson(Map<String, dynamic>.from(item)).name
+            : '')
+        .where((item) => item.trim().isNotEmpty)
+        .toList();
+    if (entryWells.isNotEmpty) {
+      return entryWells;
+    }
+    return List<String>.from(json['wells'] as List? ?? const []);
+  }
+
+  static List<JobSetupWell> _buildWellEntries(Map<String, dynamic> json) {
+    final rawEntries = ((json['wellEntries'] as List?) ?? const [])
+        .map((item) => item is Map
+            ? JobSetupWell.fromJson(Map<String, dynamic>.from(item))
+            : null)
+        .whereType<JobSetupWell>()
+        .where((item) => item.name.trim().isNotEmpty)
+        .toList();
+    final fromEntries = [
+      for (int i = 0; i < rawEntries.length; i++)
+        rawEntries[i].copyWith(
+          id: rawEntries[i].id.trim().isEmpty
+              ? legacyWellId(rawEntries[i].name, i)
+              : rawEntries[i].id.trim(),
+          name: rawEntries[i].name.trim(),
+        ),
+    ];
+    if (fromEntries.isNotEmpty) {
+      return fromEntries;
+    }
+
+    final legacy = List<String>.from(json['wells'] as List? ?? const []);
+    return [
+      for (int i = 0; i < legacy.length; i++)
+        JobSetupWell(
+          id: legacyWellId(legacy[i], i),
+          name: legacy[i],
+        ),
+    ];
+  }
+}
+
+class JobSetupWell {
+  const JobSetupWell({
+    required this.id,
+    required this.name,
+  });
+
+  factory JobSetupWell.fromJson(Map<String, dynamic> json) {
+    final name = (json['name'] as String? ?? '').trim();
+    final id = (json['id'] as String? ?? '').trim();
+    return JobSetupWell(
+      id: id,
+      name: name,
+    );
+  }
+
+  final String id;
+  final String name;
+
+  JobSetupWell copyWith({
+    String? id,
+    String? name,
+  }) {
+    return JobSetupWell(
+      id: id ?? this.id,
+      name: name ?? this.name,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+    };
   }
 }

@@ -53,6 +53,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   );
   final wellEntry = TextEditingController();
   final wells = <String>[];
+  final wellIds = <String>[];
 
   final sandSeparators = TextEditingController(text: '2');
   final plugCatchers = TextEditingController(text: '1');
@@ -190,9 +191,16 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     wells
       ..clear()
       ..addAll(job.wells);
+    wellIds
+      ..clear()
+      ..addAll(job.wellIds);
+    while (wellIds.length < wells.length) {
+      wellIds.add(JobSetup.generateWellId());
+    }
     if (jobType == JobProfileDefaultsService.jobTypeSingleWell &&
         wells.length > 1) {
       wells.removeRange(1, wells.length);
+      wellIds.removeRange(1, wellIds.length);
     }
     sandSeparators.text = job.sandSeparators.toString();
     plugCatchers.text = job.plugCatchers.toString();
@@ -229,6 +237,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     dateStarted.text = DateFormat('MM/dd/yyyy').format(DateTime.now());
     wellEntry.clear();
     wells.clear();
+    wellIds.clear();
     sandSeparators.text = '2';
     plugCatchers.text = '1';
     chokeManifolds.text = '1';
@@ -246,15 +255,28 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   JobSetup _buildJobFromForm() {
-    final normalizedWells = wells
-        .map((well) => well.trim())
-        .where((well) => well.isNotEmpty)
-        .toList();
-    final safeWells = jobType == JobProfileDefaultsService.jobTypeSingleWell
-        ? (normalizedWells.isEmpty
-            ? const <String>[]
-            : <String>[normalizedWells.first])
-        : normalizedWells;
+    final normalizedPairs = <MapEntry<String, String>>[];
+    for (int i = 0; i < wells.length; i++) {
+      final name = wells[i].trim();
+      if (name.isEmpty) continue;
+      final id = i < wellIds.length && wellIds[i].trim().isNotEmpty
+          ? wellIds[i].trim()
+          : JobSetup.generateWellId();
+      normalizedPairs.add(MapEntry(id, name));
+    }
+    final safePairs = jobType == JobProfileDefaultsService.jobTypeSingleWell
+        ? (normalizedPairs.isEmpty
+            ? const <MapEntry<String, String>>[]
+            : <MapEntry<String, String>>[normalizedPairs.first])
+        : normalizedPairs;
+    final safeWells = [for (final item in safePairs) item.value];
+    final safeWellEntries = [
+      for (final item in safePairs)
+        JobSetupWell(
+          id: item.key,
+          name: item.value,
+        ),
+    ];
 
     return JobSetup(
       company: company,
@@ -272,6 +294,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       startedAt: _activeJob?.startedAt,
       endedAt: _activeJob?.endedAt,
       wells: safeWells,
+      wellEntries: safeWellEntries,
       wellFieldKeys: List<String>.from(wellFieldKeys),
       activeEquipmentSections: List<String>.from(activeEquipmentSections),
       sandSeparators: _i(sandSeparators),
@@ -659,6 +682,9 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                                           .jobTypeSingleWell &&
                                   wells.length > 1) {
                                 wells.removeRange(1, wells.length);
+                                if (wellIds.length > 1) {
+                                  wellIds.removeRange(1, wellIds.length);
+                                }
                               }
                             });
                             _scheduleAutoSave();
@@ -864,9 +890,10 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                                             .jobTypeSingleWell &&
                                     wells.isNotEmpty) {
                                   setState(() {
-                                    wells
-                                      ..clear()
-                                      ..add(name);
+                                    wells[0] = name;
+                                    if (wellIds.isEmpty) {
+                                      wellIds.add(JobSetup.generateWellId());
+                                    }
                                     wellEntry.clear();
                                   });
                                   _scheduleAutoSave();
@@ -874,6 +901,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                                 }
                                 setState(() {
                                   wells.add(name);
+                                  wellIds.add(JobSetup.generateWellId());
                                   wellEntry.clear();
                                 });
                                 _scheduleAutoSave();
@@ -891,20 +919,24 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                                 : 'Add each well on this pad.',
                             style: const TextStyle(color: Colors.white70),
                           ),
-                        ...wells.map<Widget>(
-                          (wellName) => Card(
+                        for (int i = 0; i < wells.length; i++)
+                          Card(
                             child: ListTile(
-                              title: Text(wellName),
+                              title: Text(wells[i]),
                               trailing: IconButton(
                                 icon: const Icon(Icons.delete),
                                 onPressed: () {
-                                  setState(() => wells.remove(wellName));
+                                  setState(() {
+                                    wells.removeAt(i);
+                                    if (i < wellIds.length) {
+                                      wellIds.removeAt(i);
+                                    }
+                                  });
                                   _scheduleAutoSave();
                                 },
                               ),
                             ),
                           ),
-                        ),
                         const SizedBox(height: 24),
                         _navButtons(),
                       ]),

@@ -114,6 +114,7 @@ class ProductionShiftHeader {
     this.layoutProfileId = 'default',
     this.chokeType = 'ADJ',
     this.wellChokeTypes = const {},
+    this.wellIds = const [],
     this.wells = const [],
   });
 
@@ -137,6 +138,10 @@ class ProductionShiftHeader {
           _normalizeChokeType(value?.toString()),
         ),
       ),
+      wellIds: ((json['wellIds'] as List?) ?? const [])
+          .map((item) => item?.toString() ?? '')
+          .where((item) => item.trim().isNotEmpty)
+          .toList(),
       wells: wells,
     );
   }
@@ -152,6 +157,7 @@ class ProductionShiftHeader {
   final String layoutProfileId;
   final String chokeType;
   final Map<String, String> wellChokeTypes;
+  final List<String> wellIds;
   final List<String> wells;
 
   ProductionShiftHeader copyWith({
@@ -161,6 +167,7 @@ class ProductionShiftHeader {
     String? layoutProfileId,
     String? chokeType,
     Map<String, String>? wellChokeTypes,
+    List<String>? wellIds,
     List<String>? wells,
   }) {
     return ProductionShiftHeader(
@@ -172,6 +179,7 @@ class ProductionShiftHeader {
           : (layoutProfileId ?? this.layoutProfileId).trim(),
       chokeType: _normalizeChokeType(chokeType ?? this.chokeType),
       wellChokeTypes: wellChokeTypes ?? this.wellChokeTypes,
+      wellIds: wellIds ?? this.wellIds,
       wells: wells ?? this.wells,
     );
   }
@@ -184,6 +192,7 @@ class ProductionShiftHeader {
       'layoutProfileId': layoutProfileId,
       'chokeType': chokeType,
       'wellChokeTypes': wellChokeTypes,
+      'wellIds': wellIds,
       'wells': wells,
     };
   }

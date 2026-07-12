@@ -50,6 +50,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   final _oilPumpedBeforeRound = TextEditingController();
 
   final List<TextEditingController> _wellControllers = [];
+  final List<String> _wellIdentityIds = [];
   final List<String> _wellChokeTypes = [];
   final List<_TankControllers> _waterTanks = [];
   final List<_TankControllers> _oilTanks = [];
@@ -168,21 +169,40 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
             well.maximumCushion.trim().isEmpty);
   }
 
-  List<String> _fallbackWells() {
-    final fromShift = _activeShift.header.wells
-        .where((item) => item.trim().isNotEmpty)
+  List<String> get _activeJobWells =>
+      (_activeJobSetup?.wells ?? const <String>[])
+          .map((item) => item.trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+
+  List<String> get _activeJobWellIds {
+    final activeJob = _activeJobSetup;
+    if (activeJob == null) return const <String>[];
+    final ids = activeJob.wellIds
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
         .toList();
-    if (fromShift.isNotEmpty) return fromShift;
-    final fromJob = (_activeJobSetup?.wells ?? const <String>[])
-        .where((item) => item.trim().isNotEmpty)
-        .toList();
-    if (fromJob.isNotEmpty) return fromJob;
-    return const <String>['Well 1'];
+    if (ids.length == _activeJobWells.length) {
+      return ids;
+    }
+    return [
+      for (int i = 0; i < _activeJobWells.length; i++)
+        JobSetup.generateWellId(),
+    ];
   }
 
+  String _normalizeWellName(String value) =>
+      value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
   void _setFromShift(ProductionShift shift) {
-    _company.text = shift.header.company;
-    _pad.text = shift.header.pad;
+    final fromJobWells = _activeJobWells;
+    final fromJobWellIds = _activeJobWellIds;
+    _company.text = _activeJobSetup?.company.trim().isNotEmpty == true
+        ? _activeJobSetup!.company.trim()
+        : shift.header.company;
+    _pad.text = _activeJobSetup?.padName.trim().isNotEmpty == true
+        ? _activeJobSetup!.padName.trim()
+        : shift.header.pad;
     _date.text =
         shift.header.date.trim().isEmpty ? _todayDateText() : shift.header.date;
     _gaugeEntryType = shift.inventory.gaugeEntryType;
@@ -205,10 +225,21 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
       controller.dispose();
     }
     final sourceWells =
-        shift.header.wells.isEmpty ? _fallbackWells() : shift.header.wells;
+        fromJobWells.isNotEmpty ? fromJobWells : shift.header.wells;
+    final sourceWellIds = fromJobWells.isNotEmpty
+        ? fromJobWellIds
+        : (shift.header.wellIds.length == sourceWells.length
+            ? shift.header.wellIds
+            : [
+                for (int i = 0; i < sourceWells.length; i++)
+                  JobSetup.legacyWellId(sourceWells[i], i),
+              ]);
     _wellControllers
       ..clear()
       ..addAll(sourceWells.map((well) => TextEditingController(text: well)));
+    _wellIdentityIds
+      ..clear()
+      ..addAll(sourceWellIds);
     _wellChokeTypes
       ..clear()
       ..addAll(sourceWells.map((well) =>
@@ -287,28 +318,105 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     }
   }
 
-  void _setWellCountFromJob(List<String> wells) {
-    final jobWells = wells.where((item) => item.trim().isNotEmpty).toList();
-    final normalized = jobWells;
+  void _setWellCountFromJob(JobSetup activeJob) {
+    final targetWells = activeJob.wells
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+    final targetIds = activeJob.wellIds;
+    final existingNames = _wellControllers
+        .map((controller) => controller.text.trim())
+        .toList(growable: false);
+    final existingIds = List<String>.from(_wellIdentityIds);
+    final existingChokeTypes = List<String>.from(_wellChokeTypes);
+    final existingOilInventory = List<_OilInventoryControllers>.from(
+      _oilInventoryWells,
+    );
+    final usedExistingIndexes = <int>{};
 
-    while (_wellControllers.length < normalized.length) {
-      _wellControllers.add(TextEditingController());
-      _wellChokeTypes.add(_defaultChokeDisplay);
-      _oilInventoryWells.add(_OilInventoryControllers.blank());
-    }
-    while (_wellControllers.length > normalized.length) {
-      _wellControllers.removeLast().dispose();
-      _wellChokeTypes.removeLast();
-      _oilInventoryWells.removeLast().dispose();
+    int? resolveExistingIndex(String targetId, String targetName) {
+      if (targetId.trim().isNotEmpty) {
+        final byId = <int>[];
+        for (int i = 0;
+            i < existingIds.length && i < existingNames.length;
+            i++) {
+          if (existingIds[i] == targetId && !usedExistingIndexes.contains(i)) {
+            byId.add(i);
+          }
+        }
+        if (byId.length == 1) {
+          return byId.first;
+        }
+      }
+
+      final normalizedTarget = _normalizeWellName(targetName);
+      final byName = <int>[];
+      for (int i = 0; i < existingNames.length; i++) {
+        if (_normalizeWellName(existingNames[i]) == normalizedTarget &&
+            !usedExistingIndexes.contains(i)) {
+          byName.add(i);
+        }
+      }
+      if (byName.length == 1) {
+        return byName.first;
+      }
+
+      if (targetWells.length == 1 && existingNames.length == 1) {
+        return 0;
+      }
+      return null;
     }
 
-    for (int i = 0; i < normalized.length; i++) {
-      _wellControllers[i].text = normalized[i];
+    final nextWellControllers = <TextEditingController>[];
+    final nextWellIds = <String>[];
+    final nextChokeTypes = <String>[];
+    final nextOilInventory = <_OilInventoryControllers>[];
+
+    for (int i = 0; i < targetWells.length; i++) {
+      final targetWell = targetWells[i];
+      final targetId = i < targetIds.length && targetIds[i].trim().isNotEmpty
+          ? targetIds[i].trim()
+          : JobSetup.generateWellId();
+      final existingIndex = resolveExistingIndex(targetId, targetWell);
+      if (existingIndex != null) {
+        usedExistingIndexes.add(existingIndex);
+      }
+
+      nextWellControllers.add(TextEditingController(text: targetWell));
+      nextWellIds.add(targetId);
+      nextChokeTypes.add(existingIndex == null
+          ? _defaultChokeDisplay
+          : existingChokeTypes[existingIndex]);
+      nextOilInventory.add(existingIndex == null
+          ? _OilInventoryControllers.blank()
+          : _OilInventoryControllers.copyOf(
+              existingOilInventory[existingIndex]));
     }
+
+    for (final controller in _wellControllers) {
+      controller.dispose();
+    }
+    for (final well in _oilInventoryWells) {
+      well.dispose();
+    }
+
+    _wellControllers
+      ..clear()
+      ..addAll(nextWellControllers);
+    _wellIdentityIds
+      ..clear()
+      ..addAll(nextWellIds);
+    _wellChokeTypes
+      ..clear()
+      ..addAll(nextChokeTypes);
+    _oilInventoryWells
+      ..clear()
+      ..addAll(nextOilInventory);
   }
 
   void _applyJobSetupDefaults(JobSetup activeJob) {
-    _setWellCountFromJob(activeJob.wells);
+    _setWellCountFromJob(activeJob);
+    _pad.text = activeJob.padName.trim();
     final defaultFactor = activeJob.productionTankFactor.trim().isEmpty
         ? _defaultBblPerInch
         : activeJob.productionTankFactor.trim();
@@ -355,21 +463,35 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   ProductionShiftHeader _headerFromControllers() {
-    final wells = _wellControllers
-        .map((controller) => controller.text.trim())
-        .where((item) => item.isNotEmpty)
-        .toList();
+    final wells = <String>[];
+    final wellIds = <String>[];
+    for (int i = 0; i < _wellControllers.length; i++) {
+      final name = _wellControllers[i].text.trim();
+      if (name.isEmpty) continue;
+      wells.add(name);
+      final id =
+          i < _wellIdentityIds.length && _wellIdentityIds[i].trim().isNotEmpty
+              ? _wellIdentityIds[i].trim()
+              : JobSetup.generateWellId();
+      wellIds.add(id);
+    }
+    final sourceCompany = _activeJobSetup?.company.trim().isNotEmpty == true
+        ? _activeJobSetup!.company.trim()
+        : _company.text.trim();
+    final sourcePad = _activeJobSetup?.padName.trim().isNotEmpty == true
+        ? _activeJobSetup!.padName.trim()
+        : _pad.text.trim();
     return ProductionShiftHeader(
-      company: _company.text.trim(),
-      pad: _pad.text.trim(),
+      company: sourceCompany,
+      pad: sourcePad,
       date: _date.text.trim(),
       layoutProfileId: _layoutProfileId,
       chokeType: _defaultChokeDisplay,
+      wellIds: wellIds,
       wellChokeTypes: {
         for (int i = 0; i < _wellControllers.length; i++)
-          _wellControllers[i].text.trim().isEmpty
-              ? 'Well ${i + 1}'
-              : _wellControllers[i].text.trim(): _wellChokeTypes[i]
+          if (_wellControllers[i].text.trim().isNotEmpty)
+            _wellControllers[i].text.trim(): _wellChokeTypes[i]
       },
       wells: wells,
     );
@@ -390,16 +512,20 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   ProductionInventoryBaseline _inventoryFromControllers() {
+    final namedWells = _wellControllers
+        .map((controller) => controller.text.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
     return ProductionInventoryBaseline(
       waterTanks:
           _waterTanks.map((tank) => tank.toTank(_gaugeEntryType)).toList(),
       oilTanks: _oilTanks.map((tank) => tank.toTank(_gaugeEntryType)).toList(),
       oilInventoryWells: [
-        for (int i = 0; i < _wellControllers.length; i++)
+        for (int i = 0;
+            i < namedWells.length && i < _oilInventoryWells.length;
+            i++)
           _oilInventoryWells[i].toWell(
-            _wellControllers[i].text.trim().isEmpty
-                ? 'Well ${i + 1}'
-                : _wellControllers[i].text.trim(),
+            namedWells[i],
           ),
       ],
       gaugeEntryType: _gaugeEntryType,
@@ -418,9 +544,25 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   Future<void> _saveInventory() async {
     final activeJob = await _jobStorage.loadActiveJob();
     _activeJobSetup = activeJob;
-    if (_useJobSetupTanks && activeJob != null) {
+    if (activeJob == null || activeJob.wells.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No active wells. Start or edit a job to add well names.',
+          ),
+        ),
+      );
+      return;
+    }
+    if (_useJobSetupTanks) {
       setState(() {
         _applyJobSetupDefaults(activeJob);
+      });
+    } else {
+      setState(() {
+        _setWellCountFromJob(activeJob);
+        _pad.text = activeJob.padName.trim();
       });
     }
 
@@ -443,11 +585,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     }
 
     requireFilled(_company);
-    requireFilled(_pad);
     requireFilled(_date);
-    for (final controller in _wellControllers) {
-      requireFilled(controller);
-    }
 
     for (final controller in [
       _startingGasAccum,
@@ -744,29 +882,6 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
       const SnackBar(
           content: Text('Current job/shift archived to local History.')),
     );
-  }
-
-  void _addWell() {
-    if (_useJobSetupTanks && _activeJobSetup != null) return;
-    setState(() {
-      _wellControllers.add(
-        TextEditingController(text: 'Well ${_wellControllers.length + 1}'),
-      );
-      _wellChokeTypes.add(_defaultChokeDisplay);
-      _oilInventoryWells.add(_OilInventoryControllers.blank());
-    });
-  }
-
-  void _removeWell(int index) {
-    if (_useJobSetupTanks && _activeJobSetup != null) return;
-    if (_wellControllers.length == 1) return;
-    setState(() {
-      final controller = _wellControllers.removeAt(index);
-      controller.dispose();
-      _wellChokeTypes.removeAt(index);
-      final oilInventory = _oilInventoryWells.removeAt(index);
-      oilInventory.dispose();
-    });
   }
 
   void _addTank(List<_TankControllers> list, String label) {
@@ -1132,7 +1247,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
         ),
       if (_wellControllers.isEmpty)
         const Text(
-          'Add at least one well to begin oil inventory tracking.',
+          'No active wells. Start or edit a job to add well names.',
           style: TextStyle(color: Colors.white70),
         ),
     ]);
@@ -1222,15 +1337,15 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
         _validationCard(),
         _section('Shift Header', [
           _textField('Company', _company, enabled: false),
-          _textField('Pad Name', _pad),
+          _textField('Pad Name', _pad, enabled: false),
           _textField('Date', _date),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
             title: const Text('Use Job Setup Tanks'),
             subtitle: Text(
               _useJobSetupTanks
-                  ? 'ON: wells and tank counts sync from Job Setup automatically.'
-                  : 'OFF: Standalone mode for temporary or one-day jobs.',
+                  ? 'ON: tank counts sync from Job Setup automatically.'
+                  : 'OFF: use manual tank counts while keeping pad and wells from Active Job.',
             ),
             value: _useJobSetupTanks,
             onChanged: (value) async {
@@ -1329,43 +1444,23 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          for (int i = 0; i < _wellControllers.length; i++)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    children: [
-                      _textField(
-                        'Well ${i + 1}',
-                        _wellControllers[i],
-                        enabled:
-                            !(_useJobSetupTanks && _activeJobSetup != null),
-                      ),
-                      _wellChokeField(i),
-                    ],
+          if (_activeJobWells.isEmpty)
+            const Text(
+              'No active wells. Start or edit a job to add well names.',
+              style: TextStyle(color: Colors.white70),
+            )
+          else
+            for (int i = 0; i < _wellControllers.length; i++)
+              Column(
+                children: [
+                  _textField(
+                    'Well ${i + 1}',
+                    _wellControllers[i],
+                    enabled: false,
                   ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  onPressed: (_useJobSetupTanks && _activeJobSetup != null) ||
-                          _wellControllers.length == 1
-                      ? null
-                      : () => _removeWell(i),
-                  icon: const Icon(Icons.remove_circle_outline),
-                ),
-              ],
-            ),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: (_useJobSetupTanks && _activeJobSetup != null)
-                  ? null
-                  : _addWell,
-              icon: const Icon(Icons.add),
-              label: const Text('Add Well'),
-            ),
-          ),
+                  _wellChokeField(i),
+                ],
+              ),
         ]),
         _tankSection(
           title: 'Starting Inventory • Water Tanks',
@@ -1612,6 +1707,28 @@ class _OilInventoryControllers {
       ),
       maximumCushion: TextEditingController(
         text: existing?.maximumCushion ?? '',
+      ),
+    );
+  }
+
+  factory _OilInventoryControllers.copyOf(
+    _OilInventoryControllers source,
+  ) {
+    return _OilInventoryControllers(
+      beginningOilInventory: TextEditingController(
+        text: source.beginningOilInventory.text,
+      ),
+      currentOilInventory: TextEditingController(
+        text: source.currentOilInventory.text,
+      ),
+      expectedOilInventory: TextEditingController(
+        text: source.expectedOilInventory.text,
+      ),
+      currentCushion: TextEditingController(
+        text: source.currentCushion.text,
+      ),
+      maximumCushion: TextEditingController(
+        text: source.maximumCushion.text,
       ),
     );
   }

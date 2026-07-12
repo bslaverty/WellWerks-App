@@ -473,9 +473,17 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     ActiveCompanyService.instance.resetForTest();
     final service = ProductionShiftService();
+    final jobStorage = JobStorageService();
     final settingsService = AppSettingsService();
     final settings = await settingsService.load();
     await settingsService.save(settings.copyWith(activeCompany: 'Mach Energy'));
+    await jobStorage.saveActiveJob(
+      JobSetup(
+        company: 'Mach Energy',
+        padName: 'Mach Pad',
+        wells: const ['Mach 12-8'],
+      ),
+    );
 
     await tester.binding.setSurfaceSize(const Size(900, 4000));
 
@@ -488,9 +496,7 @@ void main() {
     expect(find.text('Pre-Round Adjustments'), findsOneWidget);
     expect(find.text('Starting Gas Accum'), findsOneWidget);
 
-    await tester.enterText(labeledTextField('Pad Name').first, 'Mach Pad');
     await tester.enterText(labeledTextField('Date').first, '2026-07-05');
-    await tester.enterText(labeledTextField('Well 1').first, 'Mach 12-8');
     await tester.enterText(labeledTextField('Gauge (inches)').at(0), '10');
     await tester.scrollUntilVisible(
       find.text('Starting Inventory • Oil Tanks').first,
@@ -951,15 +957,19 @@ void main() {
     SharedPreferences.setMockInitialValues({});
 
     final inventoryService = JobBoxInventoryService();
+    final jobStorage = JobStorageService();
+    await jobStorage.saveActiveJob(
+      JobSetup(
+        company: 'Mach Energy',
+        padName: 'Inventory Pad',
+        wells: const ['Inventory Well'],
+      ),
+    );
 
     await tester.pumpWidget(const MaterialApp(home: JobBoxInventoryScreen()));
     await tester.pumpAndSettle();
 
     await tester.enterText(labeledTextField('Date').first, '07/09/2026');
-    await tester.enterText(
-      labeledTextField('Well Name(s)').first,
-      'Inventory Well',
-    );
     await tester.enterText(
       labeledTextField('Job Box Number').first,
       'JB-101',
@@ -975,7 +985,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: ProductionHistoryScreen()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Job Box Inventory Records'), findsOneWidget);
+    expect(find.text('History'), findsOneWidget);
     expect(find.text('Inventory Well'), findsOneWidget);
 
     await tester.pumpWidget(

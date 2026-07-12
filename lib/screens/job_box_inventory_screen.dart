@@ -3,7 +3,9 @@ import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 
 import '../models/job_box_inventory.dart';
+import '../models/job_setup.dart';
 import '../services/active_company_service.dart';
+import '../services/job_storage_service.dart';
 import '../services/job_profile_defaults_service.dart';
 import '../services/job_box_inventory_service.dart';
 import '../widgets/app_header.dart';
@@ -19,6 +21,7 @@ class JobBoxInventoryScreen extends StatefulWidget {
 
 class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
   final _service = JobBoxInventoryService();
+  final _jobStorage = JobStorageService();
   final _activeCompanyService = ActiveCompanyService.instance;
   final _customerController = TextEditingController();
   final _dateController = TextEditingController();
@@ -29,6 +32,7 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
   bool _saving = false;
   bool _hideZeroQuantityItems = false;
   String _recordId = '';
+  JobSetup? _activeJob;
   DateTime _createdAt = DateTime.now();
   DateTime _updatedAt = DateTime.now();
   List<JobBoxInventoryItem> _items = [
@@ -65,6 +69,7 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
     final initialId = widget.initialRecordId?.trim() ?? '';
     final hideZeroPreference = await _service.loadHideZeroPreference();
     final activeCompany = await _activeCompanyService.ensureLoaded();
+    final activeJob = await _jobStorage.loadActiveJob();
     if (initialId.isNotEmpty) {
       record = await _service.loadRecord(initialId);
     }
@@ -89,8 +94,11 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
           selectedCompany == JobProfileDefaultsService.companyNone
               ? ''
               : selectedCompany;
+      _activeJob = activeJob;
       _dateController.text = record.date;
-      _wellNamesController.text = record.wellNames;
+      _wellNamesController.text = initialId.isNotEmpty
+          ? record.wellNames
+          : _activeWellNamesLabel(activeJob, fallback: record.wellNames);
       _jobBoxNumberController.text = record.jobBoxNumber;
       _hideZeroQuantityItems = record.hideZeroQuantityItems;
       _items = record.items.isEmpty
@@ -108,6 +116,17 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
     final normalized =
         _activeCompanyService.normalize(_customerController.text);
     return normalized;
+  }
+
+  String _activeWellNamesLabel(JobSetup? activeJob, {String fallback = ''}) {
+    final fromJob = (activeJob?.wells ?? const <String>[])
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+    if (fromJob.isNotEmpty) {
+      return fromJob.join(', ');
+    }
+    return fallback.trim();
   }
 
   List<JobBoxInventoryItem> _mergeWithDefaultItems(
@@ -297,7 +316,7 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
       ..writeln('Customer: $customerLabel')
       ..writeln('Date: ${_formatGpsDate()}')
       ..writeln(
-          'Well(s): ${_wellNamesController.text.trim().isEmpty ? '-' : _wellNamesController.text.trim()}')
+          'Well(s): ${_activeWellNamesLabel(_activeJob, fallback: _wellNamesController.text).isEmpty ? '-' : _activeWellNamesLabel(_activeJob, fallback: _wellNamesController.text)}')
       ..writeln(
           'Job Box: ${_jobBoxNumberController.text.trim().isEmpty ? '-' : _jobBoxNumberController.text.trim()}')
       ..writeln();
@@ -523,8 +542,12 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
             const SizedBox(height: 12),
             TextField(
               controller: _wellNamesController,
-              decoration: const InputDecoration(labelText: 'Well Name(s)'),
-              onChanged: (_) => _setHeaderChanged(),
+              readOnly: true,
+              enableInteractiveSelection: false,
+              decoration: const InputDecoration(
+                labelText: 'Well Name(s)',
+                helperText: 'Synced from Start Job / Edit Active Job',
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
