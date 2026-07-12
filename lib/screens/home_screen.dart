@@ -749,8 +749,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const ModuleTool(
                 icon: Icons.text_snippet_outlined,
-                title: 'Drillout Shift Change',
-                subtitle: 'Build, preview, copy, and share drillout shift text',
+                title: 'Drillout Shift Change / Update',
+                subtitle: 'Build, preview, and copy drillout shift text',
                 screen: DrilloutShiftChangeScreen(),
               ),
               const ModuleTool(

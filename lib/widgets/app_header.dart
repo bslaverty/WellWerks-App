@@ -43,16 +43,22 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
             ),
       title: Row(
         mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: MainAxisSize.max,
         children: [
           Image.asset('assets/images/app-icon.png',
               width: 34,
               height: 34,
               errorBuilder: (_, __, ___) => const SizedBox()),
           const SizedBox(width: 10),
-          Text(title,
-              style: TextStyle(
-                  color: colors.primary, fontWeight: FontWeight.w800)),
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style:
+                  TextStyle(color: colors.primary, fontWeight: FontWeight.w800),
+            ),
+          ),
         ],
       ),
       centerTitle: true,

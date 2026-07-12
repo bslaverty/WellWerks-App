@@ -44,7 +44,8 @@ Future<String> _openPreviewAndRead(WidgetTester tester) async {
   final previewFinder = find.byWidgetPredicate(
     (widget) =>
         widget is Text &&
-        (widget.data?.contains('Shift Change') ?? false) &&
+        ((widget.data?.contains('Shift Change') ?? false) ||
+            (widget.data?.contains('Update') ?? false)) &&
         (widget.data?.contains('Rate:') ?? false),
   );
   expect(previewFinder, findsOneWidget);
@@ -53,6 +54,33 @@ Future<String> _openPreviewAndRead(WidgetTester tester) async {
   await tester.tap(find.widgetWithText(TextButton, 'Close'));
   await tester.pumpAndSettle();
   return preview;
+}
+
+Future<void> _selectMode(WidgetTester tester, String modeLabel) async {
+  await tester.scrollUntilVisible(
+    find.byKey(const Key('drillout-mode-selector')),
+    -240,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(modeLabel).last);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _setStatusAndSand(
+  WidgetTester tester, {
+  required String status,
+  required String sand,
+}) async {
+  await _tapVisible(tester, find.byKey(const Key('drillout-toggle-status')));
+  await _tapVisible(tester, find.byKey(const Key('drillout-status-dropdown')));
+  await tester.tap(find.text(status).last);
+  await tester.pumpAndSettle();
+
+  await _tapVisible(tester, find.byKey(const Key('drillout-toggle-sand')));
+  await _tapVisible(tester, find.byKey(const Key('drillout-sand-dropdown')));
+  await tester.tap(find.text(sand).last);
+  await tester.pumpAndSettle();
 }
 
 Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
@@ -66,6 +94,16 @@ Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _expectCopyLabel(WidgetTester tester, String label) async {
+  await tester.scrollUntilVisible(
+    find.byKey(const Key('drillout-action-copy')),
+    240,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+  expect(find.widgetWithText(OutlinedButton, label), findsOneWidget);
+}
+
 void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
@@ -73,7 +111,41 @@ void main() {
     await _seedActiveJob();
   });
 
-  testWidgets('Build 97 toggles hide and show each optional field',
+  testWidgets('Build 98 mode defaults to Shift Change',
+      (WidgetTester tester) async {
+    await _pumpScreen(tester);
+
+    await _expectCopyLabel(tester, 'Copy Shift Change');
+    final preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('5:00 AM Shift Change'));
+  });
+
+  testWidgets('Build 98 Shift Change selection persists',
+      (WidgetTester tester) async {
+    await _pumpScreen(tester);
+
+    await _selectMode(tester, 'Shift Change');
+    await _pumpScreen(tester);
+
+    await _expectCopyLabel(tester, 'Copy Shift Change');
+    final preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('5:00 AM Shift Change'));
+  });
+
+  testWidgets('Build 98 Update selection persists',
+      (WidgetTester tester) async {
+    await _pumpScreen(tester);
+
+    await _selectMode(tester, 'Update');
+    await _pumpScreen(tester);
+
+    await _expectCopyLabel(tester, 'Copy Update');
+    final preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('5:00 AM Update'));
+    expect(preview.contains('Shift Update'), isFalse);
+  });
+
+  testWidgets('Build 98 toggles hide and show each optional field',
       (WidgetTester tester) async {
     await _pumpScreen(tester);
 
@@ -115,7 +187,7 @@ void main() {
   });
 
   testWidgets(
-      'Build 97 toggles control output, field order is exact, and preview matches copy',
+      'Build 98 toggles control output, field order is exact, and preview matches copy in Shift Change',
       (WidgetTester tester) async {
     String copiedText = '';
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -223,7 +295,7 @@ void main() {
     }
   });
 
-  testWidgets('Build 97 status and sand selections persist with drillout setup',
+  testWidgets('Build 98 status and sand selections persist with drillout setup',
       (WidgetTester tester) async {
     await _pumpScreen(tester);
 
@@ -246,9 +318,96 @@ void main() {
   });
 
   testWidgets(
-      'Build 97 clear current shift values keeps toggles and clears values',
+      'Build 98 switching modes keeps entered values and updates copy label',
       (WidgetTester tester) async {
     await _pumpScreen(tester);
+
+    await _setStatusAndSand(
+      tester,
+      status: 'Drilling Plugs',
+      sand: 'Light',
+    );
+    await _tapVisible(
+      tester,
+      find.byKey(const Key('drillout-toggle-plug-number')),
+    );
+    await tester.enterText(
+      find.byKey(const Key('drillout-plug-number-field')),
+      '12',
+    );
+    await tester.pumpAndSettle();
+
+    await _selectMode(tester, 'Update');
+    await _expectCopyLabel(tester, 'Copy Update');
+    var preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('5:00 AM Update'));
+    expect(preview, contains('Status: Drilling Plugs'));
+    expect(preview, contains('Plug #: 12'));
+    expect(preview, contains('Sand: Light'));
+
+    await _selectMode(tester, 'Shift Change');
+    await _expectCopyLabel(tester, 'Copy Shift Change');
+    preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('5:00 AM Shift Change'));
+    expect(preview, contains('Status: Drilling Plugs'));
+    expect(preview, contains('Plug #: 12'));
+    expect(preview, contains('Sand: Light'));
+  });
+
+  testWidgets('Build 98 preview equals copy in both modes',
+      (WidgetTester tester) async {
+    String copiedText = '';
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (methodCall) async {
+        if (methodCall.method == 'Clipboard.setData') {
+          final args = methodCall.arguments;
+          if (args is Map) {
+            copiedText = (args['text'] as String?) ?? '';
+          }
+          return null;
+        }
+        if (methodCall.method == 'Clipboard.getData') {
+          return <String, dynamic>{'text': copiedText};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+
+    await _pumpScreen(tester);
+
+    for (final mode in const ['Shift Change', 'Update']) {
+      await _selectMode(tester, mode);
+      final preview = await _openPreviewAndRead(tester);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('drillout-action-copy')),
+        240,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      final copyButton = tester.widget<OutlinedButton>(
+        find.byKey(const Key('drillout-action-copy')),
+      );
+      copyButton.onPressed!.call();
+      await tester.pumpAndSettle();
+      expect(copiedText, preview);
+      expect(
+        copiedText,
+        contains(mode == 'Update' ? '5:00 AM Update' : '5:00 AM Shift Change'),
+      );
+    }
+  });
+
+  testWidgets(
+      'Build 98 clear current shift values keeps toggles, clears values, and keeps selected mode',
+      (WidgetTester tester) async {
+    await _pumpScreen(tester);
+
+    await _selectMode(tester, 'Update');
 
     await _tapVisible(tester, find.byKey(const Key('drillout-toggle-status')));
     await _tapVisible(
@@ -319,6 +478,8 @@ void main() {
     expect(find.byKey(const Key('drillout-sand-dropdown')), findsOneWidget);
 
     final preview = await _openPreviewAndRead(tester);
+    await _expectCopyLabel(tester, 'Copy Update');
+    expect(preview, contains('5:00 AM Update'));
     expect(preview, contains('Status: -'));
     expect(preview, contains('Plug #: -'));
     expect(preview, contains('Coil Depth: - ft'));
@@ -326,9 +487,12 @@ void main() {
     expect(preview, contains('Sand: -'));
   });
 
-  testWidgets('Build 97 clear drillout setup clears toggles and values',
+  testWidgets(
+      'Build 98 clear drillout setup clears toggles and values and resets mode to Shift Change',
       (WidgetTester tester) async {
     await _pumpScreen(tester);
+
+    await _selectMode(tester, 'Update');
 
     await _tapVisible(tester, find.byKey(const Key('drillout-toggle-status')));
     await _tapVisible(
@@ -366,6 +530,8 @@ void main() {
     expect(find.byKey(const Key('drillout-sand-dropdown')), findsNothing);
 
     final preview = await _openPreviewAndRead(tester);
+    await _expectCopyLabel(tester, 'Copy Shift Change');
+    expect(preview, contains('5:00 AM Shift Change'));
     expect(preview.contains('Status:'), isFalse);
     expect(preview.contains('Sand:'), isFalse);
     expect(preview, contains('Notes: -'));

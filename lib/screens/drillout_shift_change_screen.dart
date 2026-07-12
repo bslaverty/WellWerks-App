@@ -21,6 +21,8 @@ import '../widgets/ww_number_field.dart';
 
 enum _DrilloutGaugeTarget { primary, gas1, gas2, water1, water2 }
 
+enum _DrilloutMode { shiftChange, update }
+
 class DrilloutShiftChangeScreen extends StatefulWidget {
   const DrilloutShiftChangeScreen({super.key});
 
@@ -70,6 +72,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   String _gasUnit = AppSettingsDefaults.gasUnit;
   DateTime _selectedTime = DateTime(2000, 1, 1, _defaultShiftHour);
   String _editedText = '';
+  _DrilloutMode _mode = _DrilloutMode.shiftChange;
 
   bool _showStatus = false;
   bool _showPlugNumber = false;
@@ -189,6 +192,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
           _normalizeWaterTankType(saved['waterTank2Type'] as String?);
       _choke = normalizedChoke;
       _selectedTime = DateTime(2000, 1, 1, savedHour);
+      _mode = _modeFromStorage(saved['mode'] as String?);
       _showStatus = saved['showStatus'] as bool? ?? false;
       _showPlugNumber = saved['showPlugNumber'] as bool? ?? false;
       _showCoilDepth = saved['showCoilDepth'] as bool? ?? false;
@@ -222,6 +226,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         'waterTankType': _waterTankType,
         'waterTank2Type': _waterTank2Type,
         'selectedHour': _selectedTime.hour,
+        'mode': _modeStorageValue,
         'chokeType': _choke.type,
         'chokeSize': _choke.size64,
         'showStatus': _showStatus,
@@ -250,6 +255,18 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   }
 
   String get _gasUnitLabel => _gasUnit == 'mmcfd' ? 'MMCFD' : 'MCFD';
+
+  _DrilloutMode _modeFromStorage(String? value) {
+    return (value ?? '').trim().toLowerCase() == 'update'
+        ? _DrilloutMode.update
+        : _DrilloutMode.shiftChange;
+  }
+
+  String get _modeStorageValue =>
+      _mode == _DrilloutMode.update ? 'update' : 'shift_change';
+
+  String get _modeLabel =>
+      _mode == _DrilloutMode.update ? 'Update' : 'Shift Change';
 
   Future<void> _clearSavedSetup() async {
     final prefs = await SharedPreferences.getInstance();
@@ -496,7 +513,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     final wellName = _wellName.text.trim();
 
     final lines = <String>[
-      '${_formatTime(_selectedTime)} Shift Change',
+      '${_formatTime(_selectedTime)} $_modeLabel',
       '',
       company,
       if (padName.isNotEmpty) padName,
@@ -698,6 +715,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _showCoilDepth = false;
       _showGasSpotRate = false;
       _showSand = false;
+      _mode = _DrilloutMode.shiftChange;
       _status = null;
       _sand = null;
       _selectedTime = DateTime(2000, 1, 1, _defaultShiftHour);
@@ -796,7 +814,10 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const AppHeader(title: 'Drillout Shift Change', showBack: true),
+      appBar: const AppHeader(
+        title: 'Drillout Shift Change / Update',
+        showBack: true,
+      ),
       body: Column(
         children: [
           Expanded(
@@ -810,9 +831,37 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'DRILLOUT SHIFT CHANGE',
+                          'DRILLOUT SHIFT CHANGE / UPDATE',
                           style: TextStyle(
                               fontWeight: FontWeight.w900, fontSize: 20),
+                        ),
+                        const SizedBox(height: 12),
+                        SegmentedButton<_DrilloutMode>(
+                          key: const Key('drillout-mode-selector'),
+                          style: ButtonStyle(
+                            minimumSize:
+                                WidgetStateProperty.all(const Size(0, 48)),
+                          ),
+                          segments: const [
+                            ButtonSegment<_DrilloutMode>(
+                              value: _DrilloutMode.shiftChange,
+                              label: Text('Shift Change'),
+                            ),
+                            ButtonSegment<_DrilloutMode>(
+                              value: _DrilloutMode.update,
+                              label: Text('Update'),
+                            ),
+                          ],
+                          selected: {_mode},
+                          onSelectionChanged: (selection) {
+                            final selected = selection.first;
+                            if (selected == _mode) return;
+                            setState(() {
+                              _mode = selected;
+                              _editedText = '';
+                            });
+                            _saveSetup();
+                          },
                         ),
                         const SizedBox(height: 10),
                         TextField(
@@ -1197,7 +1246,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                       key: const Key('drillout-action-copy'),
                       onPressed: _copy,
                       icon: const Icon(Icons.copy),
-                      label: const Text('Copy Shift Change'),
+                      label: Text('Copy $_modeLabel'),
                     ),
                     OutlinedButton.icon(
                       key: const Key('drillout-action-clear-current'),
