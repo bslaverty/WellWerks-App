@@ -84,8 +84,6 @@ class _JsaScreenState extends State<JsaScreen> {
   final _activeCompanyService = ActiveCompanyService.instance;
   late AppSettingsData _settings;
 
-  final _companies = JobProfileDefaultsService.sharedCompanyOptionsAlphabetized;
-
   final Map<String, Map<String, List<String>>> _taskLibrary = const {
     'Flowback': {
       'steps': [
@@ -308,11 +306,10 @@ class _JsaScreenState extends State<JsaScreen> {
         _applyDraft(draft);
       }
       if (targetJob != null) {
-        if (_company == JobProfileDefaultsService.companyNone ||
-            _company == JobProfileDefaultsService.companyMach) {
-          final normalized =
-              JobProfileDefaultsService().normalizeCompany(targetJob.company);
-          _company = _companies.contains(normalized) ? normalized : _company;
+        final normalized =
+            JobProfileDefaultsService().normalizeCompany(targetJob.company);
+        if (normalized != JobProfileDefaultsService.companyNone) {
+          _company = normalized;
         }
       }
     });
@@ -324,18 +321,9 @@ class _JsaScreenState extends State<JsaScreen> {
     if (!mounted) return;
     setState(() {
       _settings = loaded;
-      final fromGlobal = activeCompany.trim();
-      if ((fromGlobal.isNotEmpty && _companies.contains(fromGlobal)) ||
-          _company.trim().isEmpty ||
-          _company == JobProfileDefaultsService.companyNone) {
-        final normalizedDefault = JobProfileDefaultsService()
-            .normalizeCompany(loaded.jsaCompanyDefault);
-        _company = (fromGlobal.isNotEmpty && _companies.contains(fromGlobal))
-            ? fromGlobal
-            : (_companies.contains(normalizedDefault)
-                ? normalizedDefault
-                : JobProfileDefaultsService.companyNone);
-      }
+      _company = activeCompany == JobProfileDefaultsService.companyNone
+          ? ''
+          : activeCompany;
       if (loaded.jsaAutoDate) {
         _date = DateTime.now();
       }
@@ -551,8 +539,10 @@ class _JsaScreenState extends State<JsaScreen> {
     }
     final activeCompany = _activeCompanyService.activeCompany.value;
     _company = activeCompany.trim().isNotEmpty
-        ? activeCompany
-        : JobProfileDefaultsService.companyNone;
+        ? (activeCompany == JobProfileDefaultsService.companyNone
+            ? ''
+            : activeCompany)
+        : '';
     _selectedTasks
       ..clear()
       ..add('Flowback');
@@ -563,13 +553,10 @@ class _JsaScreenState extends State<JsaScreen> {
   }
 
   void _applyDraft(JsaDraft draft) {
-    final normalized =
-        JobProfileDefaultsService().normalizeCompany(draft.company);
-    _company = _companies.contains(normalized)
-        ? normalized
-        : (_activeCompanyService.activeCompany.value.trim().isNotEmpty
-            ? _activeCompanyService.activeCompany.value
-            : JobProfileDefaultsService.companyNone);
+    final activeCompany = _activeCompanyService.activeCompany.value;
+    _company = activeCompany == JobProfileDefaultsService.companyNone
+        ? ''
+        : activeCompany;
     _selectedTasks
       ..clear()
       ..addAll(draft.tasks.where(_taskLibrary.containsKey));
@@ -966,29 +953,6 @@ class _JsaScreenState extends State<JsaScreen> {
     });
   }
 
-  Future<bool> _confirmCompanyChange(String nextCompany) async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Change Active Company?'),
-            content: Text(
-              'Switch Active Company to $nextCompany and start fresh? This clears only the current setup and keeps saved history, settings, and logs.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Change Company'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-  }
-
   @override
   Widget build(BuildContext context) {
     final dateText = DateFormat('MM/dd/yyyy').format(_date);
@@ -1004,26 +968,9 @@ class _JsaScreenState extends State<JsaScreen> {
             children: [
               _activeJobBanner(),
               _section('Job Info'),
-              DropdownButtonFormField<String>(
-                initialValue: _company,
-                items: _companies
-                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                    .toList(),
-                onChanged: (v) async {
-                  final selected = v ?? _company;
-                  if (selected == _company) return;
-                  final confirmed = await _confirmCompanyChange(selected);
-                  if (!confirmed) return;
-
-                  await _activeCompanyService
-                      .setActiveCompanyWithFreshStart(selected);
-                  if (!mounted) return;
-                  setState(() {
-                    _clearFormValues(resetDateTime: true);
-                    _company = selected;
-                  });
-                },
+              InputDecorator(
                 decoration: const InputDecoration(labelText: 'Company'),
+                child: Text(_company.trim().isEmpty ? 'None' : _company),
               ),
               const SizedBox(height: 12),
               TextField(

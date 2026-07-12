@@ -17,6 +17,8 @@ import 'package:wellwerks/screens/production_history_screen.dart';
 import 'package:wellwerks/screens/production_inventory_screen.dart';
 import 'package:wellwerks/screens/shift_report_screen.dart';
 import 'package:wellwerks/screens/text_update_screen.dart';
+import 'package:wellwerks/services/active_company_service.dart';
+import 'package:wellwerks/services/app_settings_service.dart';
 import 'package:wellwerks/services/job_history_service.dart';
 import 'package:wellwerks/services/job_box_inventory_service.dart';
 import 'package:wellwerks/services/job_storage_service.dart';
@@ -469,7 +471,11 @@ void main() {
     WidgetTester tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
+    ActiveCompanyService.instance.resetForTest();
     final service = ProductionShiftService();
+    final settingsService = AppSettingsService();
+    final settings = await settingsService.load();
+    await settingsService.save(settings.copyWith(activeCompany: 'Mach Energy'));
 
     await tester.binding.setSurfaceSize(const Size(900, 4000));
 
@@ -482,7 +488,6 @@ void main() {
     expect(find.text('Pre-Round Adjustments'), findsOneWidget);
     expect(find.text('Starting Gas Accum'), findsOneWidget);
 
-    await tester.enterText(labeledTextField('Company').first, 'Mach Energy');
     await tester.enterText(labeledTextField('Pad Name').first, 'Mach Pad');
     await tester.enterText(labeledTextField('Date').first, '2026-07-05');
     await tester.enterText(labeledTextField('Well 1').first, 'Mach 12-8');
@@ -596,6 +601,7 @@ void main() {
     WidgetTester tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
+    ActiveCompanyService.instance.resetForTest();
     final service = ProductionShiftService();
 
     await service.saveActiveShift(
@@ -643,7 +649,7 @@ void main() {
 
     expect(find.textContaining('Linked to active shift data'), findsWidgets);
     final copyReportButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Copy Production Report'),
+      find.widgetWithText(FilledButton, 'Copy Text'),
     );
     expect(copyReportButton.onPressed, isNotNull);
 

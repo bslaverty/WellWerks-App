@@ -16,7 +16,7 @@ void main() {
   test('shared company list includes Flywheel Energy with no duplicates', () {
     final options = service.companyOptions;
     expect(options.first, JobProfileDefaultsService.companyNone);
-    expect(options.contains(JobProfileDefaultsService.companyCustom), isFalse);
+    expect(options.contains('Custom'), isFalse);
     expect(options.contains(JobProfileDefaultsService.companyFlywheel), isTrue);
     expect(
       options

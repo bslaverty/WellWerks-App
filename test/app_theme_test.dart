@@ -52,11 +52,11 @@ void main() {
       expect(theme.surface, const Color(0xFFFDF9D8));
     });
 
-    test('OSU uses orange accent and dark surfaces', () {
+    test('OSU is orange-first with black control accent', () {
       const theme = AppThemeCatalog.osu;
-      final hue = HSLColor.fromColor(theme.accent).hue;
-      expect(hue, inInclusiveRange(15, 40));
-      expect(theme.surface.computeLuminance(), lessThan(0.12));
+      expect(theme.background.computeLuminance(), greaterThan(0.35));
+      expect(theme.surface.computeLuminance(), greaterThan(0.35));
+      expect(theme.accent, Colors.black);
     });
 
     test('High Vis theme exists and has high-visibility accent', () {
@@ -84,16 +84,8 @@ void main() {
   });
 
   group('Active controls derive from theme primary', () {
-    test(
-        'switch, checkbox, and radio selected colors use selected theme accent',
-        () {
+    test('high vis selected controls use selected theme accent', () {
       const selected = <WidgetState>{WidgetState.selected};
-
-      final osuTheme = buildAppTheme('osu');
-      final osuPrimary = osuTheme.colorScheme.primary;
-      expect(osuTheme.switchTheme.thumbColor?.resolve(selected), osuPrimary);
-      expect(osuTheme.checkboxTheme.fillColor?.resolve(selected), osuPrimary);
-      expect(osuTheme.radioTheme.fillColor?.resolve(selected), osuPrimary);
 
       final highVisTheme = buildAppTheme('high_vis');
       final highVisPrimary = highVisTheme.colorScheme.primary;
@@ -105,8 +97,7 @@ void main() {
           highVisTheme.radioTheme.fillColor?.resolve(selected), highVisPrimary);
     });
 
-    test('classic, OU, and OSU switch selected thumb uses each theme accent',
-        () {
+    test('OU and OSU selected control colors match Build 89 requirements', () {
       const selected = <WidgetState>{WidgetState.selected};
 
       final classicTheme = buildAppTheme('wellwerks_default');
@@ -123,11 +114,24 @@ void main() {
       );
       expect(
         osuTheme.switchTheme.thumbColor?.resolve(selected),
-        AppThemeCatalog.osu.accent,
+        const Color(0xFFF2F2F2),
+      );
+      expect(
+        osuTheme.switchTheme.trackColor?.resolve(selected),
+        Colors.black,
+      );
+      expect(
+        osuTheme.checkboxTheme.fillColor?.resolve(selected),
+        Colors.black,
+      );
+      expect(
+        osuTheme.radioTheme.fillColor?.resolve(selected),
+        Colors.black,
       );
     });
 
-    test('cupertino override primary color follows selected theme accent', () {
+    test('OU app bar foreground is cream and cupertino primary follows accent',
+        () {
       final osuTheme = buildAppTheme('osu');
       final ouTheme = buildAppTheme('ou');
 
@@ -139,6 +143,7 @@ void main() {
         ouTheme.cupertinoOverrideTheme?.primaryColor,
         AppThemeCatalog.ou.accent,
       );
+      expect(ouTheme.appBarTheme.foregroundColor, const Color(0xFFFDF9D8));
     });
   });
 }

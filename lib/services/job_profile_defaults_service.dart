@@ -23,7 +23,6 @@ class JobProfileDefaultsService {
   static const String companyContinental = 'Continental Resources';
   static const String companyMach = 'Mach Energy';
   static const String companyFlywheel = 'Flywheel Energy';
-  static const String companyCustom = 'Custom';
   static const String companyDevon = 'Devon';
   static const String companyXto = 'XTO';
 

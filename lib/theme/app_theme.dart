@@ -102,12 +102,12 @@ class AppThemeCatalog {
     id: 'osu',
     label: 'OSU',
     brightness: Brightness.dark,
-    background: Color(0xFF0C0C0C),
-    surface: Color(0xFF1A1A1A),
-    appBarBackground: Color(0xFF101010),
-    accent: Color(0xFFFF7A00),
-    text: Color(0xFFF3F3F3),
-    subtleText: Color(0xFFB8B8B8),
+    background: Color(0xFFFF8A00),
+    surface: Color(0xFFFFA640),
+    appBarBackground: Color(0xFFFF8A00),
+    accent: Color(0xFF000000),
+    text: Color(0xFF2F2F2F),
+    subtleText: Color(0xFF4F4F4F),
   );
 
   static const highVisibility = AppThemeOption(
@@ -145,8 +145,13 @@ class AppThemeCatalog {
 
 ThemeData buildAppTheme(String themeId) {
   final option = AppThemeCatalog.fromId(themeId);
+  const ouCream = Color(0xFFFDF9D8);
+  final isOu = option.id == 'ou';
+  final isOsu = option.id == 'osu';
   final onAccent =
       option.accent.computeLuminance() > 0.5 ? Colors.black : Colors.white;
+  final appBarForeground =
+      isOu ? ouCream : (isOsu ? Colors.black : option.accent);
 
   final scheme = ColorScheme.fromSeed(
     seedColor: option.accent,
@@ -190,12 +195,12 @@ ThemeData buildAppTheme(String themeId) {
   return base.copyWith(
     appBarTheme: AppBarTheme(
       backgroundColor: option.appBarBackground,
-      foregroundColor: option.accent,
+      foregroundColor: appBarForeground,
       elevation: 0,
-      iconTheme: IconThemeData(color: option.accent),
-      actionsIconTheme: IconThemeData(color: option.accent),
+      iconTheme: IconThemeData(color: appBarForeground),
+      actionsIconTheme: IconThemeData(color: appBarForeground),
       titleTextStyle: TextStyle(
-        color: option.accent,
+        color: appBarForeground,
         fontWeight: FontWeight.w800,
         fontSize: 20,
       ),
@@ -279,6 +284,7 @@ ThemeData buildAppTheme(String themeId) {
           return option.subtleText.withValues(alpha: 0.45);
         }
         if (states.contains(WidgetState.selected)) {
+          if (isOsu) return const Color(0xFFF2F2F2);
           return option.accent;
         }
         return option.subtleText;
@@ -288,12 +294,16 @@ ThemeData buildAppTheme(String themeId) {
           return option.subtleText.withValues(alpha: 0.2);
         }
         if (states.contains(WidgetState.selected)) {
+          if (isOsu) return Colors.black;
           return option.accent.withValues(alpha: 0.45);
         }
+        if (isOsu) return const Color(0xFF4A4A4A);
         return option.subtleText.withValues(alpha: 0.35);
       }),
       trackOutlineColor: WidgetStateProperty.resolveWith((states) {
-        if (states.contains(WidgetState.selected)) return option.accent;
+        if (states.contains(WidgetState.selected)) {
+          return isOsu ? Colors.black : option.accent;
+        }
         return scheme.outlineVariant;
       }),
     ),
@@ -302,7 +312,9 @@ ThemeData buildAppTheme(String themeId) {
         if (states.contains(WidgetState.disabled)) {
           return option.subtleText.withValues(alpha: 0.2);
         }
-        if (states.contains(WidgetState.selected)) return option.accent;
+        if (states.contains(WidgetState.selected)) {
+          return isOsu ? Colors.black : option.accent;
+        }
         return option.surface;
       }),
       checkColor: WidgetStatePropertyAll<Color>(onAccent),
@@ -313,7 +325,9 @@ ThemeData buildAppTheme(String themeId) {
         if (states.contains(WidgetState.disabled)) {
           return option.subtleText.withValues(alpha: 0.35);
         }
-        if (states.contains(WidgetState.selected)) return option.accent;
+        if (states.contains(WidgetState.selected)) {
+          return isOsu ? Colors.black : option.accent;
+        }
         return option.subtleText;
       }),
     ),

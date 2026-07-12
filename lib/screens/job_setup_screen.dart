@@ -639,35 +639,11 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                     physics: const NeverScrollableScrollPhysics(),
                     children: [
                       _StepPage(title: '1. Company', children: [
-                        DropdownButtonFormField<String>(
-                          initialValue: company,
+                        InputDecorator(
                           decoration:
                               const InputDecoration(labelText: 'Company'),
-                          items: JobProfileDefaultsService
-                              .productionCompanyProfiles
-                              .map(
-                                (profile) => DropdownMenuItem(
-                                  value: profile,
-                                  child: Text(profile),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (value) {
-                            final nextCompany = _profileDefaults
-                                .normalizeCompany(value ?? 'Mach Energy');
-                            final defaults =
-                                _profileDefaults.profileForCompany(nextCompany);
-                            setState(() {
-                              company = nextCompany;
-                              wellFieldKeys =
-                                  List<String>.from(defaults.wellFieldKeys);
-                              activeEquipmentSections = List<String>.from(
-                                  defaults.defaultActiveSections);
-                            });
-                            _activeCompanyService
-                                .setIfValidCandidate(nextCompany);
-                            _scheduleAutoSave();
-                          },
+                          child:
+                              Text(company.trim().isEmpty ? 'None' : company),
                         ),
                         const SizedBox(height: 12),
                         DropdownButtonFormField<String>(

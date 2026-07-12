@@ -128,15 +128,19 @@ class ActiveCompanyService {
       return ActiveCompanyChangeStatus.unchanged;
     }
 
-    await clearCurrentSetupForCompanyChange();
+    await clearCurrentJobContextForCompanyChange();
     await setActiveCompany(next, syncActiveJob: false, syncActiveShift: false);
     return ActiveCompanyChangeStatus.changed;
   }
 
-  Future<void> clearCurrentSetupForCompanyChange() async {
+  Future<void> clearCurrentJobContextForCompanyChange() async {
     await _settingsService.clearActiveData();
     await _jobBoxService.clearWorkingDraft();
     await _clearDrilloutSavedSetup();
+  }
+
+  Future<void> clearCurrentSetupForCompanyChange() {
+    return clearCurrentJobContextForCompanyChange();
   }
 
   JobSetup _applyCompanyToJob(JobSetup job, String company) {

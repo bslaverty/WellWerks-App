@@ -372,6 +372,29 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     );
   }
 
+  Future<void> _previewReport() async {
+    final text = _reportText;
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Preview Text'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(text),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _exportReport() async {
     final file = await _shiftService.exportReportCsv(
       fileName: 'production_report.csv',
@@ -665,10 +688,19 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _activeJobRows.isEmpty ? null : _previewReport,
+              icon: const Icon(Icons.preview_outlined),
+              label: const Text('Preview Text'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
             child: FilledButton.icon(
               onPressed: _activeJobRows.isEmpty ? null : _copyReport,
               icon: const Icon(Icons.copy_all),
-              label: const Text('Copy Production Report'),
+              label: const Text('Copy Text'),
             ),
           ),
           const SizedBox(height: 8),

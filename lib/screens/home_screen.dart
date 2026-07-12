@@ -98,13 +98,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<bool> _confirmCompanyChange(String nextCompany) async {
-    final label = nextCompany;
     return await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Change Active Company?'),
-            content: Text(
-              'Switch Active Company to $label and start fresh? This clears only the current setup and keeps saved history, settings, and logs.',
+            content: const Text(
+              'This will clear the current company\'s well names and active job setup. Saved history will not be deleted.',
             ),
             actions: [
               TextButton(
@@ -113,7 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               FilledButton(
                 onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Change Company'),
+                child: const Text('Change Company & Start Fresh'),
               ),
             ],
           ),
@@ -160,11 +159,26 @@ class _HomeScreenState extends State<HomeScreen> {
                 final confirmed = await _confirmCompanyChange(next);
                 if (!confirmed) return;
 
-                await _activeCompanyService
-                    .setActiveCompanyWithFreshStart(next);
+                try {
+                  await _activeCompanyService
+                      .setActiveCompanyWithFreshStart(next);
+                } catch (_) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Unable to change Active Company. Current setup was not cleared.',
+                      ),
+                    ),
+                  );
+                  return;
+                }
                 if (!context.mounted) return;
+                final successMessage = next == 'None'
+                    ? 'Active Company cleared. Current job setup was cleared.'
+                    : 'Active Company changed to $next. Current job setup was cleared.';
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Active Company: $next')),
+                  SnackBar(content: Text(successMessage)),
                 );
                 await _loadRecovery();
               },

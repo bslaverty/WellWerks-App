@@ -28,7 +28,6 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _hideZeroQuantityItems = false;
-  List<String> _companyOptions = const [];
   String _recordId = '';
   DateTime _createdAt = DateTime.now();
   DateTime _updatedAt = DateTime.now();
@@ -40,11 +39,20 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
   @override
   void initState() {
     super.initState();
+    _activeCompanyService.activeCompany
+        .addListener(_handleActiveCompanyChanged);
+    _load();
+  }
+
+  void _handleActiveCompanyChanged() {
+    if (!mounted) return;
     _load();
   }
 
   @override
   void dispose() {
+    _activeCompanyService.activeCompany
+        .removeListener(_handleActiveCompanyChanged);
     _customerController.dispose();
     _dateController.dispose();
     _wellNamesController.dispose();
@@ -57,7 +65,6 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
     final initialId = widget.initialRecordId?.trim() ?? '';
     final hideZeroPreference = await _service.loadHideZeroPreference();
     final activeCompany = await _activeCompanyService.ensureLoaded();
-    _companyOptions = _activeCompanyService.companyOptions;
     if (initialId.isNotEmpty) {
       record = await _service.loadRecord(initialId);
     }
@@ -101,58 +108,6 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
     final normalized =
         _activeCompanyService.normalize(_customerController.text);
     return normalized;
-  }
-
-  Future<bool> _confirmCompanyChange(String nextCompany) async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Change Active Company?'),
-            content: Text(
-              'Switch Active Company to $nextCompany and start fresh? This clears only the current setup and keeps saved history, settings, and logs.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Change Company'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-  }
-
-  Future<void> _handleCompanyChange(String selectedCompany) async {
-    final next = _activeCompanyService.normalize(selectedCompany);
-    if (next == _selectedCompany) return;
-
-    final confirmed = await _confirmCompanyChange(next);
-    if (!confirmed) return;
-
-    await _activeCompanyService.setActiveCompanyWithFreshStart(next);
-    if (!mounted) return;
-
-    setState(() {
-      _recordId = '';
-      _createdAt = DateTime.now();
-      _updatedAt = DateTime.now();
-      _customerController.text =
-          next == JobProfileDefaultsService.companyNone ? '' : next;
-      _wellNamesController.clear();
-      _jobBoxNumberController.clear();
-      _dateController.text = DateFormat('MM/dd/yyyy').format(DateTime.now());
-      _items = [
-        for (final item in JobBoxInventoryCatalog.defaultItems)
-          item.copyWith(quantity: 0),
-      ];
-    });
-
-    await _service.clearWorkingDraft();
-    await _persistWorkingDraft();
   }
 
   List<JobBoxInventoryItem> _mergeWithDefaultItems(
@@ -329,7 +284,7 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
         : _dateController.text.trim();
   }
 
-  Future<void> _copyInventoryUpdate() async {
+  String _inventoryUpdateText() {
     final customerLabel =
         _selectedCompany == JobProfileDefaultsService.companyNone
             ? '-'
@@ -372,7 +327,34 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
       buffer.writeln('${item.name}: ${item.quantity}');
     }
 
-    final text = buffer.toString().trimRight();
+    return buffer.toString().trimRight();
+  }
+
+  Future<void> _previewInventoryUpdate() async {
+    final text = _inventoryUpdateText();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Preview Text'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(text),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _copyInventoryUpdate() async {
+    final text = _inventoryUpdateText();
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -539,23 +521,6 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
               decoration: const InputDecoration(labelText: 'Customer'),
             ),
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: _selectedCompany,
-              decoration: const InputDecoration(labelText: 'Active Company'),
-              items: _companyOptions
-                  .map(
-                    (company) => DropdownMenuItem<String>(
-                      value: company,
-                      child: Text(company),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) async {
-                if (value == null) return;
-                await _handleCompanyChange(value);
-              },
-            ),
-            const SizedBox(height: 12),
             TextField(
               controller: _wellNamesController,
               decoration: const InputDecoration(labelText: 'Well Name(s)'),
@@ -586,10 +551,19 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
       children: [
         SizedBox(
           width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _previewInventoryUpdate,
+            icon: const Icon(Icons.preview_outlined),
+            label: const Text('Preview Text'),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
           child: FilledButton.icon(
             onPressed: _copyInventoryUpdate,
             icon: const Icon(Icons.copy),
-            label: const Text('Copy Inventory Update'),
+            label: const Text('Copy Text'),
           ),
         ),
         const SizedBox(height: 10),

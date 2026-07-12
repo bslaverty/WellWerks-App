@@ -28,9 +28,6 @@ class ProductionInventoryScreen extends StatefulWidget {
 }
 
 class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
-  static const List<String> _companyProfiles =
-      JobProfileDefaultsService.productionCompanyProfiles;
-
   final _service = ProductionShiftService();
   final _historyService = JobHistoryService();
   final _settingsService = AppSettingsService();
@@ -45,7 +42,6 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   String _gasUnit = 'mcfd';
   String _gasCalculationMethod = 'accumulator';
   String _layoutProfileId = 'default';
-  String _selectedCompanyProfile = JobProfileDefaultsService.companyNone;
   bool _useJobSetupTanks = true;
   final _startingGasAccum = TextEditingController();
   final _waterHauledBeforeRound = TextEditingController();
@@ -75,11 +71,20 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   @override
   void initState() {
     super.initState();
+    _activeCompanyService.activeCompany
+        .addListener(_handleActiveCompanyChanged);
     _load();
+  }
+
+  Future<void> _handleActiveCompanyChanged() async {
+    if (!mounted) return;
+    await _load();
   }
 
   @override
   void dispose() {
+    _activeCompanyService.activeCompany
+        .removeListener(_handleActiveCompanyChanged);
     for (final controller in [
       _company,
       _pad,
@@ -123,10 +128,9 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     _defaultBblPerInch = settings.defaultBblPerInch;
     _defaultChokeDisplay = settings.defaultChokeDisplay;
     final activeCompany = await _activeCompanyService.ensureLoaded();
-    if (_company.text.trim().isEmpty && activeCompany.trim().isNotEmpty) {
-      _company.text = activeCompany;
-      _selectedCompanyProfile = _normalizedCompanyProfile(activeCompany);
-    }
+    _company.text = activeCompany == JobProfileDefaultsService.companyNone
+        ? ''
+        : activeCompany;
     if (_isEffectivelyEmptyShift(shift)) {
       _gaugeEntryType = settings.defaultGaugeType;
       _gasUnit = settings.defaultGasUnit;
@@ -166,7 +170,6 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
 
   void _setFromShift(ProductionShift shift) {
     _company.text = shift.header.company;
-    _selectedCompanyProfile = _normalizedCompanyProfile(_company.text);
     _pad.text = shift.header.pad;
     _date.text =
         shift.header.date.trim().isEmpty ? _todayDateText() : shift.header.date;
@@ -225,58 +228,6 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
       ..clear()
       ..addAll(
           _buildOilInventoryControllers(shift.inventory.oilInventoryWells));
-  }
-
-  String _normalizedCompanyProfile(String company) {
-    final lower = company.trim().toLowerCase();
-    if (lower.isEmpty || lower == 'none' || lower == 'custom') {
-      return JobProfileDefaultsService.companyNone;
-    }
-    if (lower == 'mach energy' || lower == 'mach') return 'Mach Energy';
-    if (lower == 'continental resources' || lower == 'continental') {
-      return 'Continental Resources';
-    }
-    if (lower == 'flywheel energy' || lower == 'flywheel') {
-      return 'Flywheel Energy';
-    }
-    return JobProfileDefaultsService.companyNone;
-  }
-
-  String _layoutProfileForCompanyProfile(String profile) {
-    switch (profile) {
-      case 'Mach Energy':
-        return ReportProfileService.machProfileId;
-      case 'Continental Resources':
-        return ReportProfileService.continentalProfileId;
-      case 'Flywheel Energy':
-        return ReportProfileService.flywheelProfileId;
-      case JobProfileDefaultsService.companyNone:
-      default:
-        return _layoutProfileId;
-    }
-  }
-
-  Future<bool> _confirmCompanyChange(String nextCompany) async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Change Active Company?'),
-            content: Text(
-              'Switch Active Company to $nextCompany and start fresh? This clears only the current setup and keeps saved history, settings, and logs.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Change Company'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
   }
 
   List<_OilInventoryControllers> _buildOilInventoryControllers(
@@ -623,7 +574,6 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
 
     setState(() => _saving = true);
     await _service.saveActiveShift(updated);
-    await _activeCompanyService.setIfValidCandidate(updated.header.company);
     if (!mounted) return;
     setState(() {
       _activeShift = updated;
@@ -1263,41 +1213,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
       children: [
         _validationCard(),
         _section('Shift Header', [
-          DropdownButtonFormField<String>(
-            initialValue: _selectedCompanyProfile,
-            decoration:
-                const InputDecoration(labelText: 'Company / Customer Profile'),
-            items: [
-              for (final profile in _companyProfiles)
-                DropdownMenuItem(value: profile, child: Text(profile)),
-            ],
-            onChanged: (value) async {
-              if (value == null) return;
-              if (value == _selectedCompanyProfile) return;
-
-              final confirmed = await _confirmCompanyChange(value);
-              if (!confirmed) return;
-
-              await _activeCompanyService.setActiveCompanyWithFreshStart(value);
-              if (!mounted) return;
-
-              setState(() {
-                _selectedCompanyProfile = value;
-                if (value != JobProfileDefaultsService.companyNone) {
-                  _company.text = value;
-                  final mappedLayout = _layoutProfileForCompanyProfile(value);
-                  if (_layoutProfiles.any((p) => p.id == mappedLayout)) {
-                    _layoutProfileId = mappedLayout;
-                  }
-                } else {
-                  _company.clear();
-                }
-              });
-              await _load();
-            },
-          ),
-          const SizedBox(height: 12),
-          _textField('Company', _company),
+          _textField('Company', _company, enabled: false),
           _textField('Pad Name', _pad),
           _textField('Date', _date),
           SwitchListTile.adaptive(

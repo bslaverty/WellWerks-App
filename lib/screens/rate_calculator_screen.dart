@@ -327,10 +327,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     );
   }
 
-  Future<void> _copyRateUpdate() async {
+  String _rateUpdateText() {
     if (_rateLogEntries.isEmpty) {
-      _showShareMessage('Calculate a rate before sharing.');
-      return;
+      return '';
     }
 
     final selectedEntries = <_RateLogEntry>[];
@@ -349,7 +348,42 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
               '${_formatLogTimestamp(entry.timestamp)} - ${_formatRateForUnit(entry.rateValue, entry.rateUnit)} ${entry.rateUnit}',
         )
         .join('\n');
-    final text = '${widget.config.title} Rates\n\n$lines';
+    return '${widget.config.title} Rates\n\n$lines';
+  }
+
+  Future<void> _previewRateUpdate() async {
+    final text = _rateUpdateText();
+    if (text.isEmpty) {
+      _showShareMessage('Calculate a rate before sharing.');
+      return;
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Preview Update'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(text),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _copyRateUpdate() async {
+    final text = _rateUpdateText();
+    if (text.isEmpty) {
+      _showShareMessage('Calculate a rate before sharing.');
+      return;
+    }
 
     try {
       await Clipboard.setData(ClipboardData(text: text));
@@ -1328,6 +1362,16 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                 child: Row(
                   children: [
+                    if (_rateLogEnabled && _rateLogEntries.isNotEmpty)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _previewRateUpdate,
+                          icon: const Icon(Icons.preview_outlined),
+                          label: const Text('Preview Update'),
+                        ),
+                      ),
+                    if (_rateLogEnabled && _rateLogEntries.isNotEmpty)
+                      const SizedBox(width: 10),
                     if (_rateLogEnabled && _rateLogEntries.isNotEmpty)
                       Expanded(
                         child: OutlinedButton.icon(
