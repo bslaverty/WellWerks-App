@@ -15,6 +15,7 @@ class JobSetup {
     this.padName = '',
     this.notes = '',
     this.leaseName = '',
+    this.leaseNames = const [],
     this.county = '',
     this.state = '',
     this.crew = '',
@@ -41,7 +42,7 @@ class JobSetup {
     this.waterTanks = 0,
     this.waterTankCapacity = '500',
     this.productionTankFactor = '1.67',
-    this.selectedChemicals = chemicalOptions,
+    this.selectedChemicals = const [],
     this.reportTimes = const [
       '6:00 AM',
       '9:00 AM',
@@ -58,6 +59,7 @@ class JobSetup {
   final String padName;
   final String notes;
   final String leaseName;
+  final List<String> leaseNames;
   final String county;
   final String state;
   final String crew;
@@ -97,6 +99,24 @@ class JobSetup {
     ];
   }
 
+  List<String> get resolvedLeaseNames {
+    final fromList = leaseNames
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+    if (fromList.isNotEmpty) {
+      return fromList;
+    }
+    if (wells.isEmpty) return const <String>[];
+    if (leaseName.trim().isEmpty) {
+      return List<String>.filled(wells.length, '');
+    }
+    return [
+      leaseName.trim(),
+      for (int i = 1; i < wells.length; i++) '',
+    ];
+  }
+
   String get well => primaryWell;
   bool get isMultiWellJob => jobType == 'multiWellPad';
   bool get isActive => status == 'active';
@@ -110,6 +130,7 @@ class JobSetup {
     String? padName,
     String? notes,
     String? leaseName,
+    List<String>? leaseNames,
     String? county,
     String? state,
     String? crew,
@@ -147,6 +168,7 @@ class JobSetup {
       padName: padName ?? this.padName,
       notes: notes ?? this.notes,
       leaseName: leaseName ?? this.leaseName,
+      leaseNames: leaseNames ?? this.leaseNames,
       county: county ?? this.county,
       state: state ?? this.state,
       crew: crew ?? this.crew,
@@ -187,6 +209,7 @@ class JobSetup {
         'jobType': jobType,
         'notes': notes,
         'leaseName': leaseName,
+        'leaseNames': leaseNames,
         'county': county,
         'state': state,
         'crew': crew,
@@ -225,6 +248,7 @@ class JobSetup {
         padName: json['padName'] as String? ?? '',
         notes: json['notes'] as String? ?? '',
         leaseName: json['leaseName'] as String? ?? '',
+        leaseNames: _buildLeaseNames(json),
         county: json['county'] as String? ?? '',
         state: json['state'] as String? ?? '',
         crew: json['crew'] as String? ?? '',
@@ -272,7 +296,30 @@ class JobSetup {
         normalized.add(option);
       }
     }
-    return normalized.isEmpty ? List<String>.from(chemicalOptions) : normalized;
+    return normalized;
+  }
+
+  static List<String> _buildLeaseNames(Map<String, dynamic> json) {
+    final fromList = List<String>.from(json['leaseNames'] as List? ?? const [])
+        .map((item) => item.trim())
+        .toList();
+    if (fromList.isNotEmpty) {
+      return fromList;
+    }
+
+    final legacyLease = (json['leaseName'] as String? ?? '').trim();
+    if (legacyLease.isEmpty) {
+      return const <String>[];
+    }
+
+    final legacyWells = List<String>.from(json['wells'] as List? ?? const []);
+    if (legacyWells.isEmpty) {
+      return <String>[legacyLease];
+    }
+    return [
+      legacyLease,
+      for (int i = 1; i < legacyWells.length; i++) '',
+    ];
   }
 
   static String generateWellId() {

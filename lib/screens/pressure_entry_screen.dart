@@ -510,9 +510,6 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   List<String> get _activeChemicals {
     final selected = _activeJob?.selectedChemicals ?? const <String>[];
-    if (selected.isEmpty) {
-      return List<String>.from(JobSetup.chemicalOptions);
-    }
     return selected;
   }
 

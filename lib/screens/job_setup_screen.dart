@@ -51,9 +51,10 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   final dateStarted = TextEditingController(
     text: DateFormat('MM/dd/yyyy').format(DateTime.now()),
   );
-  final wellEntry = TextEditingController();
   final wells = <String>[];
   final wellIds = <String>[];
+  final leaseNames = <String>[];
+  final wellNameManuallyEdited = <bool>[];
 
   final sandSeparators = TextEditingController(text: '2');
   final plugCatchers = TextEditingController(text: '1');
@@ -89,7 +90,6 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
         county,
         state,
         dateStarted,
-        wellEntry,
         sandSeparators,
         plugCatchers,
         chokeManifolds,
@@ -110,6 +110,72 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     for (final controller in _autoSaveControllers) {
       controller.addListener(_scheduleAutoSave);
     }
+  }
+
+  void _ensurePerWellCapacity(int count) {
+    final normalized = count < 0 ? 0 : count;
+    while (wells.length < normalized) {
+      wells.add('');
+    }
+    while (wellIds.length < normalized) {
+      wellIds.add(JobSetup.generateWellId());
+    }
+    while (leaseNames.length < normalized) {
+      leaseNames.add('');
+    }
+    while (wellNameManuallyEdited.length < normalized) {
+      wellNameManuallyEdited.add(false);
+    }
+
+    if (wells.length > normalized) {
+      wells.removeRange(normalized, wells.length);
+    }
+    if (wellIds.length > normalized) {
+      wellIds.removeRange(normalized, wellIds.length);
+    }
+    if (leaseNames.length > normalized) {
+      leaseNames.removeRange(normalized, leaseNames.length);
+    }
+    if (wellNameManuallyEdited.length > normalized) {
+      wellNameManuallyEdited.removeRange(
+          normalized, wellNameManuallyEdited.length);
+    }
+  }
+
+  void _syncWellNameFromLease(int index, {bool force = false}) {
+    if (index < 0 || index >= wells.length || index >= leaseNames.length) {
+      return;
+    }
+    final lease = leaseNames[index].trim();
+    final existing = wells[index].trim();
+    final canAutoFill = existing.isEmpty || !wellNameManuallyEdited[index];
+    if ((force || canAutoFill) && lease.isNotEmpty) {
+      wells[index] = lease;
+      wellNameManuallyEdited[index] = false;
+      return;
+    }
+    if (force && lease.isEmpty) {
+      wells[index] = '';
+      wellNameManuallyEdited[index] = false;
+    }
+  }
+
+  void _setLeaseNameAt(int index, String value) {
+    if (index < 0 || index >= leaseNames.length) return;
+    leaseNames[index] = value;
+    _syncWellNameFromLease(index);
+  }
+
+  void _setWellNameAt(int index, String value) {
+    if (index < 0 || index >= wells.length) return;
+    wells[index] = value;
+    if (value.trim().isEmpty) {
+      wellNameManuallyEdited[index] = false;
+      _syncWellNameFromLease(index);
+      return;
+    }
+    final lease = index < leaseNames.length ? leaseNames[index].trim() : '';
+    wellNameManuallyEdited[index] = value.trim() != lease;
   }
 
   Future<void> _load() async {
@@ -194,13 +260,31 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     wellIds
       ..clear()
       ..addAll(job.wellIds);
-    while (wellIds.length < wells.length) {
-      wellIds.add(JobSetup.generateWellId());
+    final resolvedLeases = job.resolvedLeaseNames;
+    leaseNames
+      ..clear()
+      ..addAll(resolvedLeases);
+    _ensurePerWellCapacity(wells.length);
+    for (int i = 0; i < wells.length; i++) {
+      final lease = i < leaseNames.length ? leaseNames[i].trim() : '';
+      final well = wells[i].trim();
+      if (well.isEmpty && lease.isNotEmpty) {
+        wells[i] = lease;
+      }
+      wellNameManuallyEdited[i] = false;
     }
+
+    if (jobType == JobProfileDefaultsService.jobTypeSingleWell &&
+        wells.isEmpty &&
+        leaseName.text.trim().isNotEmpty) {
+      _ensurePerWellCapacity(1);
+      leaseNames[0] = leaseName.text.trim();
+      _syncWellNameFromLease(0, force: true);
+    }
+
     if (jobType == JobProfileDefaultsService.jobTypeSingleWell &&
         wells.length > 1) {
-      wells.removeRange(1, wells.length);
-      wellIds.removeRange(1, wellIds.length);
+      _ensurePerWellCapacity(1);
     }
     sandSeparators.text = job.sandSeparators.toString();
     plugCatchers.text = job.plugCatchers.toString();
@@ -227,7 +311,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     activeEquipmentSections = List<String>.from(defaults.defaultActiveSections);
     selectedChemicals
       ..clear()
-      ..addAll(JobSetup.chemicalOptions);
+      ..addAll(const <String>[]);
     shift = 'Day';
     padName.clear();
     notes.clear();
@@ -235,9 +319,11 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     county.clear();
     state.text = 'Oklahoma';
     dateStarted.text = DateFormat('MM/dd/yyyy').format(DateTime.now());
-    wellEntry.clear();
     wells.clear();
     wellIds.clear();
+    leaseNames.clear();
+    wellNameManuallyEdited.clear();
+    _ensurePerWellCapacity(1);
     sandSeparators.text = '2';
     plugCatchers.text = '1';
     chokeManifolds.text = '1';
@@ -255,20 +341,38 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   JobSetup _buildJobFromForm() {
+    final singleLeaseText = leaseName.text.trim();
+    if (jobType == JobProfileDefaultsService.jobTypeSingleWell) {
+      _ensurePerWellCapacity(1);
+      if (leaseNames[0].trim().isEmpty && singleLeaseText.isNotEmpty) {
+        leaseNames[0] = singleLeaseText;
+      }
+      _syncWellNameFromLease(0);
+    }
+
     final normalizedPairs = <MapEntry<String, String>>[];
+    final normalizedLeaseNames = <String>[];
     for (int i = 0; i < wells.length; i++) {
       final name = wells[i].trim();
+      final lease = i < leaseNames.length ? leaseNames[i].trim() : '';
       if (name.isEmpty) continue;
       final id = i < wellIds.length && wellIds[i].trim().isNotEmpty
           ? wellIds[i].trim()
           : JobSetup.generateWellId();
       normalizedPairs.add(MapEntry(id, name));
+      normalizedLeaseNames.add(lease);
     }
     final safePairs = jobType == JobProfileDefaultsService.jobTypeSingleWell
         ? (normalizedPairs.isEmpty
             ? const <MapEntry<String, String>>[]
             : <MapEntry<String, String>>[normalizedPairs.first])
         : normalizedPairs;
+    final safeLeaseNames =
+        jobType == JobProfileDefaultsService.jobTypeSingleWell
+            ? (normalizedLeaseNames.isEmpty
+                ? const <String>[]
+                : <String>[normalizedLeaseNames.first])
+            : normalizedLeaseNames;
     final safeWells = [for (final item in safePairs) item.value];
     final safeWellEntries = [
       for (final item in safePairs)
@@ -284,7 +388,9 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       customer: safeWells.isEmpty ? '' : safeWells.first,
       padName: padName.text.trim(),
       notes: notes.text.trim(),
-      leaseName: leaseName.text.trim(),
+      leaseName:
+          safeLeaseNames.isNotEmpty ? safeLeaseNames.first : singleLeaseText,
+      leaseNames: safeLeaseNames,
       county: county.text.trim(),
       state: state.text.trim(),
       shift: shift,
@@ -680,11 +786,14 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                               if (jobType ==
                                       JobProfileDefaultsService
                                           .jobTypeSingleWell &&
-                                  wells.length > 1) {
-                                wells.removeRange(1, wells.length);
-                                if (wellIds.length > 1) {
-                                  wellIds.removeRange(1, wellIds.length);
-                                }
+                                  wells.length != 1) {
+                                _ensurePerWellCapacity(1);
+                              }
+                              if (jobType ==
+                                      JobProfileDefaultsService
+                                          .jobTypeMultiWellPad &&
+                                  wells.isEmpty) {
+                                _ensurePerWellCapacity(2);
                               }
                             });
                             _scheduleAutoSave();
@@ -722,9 +831,6 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                                   }
                                 } else {
                                   selectedChemicals.remove(chemical);
-                                }
-                                if (selectedChemicals.isEmpty) {
-                                  selectedChemicals.add('Biocide');
                                 }
                               });
                               _scheduleAutoSave();
@@ -809,11 +915,89 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        TextField(
-                          controller: leaseName,
-                          decoration:
-                              const InputDecoration(labelText: 'Lease Name'),
-                        ),
+                        if (jobType ==
+                            JobProfileDefaultsService.jobTypeSingleWell)
+                          TextField(
+                            controller: leaseName,
+                            decoration: const InputDecoration(
+                              labelText: 'Lease Name',
+                            ),
+                            onChanged: (value) {
+                              setState(() {
+                                _ensurePerWellCapacity(1);
+                                _setLeaseNameAt(0, value);
+                              });
+                              _scheduleAutoSave();
+                            },
+                          )
+                        else ...[
+                          const Text(
+                            'Per-Well Lease Names',
+                            style: TextStyle(
+                              color: Color(0xFFCDA56A),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              const Expanded(
+                                child: Text(
+                                  'Number of Wells',
+                                  style: TextStyle(color: Colors.white70),
+                                ),
+                              ),
+                              SizedBox(
+                                width: 110,
+                                child: TextFormField(
+                                  key: ValueKey('well-count-${wells.length}'),
+                                  initialValue:
+                                      '${wells.length < 2 ? 2 : wells.length}',
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Count',
+                                  ),
+                                  onChanged: (value) {
+                                    final parsed =
+                                        int.tryParse(value.trim()) ?? 2;
+                                    final next = parsed < 2 ? 2 : parsed;
+                                    setState(() {
+                                      _ensurePerWellCapacity(next);
+                                    });
+                                    _scheduleAutoSave();
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          for (int i = 0; i < wells.length; i++) ...[
+                            Text(
+                              'Well ${i + 1}',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            TextFormField(
+                              key: ValueKey(
+                                  'lease-$i-${i < leaseNames.length ? leaseNames[i] : ''}'),
+                              initialValue:
+                                  i < leaseNames.length ? leaseNames[i] : '',
+                              decoration: const InputDecoration(
+                                labelText: 'Lease Name',
+                              ),
+                              onChanged: (value) {
+                                setState(() {
+                                  _setLeaseNameAt(i, value);
+                                });
+                                _scheduleAutoSave();
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                        ],
                         const SizedBox(height: 12),
                         TextField(
                           controller: county,
@@ -870,73 +1054,32 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                               style: TextStyle(color: Colors.white70),
                             ),
                           ),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: wellEntry,
-                                decoration: const InputDecoration(
-                                  labelText: 'Well Name',
-                                ),
+                        for (int i = 0; i < wells.length; i++) ...[
+                          TextFormField(
+                            key: ValueKey('well-$i-${wells[i]}'),
+                            initialValue: wells[i],
+                            decoration: InputDecoration(
+                              labelText: 'Well ${i + 1} Name',
+                            ),
+                            onChanged: (value) {
+                              setState(() {
+                                _setWellNameAt(i, value);
+                              });
+                              _scheduleAutoSave();
+                            },
+                          ),
+                          const SizedBox(height: 10),
+                          if (i < leaseNames.length &&
+                              leaseNames[i].trim().isNotEmpty)
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'Lease Name: ${leaseNames[i].trim()}',
+                                style: const TextStyle(color: Colors.white70),
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            IconButton.filled(
-                              onPressed: () {
-                                final name = wellEntry.text.trim();
-                                if (name.isEmpty) return;
-                                if (jobType ==
-                                        JobProfileDefaultsService
-                                            .jobTypeSingleWell &&
-                                    wells.isNotEmpty) {
-                                  setState(() {
-                                    wells[0] = name;
-                                    if (wellIds.isEmpty) {
-                                      wellIds.add(JobSetup.generateWellId());
-                                    }
-                                    wellEntry.clear();
-                                  });
-                                  _scheduleAutoSave();
-                                  return;
-                                }
-                                setState(() {
-                                  wells.add(name);
-                                  wellIds.add(JobSetup.generateWellId());
-                                  wellEntry.clear();
-                                });
-                                _scheduleAutoSave();
-                              },
-                              icon: const Icon(Icons.add),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        if (wells.isEmpty)
-                          Text(
-                            jobType ==
-                                    JobProfileDefaultsService.jobTypeSingleWell
-                                ? 'Add the active well name.'
-                                : 'Add each well on this pad.',
-                            style: const TextStyle(color: Colors.white70),
-                          ),
-                        for (int i = 0; i < wells.length; i++)
-                          Card(
-                            child: ListTile(
-                              title: Text(wells[i]),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.delete),
-                                onPressed: () {
-                                  setState(() {
-                                    wells.removeAt(i);
-                                    if (i < wellIds.length) {
-                                      wellIds.removeAt(i);
-                                    }
-                                  });
-                                  _scheduleAutoSave();
-                                },
-                              ),
-                            ),
-                          ),
+                          const SizedBox(height: 12),
+                        ],
                         const SizedBox(height: 24),
                         _navButtons(),
                       ]),
@@ -978,7 +1121,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                           child: Padding(
                             padding: const EdgeInsets.all(14),
                             child: Text(
-                              'Summary\n$company\n${_profileDefaults.jobTypeLabel(jobType)}\n${padName.text.trim().isEmpty ? 'No pad entered' : padName.text.trim()}\n${wells.length} well(s)\nChemicals: ${selectedChemicals.join(', ')}\nSections: ${activeEquipmentSections.isEmpty ? 'None' : activeEquipmentSections.join(', ')}\n${_i(sandSeparators) + _i(plugCatchers) + _i(chokeManifolds) + _i(lineHeaters) + _i(testUnits) + _i(ecds) + _i(vrus) + _i(flares) + _i(transferPumps)} equipment item(s)\n${_i(oilTanks) + _i(waterTanks)} tank(s)',
+                              'Summary\n$company\n${_profileDefaults.jobTypeLabel(jobType)}\n${padName.text.trim().isEmpty ? 'No pad entered' : padName.text.trim()}\n${wells.length} well(s)\nChemicals: ${selectedChemicals.isEmpty ? 'None' : selectedChemicals.join(', ')}\nSections: ${activeEquipmentSections.isEmpty ? 'None' : activeEquipmentSections.join(', ')}\n${_i(sandSeparators) + _i(plugCatchers) + _i(chokeManifolds) + _i(lineHeaters) + _i(testUnits) + _i(ecds) + _i(vrus) + _i(flares) + _i(transferPumps)} equipment item(s)\n${_i(oilTanks) + _i(waterTanks)} tank(s)',
                             ),
                           ),
                         ),

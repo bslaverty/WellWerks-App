@@ -142,6 +142,18 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
 
   bool get _showEcdSection => _settings.isOptionalSectionEnabled('ecd');
 
+  bool _chemicalSelected(String name) {
+    final selected = _activeJob?.selectedChemicals ?? const <String>[];
+    return selected.any((item) => item.toLowerCase() == name.toLowerCase());
+  }
+
+  String _biocideValue(ProductionReportRow row) {
+    if (!_chemicalSelected('Biocide')) {
+      return 'N/A';
+    }
+    return row.biocide.isEmpty ? '-' : row.biocide;
+  }
+
   String _fmtTimeLabel(String value) {
     final raw = value.trim();
     final parsed = _parseShiftTime(raw);
@@ -359,7 +371,8 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
       case 'clrFlareTemp':
         return 'CLR FLARE TEMP - ${row.gasTemp.isEmpty ? '-' : row.gasTemp}°';
       case 'biocide':
-        return 'BIOCIDE - ${row.biocide.isEmpty ? '-' : row.biocide} GPD';
+        final value = _biocideValue(row);
+        return value == 'N/A' ? 'BIOCIDE - N/A' : 'BIOCIDE - $value GPD';
       case 'vruGasRt':
         return 'GAS RT - ${row.vruGasRate.isEmpty ? '-' : _gasString(row.vruGasRate)} $_gasUnitLabel';
       case 'vruSuct':
@@ -439,7 +452,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
       case 'clrFlareTemp':
         return row.gasTemp.isEmpty ? '-' : row.gasTemp;
       case 'biocide':
-        return row.biocide.isEmpty ? '-' : row.biocide;
+        return _biocideValue(row);
       case 'vruGasRt':
         return row.vruGasRate.isEmpty
             ? '-'
