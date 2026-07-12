@@ -168,6 +168,18 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
             well.maximumCushion.trim().isEmpty);
   }
 
+  List<String> _fallbackWells() {
+    final fromShift = _activeShift.header.wells
+        .where((item) => item.trim().isNotEmpty)
+        .toList();
+    if (fromShift.isNotEmpty) return fromShift;
+    final fromJob = (_activeJobSetup?.wells ?? const <String>[])
+        .where((item) => item.trim().isNotEmpty)
+        .toList();
+    if (fromJob.isNotEmpty) return fromJob;
+    return const <String>['Well 1'];
+  }
+
   void _setFromShift(ProductionShift shift) {
     _company.text = shift.header.company;
     _pad.text = shift.header.pad;
@@ -192,19 +204,15 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     for (final controller in _wellControllers) {
       controller.dispose();
     }
+    final sourceWells =
+        shift.header.wells.isEmpty ? _fallbackWells() : shift.header.wells;
     _wellControllers
       ..clear()
-      ..addAll(
-          (shift.header.wells.isEmpty ? const ['Well 1'] : shift.header.wells)
-              .map((well) => TextEditingController(text: well)));
+      ..addAll(sourceWells.map((well) => TextEditingController(text: well)));
     _wellChokeTypes
       ..clear()
-      ..addAll(
-        (shift.header.wells.isEmpty ? const ['Well 1'] : shift.header.wells)
-            .map(
-          (well) => shift.header.wellChokeTypes[well] ?? shift.header.chokeType,
-        ),
-      );
+      ..addAll(sourceWells.map((well) =>
+          shift.header.wellChokeTypes[well] ?? shift.header.chokeType));
     _defaultChokeDisplay = shift.header.chokeType;
 
     for (final tank in _waterTanks) {
@@ -281,7 +289,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
 
   void _setWellCountFromJob(List<String> wells) {
     final jobWells = wells.where((item) => item.trim().isNotEmpty).toList();
-    final normalized = jobWells.isEmpty ? <String>['Well 1'] : jobWells;
+    final normalized = jobWells;
 
     while (_wellControllers.length < normalized.length) {
       _wellControllers.add(TextEditingController());
@@ -363,7 +371,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
               ? 'Well ${i + 1}'
               : _wellControllers[i].text.trim(): _wellChokeTypes[i]
       },
-      wells: wells.isEmpty ? const ['Well 1'] : wells,
+      wells: wells,
     );
   }
 

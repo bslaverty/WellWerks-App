@@ -114,11 +114,11 @@ class ProductionShiftHeader {
     this.layoutProfileId = 'default',
     this.chokeType = 'ADJ',
     this.wellChokeTypes = const {},
-    this.wells = const ['Well 1'],
+    this.wells = const [],
   });
 
   factory ProductionShiftHeader.fromJson(Map<String, dynamic> json) {
-    final wells = ((json['wells'] as List?) ?? const ['Well 1'])
+    final wells = ((json['wells'] as List?) ?? const [])
         .map((item) => item?.toString() ?? '')
         .where((item) => item.trim().isNotEmpty)
         .toList();
@@ -137,7 +137,7 @@ class ProductionShiftHeader {
           _normalizeChokeType(value?.toString()),
         ),
       ),
-      wells: wells.isEmpty ? const ['Well 1'] : wells,
+      wells: wells,
     );
   }
 
@@ -563,6 +563,13 @@ class ProductionTank {
 }
 
 class ProductionWellCheckData {
+  static const List<String> supportedChemicals = <String>[
+    'Biocide',
+    'Scavenger',
+    'Defoamer',
+    'Scale Inhibitor',
+  ];
+
   const ProductionWellCheckData({
     this.hoursSincePrevious = '',
     this.choke = '',
@@ -581,6 +588,9 @@ class ProductionWellCheckData {
     this.flareRate = '',
     this.flarePilotTemp = '',
     this.biocide = '',
+    this.scavenger = '',
+    this.defoamer = '',
+    this.scaleInhibitor = '',
     this.vruGasRate = '',
     this.compressorInjection = '',
     this.vruSuction = '',
@@ -646,6 +656,9 @@ class ProductionWellCheckData {
       flareRate: json['flareRate'] as String? ?? '',
       flarePilotTemp: json['flarePilotTemp'] as String? ?? '',
       biocide: json['biocide'] as String? ?? '',
+      scavenger: json['scavenger'] as String? ?? '',
+      defoamer: json['defoamer'] as String? ?? '',
+      scaleInhibitor: json['scaleInhibitor'] as String? ?? '',
       vruGasRate: json['vruGasRate'] as String? ?? '',
       compressorInjection: json['compressorInjection'] as String? ?? '',
       vruSuction: json['vruSuction'] as String? ?? '',
@@ -687,6 +700,9 @@ class ProductionWellCheckData {
       flareRate: check.flareRate,
       flarePilotTemp: check.flarePilotTemp,
       biocide: check.biocide,
+      scavenger: check.scavenger,
+      defoamer: check.defoamer,
+      scaleInhibitor: check.scaleInhibitor,
       vruGasRate: check.vruGasRate,
       compressorInjection: check.compressorInjection,
       vruSuction: check.vruSuction,
@@ -724,6 +740,9 @@ class ProductionWellCheckData {
   final String flareRate;
   final String flarePilotTemp;
   final String biocide;
+  final String scavenger;
+  final String defoamer;
+  final String scaleInhibitor;
   final String vruGasRate;
   final String compressorInjection;
   final String vruSuction;
@@ -761,6 +780,9 @@ class ProductionWellCheckData {
       'flareRate': flareRate,
       'flarePilotTemp': flarePilotTemp,
       'biocide': biocide,
+      'scavenger': scavenger,
+      'defoamer': defoamer,
+      'scaleInhibitor': scaleInhibitor,
       'vruGasRate': vruGasRate,
       'compressorInjection': compressorInjection,
       'vruSuction': vruSuction,
@@ -806,6 +828,9 @@ class ProductionHourlyCheck {
     this.flareRate = '',
     this.flarePilotTemp = '',
     this.biocide = '',
+    this.scavenger = '',
+    this.defoamer = '',
+    this.scaleInhibitor = '',
     this.vruGasRate = '',
     this.compressorInjection = '',
     this.vruSuction = '',
@@ -880,6 +905,9 @@ class ProductionHourlyCheck {
       flareRate: json['flareRate'] as String? ?? '',
       flarePilotTemp: json['flarePilotTemp'] as String? ?? '',
       biocide: json['biocide'] as String? ?? '',
+      scavenger: json['scavenger'] as String? ?? '',
+      defoamer: json['defoamer'] as String? ?? '',
+      scaleInhibitor: json['scaleInhibitor'] as String? ?? '',
       vruGasRate: json['vruGasRate'] as String? ?? '',
       compressorInjection: json['compressorInjection'] as String? ?? '',
       vruSuction: json['vruSuction'] as String? ?? '',
@@ -919,6 +947,9 @@ class ProductionHourlyCheck {
   final String flareRate;
   final String flarePilotTemp;
   final String biocide;
+  final String scavenger;
+  final String defoamer;
+  final String scaleInhibitor;
   final String vruGasRate;
   final String compressorInjection;
   final String vruSuction;
@@ -955,6 +986,9 @@ class ProductionHourlyCheck {
     String? flareRate,
     String? flarePilotTemp,
     String? biocide,
+    String? scavenger,
+    String? defoamer,
+    String? scaleInhibitor,
     String? vruGasRate,
     String? compressorInjection,
     String? vruSuction,
@@ -993,6 +1027,9 @@ class ProductionHourlyCheck {
       flareRate: flareRate ?? this.flareRate,
       flarePilotTemp: flarePilotTemp ?? this.flarePilotTemp,
       biocide: biocide ?? this.biocide,
+      scavenger: scavenger ?? this.scavenger,
+      defoamer: defoamer ?? this.defoamer,
+      scaleInhibitor: scaleInhibitor ?? this.scaleInhibitor,
       vruGasRate: vruGasRate ?? this.vruGasRate,
       compressorInjection: compressorInjection ?? this.compressorInjection,
       vruSuction: vruSuction ?? this.vruSuction,
@@ -1035,6 +1072,9 @@ class ProductionHourlyCheck {
       'flareRate': flareRate,
       'flarePilotTemp': flarePilotTemp,
       'biocide': biocide,
+      'scavenger': scavenger,
+      'defoamer': defoamer,
+      'scaleInhibitor': scaleInhibitor,
       'vruGasRate': vruGasRate,
       'compressorInjection': compressorInjection,
       'vruSuction': vruSuction,
@@ -1079,6 +1119,9 @@ class ProductionReportRow {
     this.flareRate = '',
     this.flarePilotTemp = '',
     this.biocide = '',
+    this.scavenger = '',
+    this.defoamer = '',
+    this.scaleInhibitor = '',
     this.vruGasRate = '',
     this.compressorInjection = '',
     this.vruSuction = '',
@@ -1106,7 +1149,7 @@ class ProductionReportRow {
     return ProductionReportRow(
       hourIndex: json['hourIndex'] as int? ?? 0,
       time: json['time'] as String? ?? '',
-      well: json['well'] as String? ?? 'Well 1',
+      well: json['well'] as String? ?? '',
       choke: json['choke'] as String? ?? '',
       chokeType: ProductionShiftHeader._normalizeChokeType(
         json['chokeType'] as String?,
@@ -1128,6 +1171,9 @@ class ProductionReportRow {
       flareRate: json['flareRate'] as String? ?? '',
       flarePilotTemp: json['flarePilotTemp'] as String? ?? '',
       biocide: json['biocide'] as String? ?? '',
+      scavenger: json['scavenger'] as String? ?? '',
+      defoamer: json['defoamer'] as String? ?? '',
+      scaleInhibitor: json['scaleInhibitor'] as String? ?? '',
       vruGasRate: json['vruGasRate'] as String? ?? '',
       compressorInjection: json['compressorInjection'] as String? ?? '',
       vruSuction: json['vruSuction'] as String? ?? '',
@@ -1169,6 +1215,9 @@ class ProductionReportRow {
   final String flareRate;
   final String flarePilotTemp;
   final String biocide;
+  final String scavenger;
+  final String defoamer;
+  final String scaleInhibitor;
   final String vruGasRate;
   final String compressorInjection;
   final String vruSuction;
@@ -1210,6 +1259,9 @@ class ProductionReportRow {
       'flareRate': flareRate,
       'flarePilotTemp': flarePilotTemp,
       'biocide': biocide,
+      'scavenger': scavenger,
+      'defoamer': defoamer,
+      'scaleInhibitor': scaleInhibitor,
       'vruGasRate': vruGasRate,
       'compressorInjection': compressorInjection,
       'vruSuction': vruSuction,

@@ -369,6 +369,12 @@ class JobHistoryService {
         return 'FLARE PILOT TEMP';
       case 'biocide':
         return 'BIOCIDE';
+      case 'scavenger':
+        return 'SCAVENGER';
+      case 'defoamer':
+        return 'DEFOAMER';
+      case 'scaleInhibitor':
+        return 'SCALE INHIBITOR';
       case 'vruGasRt':
         return 'VRU GAS RT';
       default:
@@ -424,6 +430,12 @@ class JobHistoryService {
         return row.flarePilotTemp;
       case 'biocide':
         return row.biocide;
+      case 'scavenger':
+        return row.scavenger;
+      case 'defoamer':
+        return row.defoamer;
+      case 'scaleInhibitor':
+        return row.scaleInhibitor;
       case 'vruGasRt':
         return _fmt(
             _baseGasToDisplay(shift, double.tryParse(row.vruGasRate) ?? 0));
@@ -455,6 +467,9 @@ class JobHistoryService {
       lines.add('${row.time} | ${row.well}');
       for (final field in visible) {
         final value = _valueFor(shift, row, field.key);
+        if (value.trim().isEmpty && !field.required) {
+          continue;
+        }
         lines.add(
             '${_headerLabel(layout.reportFields, field.key)}: ${value.isEmpty ? '-' : value}');
       }
@@ -511,6 +526,12 @@ class JobHistoryService {
         return 'FLARE PILOT TEMP - ${row.flarePilotTemp.isEmpty ? '-' : row.flarePilotTemp}°';
       case 'biocide':
         return 'BIOCIDE - ${row.biocide.isEmpty ? '-' : row.biocide} GPD';
+      case 'scavenger':
+        return 'SCAVENGER - ${row.scavenger.isEmpty ? '-' : row.scavenger} GPD';
+      case 'defoamer':
+        return 'DEFOAMER - ${row.defoamer.isEmpty ? '-' : row.defoamer} GPD';
+      case 'scaleInhibitor':
+        return 'SCALE INHIBITOR - ${row.scaleInhibitor.isEmpty ? '-' : row.scaleInhibitor} GPD';
       case 'vruGasRt':
         return 'GAS RT - ${row.vruGasRate.isEmpty ? '-' : _fmt(_baseGasToDisplay(shift, double.tryParse(row.vruGasRate) ?? 0))} ${_gasUnitLabel(shift)}';
       case 'compressorInj':
@@ -539,23 +560,34 @@ class JobHistoryService {
       final lines = <String>[pad, '${_fmtTimeLabel(row.time)} UPDATE', ''];
       for (final field in included) {
         if (vruKeys.contains(field.key) || field.key == 'notes') continue;
+        final raw = _valueFor(shift, row, field.key);
+        if (raw.trim().isEmpty && !field.required) continue;
         final line = _textLine(shift, row, field.key);
         if (line.isNotEmpty) lines.add(line);
       }
       final hasVru = included.any((field) => vruKeys.contains(field.key));
       if (hasVru) {
-        lines.add('');
-        lines.add('VRU');
-        lines.add('');
+        final vruLines = <String>[];
         for (final field
             in included.where((item) => vruKeys.contains(item.key))) {
-          lines.add(_textLine(shift, row, field.key));
+          final raw = _valueFor(shift, row, field.key);
+          if (raw.trim().isEmpty && !field.required) continue;
+          vruLines.add(_textLine(shift, row, field.key));
+        }
+        if (vruLines.isNotEmpty) {
+          lines.add('');
+          lines.add('VRU');
+          lines.add('');
+          lines.addAll(vruLines);
         }
       }
       if (included.any((field) => field.key == 'notes')) {
-        lines.add('');
-        lines.add('Notes');
-        lines.add(_textLine(shift, row, 'notes'));
+        final rawNotes = _valueFor(shift, row, 'notes');
+        if (rawNotes.trim().isNotEmpty) {
+          lines.add('');
+          lines.add('Notes');
+          lines.add(_textLine(shift, row, 'notes'));
+        }
       }
       return ArchivedTextUpdate(
         hourIndex: row.hourIndex,

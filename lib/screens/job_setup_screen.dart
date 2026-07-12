@@ -41,14 +41,13 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   String jobType = JobProfileDefaultsService.jobTypeSingleWell;
   List<String> wellFieldKeys = const [];
   List<String> activeEquipmentSections = const [];
+  final selectedChemicals = <String>[];
   String shift = 'Day';
-  final customer = TextEditingController();
   final padName = TextEditingController();
   final notes = TextEditingController();
   final leaseName = TextEditingController();
   final county = TextEditingController();
   final state = TextEditingController(text: 'Oklahoma');
-  final crew = TextEditingController();
   final dateStarted = TextEditingController(
     text: DateFormat('MM/dd/yyyy').format(DateTime.now()),
   );
@@ -71,15 +70,6 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   final waterTankCapacity = TextEditingController(text: '500');
   final productionTankFactor = TextEditingController(text: '1.67');
 
-  final reportTimes = <String>[
-    '6:00 AM',
-    '9:00 AM',
-    '12:00 PM',
-    '3:00 PM',
-    '6:00 PM',
-  ];
-  final reportTimeEntry = TextEditingController();
-
   int _i(TextEditingController controller) {
     return int.tryParse(controller.text.trim()) ?? 0;
   }
@@ -92,13 +82,11 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   List<TextEditingController> get _autoSaveControllers => [
-        customer,
         padName,
         notes,
         leaseName,
         county,
         state,
-        crew,
         dateStarted,
         wellEntry,
         sandSeparators,
@@ -115,7 +103,6 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
         waterTanks,
         waterTankCapacity,
         productionTankFactor,
-        reportTimeEntry,
       ];
 
   void _attachAutoSaveListeners() {
@@ -188,14 +175,15 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     activeEquipmentSections = job.activeEquipmentSections.isEmpty
         ? List<String>.from(defaults.defaultActiveSections)
         : List<String>.from(job.activeEquipmentSections);
+    selectedChemicals
+      ..clear()
+      ..addAll(job.selectedChemicals);
     shift = job.shift;
-    customer.text = job.customer;
     padName.text = job.padName;
     notes.text = job.notes;
     leaseName.text = job.leaseName;
     county.text = job.county;
     state.text = job.state;
-    crew.text = job.crew;
     dateStarted.text = job.dateStarted.trim().isEmpty
         ? DateFormat('MM/dd/yyyy').format(DateTime.now())
         : job.dateStarted;
@@ -220,9 +208,6 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     waterTanks.text = job.waterTanks.toString();
     waterTankCapacity.text = job.waterTankCapacity;
     productionTankFactor.text = job.productionTankFactor;
-    reportTimes
-      ..clear()
-      ..addAll(job.reportTimes);
   }
 
   void _resetFormForNewJob() {
@@ -232,14 +217,15 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     final defaults = _profileDefaults.profileForCompany(company);
     wellFieldKeys = List<String>.from(defaults.wellFieldKeys);
     activeEquipmentSections = List<String>.from(defaults.defaultActiveSections);
+    selectedChemicals
+      ..clear()
+      ..addAll(JobSetup.chemicalOptions);
     shift = 'Day';
-    customer.clear();
     padName.clear();
     notes.clear();
     leaseName.clear();
     county.clear();
     state.text = 'Oklahoma';
-    crew.clear();
     dateStarted.text = DateFormat('MM/dd/yyyy').format(DateTime.now());
     wellEntry.clear();
     wells.clear();
@@ -257,10 +243,6 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     waterTanks.text = '6';
     waterTankCapacity.text = '500';
     productionTankFactor.text = '1.67';
-    reportTimeEntry.clear();
-    reportTimes
-      ..clear()
-      ..addAll(const ['6:00 AM', '9:00 AM', '12:00 PM', '3:00 PM', '6:00 PM']);
   }
 
   JobSetup _buildJobFromForm() {
@@ -277,13 +259,12 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     return JobSetup(
       company: company,
       jobType: jobType,
-      customer: customer.text.trim(),
+      customer: safeWells.isEmpty ? '' : safeWells.first,
       padName: padName.text.trim(),
       notes: notes.text.trim(),
       leaseName: leaseName.text.trim(),
       county: county.text.trim(),
       state: state.text.trim(),
-      crew: crew.text.trim(),
       shift: shift,
       dateStarted: dateStarted.text.trim(),
       status: _activeJob?.status ?? 'active',
@@ -309,12 +290,12 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       productionTankFactor: productionTankFactor.text.trim().isEmpty
           ? '1.67'
           : productionTankFactor.text.trim(),
-      reportTimes: List<String>.from(reportTimes),
+      selectedChemicals: List<String>.from(selectedChemicals),
     );
   }
 
   void _next() {
-    if (_step >= 5) return;
+    if (_step >= 4) return;
     setState(() => _step++);
     _page.animateToPage(
       _step,
@@ -502,7 +483,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'Start a job to keep the current company, pad, well, shift, crew, and notes active on this device.',
+                  'Start a job to keep the current company, pad, well, shift, and notes active on this device.',
                   style: TextStyle(color: Colors.white70, fontSize: 15),
                 ),
                 const SizedBox(height: 22),
@@ -554,11 +535,16 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                   'Job Type',
                   _profileDefaults.jobTypeLabel(job.jobType),
                 ),
-                _buildOverviewValue('Customer', _displayValue(job.customer)),
                 _buildOverviewValue('Pad', _displayValue(job.padName)),
                 _buildOverviewValue(
                   'Well(s)',
                   job.wells.isEmpty ? 'Not entered' : job.wells.join(', '),
+                ),
+                _buildOverviewValue(
+                  'Chemicals',
+                  job.selectedChemicals.isEmpty
+                      ? 'Not selected'
+                      : job.selectedChemicals.join(', '),
                 ),
                 _buildOverviewValue(
                   'Active Sections',
@@ -567,7 +553,6 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                       : job.activeEquipmentSections.join(', '),
                 ),
                 _buildOverviewValue('Shift', _displayValue(job.shift)),
-                _buildOverviewValue('Crew', _displayValue(job.crew)),
                 _buildOverviewValue('Date', _displayValue(job.dateStarted)),
                 _buildOverviewValue('Started', _formatTimestamp(job.startedAt)),
                 _buildOverviewValue('Notes', _displayValue(job.notes)),
@@ -631,7 +616,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
-                  child: LinearProgressIndicator(value: (_step + 1) / 6),
+                  child: LinearProgressIndicator(value: (_step + 1) / 5),
                 ),
                 Expanded(
                   child: PageView(
@@ -680,16 +665,45 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                           },
                         ),
                         const SizedBox(height: 14),
-                        TextField(
-                          controller: customer,
-                          decoration: const InputDecoration(
-                            labelText: 'Customer / Operator',
-                          ),
-                        ),
                         const SizedBox(height: 20),
                         const Text(
-                          'Company controls default labels/sections. Job Type controls one well vs multiple wells.',
+                          'Company controls default labels/sections. Job Type controls one well vs multiple wells. Select active chemicals for Quick Round and reports.',
                           style: TextStyle(color: Colors.white70),
+                        ),
+                        const SizedBox(height: 14),
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Chemicals',
+                            style: TextStyle(
+                              color: Color(0xFFCDA56A),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ...JobSetup.chemicalOptions.map(
+                          (chemical) => CheckboxListTile(
+                            value: selectedChemicals.contains(chemical),
+                            title: Text(chemical),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                            onChanged: (enabled) {
+                              setState(() {
+                                if (enabled ?? false) {
+                                  if (!selectedChemicals.contains(chemical)) {
+                                    selectedChemicals.add(chemical);
+                                  }
+                                } else {
+                                  selectedChemicals.remove(chemical);
+                                }
+                                if (selectedChemicals.isEmpty) {
+                                  selectedChemicals.add('Biocide');
+                                }
+                              });
+                              _scheduleAutoSave();
+                            },
+                          ),
                         ),
                         const SizedBox(height: 14),
                         const Align(
@@ -784,11 +798,6 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                         TextField(
                           controller: state,
                           decoration: const InputDecoration(labelText: 'State'),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: crew,
-                          decoration: const InputDecoration(labelText: 'Crew'),
                         ),
                         const SizedBox(height: 12),
                         DropdownButtonFormField<String>(
@@ -932,61 +941,12 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                           'Default tank factor stays 1.67 unless you change it.',
                           style: TextStyle(color: Colors.white70),
                         ),
-                        const SizedBox(height: 24),
-                        _navButtons(),
-                      ]),
-                      _StepPage(title: '6. Reports', children: [
-                        const Text(
-                          'Edit report times for this job only.',
-                          style: TextStyle(color: Colors.white70),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: reportTimeEntry,
-                                decoration: const InputDecoration(
-                                  labelText: 'Add Time, ex: 7:00 AM',
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            IconButton.filled(
-                              onPressed: () {
-                                final time = reportTimeEntry.text.trim();
-                                if (time.isEmpty) return;
-                                setState(() {
-                                  reportTimes.add(time);
-                                  reportTimeEntry.clear();
-                                });
-                                _scheduleAutoSave();
-                              },
-                              icon: const Icon(Icons.add),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        ...reportTimes.map<Widget>(
-                          (time) => Card(
-                            child: ListTile(
-                              title: Text(time),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.delete),
-                                onPressed: () {
-                                  setState(() => reportTimes.remove(time));
-                                  _scheduleAutoSave();
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
                         const SizedBox(height: 18),
                         Card(
                           child: Padding(
                             padding: const EdgeInsets.all(14),
                             child: Text(
-                              'Summary\n$company\n${_profileDefaults.jobTypeLabel(jobType)}\n${padName.text.trim().isEmpty ? 'No pad entered' : padName.text.trim()}\n${wells.length} well(s)\nSections: ${activeEquipmentSections.isEmpty ? 'None' : activeEquipmentSections.join(', ')}\n${_i(sandSeparators) + _i(plugCatchers) + _i(chokeManifolds) + _i(lineHeaters) + _i(testUnits) + _i(ecds) + _i(vrus) + _i(flares) + _i(transferPumps)} equipment item(s)\n${_i(oilTanks) + _i(waterTanks)} tank(s)',
+                              'Summary\n$company\n${_profileDefaults.jobTypeLabel(jobType)}\n${padName.text.trim().isEmpty ? 'No pad entered' : padName.text.trim()}\n${wells.length} well(s)\nChemicals: ${selectedChemicals.join(', ')}\nSections: ${activeEquipmentSections.isEmpty ? 'None' : activeEquipmentSections.join(', ')}\n${_i(sandSeparators) + _i(plugCatchers) + _i(chokeManifolds) + _i(lineHeaters) + _i(testUnits) + _i(ecds) + _i(vrus) + _i(flares) + _i(transferPumps)} equipment item(s)\n${_i(oilTanks) + _i(waterTanks)} tank(s)',
                             ),
                           ),
                         ),

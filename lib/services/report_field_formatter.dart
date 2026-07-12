@@ -75,6 +75,21 @@ class ReportFieldFormatter {
         label: 'Biocide',
         emailLabel: 'Biocide Rate',
         unit: 'gal/day'),
+    'scavenger': ReportFieldMeta(
+        key: 'scavenger',
+        label: 'Scavenger',
+        emailLabel: 'Scavenger Rate',
+        unit: 'gal/day'),
+    'defoamer': ReportFieldMeta(
+        key: 'defoamer',
+        label: 'Defoamer',
+        emailLabel: 'Defoamer Rate',
+        unit: 'gal/day'),
+    'scaleInhibitor': ReportFieldMeta(
+        key: 'scaleInhibitor',
+        label: 'Scale Inhibitor',
+        emailLabel: 'Scale Inhibitor Rate',
+        unit: 'gal/day'),
     'ecdTemp': ReportFieldMeta(key: 'ecdTemp', label: 'ECD Temp', unit: '°'),
     'notes': ReportFieldMeta(key: 'notes', label: 'Notes', unit: ''),
   };

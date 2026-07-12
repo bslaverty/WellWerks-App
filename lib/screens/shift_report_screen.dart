@@ -251,6 +251,12 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         return 'FLARE PILOT TEMP';
       case 'biocide':
         return 'BIOCIDE';
+      case 'scavenger':
+        return 'SCAVENGER';
+      case 'defoamer':
+        return 'DEFOAMER';
+      case 'scaleInhibitor':
+        return 'SCALE INHIBITOR';
       case 'vruGasRt':
         return 'VRU GAS RT';
       default:
@@ -311,6 +317,12 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         return row.gasTemp;
       case 'biocide':
         return row.biocide;
+      case 'scavenger':
+        return row.scavenger;
+      case 'defoamer':
+        return row.defoamer;
+      case 'scaleInhibitor':
+        return row.scaleInhibitor;
       case 'vruGasRt':
         return _gasString(row.vruGasRate);
       case 'vruSuct':
@@ -340,8 +352,11 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     for (final row in rows) {
       lines.add('${row.time} | ${row.well}');
       for (final key in _visibleFieldKeys) {
-        lines.add(
-            '${_headerLabel(key)}: ${_valueFor(row, key).isEmpty ? '-' : _valueFor(row, key)}');
+        final value = _valueFor(row, key);
+        if (value.trim().isEmpty) {
+          continue;
+        }
+        lines.add('${_headerLabel(key)}: $value');
       }
       if (row != rows.last) {
         lines.add('');

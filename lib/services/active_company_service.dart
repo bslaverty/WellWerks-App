@@ -144,8 +144,7 @@ class ActiveCompanyService {
   }
 
   JobSetup _applyCompanyToJob(JobSetup job, String company) {
-    final nextCustomer = job.customer.trim().isEmpty ? company : job.customer;
-    return job.copyWith(company: company, customer: nextCustomer);
+    return job.copyWith(company: company);
   }
 
   Future<void> _persist(String company) async {

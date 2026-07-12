@@ -1,5 +1,11 @@
 class JobSetup {
   static const _unset = Object();
+  static const List<String> chemicalOptions = <String>[
+    'Biocide',
+    'Scavenger',
+    'Defoamer',
+    'Scale Inhibitor',
+  ];
 
   JobSetup({
     this.id = '',
@@ -34,6 +40,7 @@ class JobSetup {
     this.waterTanks = 0,
     this.waterTankCapacity = '500',
     this.productionTankFactor = '1.67',
+    this.selectedChemicals = chemicalOptions,
     this.reportTimes = const [
       '6:00 AM',
       '9:00 AM',
@@ -75,6 +82,7 @@ class JobSetup {
   final int waterTanks;
   final String waterTankCapacity;
   final String productionTankFactor;
+  final List<String> selectedChemicals;
   final List<String> reportTimes;
 
   String get primaryWell => wells.isEmpty ? '' : wells.first;
@@ -116,6 +124,7 @@ class JobSetup {
     int? waterTanks,
     String? waterTankCapacity,
     String? productionTankFactor,
+    List<String>? selectedChemicals,
     List<String>? reportTimes,
   }) {
     return JobSetup(
@@ -152,6 +161,7 @@ class JobSetup {
       waterTanks: waterTanks ?? this.waterTanks,
       waterTankCapacity: waterTankCapacity ?? this.waterTankCapacity,
       productionTankFactor: productionTankFactor ?? this.productionTankFactor,
+      selectedChemicals: selectedChemicals ?? this.selectedChemicals,
       reportTimes: reportTimes ?? this.reportTimes,
     );
   }
@@ -189,6 +199,7 @@ class JobSetup {
         'waterTanks': waterTanks,
         'waterTankCapacity': waterTankCapacity,
         'productionTankFactor': productionTankFactor,
+        'selectedChemicals': selectedChemicals,
         'reportTimes': reportTimes,
       };
 
@@ -228,7 +239,24 @@ class JobSetup {
         waterTanks: json['waterTanks'] as int? ?? 0,
         waterTankCapacity: json['waterTankCapacity'] as String? ?? '500',
         productionTankFactor: json['productionTankFactor'] as String? ?? '1.67',
+        selectedChemicals: _normalizeSelectedChemicals(
+          (json['selectedChemicals'] as List?)
+                  ?.map((item) => item?.toString() ?? '')
+                  .toList() ??
+              const <String>[],
+        ),
         reportTimes: List<String>.from(json['reportTimes'] as List? ??
             const ['6:00 AM', '9:00 AM', '12:00 PM', '3:00 PM', '6:00 PM']),
       );
+
+  static List<String> _normalizeSelectedChemicals(List<String> selected) {
+    final normalized = <String>[];
+    for (final option in chemicalOptions) {
+      if (selected
+          .any((item) => item.trim().toLowerCase() == option.toLowerCase())) {
+        normalized.add(option);
+      }
+    }
+    return normalized.isEmpty ? List<String>.from(chemicalOptions) : normalized;
+  }
 }

@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/job_setup.dart';
 import '../models/production_shift.dart';
 import '../models/round_reading.dart';
+import '../services/app_settings_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/rate_timer_notification_service.dart';
@@ -29,6 +30,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   final _service = ProductionShiftService();
   final _jobStorage = JobStorageService();
   final _roundStorage = RoundStorageService();
+  final _settingsService = AppSettingsService();
   final _recoveryState = RecoveryStateService();
   bool _loading = true;
   bool _savingHour = false;
@@ -38,10 +40,27 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   String? _hourValidationMessage;
   bool _hourlyQuickRoundReminderEnabled = false;
   int _quickRoundReminderMinute = 0;
+  AppSettingsData _settings = const AppSettingsData(
+    defaultGasUnit: AppSettingsDefaults.gasUnit,
+    defaultGaugeType: AppSettingsDefaults.gaugeType,
+    defaultBblPerInch: AppSettingsDefaults.bblPerInch,
+    defaultGasCalculationMethod: AppSettingsDefaults.gasCalculationMethod,
+    defaultChokeDisplay: AppSettingsDefaults.chokeDisplay,
+    defaultOptionalReportSections: AppSettingsDefaults.optionalReportSections,
+  );
 
   late ProductionShift _shift;
   JobSetup? _activeJob;
   final List<_HourlyCheckControllers> _controllers = [];
+
+  bool get _showVruSection => _settings.isOptionalSectionEnabled('vru');
+  bool get _showFlareSection => _settings.isOptionalSectionEnabled('flare');
+  bool get _showEcdSection => _settings.isOptionalSectionEnabled('ecd');
+  bool get _showCompressorSection =>
+      _settings.isOptionalSectionEnabled('compressor');
+  bool get _showInventorySection =>
+      _settings.isOptionalSectionEnabled('inventory');
+  bool get _showNotesSection => _settings.isOptionalSectionEnabled('notes');
 
   static const List<String> _roundTimes = [
     '6 AM',
@@ -95,6 +114,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       await _service.saveActiveShift(shift);
     }
     final activeJob = await _jobStorage.loadActiveJob();
+    final settings = await _settingsService.load();
     if (activeJob != null && shift.activeJobId != activeJob.id) {
       shift = shift.copyWith(activeJobId: activeJob.id);
       await _service.saveActiveShift(shift);
@@ -113,6 +133,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     if (!mounted) return;
     setState(() {
       _activeHourIndex = _firstIncompleteHourIndex();
+      _settings = settings;
       _hourlyQuickRoundReminderEnabled = savedReminderEnabled;
       _quickRoundReminderMinute = savedReminderMinute;
       _loading = false;
@@ -356,17 +377,30 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         ],
         startingGasAccum: parts.length > 3 ? parts[3] : '',
       ),
-      header: shift.header.wells.isEmpty
-          ? shift.header.copyWith(wells: const ['Well 1'])
-          : shift.header,
+      header: shift.header,
     );
     await _service.saveActiveShift(migrated);
     return migrated;
   }
 
+  List<String> _fallbackWells() {
+    final fromShift =
+        _shift.header.wells.where((item) => item.trim().isNotEmpty).toList();
+    if (fromShift.isNotEmpty) return fromShift;
+    final fromJob = (_activeJob?.wells ?? const <String>[])
+        .where((item) => item.trim().isNotEmpty)
+        .toList();
+    return fromJob;
+  }
+
   void _rebuildControllers() {
-    final wells =
-        _shift.header.wells.isEmpty ? const ['Well 1'] : _shift.header.wells;
+    final wells = _fallbackWells();
+    if (wells.isEmpty) {
+      _controllers
+        ..forEach((controller) => controller.dispose())
+        ..clear();
+      return;
+    }
     for (final controller in _controllers) {
       controller.dispose();
     }
@@ -423,8 +457,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     if (oilEntries.length > oilCount) {
       oilEntries.removeRange(oilCount, oilEntries.length);
     }
-    final wells =
-        _shift.header.wells.isEmpty ? const ['Well 1'] : _shift.header.wells;
+    final wells = _fallbackWells();
+    if (wells.isEmpty) return check;
     final normalizedWell =
         wells.contains(check.well) ? check.well : wells.first;
     return check.copyWith(
@@ -454,8 +488,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     return _controllers.length - 1;
   }
 
-  List<String> get _activeWells =>
-      _shift.header.wells.isEmpty ? const ['Well 1'] : _shift.header.wells;
+  List<String> get _activeWells => _fallbackWells();
 
   List<ProductionReportRow> get _storedRows {
     if (_shift.inventory.productionRows.isNotEmpty) {
@@ -475,6 +508,26 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     return _controllers[hourIndex].dataForWell(well, _chokeTypeForWell(well));
   }
 
+  List<String> get _activeChemicals {
+    final selected = _activeJob?.selectedChemicals ?? const <String>[];
+    if (selected.isEmpty) {
+      return List<String>.from(JobSetup.chemicalOptions);
+    }
+    return selected;
+  }
+
+  bool _chemicalEnabled(String name) {
+    return _activeChemicals
+        .any((item) => item.toLowerCase() == name.toLowerCase());
+  }
+
+  Iterable<String> _chemicalValues(ProductionWellCheckData data) sync* {
+    if (_chemicalEnabled('Biocide')) yield data.biocide;
+    if (_chemicalEnabled('Scavenger')) yield data.scavenger;
+    if (_chemicalEnabled('Defoamer')) yield data.defoamer;
+    if (_chemicalEnabled('Scale Inhibitor')) yield data.scaleInhibitor;
+  }
+
   bool _isWellEntered(int hourIndex, String well) {
     final data = _wellDataForHour(hourIndex, well);
     final hasScalarValue = [
@@ -491,19 +544,19 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       data.waterSpecificGravity,
       data.wellheadTemp,
       data.waterTemp,
-      data.flareRate,
-      data.flarePilotTemp,
-      data.biocide,
-      data.vruGasRate,
-      data.compressorInjection,
-      data.vruSuction,
-      data.vruDischarge,
-      data.waterHauled,
-      data.oilHauled,
-      data.waterPumped,
-      data.oilPumped,
+      if (_showFlareSection) data.flareRate,
+      if (_showFlareSection) data.flarePilotTemp,
+      ..._chemicalValues(data),
+      if (_showVruSection) data.vruGasRate,
+      if (_showCompressorSection) data.compressorInjection,
+      if (_showVruSection) data.vruSuction,
+      if (_showVruSection) data.vruDischarge,
+      if (_showInventorySection) data.waterHauled,
+      if (_showInventorySection) data.oilHauled,
+      if (_showInventorySection) data.waterPumped,
+      if (_showInventorySection) data.oilPumped,
       data.sandRate,
-      data.notes,
+      if (_showNotesSection) data.notes,
     ].any((value) => value.trim().isNotEmpty);
 
     final hasGaugeValue = data.waterTankGaugeEntries.any(_gaugeEntryHasValue) ||
@@ -717,6 +770,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   List<ProductionHourlyCheck> _buildBlankChecks() {
     final wells = _activeWells;
+    if (wells.isEmpty) {
+      return const <ProductionHourlyCheck>[];
+    }
     return List<ProductionHourlyCheck>.generate(
       _shift.checkCount,
       (index) => ProductionHourlyCheck(
@@ -1327,13 +1383,19 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       waterSpecificGravity: data.waterSpecificGravity.trim(),
       wellheadTemp: data.wellheadTemp.trim(),
       waterTemp: data.waterTemp.trim(),
-      flareRate: _storeGasField(data.flareRate),
-      flarePilotTemp: data.flarePilotTemp.trim(),
-      biocide: data.biocide.trim(),
-      vruGasRate: _storeGasField(data.vruGasRate),
-      compressorInjection: _storeGasField(data.compressorInjection),
-      vruSuction: data.vruSuction.trim(),
-      vruDischarge: data.vruDischarge.trim(),
+      flareRate: _showFlareSection ? _storeGasField(data.flareRate) : '',
+      flarePilotTemp: _showFlareSection ? data.flarePilotTemp.trim() : '',
+      biocide: _chemicalEnabled('Biocide') ? data.biocide.trim() : '',
+      scavenger: _chemicalEnabled('Scavenger') ? data.scavenger.trim() : '',
+      defoamer: _chemicalEnabled('Defoamer') ? data.defoamer.trim() : '',
+      scaleInhibitor:
+          _chemicalEnabled('Scale Inhibitor') ? data.scaleInhibitor.trim() : '',
+      vruGasRate: _showVruSection ? _storeGasField(data.vruGasRate) : '',
+      compressorInjection: _showCompressorSection
+          ? _storeGasField(data.compressorInjection)
+          : '',
+      vruSuction: _showVruSection ? data.vruSuction.trim() : '',
+      vruDischarge: _showVruSection ? data.vruDischarge.trim() : '',
       sandRate: data.sandRate.trim(),
       waterGaugeText:
           _gaugeText(_shift.inventory.waterTanks, data.waterTankGaugeEntries),
@@ -1343,11 +1405,11 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       currentOilBbl: currentOilBbl,
       currentGasAccum: currentGasAccum,
       hoursSincePrevious: double.tryParse(data.hoursSincePrevious.trim()) ?? 0,
-      waterHauled: _n(data.waterHauled),
-      oilHauled: _n(data.oilHauled),
-      waterPumped: _n(data.waterPumped),
-      oilPumped: _n(data.oilPumped),
-      notes: data.notes.trim(),
+      waterHauled: _showInventorySection ? _n(data.waterHauled) : 0,
+      oilHauled: _showInventorySection ? _n(data.oilHauled) : 0,
+      waterPumped: _showInventorySection ? _n(data.waterPumped) : 0,
+      oilPumped: _showInventorySection ? _n(data.oilPumped) : 0,
+      notes: _showNotesSection ? data.notes.trim() : '',
     );
   }
 
@@ -1378,16 +1440,19 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       current.gasStatic,
       current.gasDifferential,
       current.waterSpecificGravity,
-      current.flareRate,
-      current.biocide,
-      current.vruGasRate,
-      current.compressorInjection,
-      current.vruSuction,
-      current.vruDischarge,
-      current.waterHauled,
-      current.oilHauled,
-      current.waterPumped,
-      current.oilPumped,
+      if (_showFlareSection) current.flareRate,
+      if (_chemicalEnabled('Biocide')) current.biocide,
+      if (_chemicalEnabled('Scavenger')) current.scavenger,
+      if (_chemicalEnabled('Defoamer')) current.defoamer,
+      if (_chemicalEnabled('Scale Inhibitor')) current.scaleInhibitor,
+      if (_showVruSection) current.vruGasRate,
+      if (_showCompressorSection) current.compressorInjection,
+      if (_showVruSection) current.vruSuction,
+      if (_showVruSection) current.vruDischarge,
+      if (_showInventorySection) current.waterHauled,
+      if (_showInventorySection) current.oilHauled,
+      if (_showInventorySection) current.waterPumped,
+      if (_showInventorySection) current.oilPumped,
       current.sandRate,
       current.beginningOilInventory,
       current.expectedOilInventory,
@@ -1748,6 +1813,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   Widget _inventorySummary() {
     final header = _shift.header;
+    final wells = _activeWells;
     final inventory = _shift.inventory;
     return _section('Shift Baseline', [
       Text(
@@ -1768,9 +1834,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       ],
       const SizedBox(height: 8),
       Text(
-        'Well Choke Types: ${(header.wells.isEmpty ? const [
-            'Well 1'
-          ] : header.wells).map((well) => '$well ${_chokeTypeForWell(well)}').join(' • ')}',
+        'Well Choke Types: ${wells.isEmpty ? '-' : wells.map((well) => '$well ${_chokeTypeForWell(well)}').join(' • ')}',
         style: const TextStyle(color: Colors.white70),
       ),
       const SizedBox(height: 8),
@@ -1780,9 +1844,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       ),
       const SizedBox(height: 10),
       Text(
-        'Wells: ${(header.wells.isEmpty ? const [
-            'Well 1'
-          ] : header.wells).join(', ')}',
+        'Wells: ${wells.isEmpty ? '-' : wells.join(', ')}',
         style: const TextStyle(color: Colors.white70),
       ),
       const SizedBox(height: 10),
@@ -1950,8 +2012,15 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   Widget _hourlyCard(int index) {
     final controller = _controllers[index];
-    final wells =
-        _shift.header.wells.isEmpty ? const ['Well 1'] : _shift.header.wells;
+    final wells = _activeWells;
+    if (wells.isEmpty) {
+      return _section('Active Hour', const [
+        Text(
+          'No active wells found. Save Production Inventory or start an Active Job first.',
+          style: TextStyle(color: Colors.white70),
+        ),
+      ]);
+    }
     return _section('Active Hour • ${controller.time}', [
       DropdownButtonFormField<String>(
         initialValue:
@@ -2000,17 +2069,29 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       _field('Water Specific Gravity', controller.waterSpecificGravity),
       _field('Wellhead Temperature', controller.wellheadTemp, suffix: '°'),
       _field('Water Temperature', controller.waterTemp, suffix: '°'),
-      _field('Flare Rate', controller.flareRate, suffix: _gasUnitLabel),
-      _field('Flare Pilot Temperature', controller.flarePilotTemp, suffix: '°'),
-      _field('Biocide', controller.biocide, suffix: 'GPD'),
-      _field('VRU Gas Rate', controller.vruGasRate, suffix: _gasUnitLabel),
-      _field(
-        'Compressor Injection',
-        controller.compressorInjection,
-        suffix: _gasUnitLabel,
-      ),
-      _field('VRU Suction', controller.vruSuction),
-      _field('VRU Discharge', controller.vruDischarge),
+      if (_showFlareSection)
+        _field('Flare Rate', controller.flareRate, suffix: _gasUnitLabel),
+      if (_showFlareSection)
+        _field('Flare Pilot Temperature', controller.flarePilotTemp,
+            suffix: '°'),
+      if (_chemicalEnabled('Biocide'))
+        _field('Biocide', controller.biocide, suffix: 'GPD'),
+      if (_chemicalEnabled('Scavenger'))
+        _field('Scavenger', controller.scavenger, suffix: 'GPD'),
+      if (_chemicalEnabled('Defoamer'))
+        _field('Defoamer', controller.defoamer, suffix: 'GPD'),
+      if (_chemicalEnabled('Scale Inhibitor'))
+        _field('Scale Inhibitor', controller.scaleInhibitor, suffix: 'GPD'),
+      if (_showVruSection)
+        _field('VRU Gas Rate', controller.vruGasRate, suffix: _gasUnitLabel),
+      if (_showCompressorSection)
+        _field(
+          'Compressor Injection',
+          controller.compressorInjection,
+          suffix: _gasUnitLabel,
+        ),
+      if (_showVruSection) _field('VRU Suction', controller.vruSuction),
+      if (_showVruSection) _field('VRU Discharge', controller.vruDischarge),
       _tankGaugeInputs(
         title: 'Current Water Tank Gauges',
         tanks: _shift.inventory.waterTanks,
@@ -2021,13 +2102,18 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         tanks: _shift.inventory.oilTanks,
         entries: controller.oilTankGaugeEntries,
       ),
-      _field('Water Hauled This Hour', controller.waterHauled, suffix: 'BBL'),
-      _field('Oil Hauled This Hour', controller.oilHauled, suffix: 'BBL'),
-      _field('Water Pumped This Hour', controller.waterPumped, suffix: 'BBL'),
-      _field('Oil Pumped This Hour', controller.oilPumped, suffix: 'BBL'),
+      if (_showInventorySection)
+        _field('Water Hauled This Hour', controller.waterHauled, suffix: 'BBL'),
+      if (_showInventorySection)
+        _field('Oil Hauled This Hour', controller.oilHauled, suffix: 'BBL'),
+      if (_showInventorySection)
+        _field('Water Pumped This Hour', controller.waterPumped, suffix: 'BBL'),
+      if (_showInventorySection)
+        _field('Oil Pumped This Hour', controller.oilPumped, suffix: 'BBL'),
       _field('Sand Rate', controller.sandRate),
-      _field('Notes', controller.notes,
-          keyboardType: TextInputType.text, lines: 3),
+      if (_showNotesSection)
+        _field('Notes', controller.notes,
+            keyboardType: TextInputType.text, lines: 3),
       _section('Calculated (Read Only)', [
         _calcLine('Current Water BBL', _currentWaterBbl(index)),
         _calcLine('Current Oil BBL', _currentOilBbl(index)),
@@ -2044,7 +2130,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           suffix: _gasUnitLabel,
         ),
       ]),
-      _oilCushionSection(index),
+      if (_showEcdSection) _oilCushionSection(index),
     ]);
   }
 
@@ -2485,6 +2571,9 @@ class _HourlyCheckControllers {
     required this.flareRate,
     required this.flarePilotTemp,
     required this.biocide,
+    required this.scavenger,
+    required this.defoamer,
+    required this.scaleInhibitor,
     required this.vruGasRate,
     required this.compressorInjection,
     required this.vruSuction,
@@ -2569,6 +2658,9 @@ class _HourlyCheckControllers {
         flareRate: data.flareRate,
         flarePilotTemp: data.flarePilotTemp,
         biocide: data.biocide,
+        scavenger: data.scavenger,
+        defoamer: data.defoamer,
+        scaleInhibitor: data.scaleInhibitor,
         vruGasRate: data.vruGasRate,
         compressorInjection: data.compressorInjection,
         vruSuction: data.vruSuction,
@@ -2634,6 +2726,9 @@ class _HourlyCheckControllers {
       flareRate: TextEditingController(text: selectedData.flareRate),
       flarePilotTemp: TextEditingController(text: selectedData.flarePilotTemp),
       biocide: TextEditingController(text: selectedData.biocide),
+      scavenger: TextEditingController(text: selectedData.scavenger),
+      defoamer: TextEditingController(text: selectedData.defoamer),
+      scaleInhibitor: TextEditingController(text: selectedData.scaleInhibitor),
       vruGasRate: TextEditingController(text: selectedData.vruGasRate),
       compressorInjection:
           TextEditingController(text: selectedData.compressorInjection),
@@ -2680,6 +2775,9 @@ class _HourlyCheckControllers {
   final TextEditingController flareRate;
   final TextEditingController flarePilotTemp;
   final TextEditingController biocide;
+  final TextEditingController scavenger;
+  final TextEditingController defoamer;
+  final TextEditingController scaleInhibitor;
   final TextEditingController vruGasRate;
   final TextEditingController compressorInjection;
   final TextEditingController vruSuction;
@@ -2721,6 +2819,9 @@ class _HourlyCheckControllers {
       flareRate: flareRate.text.trim(),
       flarePilotTemp: flarePilotTemp.text.trim(),
       biocide: biocide.text.trim(),
+      scavenger: scavenger.text.trim(),
+      defoamer: defoamer.text.trim(),
+      scaleInhibitor: scaleInhibitor.text.trim(),
       vruGasRate: vruGasRate.text.trim(),
       compressorInjection: compressorInjection.text.trim(),
       vruSuction: vruSuction.text.trim(),
@@ -2759,6 +2860,9 @@ class _HourlyCheckControllers {
     flareRate.text = data.flareRate;
     flarePilotTemp.text = data.flarePilotTemp;
     biocide.text = data.biocide;
+    scavenger.text = data.scavenger;
+    defoamer.text = data.defoamer;
+    scaleInhibitor.text = data.scaleInhibitor;
     vruGasRate.text = data.vruGasRate;
     compressorInjection.text = data.compressorInjection;
     vruSuction.text = data.vruSuction;
@@ -2832,6 +2936,9 @@ class _HourlyCheckControllers {
       flareRate: current.flareRate,
       flarePilotTemp: current.flarePilotTemp,
       biocide: current.biocide,
+      scavenger: current.scavenger,
+      defoamer: current.defoamer,
+      scaleInhibitor: current.scaleInhibitor,
       vruGasRate: current.vruGasRate,
       compressorInjection: current.compressorInjection,
       vruSuction: current.vruSuction,
@@ -2867,6 +2974,9 @@ class _HourlyCheckControllers {
       flareRate,
       flarePilotTemp,
       biocide,
+      scavenger,
+      defoamer,
+      scaleInhibitor,
       vruGasRate,
       compressorInjection,
       vruSuction,
