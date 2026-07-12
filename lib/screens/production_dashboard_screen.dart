@@ -13,6 +13,7 @@ import 'production_inventory_screen.dart';
 import 'production_history_screen.dart';
 import 'report_template_screen.dart';
 import 'shift_report_screen.dart';
+import 'production_shift_change_screen.dart';
 import 'text_update_screen.dart';
 
 class ProductionDashboardScreen extends StatefulWidget {
@@ -238,6 +239,13 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
             title: 'Text Update',
             subtitle: 'Select an hour, preview, and copy the text update',
             onTap: () => _open(context, const TextUpdateScreen()),
+          ),
+          ToolCard(
+            icon: Icons.change_circle_outlined,
+            title: 'Production Shift Change',
+            subtitle:
+                'Select a saved hour, preview, and copy shift change text',
+            onTap: () => _open(context, const ProductionShiftChangeScreen()),
           ),
           ToolCard(
             icon: Icons.local_drink,

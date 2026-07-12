@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wellwerks/main.dart';
@@ -15,6 +16,7 @@ import 'package:wellwerks/screens/jsa_screen.dart';
 import 'package:wellwerks/screens/home_screen.dart';
 import 'package:wellwerks/screens/rig_up_inventory_screen.dart';
 import 'package:wellwerks/screens/pressure_entry_screen.dart';
+import 'package:wellwerks/screens/production_shift_change_screen.dart';
 import 'package:wellwerks/screens/production_history_screen.dart';
 import 'package:wellwerks/screens/production_inventory_screen.dart';
 import 'package:wellwerks/screens/shift_report_screen.dart';
@@ -938,6 +940,311 @@ void main() {
       find.widgetWithText(FilledButton, 'Copy Text Update'),
     );
     expect(copyTextButton.onPressed, isNotNull);
+  });
+
+  testWidgets('Rig-Up inventory removes Share / Send action', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+
+    await tester.pumpWidget(const MaterialApp(home: RigUpInventoryScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(FilledButton, 'Save Inventory'), findsOneWidget);
+    expect(
+      find.widgetWithText(OutlinedButton, 'Preview Inventory'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(OutlinedButton, 'Copy Inventory'),
+      findsOneWidget,
+    );
+    expect(find.text('Share / Send'), findsNothing);
+  });
+
+  testWidgets(
+      'Production Shift Change defaults to latest saved hour and updates when selecting another hour',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final service = ProductionShiftService();
+    final jobStorage = JobStorageService();
+    final activeJob = await jobStorage.saveActiveJob(
+      JobSetup(
+        company: 'Mach Energy',
+        padName: 'Horse Pad',
+        wells: const ['Horse 16-2H'],
+        leaseNames: const ['Horse 16-2H'],
+        wellEntries: const [JobSetupWell(id: 'well_a', name: 'Horse 16-2H')],
+        shift: 'Day',
+      ),
+    );
+    await service.saveActiveShift(
+      (await service.loadActiveShift()).copyWith(
+        activeJobId: activeJob.id,
+        header: const ProductionShiftHeader(
+          company: 'Mach Energy',
+          pad: 'Horse Pad',
+          wells: ['Horse 16-2H'],
+        ),
+        savedRows: const [
+          ProductionReportRow(
+            hourIndex: 0,
+            time: '6 AM',
+            well: 'Horse 16-2H',
+            choke: '32',
+            chokeType: 'ADJ',
+            tbg: '1200',
+            csg: '900',
+            waterProduction: 25,
+            oilProduction: 40,
+            hourlyGas: 100,
+            gas24HourRate: 2400,
+            gasStatic: '100',
+            gasDifferential: '20',
+            gasTemp: '85',
+            sandRate: '.2',
+            waterGaugeText: 'Water Tank 1: 50 in',
+            oilGaugeText: 'Oil Tank 1: 30 in',
+            currentWaterBbl: 100,
+            currentOilBbl: 50,
+            currentGasAccum: 8000,
+            waterHauled: 10,
+            oilHauled: 11,
+            waterPumped: 12,
+            oilPumped: 13,
+            notes: 'First hour.',
+          ),
+          ProductionReportRow(
+            hourIndex: 1,
+            time: '7 AM',
+            well: 'Horse 16-2H',
+            choke: '33',
+            chokeType: 'ADJ',
+            tbg: '1200',
+            csg: '905',
+            waterProduction: 30,
+            oilProduction: 45,
+            hourlyGas: 110,
+            gas24HourRate: 2640,
+            gasStatic: '110',
+            gasDifferential: '22',
+            gasTemp: '86',
+            sandRate: '.3',
+            waterGaugeText: 'Water Tank 1: 60 in',
+            oilGaugeText: 'Oil Tank 1: 40 in',
+            currentWaterBbl: 120,
+            currentOilBbl: 60,
+            currentGasAccum: 8100,
+            waterHauled: 20,
+            oilHauled: 21,
+            waterPumped: 22,
+            oilPumped: 23,
+            notes: 'Latest hour.',
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(home: ProductionShiftChangeScreen()),
+    );
+    await tester.pumpAndSettle();
+
+    final preview = tester.widget<SelectableText>(find.byType(SelectableText));
+    expect(preview.data, contains('7 AM Production Shift Change'));
+    expect(preview.data, contains('Water Tank 1: 60 in'));
+    expect(preview.data, contains('Water Hauled - 20 BBL'));
+    expect(preview.data, isNot(contains('First hour.')));
+
+    await tester.tap(find.byType(DropdownButtonFormField<int>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('6 AM').last);
+    await tester.pumpAndSettle();
+
+    final updated = tester.widget<SelectableText>(find.byType(SelectableText));
+    expect(updated.data, contains('6 AM Production Shift Change'));
+    expect(updated.data, contains('Water Tank 1: 50 in'));
+    expect(updated.data, contains('Water Hauled - 10 BBL'));
+  });
+
+  testWidgets(
+      'Production Shift Change preview matches copy and keeps multiple wells separated',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final service = ProductionShiftService();
+    final jobStorage = JobStorageService();
+    final activeJob = await jobStorage.saveActiveJob(
+      JobSetup(
+        company: 'Mach Energy',
+        jobType: 'multiWellPad',
+        padName: 'Horse Pad',
+        wells: const ['Horse 16-2H', 'Horse 16-3H'],
+        leaseNames: const ['Horse 16-2H', 'Horse 16-3H'],
+        wellEntries: const [
+          JobSetupWell(id: 'well_a', name: 'Horse 16-2H'),
+          JobSetupWell(id: 'well_b', name: 'Horse 16-3H'),
+        ],
+        shift: 'Day',
+      ),
+    );
+    await service.saveActiveShift(
+      (await service.loadActiveShift()).copyWith(
+        activeJobId: activeJob.id,
+        header: const ProductionShiftHeader(
+          company: 'Mach Energy',
+          pad: 'Horse Pad',
+          wells: ['Horse 16-2H', 'Horse 16-3H'],
+        ),
+        savedRows: const [
+          ProductionReportRow(
+            hourIndex: 0,
+            time: '6 AM',
+            well: 'Horse 16-2H',
+            choke: '32',
+            chokeType: 'ADJ',
+            tbg: '1200',
+            csg: '900',
+            waterProduction: 25,
+            oilProduction: 40,
+            hourlyGas: 100,
+            gas24HourRate: 2400,
+            gasStatic: '100',
+            gasDifferential: '20',
+            gasTemp: '85',
+            sandRate: '.2',
+            waterGaugeText: 'Water Tank 1: 50 in',
+            oilGaugeText: 'Oil Tank 1: 30 in',
+            currentWaterBbl: 100,
+            currentOilBbl: 50,
+            currentGasAccum: 8000,
+            waterHauled: 10,
+            oilHauled: 11,
+            waterPumped: 12,
+            oilPumped: 13,
+            notes: 'Well A.',
+          ),
+          ProductionReportRow(
+            hourIndex: 0,
+            time: '6 AM',
+            well: 'Horse 16-3H',
+            choke: '33',
+            chokeType: 'ADJ',
+            tbg: '1210',
+            csg: '910',
+            waterProduction: 26,
+            oilProduction: 41,
+            hourlyGas: 101,
+            gas24HourRate: 2424,
+            gasStatic: '101',
+            gasDifferential: '21',
+            gasTemp: '86',
+            sandRate: '.3',
+            waterGaugeText: 'Water Tank 2: 55 in',
+            oilGaugeText: 'Oil Tank 2: 35 in',
+            currentWaterBbl: 101,
+            currentOilBbl: 51,
+            currentGasAccum: 8001,
+            waterHauled: 20,
+            oilHauled: 21,
+            waterPumped: 22,
+            oilPumped: 23,
+            notes: 'Well B.',
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(home: ProductionShiftChangeScreen()),
+    );
+    await tester.pumpAndSettle();
+
+    final preview =
+        tester.widget<SelectableText>(find.byType(SelectableText)).data ?? '';
+    expect(preview, contains('Horse 16-2H'));
+    expect(preview, contains('Horse 16-3H'));
+    expect(preview, contains('Water Tank 1: 50 in'));
+    expect(preview, contains('Water Tank 2: 55 in'));
+    expect(preview, contains('Water Hauled - 10 BBL'));
+    expect(preview, contains('Water Hauled - 20 BBL'));
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Copy Shift Change'));
+    await tester.pumpAndSettle();
+    final copied = await Clipboard.getData('text/plain');
+    expect(copied?.text, preview);
+  });
+
+  testWidgets(
+      'Production Shift Change reuses Flywheel field order and appends selected-hour extras',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final service = ProductionShiftService();
+    final jobStorage = JobStorageService();
+    final activeJob = await jobStorage.saveActiveJob(
+      JobSetup(
+        company: 'Flywheel Energy',
+        padName: 'Flywheel Pad',
+        wells: const ['FW 1'],
+        leaseNames: const ['FW 1'],
+        wellEntries: const [JobSetupWell(id: 'well_a', name: 'FW 1')],
+        shift: 'Night',
+      ),
+    );
+    await service.saveActiveShift(
+      (await service.loadActiveShift()).copyWith(
+        activeJobId: activeJob.id,
+        header: const ProductionShiftHeader(
+          company: 'Flywheel Energy',
+          pad: 'Flywheel Pad',
+          wells: ['FW 1'],
+        ),
+        savedRows: const [
+          ProductionReportRow(
+            hourIndex: 0,
+            time: '6 PM',
+            well: 'FW 1',
+            choke: '28',
+            chokeType: 'ADJ',
+            tbg: '1200',
+            csg: '900',
+            waterProduction: 25,
+            oilProduction: 40,
+            hourlyGas: 100,
+            gas24HourRate: 2400,
+            gasStatic: '100',
+            gasDifferential: '20',
+            gasTemp: '85',
+            sandRate: '.2',
+            waterGaugeText: 'Water Tank 1: 50 in',
+            oilGaugeText: 'Oil Tank 1: 30 in',
+            currentWaterBbl: 100,
+            currentOilBbl: 50,
+            currentGasAccum: 8000,
+            waterHauled: 10,
+            oilHauled: 11,
+            waterPumped: 12,
+            oilPumped: 13,
+            notes: 'Flywheel row.',
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(home: ProductionShiftChangeScreen()),
+    );
+    await tester.pumpAndSettle();
+
+    final preview =
+        tester.widget<SelectableText>(find.byType(SelectableText)).data ?? '';
+    expect(preview, contains('6 PM Production Shift Change'));
+    expect(
+        preview.indexOf('Tubing 1200') < preview.indexOf('CSG- 900'), isTrue);
+    expect(preview.indexOf('CSG- 900') < preview.indexOf('Ck- 28'), isTrue);
+    expect(preview.indexOf('Ck- 28') < preview.indexOf('Oil- 40'), isTrue);
+    expect(preview.indexOf('Oil- 40') < preview.indexOf('Wtr- 25'), isTrue);
+    expect(preview, contains('Tank Gauges'));
+    expect(preview, contains('Hauled / Pumped'));
   });
 
   test('Production math uses previous saved hour for 7 AM calculations', () {

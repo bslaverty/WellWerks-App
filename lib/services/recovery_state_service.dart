@@ -4,6 +4,7 @@ class RecoveryModules {
   static const quickRound = 'quick_round';
   static const productionReport = 'production_report';
   static const textUpdate = 'text_update';
+  static const productionShiftChange = 'production_shift_change';
   static const jsa = 'jsa';
   static const layoutDesigner = 'layout_designer';
   static const rigUpInventory = 'rig_up_inventory';

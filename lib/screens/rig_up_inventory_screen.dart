@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../models/job_setup.dart';
 import '../services/job_storage_service.dart';
@@ -945,13 +944,6 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
     });
   }
 
-  Future<void> _shareSend() async {
-    if (!_validateHeader()) return;
-    final text = _buildInventoryText();
-    setState(() => _inventoryText = text);
-    await Share.share(text, subject: 'Rig-Up Inventory');
-  }
-
   ButtonStyle get _primaryActionStyle => FilledButton.styleFrom(
         minimumSize: const Size.fromHeight(56),
         textStyle: const TextStyle(
@@ -1472,13 +1464,6 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
             onPressed: _copyInventory,
             icon: const Icon(Icons.copy_outlined),
             label: const Text('Copy Inventory'),
-          ),
-          const SizedBox(height: 8),
-          FilledButton.icon(
-            style: _primaryActionStyle,
-            onPressed: _shareSend,
-            icon: const Icon(Icons.share_outlined),
-            label: const Text('Share / Send'),
           ),
           _previewCard(),
         ],
