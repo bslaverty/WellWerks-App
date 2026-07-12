@@ -85,7 +85,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         : (_shift.activeJobId != activeJob.id
             ? <ProductionReportRow>[]
             : List<ProductionReportRow>.from(inventoryRows));
-    final order = _shift.header.wells;
+    final order = _wellOrderSource;
     rows.sort((a, b) {
       final hourCompare = a.hourIndex.compareTo(b.hourIndex);
       if (hourCompare != 0) return hourCompare;
@@ -97,6 +97,14 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
       return ai.compareTo(bi);
     });
     return rows;
+  }
+
+  List<String> get _wellOrderSource {
+    final active = _activeJob;
+    if (active != null && active.resolvedWellNames.isNotEmpty) {
+      return active.resolvedWellNames;
+    }
+    return _shift.header.wells;
   }
 
   bool get _hasActiveJob =>
@@ -224,8 +232,8 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   List<String> get _headerWellList {
     final activeJob = _activeJob;
     final wells = <String>[];
-    final source = activeJob?.wells.isNotEmpty == true
-        ? activeJob!.wells
+    final source = activeJob?.resolvedWellNames.isNotEmpty == true
+        ? activeJob!.resolvedWellNames
         : _shift.header.wells;
     for (final well in source) {
       final trimmed = well.trim();
@@ -296,7 +304,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
 
   List<ProductionReportRow> get _orderedSelectedRows {
     final rows = List<ProductionReportRow>.from(_selectedRows);
-    final order = _shift.header.wells;
+    final order = _wellOrderSource;
     rows.sort((a, b) {
       final ai = order.indexOf(a.well);
       final bi = order.indexOf(b.well);
@@ -782,7 +790,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
           _jobChip(
               activeJob.isMultiWellJob ? 'Wells' : 'Well',
               activeJob.isMultiWellJob
-                  ? activeJob.wells.join(', ')
+                  ? activeJob.resolvedWellNames.join(', ')
                   : activeJob.primaryWell),
           _jobChip('Type', _profileDefaults.jobTypeLabel(activeJob.jobType)),
           _jobChip('Shift', activeJob.shift),

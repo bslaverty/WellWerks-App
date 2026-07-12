@@ -208,11 +208,14 @@ class JobStorageService {
     final id = job.id.trim().isEmpty
         ? startedAt.microsecondsSinceEpoch.toString()
         : job.id;
+    final resolvedEntries = job.resolvedWellEntries;
     return job.copyWith(
       id: id,
       status: 'active',
       startedAt: startedAt,
       endedAt: null,
+      wells: resolvedEntries.map((entry) => entry.name).toList(),
+      wellEntries: resolvedEntries,
     );
   }
 

@@ -268,10 +268,12 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     for (int i = 0; i < wells.length; i++) {
       final lease = i < leaseNames.length ? leaseNames[i].trim() : '';
       final well = wells[i].trim();
-      if (well.isEmpty && lease.isNotEmpty) {
+      if ((well.isEmpty || JobSetup.isPlaceholderWellName(well)) &&
+          lease.isNotEmpty) {
         wells[i] = lease;
       }
       wellNameManuallyEdited[i] = false;
+      _syncWellNameFromLease(i);
     }
 
     if (jobType == JobProfileDefaultsService.jobTypeSingleWell &&

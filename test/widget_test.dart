@@ -12,6 +12,7 @@ import 'package:wellwerks/screens/bottoms_up_screen.dart';
 import 'package:wellwerks/screens/equipment_layout_screen.dart';
 import 'package:wellwerks/screens/job_box_inventory_screen.dart';
 import 'package:wellwerks/screens/jsa_screen.dart';
+import 'package:wellwerks/screens/home_screen.dart';
 import 'package:wellwerks/screens/pressure_entry_screen.dart';
 import 'package:wellwerks/screens/production_history_screen.dart';
 import 'package:wellwerks/screens/production_inventory_screen.dart';
@@ -118,6 +119,50 @@ void main() {
   testWidgets('WellWerks app builds', (WidgetTester tester) async {
     await tester.pumpWidget(const WellWerksApp());
     expect(find.text('WellWerks Toolbox'), findsOneWidget);
+  });
+
+  testWidgets('Home shows combined company and collapsed active job card',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final jobStorage = JobStorageService();
+    await jobStorage.saveActiveJob(
+      JobSetup(
+        company: 'Mach Energy',
+        padName: 'Horse Pad',
+        wells: const ['Horse 16-2H'],
+        shift: 'Day',
+      ),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Active Company'), findsOneWidget);
+    expect(find.text('Active Job'), findsOneWidget);
+    expect(find.text('Continue Active Job'), findsOneWidget);
+    expect(
+        find.textContaining('Horse Pad • Horse 16-2H • Day'), findsOneWidget);
+    expect(find.text('Reset Active Job'), findsNothing);
+
+    await tester.tap(find.byTooltip('Expand details'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reset Active Job'), findsOneWidget);
+    expect(find.text('Manage / Edit Job'), findsOneWidget);
+  });
+
+  testWidgets(
+      'Home no active job state keeps company selector and start action',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Active Company'), findsOneWidget);
+    expect(find.text('No Active Job'), findsOneWidget);
+    expect(find.text('Start Job'), findsOneWidget);
+    expect(find.text('Continue Active Job'), findsNothing);
+    expect(find.text('ACTIVE'), findsNothing);
   });
 
   testWidgets('Bottoms Up shows tubing and casing selectors', (
@@ -353,11 +398,8 @@ void main() {
         .pumpWidget(const MaterialApp(home: ProductionInventoryScreen()));
     await tester.pumpAndSettle();
 
-    await tester.enterText(
-        labeledTextField('Company').first, 'Continental Resources');
-    await tester.enterText(labeledTextField('Pad Name').first, 'Bow Pad');
     await tester.enterText(labeledTextField('Date').first, '2026-07-05');
-    await tester.enterText(labeledTextField('Well 1').first, 'Bow 21-3');
+    expect(find.textContaining('Bow 21-3'), findsWidgets);
     await tester.enterText(labeledTextField('Gauge (inches)').at(0), '80');
     await tester.enterText(labeledTextField('Gauge (inches)').at(1), '45');
     await tester.enterText(

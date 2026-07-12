@@ -119,7 +119,7 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
   }
 
   String _activeWellNamesLabel(JobSetup? activeJob, {String fallback = ''}) {
-    final fromJob = (activeJob?.wells ?? const <String>[])
+    final fromJob = (activeJob?.resolvedWellNames ?? const <String>[])
         .map((item) => item.trim())
         .where((item) => item.isNotEmpty)
         .toList();

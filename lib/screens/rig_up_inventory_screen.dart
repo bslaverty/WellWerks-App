@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../models/job_setup.dart';
+import '../services/job_storage_service.dart';
 import '../services/recovery_state_service.dart';
 import '../services/rig_up_inventory_service.dart';
 import '../widgets/app_header.dart';
@@ -112,6 +114,7 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
 
   final _recoveryState = RecoveryStateService();
   final _inventoryService = RigUpInventoryService();
+  final _jobStorage = JobStorageService();
 
   final _customerController = TextEditingController();
   final _padController = TextEditingController();
@@ -124,6 +127,7 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
   DateTime _date = DateTime.now();
   String _recordId = '';
   String _inventoryText = '';
+  JobSetup? _activeJob;
 
   final List<String> _wells = <String>[];
   Map<String, int> _counts = <String, int>{};
@@ -162,12 +166,14 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
     final record = initialId.isEmpty
         ? null
         : await _inventoryService.loadRecord(initialId);
+    final activeJob = await _jobStorage.loadActiveJob();
 
     if (!mounted) return;
 
     setState(() {
       _counts = counts;
       _recordId = initialId;
+      _activeJob = activeJob;
       _assignByWellEnabled = {
         for (final item in _allItems.where((item) => !item.splittable))
           item.key: false,
@@ -221,6 +227,24 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
               .where((item) => item.splittable)
               .map((item) => item.key),
         );
+      } else {
+        final contextWells = (activeJob?.resolvedWellNames ?? const <String>[])
+            .map((item) => item.trim())
+            .where((item) => item.isNotEmpty)
+            .toList();
+        if (contextWells.isNotEmpty) {
+          _wells
+            ..clear()
+            ..addAll(contextWells);
+        }
+        if (activeJob != null) {
+          if (_padController.text.trim().isEmpty) {
+            _padController.text = activeJob.padName.trim();
+          }
+          if (_customerController.text.trim().isEmpty) {
+            _customerController.text = activeJob.company.trim();
+          }
+        }
       }
 
       _reconcileToWells();
@@ -669,6 +693,14 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
   }
 
   void _addWell() {
+    if ((_activeJob?.resolvedWellNames ?? const <String>[]).isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Wells are synced from Active Job.'),
+        ),
+      );
+      return;
+    }
     final name = _newWellController.text.trim();
     if (name.isEmpty) return;
     if (_wells.contains(name)) {
@@ -690,6 +722,14 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
   }
 
   void _removeWell(String name) {
+    if ((_activeJob?.resolvedWellNames ?? const <String>[]).isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Manage wells from Active Job.'),
+        ),
+      );
+      return;
+    }
     setState(() {
       _wells.remove(name);
       _reconcileToWells();
@@ -907,6 +947,14 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
               'Wells',
               style: TextStyle(color: _gold, fontWeight: FontWeight.w700),
             ),
+            if ((_activeJob?.resolvedWellNames ?? const <String>[]).isNotEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text(
+                  'Synced from Active Job',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -915,29 +963,34 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
                 for (final well in _wells)
                   InputChip(
                     label: Text(well),
-                    onDeleted: () => _removeWell(well),
+                    onDeleted:
+                        (_activeJob?.resolvedWellNames ?? const <String>[])
+                                .isNotEmpty
+                            ? null
+                            : () => _removeWell(well),
                   ),
               ],
             ),
             const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _newWellController,
-                    focusNode: _newWellFocusNode,
-                    textInputAction: TextInputAction.done,
-                    decoration: const InputDecoration(labelText: 'Well Name'),
-                    onSubmitted: (_) => _addWell(),
+            if ((_activeJob?.resolvedWellNames ?? const <String>[]).isEmpty)
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _newWellController,
+                      focusNode: _newWellFocusNode,
+                      textInputAction: TextInputAction.done,
+                      decoration: const InputDecoration(labelText: 'Well Name'),
+                      onSubmitted: (_) => _addWell(),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _addWell,
-                  child: const Text('Add'),
-                ),
-              ],
-            ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: _addWell,
+                    child: const Text('Add'),
+                  ),
+                ],
+              ),
             const SizedBox(height: 10),
             TextField(
               controller: _notesController,

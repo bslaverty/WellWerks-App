@@ -60,8 +60,8 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
   List<String> get _activeWells {
     final wells = <String>[];
     final activeJob = _activeJob;
-    final source = activeJob != null && activeJob.wells.isNotEmpty
-        ? activeJob.wells
+    final source = activeJob != null && activeJob.resolvedWellNames.isNotEmpty
+        ? activeJob.resolvedWellNames
         : _shift.header.wells;
     for (final well in source) {
       final trimmed = well.trim();

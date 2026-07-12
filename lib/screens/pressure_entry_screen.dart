@@ -384,13 +384,20 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   List<String> _fallbackWells() {
-    final fromShift =
-        _shift.header.wells.where((item) => item.trim().isNotEmpty).toList();
-    if (fromShift.isNotEmpty) return fromShift;
-    final fromJob = (_activeJob?.wells ?? const <String>[])
+    final fromJob = (_activeJob?.resolvedWellNames ?? const <String>[])
         .where((item) => item.trim().isNotEmpty)
         .toList();
-    return fromJob;
+    if (fromJob.isNotEmpty) return fromJob;
+    return _shift.header.wells.where((item) => item.trim().isNotEmpty).toList();
+  }
+
+  int? _placeholderWellIndex(String name) {
+    final match =
+        RegExp(r'^well\s*(\d+)$', caseSensitive: false).firstMatch(name.trim());
+    if (match == null) return null;
+    final parsed = int.tryParse(match.group(1) ?? '');
+    if (parsed == null || parsed <= 0) return null;
+    return parsed - 1;
   }
 
   void _rebuildControllers() {
@@ -459,8 +466,17 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     }
     final wells = _fallbackWells();
     if (wells.isEmpty) return check;
-    final normalizedWell =
-        wells.contains(check.well) ? check.well : wells.first;
+    final currentWell = check.well.trim();
+    var normalizedWell = wells.contains(currentWell) ? currentWell : '';
+    if (normalizedWell.isEmpty) {
+      final placeholderIndex = _placeholderWellIndex(currentWell);
+      if (placeholderIndex != null && placeholderIndex < wells.length) {
+        normalizedWell = wells[placeholderIndex];
+      }
+    }
+    if (normalizedWell.isEmpty) {
+      normalizedWell = wells.first;
+    }
     return check.copyWith(
       well: normalizedWell,
       chokeType: _chokeTypeForWell(normalizedWell),
@@ -1983,7 +1999,12 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         runSpacing: 8,
         children: [
           _jobChip('Pad', activeJob.padName),
-          _jobChip('Well', activeJob.primaryWell),
+          _jobChip(
+            activeJob.isMultiWellJob ? 'Wells' : 'Well',
+            activeJob.resolvedWellNames.isEmpty
+                ? ''
+                : activeJob.resolvedWellNames.join(', '),
+          ),
           _jobChip('Shift', activeJob.shift),
         ],
       ),

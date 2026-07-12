@@ -170,7 +170,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   List<String> get _activeJobWells =>
-      (_activeJobSetup?.wells ?? const <String>[])
+      (_activeJobSetup?.resolvedWellNames ?? const <String>[])
           .map((item) => item.trim())
           .where((item) => item.isNotEmpty)
           .toList();
@@ -319,7 +319,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   void _setWellCountFromJob(JobSetup activeJob) {
-    final targetWells = activeJob.wells
+    final targetWells = activeJob.resolvedWellNames
         .map((item) => item.trim())
         .where((item) => item.isNotEmpty)
         .toList();
@@ -544,7 +544,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   Future<void> _saveInventory() async {
     final activeJob = await _jobStorage.loadActiveJob();
     _activeJobSetup = activeJob;
-    if (activeJob == null || activeJob.wells.isEmpty) {
+    if (activeJob == null || activeJob.resolvedWellNames.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1176,7 +1176,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
               children: [
                 Text(
                   _wellControllers[i].text.trim().isEmpty
-                      ? 'Well ${i + 1}'
+                      ? 'Well'
                       : _wellControllers[i].text.trim(),
                   style: const TextStyle(
                     color: Color(0xFFCDA56A),
@@ -1313,11 +1313,14 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   Widget _wellChokeField(int index) {
+    final name = _wellControllers[index].text.trim();
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<String>(
         initialValue: _wellChokeTypes[index],
-        decoration: InputDecoration(labelText: 'Well ${index + 1} Choke Type'),
+        decoration: InputDecoration(
+          labelText: name.isEmpty ? 'Well Choke Type' : '$name Choke Type',
+        ),
         items: const [
           DropdownMenuItem(value: 'ADJ', child: Text('ADJ')),
           DropdownMenuItem(value: 'POS', child: Text('POS')),
@@ -1454,7 +1457,9 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
               Column(
                 children: [
                   _textField(
-                    'Well ${i + 1}',
+                    _wellControllers[i].text.trim().isEmpty
+                        ? 'Well Name'
+                        : _wellControllers[i].text.trim(),
                     _wellControllers[i],
                     enabled: false,
                   ),

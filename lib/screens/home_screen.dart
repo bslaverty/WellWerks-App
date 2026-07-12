@@ -122,72 +122,50 @@ class _HomeScreenState extends State<HomeScreen> {
         false;
   }
 
-  Widget _activeCompanyCard(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 14),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Active Company',
-              style: TextStyle(
-                color: scheme.primary,
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: _activeCompany,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Select Company',
-                border: OutlineInputBorder(),
-              ),
-              items: [
-                for (final company in _companyOptions)
-                  DropdownMenuItem<String>(
-                    value: company,
-                    child: Text(company),
-                  ),
-              ],
-              onChanged: (value) async {
-                final selected = (value ?? '').trim();
-                final next = _activeCompanyService.normalize(selected);
-                if (next == _activeCompany) return;
-                final confirmed = await _confirmCompanyChange(next);
-                if (!confirmed) return;
-
-                try {
-                  await _activeCompanyService
-                      .setActiveCompanyWithFreshStart(next);
-                } catch (_) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Unable to change Active Company. Current setup was not cleared.',
-                      ),
-                    ),
-                  );
-                  return;
-                }
-                if (!context.mounted) return;
-                final successMessage = next == 'None'
-                    ? 'Active Company cleared. Current job setup was cleared.'
-                    : 'Active Company changed to $next. Current job setup was cleared.';
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(successMessage)),
-                );
-                await _loadRecovery();
-              },
-            ),
-          ],
-        ),
+  Widget _buildCompanySelector(BuildContext context) {
+    return DropdownButtonFormField<String>(
+      initialValue: _activeCompany,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        labelText: 'Select Company',
+        border: OutlineInputBorder(),
       ),
+      items: [
+        for (final company in _companyOptions)
+          DropdownMenuItem<String>(
+            value: company,
+            child: Text(company),
+          ),
+      ],
+      onChanged: (value) async {
+        final selected = (value ?? '').trim();
+        final next = _activeCompanyService.normalize(selected);
+        if (next == _activeCompany) return;
+        final confirmed = await _confirmCompanyChange(next);
+        if (!confirmed) return;
+
+        try {
+          await _activeCompanyService.setActiveCompanyWithFreshStart(next);
+        } catch (_) {
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Unable to change Active Company. Current setup was not cleared.',
+              ),
+            ),
+          );
+          return;
+        }
+        if (!context.mounted) return;
+        final successMessage = next == 'None'
+            ? 'Active Company cleared. Current job setup was cleared.'
+            : 'Active Company changed to $next. Current job setup was cleared.';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(successMessage)),
+        );
+        await _loadRecovery();
+      },
     );
   }
 
@@ -261,8 +239,23 @@ class _HomeScreenState extends State<HomeScreen> {
     return date.isEmpty ? '-' : date;
   }
 
-  Widget _activeJobCard(BuildContext context, JobSetup job) {
+  String _activeJobCollapsedSummary(JobSetup job) {
+    final pad = job.padName.trim();
+    final wells = job.resolvedWellNames;
+    final shift = job.shift.trim().isEmpty ? '-' : job.shift.trim();
+    final wellSummary = wells.length <= 1
+        ? (wells.isEmpty ? '-' : wells.first)
+        : '${wells.length} Wells';
+    final parts = <String>[];
+    if (pad.isNotEmpty) parts.add(pad);
+    parts.add(wellSummary);
+    parts.add(shift);
+    return parts.join(' • ');
+  }
+
+  Widget _combinedContextCard(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final job = _activeJob;
     final hasContinueModule = _lastModule.trim().isNotEmpty;
 
     return Card(
@@ -274,182 +267,170 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Active Job',
-                        style: TextStyle(
-                          color: scheme.primary,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        job.company.trim().isEmpty
-                            ? 'Job in progress'
-                            : job.company,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        job.primaryWell.trim().isEmpty
-                            ? 'Well: -'
-                            : 'Well: ${job.primaryWell}',
-                        style: TextStyle(
-                          color: scheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: scheme.primary,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        'ACTIVE',
-                        style: TextStyle(
-                          color: scheme.onPrimary,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.4,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    IconButton.outlined(
-                      tooltip: _activeJobExpanded
-                          ? 'Collapse details'
-                          : 'Expand details',
-                      onPressed: () {
-                        setState(() {
-                          _activeJobExpanded = !_activeJobExpanded;
-                        });
-                      },
-                      icon: Icon(
-                        _activeJobExpanded
-                            ? Icons.expand_less
-                            : Icons.expand_more,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(56),
-                  textStyle: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                onPressed: () => _continueActiveJob(context),
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('Continue Active Job'),
+            Text(
+              'Active Company',
+              style: TextStyle(
+                color: scheme.primary,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
               ),
             ),
-            if (_activeJobExpanded)
+            const SizedBox(height: 10),
+            _buildCompanySelector(context),
+            const Divider(height: 24),
+            if (job == null)
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 14),
-                  _infoLine(context, 'Company', job.company),
-                  _infoLine(context, 'Pad', job.padName),
-                  _infoLine(context, 'Well', job.primaryWell),
-                  _infoLine(context, 'Shift', job.shift),
-                  _infoLine(context, 'Started', _startedText(job)),
-                  _infoLine(context, 'Status', 'Active'),
-                  if (hasContinueModule) ...[
-                    const SizedBox(height: 4),
-                    _infoLine(
-                        context, 'Continue To', _moduleLabel(_lastModule)),
-                  ],
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => open(context,
-                          const JobSetupScreen(editActiveOnOpen: true)),
-                      icon: const Icon(Icons.edit_outlined),
-                      label: const Text('Edit Active Job'),
+                  Text(
+                    'No Active Job',
+                    style: TextStyle(
+                      color: scheme.primary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _confirmResetActiveJob,
-                      icon: const Icon(Icons.restart_alt),
-                      label: const Text('Reset Active Job'),
+                    child: FilledButton.icon(
+                      onPressed: () => open(
+                        context,
+                        const JobSetupScreen(startFreshJob: true),
+                      ),
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('Start Job'),
+                    ),
+                  ),
+                ],
+              )
+            else ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Active Job',
+                          style: TextStyle(
+                            color: scheme.primary,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _activeJobCollapsedSummary(job),
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: scheme.primary,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      'ACTIVE',
+                      style: TextStyle(
+                        color: scheme.onPrimary,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: _activeJobExpanded
+                        ? 'Collapse details'
+                        : 'Expand details',
+                    onPressed: () {
+                      setState(() {
+                        _activeJobExpanded = !_activeJobExpanded;
+                      });
+                    },
+                    icon: Icon(
+                      _activeJobExpanded
+                          ? Icons.keyboard_arrow_up
+                          : Icons.keyboard_arrow_down,
                     ),
                   ),
                 ],
               ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _noActiveJobCard(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'No Active Job',
-              style: TextStyle(
-                color: scheme.primary,
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Start a new active job to keep current pad/well context across modules.',
-              style: TextStyle(
-                color: scheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () => open(
-                  context,
-                  const JobSetupScreen(startFreshJob: true),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(56),
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  onPressed: () => _continueActiveJob(context),
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Continue Active Job'),
                 ),
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('Start Job'),
               ),
-            ),
+              if (_activeJobExpanded)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 14),
+                    _infoLine(context, 'Pad', job.padName),
+                    _infoLine(
+                      context,
+                      job.isMultiWellJob ? 'Wells' : 'Well',
+                      job.resolvedWellNames.isEmpty
+                          ? '-'
+                          : job.resolvedWellNames.join(', '),
+                    ),
+                    _infoLine(context, 'Shift', job.shift),
+                    _infoLine(context, 'Started', _startedText(job)),
+                    _infoLine(context, 'Status', 'Active'),
+                    if (hasContinueModule) ...[
+                      const SizedBox(height: 4),
+                      _infoLine(
+                        context,
+                        'Continue To',
+                        _moduleLabel(_lastModule),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => open(
+                          context,
+                          const JobSetupScreen(editActiveOnOpen: true),
+                        ),
+                        icon: const Icon(Icons.edit_outlined),
+                        label: const Text('Manage / Edit Job'),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _confirmResetActiveJob,
+                        icon: const Icon(Icons.restart_alt),
+                        label: const Text('Reset Active Job'),
+                      ),
+                    ),
+                  ],
+                ),
+            ],
           ],
         ),
       ),
@@ -464,7 +445,7 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (context) => AlertDialog(
             title: const Text('Reset Active Job?'),
             content: const Text(
-              'This clears current active job context and working drafts. Saved history, settings, and Active Company stay unchanged.',
+              'This will clear the current active job and current working data. Saved history will not be deleted.',
             ),
             actions: [
               TextButton(
@@ -473,7 +454,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               FilledButton(
                 onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Reset'),
+                child: const Text('Reset Job'),
               ),
             ],
           ),
@@ -686,11 +667,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          if (_activeJob != null)
-            _activeJobCard(context, _activeJob!)
-          else
-            _noActiveJobCard(context),
-          _activeCompanyCard(context),
+          _combinedContextCard(context),
           Padding(
             padding: const EdgeInsets.only(bottom: 14),
             child: Text(

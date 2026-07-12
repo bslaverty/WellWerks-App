@@ -1,5 +1,7 @@
 class JobSetup {
   static const _unset = Object();
+  static final RegExp _placeholderWellPattern =
+      RegExp(r'^well\s*\d+$', caseSensitive: false);
   static const List<String> chemicalOptions = <String>[
     'Biocide',
     'Scavenger',
@@ -89,10 +91,49 @@ class JobSetup {
   final List<String> selectedChemicals;
   final List<String> reportTimes;
 
-  String get primaryWell => wells.isEmpty ? '' : wells.first;
+  String get primaryWell =>
+      resolvedWellNames.isEmpty ? '' : resolvedWellNames.first;
+
+  static bool isPlaceholderWellName(String value) {
+    return _placeholderWellPattern.hasMatch(value.trim());
+  }
+
+  List<JobSetupWell> get resolvedWellEntries {
+    final leases = resolvedLeaseNames;
+    final maxCount =
+        wellEntries.length > wells.length ? wellEntries.length : wells.length;
+    final entries = <JobSetupWell>[];
+
+    for (int i = 0; i < maxCount; i++) {
+      final existingEntry = i < wellEntries.length ? wellEntries[i] : null;
+      final rawName = existingEntry?.name ?? (i < wells.length ? wells[i] : '');
+      final lease = i < leases.length ? leases[i].trim() : '';
+
+      var nextName = rawName.trim();
+      if (nextName.isEmpty && lease.isNotEmpty) {
+        nextName = lease;
+      } else if (isPlaceholderWellName(nextName) && lease.isNotEmpty) {
+        nextName = lease;
+      }
+      if (nextName.isEmpty) continue;
+
+      final nextId = existingEntry != null && existingEntry.id.trim().isNotEmpty
+          ? existingEntry.id.trim()
+          : legacyWellId(nextName, i);
+      entries.add(JobSetupWell(id: nextId, name: nextName));
+    }
+
+    return entries;
+  }
+
+  List<String> get resolvedWellNames {
+    return resolvedWellEntries.map((entry) => entry.name).toList();
+  }
+
   List<String> get wellIds {
-    if (wellEntries.length == wells.length && wellEntries.isNotEmpty) {
-      return wellEntries.map((item) => item.id).toList();
+    final entries = resolvedWellEntries;
+    if (entries.isNotEmpty) {
+      return entries.map((item) => item.id).toList();
     }
     return [
       for (int i = 0; i < wells.length; i++) legacyWellId(wells[i], i),

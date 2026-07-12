@@ -70,7 +70,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         : (_shift.activeJobId != activeJob.id
             ? <ProductionReportRow>[]
             : List<ProductionReportRow>.from(_inventoryRows));
-    final order = _shift.header.wells;
+    final order = _wellOrderSource;
     rows.sort((a, b) {
       final hourCompare = a.hourIndex.compareTo(b.hourIndex);
       if (hourCompare != 0) return hourCompare;
@@ -84,9 +84,17 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     return rows;
   }
 
+  List<String> get _wellOrderSource {
+    final active = _activeJob;
+    if (active != null && active.resolvedWellNames.isNotEmpty) {
+      return active.resolvedWellNames;
+    }
+    return _shift.header.wells;
+  }
+
   List<String> get _wellOrder {
     final ordered = <String>[];
-    for (final well in _shift.header.wells) {
+    for (final well in _wellOrderSource) {
       if (!ordered.contains(well)) {
         ordered.add(well);
       }
@@ -612,10 +620,11 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
               children: [
                 _jobChip('Pad', activeJob.padName),
                 _jobChip(
-                    activeJob.isMultiWellJob ? 'Wells' : 'Well',
-                    activeJob.isMultiWellJob
-                        ? activeJob.wells.join(', ')
-                        : activeJob.primaryWell),
+                  activeJob.isMultiWellJob ? 'Wells' : 'Well',
+                  activeJob.isMultiWellJob
+                      ? activeJob.resolvedWellNames.join(', ')
+                      : activeJob.primaryWell,
+                ),
                 _jobChip(
                     'Type', _profileDefaults.jobTypeLabel(activeJob.jobType)),
                 _jobChip('Shift', activeJob.shift),
