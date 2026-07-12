@@ -90,12 +90,12 @@ class AppThemeCatalog {
     id: 'ou',
     label: 'OU',
     brightness: Brightness.dark,
-    background: Color(0xFF210E14),
-    surface: Color(0xFF4A3933),
-    appBarBackground: Color(0xFF5A1F2A),
-    accent: Color(0xFF9D2235),
-    text: Color(0xFFF6EBDD),
-    subtleText: Color(0xFFE2CEB4),
+    background: Color(0xFF2A1010),
+    surface: Color(0xFFFDF9D8),
+    appBarBackground: Color(0xFF841617),
+    accent: Color(0xFF841617),
+    text: Color(0xFF2A1A14),
+    subtleText: Color(0xFF5F3B2D),
   );
 
   static const osu = AppThemeOption(

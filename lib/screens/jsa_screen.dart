@@ -71,7 +71,7 @@ class _JsaScreenState extends State<JsaScreen> {
     ),
   );
 
-  String _company = 'Mach Energy';
+  String _company = JobProfileDefaultsService.companyNone;
   JobSetup? _activeJob;
   JsaDraft? _exportPreviewDraft;
   DateTime _date = DateTime.now();
@@ -308,7 +308,8 @@ class _JsaScreenState extends State<JsaScreen> {
         _applyDraft(draft);
       }
       if (targetJob != null) {
-        if (_company == 'Mach Energy' || _company == 'Custom') {
+        if (_company == JobProfileDefaultsService.companyNone ||
+            _company == JobProfileDefaultsService.companyMach) {
           final normalized =
               JobProfileDefaultsService().normalizeCompany(targetJob.company);
           _company = _companies.contains(normalized) ? normalized : _company;
@@ -326,10 +327,14 @@ class _JsaScreenState extends State<JsaScreen> {
       final fromGlobal = activeCompany.trim();
       if ((fromGlobal.isNotEmpty && _companies.contains(fromGlobal)) ||
           _company.trim().isEmpty ||
-          _company == 'Mach Energy') {
+          _company == JobProfileDefaultsService.companyNone) {
+        final normalizedDefault = JobProfileDefaultsService()
+            .normalizeCompany(loaded.jsaCompanyDefault);
         _company = (fromGlobal.isNotEmpty && _companies.contains(fromGlobal))
             ? fromGlobal
-            : loaded.jsaCompanyDefault;
+            : (_companies.contains(normalizedDefault)
+                ? normalizedDefault
+                : JobProfileDefaultsService.companyNone);
       }
       if (loaded.jsaAutoDate) {
         _date = DateTime.now();
@@ -547,7 +552,7 @@ class _JsaScreenState extends State<JsaScreen> {
     final activeCompany = _activeCompanyService.activeCompany.value;
     _company = activeCompany.trim().isNotEmpty
         ? activeCompany
-        : _settings.jsaCompanyDefault;
+        : JobProfileDefaultsService.companyNone;
     _selectedTasks
       ..clear()
       ..add('Flowback');
@@ -564,7 +569,7 @@ class _JsaScreenState extends State<JsaScreen> {
         ? normalized
         : (_activeCompanyService.activeCompany.value.trim().isNotEmpty
             ? _activeCompanyService.activeCompany.value
-            : 'Custom');
+            : JobProfileDefaultsService.companyNone);
     _selectedTasks
       ..clear()
       ..addAll(draft.tasks.where(_taskLibrary.containsKey));
@@ -961,6 +966,29 @@ class _JsaScreenState extends State<JsaScreen> {
     });
   }
 
+  Future<bool> _confirmCompanyChange(String nextCompany) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Change Active Company?'),
+            content: Text(
+              'Switch Active Company to $nextCompany and start fresh? This clears only the current setup and keeps saved history, settings, and logs.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Change Company'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final dateText = DateFormat('MM/dd/yyyy').format(_date);
@@ -983,8 +1011,17 @@ class _JsaScreenState extends State<JsaScreen> {
                     .toList(),
                 onChanged: (v) async {
                   final selected = v ?? _company;
-                  setState(() => _company = selected);
-                  await _activeCompanyService.setIfValidCandidate(selected);
+                  if (selected == _company) return;
+                  final confirmed = await _confirmCompanyChange(selected);
+                  if (!confirmed) return;
+
+                  await _activeCompanyService
+                      .setActiveCompanyWithFreshStart(selected);
+                  if (!mounted) return;
+                  setState(() {
+                    _clearFormValues(resetDateTime: true);
+                    _company = selected;
+                  });
                 },
                 decoration: const InputDecoration(labelText: 'Company'),
               ),

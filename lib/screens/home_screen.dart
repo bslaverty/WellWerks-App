@@ -51,7 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   JobSetup? _activeJob;
   String _lastModule = '';
-  String _activeCompany = '';
+  String _activeCompany = 'None';
   List<String> _companyOptions = const [];
   bool _loading = true;
 
@@ -97,6 +97,30 @@ class _HomeScreenState extends State<HomeScreen> {
     _handlePendingRateTimerAction();
   }
 
+  Future<bool> _confirmCompanyChange(String nextCompany) async {
+    final label = nextCompany;
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Change Active Company?'),
+            content: Text(
+              'Switch Active Company to $label and start fresh? This clears only the current setup and keeps saved history, settings, and logs.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Change Company'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
   Widget _activeCompanyCard(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Card(
@@ -116,18 +140,13 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
-              initialValue:
-                  _activeCompany.trim().isEmpty ? null : _activeCompany,
+              initialValue: _activeCompany,
               isExpanded: true,
               decoration: const InputDecoration(
                 labelText: 'Select Company',
                 border: OutlineInputBorder(),
               ),
               items: [
-                const DropdownMenuItem<String>(
-                  value: '',
-                  child: Text('Select Company'),
-                ),
                 for (final company in _companyOptions)
                   DropdownMenuItem<String>(
                     value: company,
@@ -136,11 +155,16 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
               onChanged: (value) async {
                 final selected = (value ?? '').trim();
-                await _activeCompanyService.setActiveCompany(selected);
+                final next = _activeCompanyService.normalize(selected);
+                if (next == _activeCompany) return;
+                final confirmed = await _confirmCompanyChange(next);
+                if (!confirmed) return;
+
+                await _activeCompanyService
+                    .setActiveCompanyWithFreshStart(next);
                 if (!context.mounted) return;
-                final label = selected.isEmpty ? 'Select Company' : selected;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Active Company: $label')),
+                  SnackBar(content: Text('Active Company: $next')),
                 );
                 await _loadRecovery();
               },

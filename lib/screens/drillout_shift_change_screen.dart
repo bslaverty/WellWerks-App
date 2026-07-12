@@ -8,7 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/tank_charts.dart';
 import '../models/job_setup.dart';
+import '../services/active_company_service.dart';
 import '../services/app_settings_service.dart';
+import '../services/job_profile_defaults_service.dart';
 import '../services/job_storage_service.dart';
 import '../utils/gauge_keypad_input.dart';
 import '../utils/gauge_parser.dart';
@@ -35,6 +37,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
 
   final _jobStorage = JobStorageService();
   final _settingsService = AppSettingsService();
+  final _activeCompanyService = ActiveCompanyService.instance;
 
   final _customer = TextEditingController();
   final _wellName = TextEditingController();
@@ -61,6 +64,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
 
   ChokeSelection _choke = const ChokeSelection(type: ChokeTypes.none);
   String _textTimeFormat = '12h';
+  List<String> _companyOptions = const [];
   DateTime _selectedTime = DateTime(2000, 1, 1, _defaultShiftHour);
   String _editedText = '';
 
@@ -79,6 +83,8 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   Future<void> _load() async {
     final activeJob = await _jobStorage.loadActiveJob();
     final settings = await _settingsService.load();
+    final activeCompany = await _activeCompanyService.ensureLoaded();
+    _companyOptions = _activeCompanyService.companyOptions;
     final prefs = await SharedPreferences.getInstance();
 
     final scopedKey = activeJob == null || activeJob.id.trim().isEmpty
@@ -95,9 +101,10 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       }
     }
 
-    final fallbackCustomer = activeJob?.customer.trim().isNotEmpty == true
-        ? activeJob!.customer.trim()
-        : activeJob?.company.trim() ?? '';
+    final fallbackCustomer =
+        activeCompany == JobProfileDefaultsService.companyNone
+            ? ''
+            : activeCompany;
     final fallbackWell = activeJob?.primaryWell.trim() ?? '';
 
     final customerText = saved.containsKey('customer')
@@ -179,6 +186,72 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   Future<void> _clearSavedSetup() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_jobScopedKey);
+  }
+
+  String get _selectedCompany =>
+      _activeCompanyService.normalize(_customer.text);
+
+  Future<bool> _confirmCompanyChange(String nextCompany) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Change Active Company?'),
+            content: Text(
+              'Switch Active Company to $nextCompany and start fresh? This clears only the current setup and keeps saved history, settings, and logs.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Change Company'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _handleCompanyChange(String selectedCompany) async {
+    final next = _activeCompanyService.normalize(selectedCompany);
+    if (next == _selectedCompany) return;
+
+    final confirmed = await _confirmCompanyChange(next);
+    if (!confirmed) return;
+
+    await _activeCompanyService.setActiveCompanyWithFreshStart(next);
+    if (!mounted) return;
+
+    setState(() {
+      _customer.text =
+          next == JobProfileDefaultsService.companyNone ? '' : next;
+      _wellName.clear();
+      _primaryTank = 'sandx';
+      _showGasTank = false;
+      _showGasTank2 = false;
+      _showWaterTank = false;
+      _showWaterTank2 = false;
+      _waterTankType = 'flowback_round_bottom';
+      _waterTank2Type = 'flowback_round_bottom';
+      _choke = const ChokeSelection(type: ChokeTypes.none);
+      _selectedTime = DateTime(2000, 1, 1, _defaultShiftHour);
+      _rate.clear();
+      _surfaceTotalFluid.clear();
+      _waterHauled.clear();
+      _oilHauled.clear();
+      _primaryGauge.clear();
+      _gas1Gauge.clear();
+      _gas2Gauge.clear();
+      _water1Gauge.clear();
+      _water2Gauge.clear();
+      _editedText = '';
+      _activeGaugeTarget = null;
+    });
+
+    await _clearSavedSetup();
+    await _saveSetup();
   }
 
   double? _latestBblPerMinuteFromLogs(SharedPreferences prefs) {
@@ -700,11 +773,23 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                               fontWeight: FontWeight.w900, fontSize: 20),
                         ),
                         const SizedBox(height: 10),
-                        TextField(
-                          controller: _customer,
-                          onChanged: (_) => _saveSetup(),
+                        DropdownButtonFormField<String>(
+                          initialValue: _selectedCompany,
                           decoration: const InputDecoration(
-                              labelText: 'Company / Customer'),
+                            labelText: 'Company / Customer',
+                          ),
+                          items: _companyOptions
+                              .map(
+                                (company) => DropdownMenuItem<String>(
+                                  value: company,
+                                  child: Text(company),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) async {
+                            if (value == null) return;
+                            await _handleCompanyChange(value);
+                          },
                         ),
                         const SizedBox(height: 8),
                         TextField(

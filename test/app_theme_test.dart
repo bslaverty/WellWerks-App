@@ -45,12 +45,11 @@ void main() {
   });
 
   group('Theme palette intent', () {
-    test('OU uses crimson accent and cream-leaning surfaces', () {
+    test('OU uses exact Build 88 crimson and cream palette', () {
       const theme = AppThemeCatalog.ou;
-      final hue = HSLColor.fromColor(theme.accent).hue;
-      expect(hue, greaterThan(340));
-      expect(theme.surface.computeLuminance(),
-          greaterThan(theme.background.computeLuminance()));
+      expect(theme.accent, const Color(0xFF841617));
+      expect(theme.appBarBackground, const Color(0xFF841617));
+      expect(theme.surface, const Color(0xFFFDF9D8));
     });
 
     test('OSU uses orange accent and dark surfaces', () {
@@ -120,7 +119,7 @@ void main() {
       );
       expect(
         ouTheme.switchTheme.thumbColor?.resolve(selected),
-        AppThemeCatalog.ou.accent,
+        const Color(0xFF841617),
       );
       expect(
         osuTheme.switchTheme.thumbColor?.resolve(selected),

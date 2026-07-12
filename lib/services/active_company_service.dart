@@ -1,10 +1,17 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/job_setup.dart';
 import 'app_settings_service.dart';
+import 'job_box_inventory_service.dart';
 import 'job_profile_defaults_service.dart';
 import 'job_storage_service.dart';
 import 'production_shift_service.dart';
+
+enum ActiveCompanyChangeStatus {
+  unchanged,
+  changed,
+}
 
 class ActiveCompanyService {
   ActiveCompanyService._();
@@ -14,9 +21,11 @@ class ActiveCompanyService {
   final AppSettingsService _settingsService = AppSettingsService();
   final JobStorageService _jobStorage = JobStorageService();
   final ProductionShiftService _shiftService = ProductionShiftService();
+  final JobBoxInventoryService _jobBoxService = JobBoxInventoryService();
   final JobProfileDefaultsService _defaults = JobProfileDefaultsService();
 
-  final ValueNotifier<String> activeCompany = ValueNotifier<String>('');
+  final ValueNotifier<String> activeCompany =
+      ValueNotifier<String>(JobProfileDefaultsService.companyNone);
 
   bool _loaded = false;
 
@@ -24,23 +33,24 @@ class ActiveCompanyService {
       JobProfileDefaultsService.sharedCompanyOptionsAlphabetized;
 
   String normalize(String value) {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) return '';
-    final normalized = _defaults.normalizeCompany(trimmed);
+    final normalized = _defaults.normalizeCompany(value.trim());
     if (companyOptions.contains(normalized)) {
       return normalized;
     }
-    return '';
+    return JobProfileDefaultsService.companyNone;
   }
 
-  bool isValid(String value) => normalize(value).isNotEmpty;
+  bool isValid(String value) => companyOptions.contains(normalize(value));
+
+  bool isNone(String value) =>
+      normalize(value) == JobProfileDefaultsService.companyNone;
 
   Future<String> ensureLoaded() async {
     if (_loaded) return activeCompany.value;
 
     final settings = await _settingsService.load();
     final saved = normalize(settings.activeCompany);
-    if (saved.isNotEmpty) {
+    if (saved != JobProfileDefaultsService.companyNone) {
       activeCompany.value = saved;
       _loaded = true;
       return saved;
@@ -48,7 +58,7 @@ class ActiveCompanyService {
 
     final fromActiveJob = await _jobStorage.loadActiveJob();
     final jobCompany = normalize(fromActiveJob?.company ?? '');
-    if (jobCompany.isNotEmpty) {
+    if (jobCompany != JobProfileDefaultsService.companyNone) {
       activeCompany.value = jobCompany;
       _loaded = true;
       await _persist(jobCompany);
@@ -57,17 +67,17 @@ class ActiveCompanyService {
 
     final shift = await _shiftService.loadActiveShift();
     final shiftCompany = normalize(shift.header.company);
-    if (shiftCompany.isNotEmpty) {
+    if (shiftCompany != JobProfileDefaultsService.companyNone) {
       activeCompany.value = shiftCompany;
       _loaded = true;
       await _persist(shiftCompany);
       return shiftCompany;
     }
 
-    activeCompany.value = '';
+    activeCompany.value = JobProfileDefaultsService.companyNone;
     _loaded = true;
-    await _persist('');
-    return '';
+    await _persist(JobProfileDefaultsService.companyNone);
+    return JobProfileDefaultsService.companyNone;
   }
 
   Future<void> setActiveCompany(
@@ -78,13 +88,13 @@ class ActiveCompanyService {
     await ensureLoaded();
 
     final normalized = normalize(company);
-    final next = company.trim().isEmpty ? '' : normalized;
+    final next = normalized;
     if (next == activeCompany.value) return;
 
     activeCompany.value = next;
     await _persist(next);
 
-    if (next.isEmpty) return;
+    if (next == JobProfileDefaultsService.companyNone) return;
 
     if (syncActiveJob) {
       final activeJob = await _jobStorage.loadActiveJob();
@@ -105,8 +115,28 @@ class ActiveCompanyService {
 
   Future<void> setIfValidCandidate(String candidate) async {
     final normalized = normalize(candidate);
-    if (normalized.isEmpty) return;
+    if (normalized == JobProfileDefaultsService.companyNone) return;
     await setActiveCompany(normalized);
+  }
+
+  Future<ActiveCompanyChangeStatus> setActiveCompanyWithFreshStart(
+    String company,
+  ) async {
+    await ensureLoaded();
+    final next = normalize(company);
+    if (next == activeCompany.value) {
+      return ActiveCompanyChangeStatus.unchanged;
+    }
+
+    await clearCurrentSetupForCompanyChange();
+    await setActiveCompany(next, syncActiveJob: false, syncActiveShift: false);
+    return ActiveCompanyChangeStatus.changed;
+  }
+
+  Future<void> clearCurrentSetupForCompanyChange() async {
+    await _settingsService.clearActiveData();
+    await _jobBoxService.clearWorkingDraft();
+    await _clearDrilloutSavedSetup();
   }
 
   JobSetup _applyCompanyToJob(JobSetup job, String company) {
@@ -119,15 +149,26 @@ class ActiveCompanyService {
     await _settingsService.save(
       settings.copyWith(
         activeCompany: company,
-        jsaCompanyDefault:
-            company.isEmpty ? settings.jsaCompanyDefault : company,
+        jsaCompanyDefault: company == JobProfileDefaultsService.companyNone
+            ? settings.jsaCompanyDefault
+            : company,
       ),
     );
+  }
+
+  Future<void> _clearDrilloutSavedSetup() async {
+    const drilloutPrefix = 'wellwerks_drillout_shift_change_v1';
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in prefs.getKeys()) {
+      if (key == drilloutPrefix || key.startsWith('$drilloutPrefix:')) {
+        await prefs.remove(key);
+      }
+    }
   }
 
   @visibleForTesting
   void resetForTest() {
     _loaded = false;
-    activeCompany.value = '';
+    activeCompany.value = JobProfileDefaultsService.companyNone;
   }
 }

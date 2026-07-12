@@ -19,6 +19,7 @@ class JobProfileDefaults {
 }
 
 class JobProfileDefaultsService {
+  static const String companyNone = 'None';
   static const String companyContinental = 'Continental Resources';
   static const String companyMach = 'Mach Energy';
   static const String companyFlywheel = 'Flywheel Energy';
@@ -27,24 +28,24 @@ class JobProfileDefaultsService {
   static const String companyXto = 'XTO';
 
   static const List<String> productionCompanyProfiles = <String>[
+    companyNone,
     companyMach,
     companyContinental,
     companyFlywheel,
-    companyCustom,
   ];
 
   static const List<String> sharedCompanyOptions = <String>[
+    companyNone,
     companyMach,
     companyContinental,
     companyDevon,
     companyFlywheel,
     companyXto,
-    companyCustom,
   ];
 
   static const List<String> sharedCompanyOptionsAlphabetized = <String>[
+    companyNone,
     companyContinental,
-    companyCustom,
     companyDevon,
     companyFlywheel,
     companyMach,
@@ -198,6 +199,9 @@ class JobProfileDefaultsService {
 
   String normalizeCompany(String company) {
     final lower = company.trim().toLowerCase();
+    if (lower.isEmpty || lower == 'none' || lower == 'custom') {
+      return companyNone;
+    }
     if (lower == 'continental' || lower == 'continental resources') {
       return companyContinental;
     }
@@ -206,9 +210,6 @@ class JobProfileDefaultsService {
     }
     if (lower == 'flywheel energy' || lower == 'flywheel') {
       return companyFlywheel;
-    }
-    if (lower.isEmpty || lower == 'custom') {
-      return companyCustom;
     }
     return company;
   }
@@ -265,7 +266,7 @@ class JobProfileDefaultsService {
     }
 
     return const JobProfileDefaults(
-      company: companyCustom,
+      company: companyNone,
       wellFieldKeys: <String>[
         'chk',
         'csg',

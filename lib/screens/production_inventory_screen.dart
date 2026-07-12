@@ -45,7 +45,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   String _gasUnit = 'mcfd';
   String _gasCalculationMethod = 'accumulator';
   String _layoutProfileId = 'default';
-  String _selectedCompanyProfile = 'Custom';
+  String _selectedCompanyProfile = JobProfileDefaultsService.companyNone;
   bool _useJobSetupTanks = true;
   final _startingGasAccum = TextEditingController();
   final _waterHauledBeforeRound = TextEditingController();
@@ -229,6 +229,9 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
 
   String _normalizedCompanyProfile(String company) {
     final lower = company.trim().toLowerCase();
+    if (lower.isEmpty || lower == 'none' || lower == 'custom') {
+      return JobProfileDefaultsService.companyNone;
+    }
     if (lower == 'mach energy' || lower == 'mach') return 'Mach Energy';
     if (lower == 'continental resources' || lower == 'continental') {
       return 'Continental Resources';
@@ -236,7 +239,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     if (lower == 'flywheel energy' || lower == 'flywheel') {
       return 'Flywheel Energy';
     }
-    return 'Custom';
+    return JobProfileDefaultsService.companyNone;
   }
 
   String _layoutProfileForCompanyProfile(String profile) {
@@ -247,9 +250,33 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
         return ReportProfileService.continentalProfileId;
       case 'Flywheel Energy':
         return ReportProfileService.flywheelProfileId;
+      case JobProfileDefaultsService.companyNone:
       default:
         return _layoutProfileId;
     }
+  }
+
+  Future<bool> _confirmCompanyChange(String nextCompany) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Change Active Company?'),
+            content: Text(
+              'Switch Active Company to $nextCompany and start fresh? This clears only the current setup and keeps saved history, settings, and logs.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Change Company'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   List<_OilInventoryControllers> _buildOilInventoryControllers(
@@ -1244,19 +1271,29 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
               for (final profile in _companyProfiles)
                 DropdownMenuItem(value: profile, child: Text(profile)),
             ],
-            onChanged: (value) {
+            onChanged: (value) async {
               if (value == null) return;
+              if (value == _selectedCompanyProfile) return;
+
+              final confirmed = await _confirmCompanyChange(value);
+              if (!confirmed) return;
+
+              await _activeCompanyService.setActiveCompanyWithFreshStart(value);
+              if (!mounted) return;
+
               setState(() {
                 _selectedCompanyProfile = value;
-                if (value != 'Custom') {
+                if (value != JobProfileDefaultsService.companyNone) {
                   _company.text = value;
                   final mappedLayout = _layoutProfileForCompanyProfile(value);
                   if (_layoutProfiles.any((p) => p.id == mappedLayout)) {
                     _layoutProfileId = mappedLayout;
                   }
+                } else {
+                  _company.clear();
                 }
               });
-              _activeCompanyService.setIfValidCandidate(_company.text);
+              await _load();
             },
           ),
           const SizedBox(height: 12),

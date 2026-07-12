@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 
 import '../models/job_box_inventory.dart';
+import '../services/active_company_service.dart';
+import '../services/job_profile_defaults_service.dart';
 import '../services/job_box_inventory_service.dart';
 import '../widgets/app_header.dart';
 
@@ -17,6 +19,7 @@ class JobBoxInventoryScreen extends StatefulWidget {
 
 class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
   final _service = JobBoxInventoryService();
+  final _activeCompanyService = ActiveCompanyService.instance;
   final _customerController = TextEditingController();
   final _dateController = TextEditingController();
   final _wellNamesController = TextEditingController();
@@ -25,6 +28,7 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _hideZeroQuantityItems = false;
+  List<String> _companyOptions = const [];
   String _recordId = '';
   DateTime _createdAt = DateTime.now();
   DateTime _updatedAt = DateTime.now();
@@ -52,6 +56,8 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
     JobBoxInventoryRecord? record;
     final initialId = widget.initialRecordId?.trim() ?? '';
     final hideZeroPreference = await _service.loadHideZeroPreference();
+    final activeCompany = await _activeCompanyService.ensureLoaded();
+    _companyOptions = _activeCompanyService.companyOptions;
     if (initialId.isNotEmpty) {
       record = await _service.loadRecord(initialId);
     }
@@ -61,11 +67,21 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
     );
 
     if (!mounted) return;
+    final normalizedCustomer =
+        _activeCompanyService.normalize(record.customer.trim());
+    final selectedCompany =
+        (normalizedCustomer == JobProfileDefaultsService.companyNone &&
+                activeCompany.trim().isNotEmpty)
+            ? activeCompany
+            : normalizedCustomer;
     setState(() {
       _recordId = record!.id;
       _createdAt = record.createdAt;
       _updatedAt = record.updatedAt;
-      _customerController.text = record.customer;
+      _customerController.text =
+          selectedCompany == JobProfileDefaultsService.companyNone
+              ? ''
+              : selectedCompany;
       _dateController.text = record.date;
       _wellNamesController.text = record.wellNames;
       _jobBoxNumberController.text = record.jobBoxNumber;
@@ -78,6 +94,64 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
           : _mergeWithDefaultItems(record.items);
       _loading = false;
     });
+    await _persistWorkingDraft();
+  }
+
+  String get _selectedCompany {
+    final normalized =
+        _activeCompanyService.normalize(_customerController.text);
+    return normalized;
+  }
+
+  Future<bool> _confirmCompanyChange(String nextCompany) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Change Active Company?'),
+            content: Text(
+              'Switch Active Company to $nextCompany and start fresh? This clears only the current setup and keeps saved history, settings, and logs.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Change Company'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _handleCompanyChange(String selectedCompany) async {
+    final next = _activeCompanyService.normalize(selectedCompany);
+    if (next == _selectedCompany) return;
+
+    final confirmed = await _confirmCompanyChange(next);
+    if (!confirmed) return;
+
+    await _activeCompanyService.setActiveCompanyWithFreshStart(next);
+    if (!mounted) return;
+
+    setState(() {
+      _recordId = '';
+      _createdAt = DateTime.now();
+      _updatedAt = DateTime.now();
+      _customerController.text =
+          next == JobProfileDefaultsService.companyNone ? '' : next;
+      _wellNamesController.clear();
+      _jobBoxNumberController.clear();
+      _dateController.text = DateFormat('MM/dd/yyyy').format(DateTime.now());
+      _items = [
+        for (final item in JobBoxInventoryCatalog.defaultItems)
+          item.copyWith(quantity: 0),
+      ];
+    });
+
+    await _service.clearWorkingDraft();
     await _persistWorkingDraft();
   }
 
@@ -256,11 +330,16 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
   }
 
   Future<void> _copyInventoryUpdate() async {
+    final customerLabel =
+        _selectedCompany == JobProfileDefaultsService.companyNone
+            ? '-'
+            : (_customerController.text.trim().isEmpty
+                ? '-'
+                : _customerController.text.trim());
     final buffer = StringBuffer()
       ..writeln('Job Box Inventory')
       ..writeln()
-      ..writeln(
-          'Customer: ${_customerController.text.trim().isEmpty ? '-' : _customerController.text.trim()}')
+      ..writeln('Customer: $customerLabel')
       ..writeln('Date: ${_formatGpsDate()}')
       ..writeln(
           'Well(s): ${_wellNamesController.text.trim().isEmpty ? '-' : _wellNamesController.text.trim()}')
@@ -455,8 +534,26 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
           children: [
             TextField(
               controller: _customerController,
+              readOnly: true,
+              enableInteractiveSelection: false,
               decoration: const InputDecoration(labelText: 'Customer'),
-              onChanged: (_) => _setHeaderChanged(),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _selectedCompany,
+              decoration: const InputDecoration(labelText: 'Active Company'),
+              items: _companyOptions
+                  .map(
+                    (company) => DropdownMenuItem<String>(
+                      value: company,
+                      child: Text(company),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) async {
+                if (value == null) return;
+                await _handleCompanyChange(value);
+              },
             ),
             const SizedBox(height: 12),
             TextField(

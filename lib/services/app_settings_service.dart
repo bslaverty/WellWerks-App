@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/job_history_service.dart';
+import '../services/job_profile_defaults_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/jsa_storage_service.dart';
 import '../services/production_shift_service.dart';
@@ -36,7 +37,7 @@ class AppSettingsDefaults {
   static const rateTimerCompleteEnabled = true;
   static const rateTimerSoundEnabled = true;
   static const appTheme = 'wellwerks_default';
-  static const activeCompany = '';
+  static const activeCompany = JobProfileDefaultsService.companyNone;
   static const optionalReportSections = [
     'vru',
     'flare',
@@ -453,7 +454,12 @@ class AppSettingsData {
   }
 
   static String _normalizeActiveCompany(String? value) {
-    return (value ?? '').trim();
+    final normalized =
+        JobProfileDefaultsService().normalizeCompany((value ?? '').trim());
+    if (JobProfileDefaultsService.sharedCompanyOptions.contains(normalized)) {
+      return normalized;
+    }
+    return JobProfileDefaultsService.companyNone;
   }
 
   static List<String> _normalizeOptionalSections(List<String> value) {
