@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/tank_charts.dart';
@@ -45,6 +44,10 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   final _surfaceTotalFluid = TextEditingController();
   final _waterHauled = TextEditingController();
   final _oilHauled = TextEditingController();
+  final _plugNumber = TextEditingController();
+  final _coilDepth = TextEditingController();
+  final _gasSpotRate = TextEditingController();
+  final _notes = TextEditingController();
 
   final _primaryGauge = TextEditingController();
   final _gas1Gauge = TextEditingController();
@@ -64,8 +67,33 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
 
   ChokeSelection _choke = const ChokeSelection(type: ChokeTypes.none);
   String _textTimeFormat = '12h';
+  String _gasUnit = AppSettingsDefaults.gasUnit;
   DateTime _selectedTime = DateTime(2000, 1, 1, _defaultShiftHour);
   String _editedText = '';
+
+  bool _showStatus = false;
+  bool _showPlugNumber = false;
+  bool _showCoilDepth = false;
+  bool _showGasSpotRate = false;
+  bool _showSand = false;
+
+  String? _status;
+  String? _sand;
+
+  static const List<String> _statusOptions = [
+    'Ready for Pressure Test',
+    'Drilling Plugs',
+    'Circulating',
+    'Equipment Issues',
+    'POOH',
+  ];
+
+  static const List<String> _sandOptions = [
+    'Trace',
+    'Light',
+    'Medium',
+    'Heavy',
+  ];
 
   @override
   void initState() {
@@ -147,6 +175,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     setState(() {
       _activeJob = activeJob;
       _textTimeFormat = settings.textTimeFormat;
+      _gasUnit = settings.defaultGasUnit;
       _customer.text = customerText;
       _wellName.text = wellText;
       _primaryTank = _normalizePrimaryTank(saved['primaryTank'] as String?);
@@ -160,6 +189,17 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
           _normalizeWaterTankType(saved['waterTank2Type'] as String?);
       _choke = normalizedChoke;
       _selectedTime = DateTime(2000, 1, 1, savedHour);
+      _showStatus = saved['showStatus'] as bool? ?? false;
+      _showPlugNumber = saved['showPlugNumber'] as bool? ?? false;
+      _showCoilDepth = saved['showCoilDepth'] as bool? ?? false;
+      _showGasSpotRate = saved['showGasSpotRate'] as bool? ?? false;
+      _showSand = saved['showSand'] as bool? ?? false;
+      _status = _validatedStatus(saved['status'] as String?);
+      _sand = _validatedSand(saved['sand'] as String?);
+      _plugNumber.text = saved['plugNumber'] as String? ?? '';
+      _coilDepth.text = saved['coilDepth'] as String? ?? '';
+      _gasSpotRate.text = saved['gasSpotRate'] as String? ?? '';
+      _notes.text = saved['notes'] as String? ?? '';
 
       if (_rate.text.trim().isEmpty && latestRate != null) {
         _rate.text = _fmtTrim(latestRate);
@@ -184,9 +224,32 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         'selectedHour': _selectedTime.hour,
         'chokeType': _choke.type,
         'chokeSize': _choke.size64,
+        'showStatus': _showStatus,
+        'showPlugNumber': _showPlugNumber,
+        'showCoilDepth': _showCoilDepth,
+        'showGasSpotRate': _showGasSpotRate,
+        'showSand': _showSand,
+        'status': _status,
+        'plugNumber': _plugNumber.text.trim(),
+        'coilDepth': _coilDepth.text.trim(),
+        'gasSpotRate': _gasSpotRate.text.trim(),
+        'sand': _sand,
+        'notes': _notes.text.trim(),
       }),
     );
   }
+
+  String? _validatedStatus(String? value) {
+    final normalized = (value ?? '').trim();
+    return _statusOptions.contains(normalized) ? normalized : null;
+  }
+
+  String? _validatedSand(String? value) {
+    final normalized = (value ?? '').trim();
+    return _sandOptions.contains(normalized) ? normalized : null;
+  }
+
+  String get _gasUnitLabel => _gasUnit == 'mmcfd' ? 'MMCFD' : 'MCFD';
 
   Future<void> _clearSavedSetup() async {
     final prefs = await SharedPreferences.getInstance();
@@ -428,14 +491,32 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
 
   String _composeText() {
     final primaryGauge = _parseGaugeOrNull(_primaryGauge.text);
+    final padName = _activeJob?.padName.trim() ?? '';
+    final company = _customer.text.trim();
+    final wellName = _wellName.text.trim();
 
     final lines = <String>[
-      'DRILLOUT SHIFT CHANGE',
+      '${_formatTime(_selectedTime)} Shift Change',
       '',
-      _customer.text.trim(),
-      _wellName.text.trim(),
-      _formatTime(_selectedTime),
+      company,
+      if (padName.isNotEmpty) padName,
+      wellName,
       '',
+      if (_showStatus)
+        'Status: ${(_status ?? '').trim().isEmpty ? '-' : _status!}',
+      if (_showPlugNumber)
+        'Plug #: ${_plugNumber.text.trim().isEmpty ? '-' : _plugNumber.text.trim()}',
+      if (_showCoilDepth)
+        'Coil Depth: ${_coilDepth.text.trim().isEmpty ? '-' : _coilDepth.text.trim()} ft',
+      if (_showGasSpotRate)
+        'Gas: ${_gasSpotRate.text.trim().isEmpty ? '-' : _gasSpotRate.text.trim()} $_gasUnitLabel',
+      if (_showSand) 'Sand: ${(_sand ?? '').trim().isEmpty ? '-' : _sand!}',
+      if (_showStatus ||
+          _showPlugNumber ||
+          _showCoilDepth ||
+          _showGasSpotRate ||
+          _showSand)
+        '',
       if (!_choke.isNone) 'Choke: ${formatChokeDisplay(_choke)}',
       'Rate: ${_fmtTrim(double.tryParse(_rate.text.trim()) ?? 0)} bbl/min',
       '',
@@ -466,6 +547,10 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       lines.add(_inventoryLine(
           'Water Tank 2', gauge, _flowbackWaterChart(_waterTank2Type)));
     }
+
+    lines.add('');
+    lines
+        .add('Notes: ${_notes.text.trim().isEmpty ? '-' : _notes.text.trim()}');
 
     return lines
         .where((line) => line.trim().isNotEmpty || line.isEmpty)
@@ -528,11 +613,6 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     );
   }
 
-  Future<void> _share() async {
-    final text = _editedText.trim().isNotEmpty ? _editedText : _composeText();
-    await Share.share(text, subject: 'DRILLOUT SHIFT CHANGE');
-  }
-
   Future<void> _clearCurrentShiftValues() async {
     final confirmed = await showDialog<bool>(
           context: context,
@@ -567,6 +647,12 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _gas2Gauge.clear();
       _water1Gauge.clear();
       _water2Gauge.clear();
+      _status = null;
+      _sand = null;
+      _plugNumber.clear();
+      _coilDepth.clear();
+      _gasSpotRate.clear();
+      _notes.clear();
       _editedText = '';
       _activeGaugeTarget = null;
     });
@@ -607,11 +693,22 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _waterTankType = 'flowback_round_bottom';
       _waterTank2Type = 'flowback_round_bottom';
       _choke = const ChokeSelection(type: ChokeTypes.none);
+      _showStatus = false;
+      _showPlugNumber = false;
+      _showCoilDepth = false;
+      _showGasSpotRate = false;
+      _showSand = false;
+      _status = null;
+      _sand = null;
       _selectedTime = DateTime(2000, 1, 1, _defaultShiftHour);
       _rate.clear();
       _surfaceTotalFluid.clear();
       _waterHauled.clear();
       _oilHauled.clear();
+      _plugNumber.clear();
+      _coilDepth.clear();
+      _gasSpotRate.clear();
+      _notes.clear();
       _primaryGauge.clear();
       _gas1Gauge.clear();
       _gas2Gauge.clear();
@@ -684,6 +781,10 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     _surfaceTotalFluid.dispose();
     _waterHauled.dispose();
     _oilHauled.dispose();
+    _plugNumber.dispose();
+    _coilDepth.dispose();
+    _gasSpotRate.dispose();
+    _notes.dispose();
     _primaryGauge.dispose();
     _gas1Gauge.dispose();
     _gas2Gauge.dispose();
@@ -782,6 +883,135 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                               decimal: true),
                           decoration: const InputDecoration(
                               labelText: 'Oil Hauled (bbl)'),
+                        ),
+                        const SizedBox(height: 12),
+                        const Divider(height: 1),
+                        const SizedBox(height: 8),
+                        SwitchListTile.adaptive(
+                          key: const Key('drillout-toggle-status'),
+                          value: _showStatus,
+                          onChanged: (value) {
+                            setState(() => _showStatus = value);
+                            _saveSetup();
+                          },
+                          title: const Text('Status'),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        if (_showStatus)
+                          DropdownButtonFormField<String>(
+                            key: const Key('drillout-status-dropdown'),
+                            initialValue: _status,
+                            decoration: const InputDecoration(
+                              labelText: 'Status',
+                            ),
+                            items: _statusOptions
+                                .map((option) => DropdownMenuItem<String>(
+                                      value: option,
+                                      child: Text(option),
+                                    ))
+                                .toList(growable: false),
+                            onChanged: (value) {
+                              setState(() => _status = _validatedStatus(value));
+                              _saveSetup();
+                            },
+                          ),
+                        SwitchListTile.adaptive(
+                          key: const Key('drillout-toggle-plug-number'),
+                          value: _showPlugNumber,
+                          onChanged: (value) {
+                            setState(() => _showPlugNumber = value);
+                            _saveSetup();
+                          },
+                          title: const Text('Plug #'),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        if (_showPlugNumber)
+                          TextField(
+                            key: const Key('drillout-plug-number-field'),
+                            controller: _plugNumber,
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => _saveSetup(),
+                            decoration:
+                                const InputDecoration(labelText: 'Plug #'),
+                          ),
+                        SwitchListTile.adaptive(
+                          key: const Key('drillout-toggle-coil-depth'),
+                          value: _showCoilDepth,
+                          onChanged: (value) {
+                            setState(() => _showCoilDepth = value);
+                            _saveSetup();
+                          },
+                          title: const Text('Coil Depth'),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        if (_showCoilDepth)
+                          TextField(
+                            key: const Key('drillout-coil-depth-field'),
+                            controller: _coilDepth,
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => _saveSetup(),
+                            decoration: const InputDecoration(
+                              labelText: 'Coil Depth',
+                              suffixText: 'ft',
+                            ),
+                          ),
+                        SwitchListTile.adaptive(
+                          key: const Key('drillout-toggle-gas-spot-rate'),
+                          value: _showGasSpotRate,
+                          onChanged: (value) {
+                            setState(() => _showGasSpotRate = value);
+                            _saveSetup();
+                          },
+                          title: const Text('Gas (Spot Rate)'),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        if (_showGasSpotRate)
+                          TextField(
+                            key: const Key('drillout-gas-spot-rate-field'),
+                            controller: _gasSpotRate,
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            onChanged: (_) => _saveSetup(),
+                            decoration: InputDecoration(
+                              labelText: 'Gas (Spot Rate)',
+                              suffixText: _gasUnitLabel,
+                            ),
+                          ),
+                        SwitchListTile.adaptive(
+                          key: const Key('drillout-toggle-sand'),
+                          value: _showSand,
+                          onChanged: (value) {
+                            setState(() => _showSand = value);
+                            _saveSetup();
+                          },
+                          title: const Text('Sand'),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        if (_showSand)
+                          DropdownButtonFormField<String>(
+                            key: const Key('drillout-sand-dropdown'),
+                            initialValue: _sand,
+                            decoration: const InputDecoration(
+                              labelText: 'Sand',
+                            ),
+                            items: _sandOptions
+                                .map((option) => DropdownMenuItem<String>(
+                                      value: option,
+                                      child: Text(option),
+                                    ))
+                                .toList(growable: false),
+                            onChanged: (value) {
+                              setState(() => _sand = _validatedSand(value));
+                              _saveSetup();
+                            },
+                          ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          key: const Key('drillout-notes-field'),
+                          controller: _notes,
+                          maxLines: 3,
+                          onChanged: (_) => _saveSetup(),
+                          decoration: const InputDecoration(labelText: 'Notes'),
                         ),
                       ],
                     ),
@@ -953,6 +1183,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                   runSpacing: 8,
                   children: [
                     FilledButton.icon(
+                      key: const Key('drillout-action-preview'),
                       onPressed: _preview,
                       icon: const Icon(Icons.preview),
                       label: const Text('Preview'),
@@ -963,21 +1194,19 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                       label: const Text('Edit'),
                     ),
                     OutlinedButton.icon(
+                      key: const Key('drillout-action-copy'),
                       onPressed: _copy,
                       icon: const Icon(Icons.copy),
                       label: const Text('Copy Shift Change'),
                     ),
                     OutlinedButton.icon(
-                      onPressed: _share,
-                      icon: const Icon(Icons.ios_share),
-                      label: const Text('Share'),
-                    ),
-                    OutlinedButton.icon(
+                      key: const Key('drillout-action-clear-current'),
                       onPressed: _clearCurrentShiftValues,
                       icon: const Icon(Icons.layers_clear),
                       label: const Text('Clear Current Shift Values'),
                     ),
                     OutlinedButton.icon(
+                      key: const Key('drillout-action-clear-setup'),
                       onPressed: _clearDrilloutSetup,
                       icon: const Icon(Icons.delete_forever),
                       label: const Text('Clear Drillout Setup'),
