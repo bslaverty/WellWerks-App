@@ -927,6 +927,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Well 1'), findsWidgets);
+    await tester.scrollUntilVisible(
+      find.widgetWithText(FilledButton, 'Copy Text'),
+      280,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('production-report-tab-report')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
     final copyReportButton = tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'Copy Text'),
     );

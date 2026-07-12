@@ -1,7 +1,7 @@
 name: wellwerks
 description: WellWerks oilfield toolbox and reporting app.
 publish_to: 'none'
-version: 1.0.1+98
+version: 1.0.1+99
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -25,6 +25,7 @@ dependencies:
   flutter_local_notifications: ^18.0.1
   timezone: ^0.10.0
   url_launcher: ^6.3.1
+  fl_chart: ^0.69.0
 
 dev_dependencies:
   flutter_test:

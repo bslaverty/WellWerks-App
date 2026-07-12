@@ -1,6 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/job_setup.dart';
 import '../models/production_shift.dart';
@@ -19,6 +24,8 @@ class ShiftReportScreen extends StatefulWidget {
 }
 
 class _ShiftReportScreenState extends State<ShiftReportScreen> {
+  static const _chartPrefsBase = 'wellwerks_production_report_chart_v1';
+
   final _shiftService = ProductionShiftService();
   final _layoutService = ReportProfileService();
   final _jobStorage = JobStorageService();
@@ -30,6 +37,8 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   ReportLayoutProfile _layout = ReportProfileService().defaultProfile();
   bool _loading = true;
   int _selectedWellIndex = 0;
+  Map<_ChartSeries, bool> _seriesVisibility = _defaultSeriesVisibility();
+  String _pointDetail = '';
 
   @override
   void initState() {
@@ -53,19 +62,93 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   Future<void> _load() async {
     var shift = await _shiftService.loadActiveShift();
     final activeJob = await _jobStorage.ensureActiveJobLoaded();
+    final prefs = await SharedPreferences.getInstance();
     if (activeJob != null && shift.activeJobId != activeJob.id) {
       shift = shift.copyWith(activeJobId: activeJob.id);
       await _shiftService.saveActiveShift(shift);
     }
     final layout =
         await _layoutService.resolveProfile(shift.header.layoutProfileId);
+
+    final prefKey = _chartPrefsKeyFor(activeJob, shift);
+    final rawPrefs = prefs.getString(prefKey);
+    final savedPrefs = _decodePrefs(rawPrefs);
+
+    final rows = _resolveActiveJobRows(shift, activeJob);
+    final wellOrder = _resolveWellOrder(rows, shift, activeJob);
+    final selectedWellName =
+        (savedPrefs['selectedWell'] as String? ?? '').trim();
+    var selectedWellIndex = 0;
+    if (selectedWellName.isNotEmpty) {
+      final index = wellOrder.indexOf(selectedWellName);
+      if (index >= 0) {
+        selectedWellIndex = index;
+      }
+    }
+
     if (!mounted) return;
     setState(() {
       _shift = shift;
       _activeJob = activeJob;
       _layout = layout;
+      _selectedWellIndex = selectedWellIndex;
+      _seriesVisibility = _resolvedSeriesVisibility(
+        savedPrefs['visibleSeries'] as List<dynamic>?,
+      );
       _loading = false;
     });
+  }
+
+  String _chartPrefsKeyFor(JobSetup? activeJob, ProductionShift shift) {
+    final id = (activeJob?.id ?? shift.activeJobId).trim();
+    if (id.isEmpty) return _chartPrefsBase;
+    return '$_chartPrefsBase:$id';
+  }
+
+  Map<String, dynamic> _decodePrefs(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return <String, dynamic>{};
+    try {
+      return Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    } catch (_) {
+      return <String, dynamic>{};
+    }
+  }
+
+  Future<void> _saveChartPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _chartPrefsKeyFor(_activeJob, _shift);
+    final visible = _seriesVisibility.entries
+        .where((entry) => entry.value)
+        .map((entry) => entry.key.id)
+        .toList(growable: false);
+    final selectedWell = _selectedWell;
+    final payload = <String, dynamic>{
+      'visibleSeries': visible,
+      'selectedWell': selectedWell,
+    };
+    await prefs.setString(key, jsonEncode(payload));
+  }
+
+  static Map<_ChartSeries, bool> _defaultSeriesVisibility() {
+    return <_ChartSeries, bool>{
+      _ChartSeries.tubingPressure: true,
+      _ChartSeries.casingPressure: true,
+      _ChartSeries.gasRate: true,
+      _ChartSeries.waterRate: true,
+      _ChartSeries.oilRate: true,
+      _ChartSeries.sandRate: false,
+      _ChartSeries.choke: false,
+    };
+  }
+
+  Map<_ChartSeries, bool> _resolvedSeriesVisibility(List<dynamic>? saved) {
+    final defaults = _defaultSeriesVisibility();
+    if (saved == null) return defaults;
+    final allowed = saved.map((item) => item.toString()).toSet();
+    return <_ChartSeries, bool>{
+      for (final series in _ChartSeries.values)
+        series: allowed.contains(series.id),
+    };
   }
 
   List<ProductionReportRow> get _inventoryRows {
@@ -75,48 +158,65 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     return _shift.savedRows;
   }
 
-  List<ProductionReportRow> get _activeJobRows {
-    final activeJob = _activeJob;
+  List<ProductionReportRow> _resolveActiveJobRows(
+    ProductionShift shift,
+    JobSetup? activeJob,
+  ) {
+    final inventoryRows = shift.inventory.productionRows.isNotEmpty
+        ? shift.inventory.productionRows
+        : shift.savedRows;
     final rows = activeJob == null
-        ? List<ProductionReportRow>.from(_inventoryRows)
-        : (_shift.activeJobId != activeJob.id
+        ? List<ProductionReportRow>.from(inventoryRows)
+        : (shift.activeJobId != activeJob.id
             ? <ProductionReportRow>[]
-            : List<ProductionReportRow>.from(_inventoryRows));
-    final order = _wellOrderSource;
-    rows.sort((a, b) {
-      final hourCompare = a.hourIndex.compareTo(b.hourIndex);
+            : List<ProductionReportRow>.from(inventoryRows));
+
+    final order = _resolveWellOrderSource(shift, activeJob);
+    final indexed = rows.asMap().entries.toList(growable: false);
+    indexed.sort((a, b) {
+      final hourCompare = a.value.hourIndex.compareTo(b.value.hourIndex);
       if (hourCompare != 0) return hourCompare;
-      final ai = order.indexOf(a.well);
-      final bi = order.indexOf(b.well);
-      if (ai == -1 && bi == -1) return a.well.compareTo(b.well);
-      if (ai == -1) return 1;
-      if (bi == -1) return -1;
-      return ai.compareTo(bi);
+      final ai = order.indexOf(a.value.well);
+      final bi = order.indexOf(b.value.well);
+      if (ai != bi) {
+        if (ai == -1) return 1;
+        if (bi == -1) return -1;
+        return ai.compareTo(bi);
+      }
+      return a.key.compareTo(b.key);
     });
-    return rows;
+    return indexed.map((entry) => entry.value).toList(growable: false);
   }
 
-  List<String> get _wellOrderSource {
-    final active = _activeJob;
-    if (active != null && active.resolvedWellNames.isNotEmpty) {
-      return active.resolvedWellNames;
+  List<String> _resolveWellOrderSource(
+      ProductionShift shift, JobSetup? activeJob) {
+    if (activeJob != null && activeJob.resolvedWellNames.isNotEmpty) {
+      return activeJob.resolvedWellNames;
     }
-    return _shift.header.wells;
+    return shift.header.wells;
+  }
+
+  List<String> _resolveWellOrder(
+    List<ProductionReportRow> rows,
+    ProductionShift shift,
+    JobSetup? activeJob,
+  ) {
+    final ordered = <String>[];
+    for (final well in _resolveWellOrderSource(shift, activeJob)) {
+      if (!ordered.contains(well)) ordered.add(well);
+    }
+    for (final row in rows) {
+      if (!ordered.contains(row.well)) ordered.add(row.well);
+    }
+    return ordered;
+  }
+
+  List<ProductionReportRow> get _activeJobRows {
+    return _resolveActiveJobRows(_shift, _activeJob);
   }
 
   List<String> get _wellOrder {
-    final ordered = <String>[];
-    for (final well in _wellOrderSource) {
-      if (!ordered.contains(well)) {
-        ordered.add(well);
-      }
-    }
-    for (final row in _activeJobRows) {
-      if (!ordered.contains(row.well)) {
-        ordered.add(row.well);
-      }
-    }
-    return ordered;
+    return _resolveWellOrder(_activeJobRows, _shift, _activeJob);
   }
 
   String? get _selectedWell {
@@ -131,11 +231,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     if (selectedWell == null) {
       return const [];
     }
-    final rows = _activeJobRows
-        .where((row) => row.well == selectedWell)
-        .toList()
-      ..sort((a, b) => a.hourIndex.compareTo(b.hourIndex));
-    return rows;
+    return _activeJobRows.where((row) => row.well == selectedWell).toList();
   }
 
   bool get _hasActiveJob =>
@@ -495,6 +591,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       return;
     }
     setState(() => _selectedWellIndex -= 1);
+    _saveChartPrefs();
   }
 
   void _goToNextWell() {
@@ -503,6 +600,676 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       return;
     }
     setState(() => _selectedWellIndex += 1);
+    _saveChartPrefs();
+  }
+
+  DateTime? _parseReadingTime(String text) {
+    final raw = text.trim();
+    if (raw.isEmpty) return null;
+    const formats = [
+      'h a',
+      'h:mm a',
+      'hh:mm a',
+      'H:mm',
+      'HH:mm',
+    ];
+    for (final format in formats) {
+      try {
+        return DateFormat(format).parseStrict(raw);
+      } catch (_) {
+        // Try next.
+      }
+    }
+    return null;
+  }
+
+  String _conciseTimeLabel(String time) {
+    final parsed = _parseReadingTime(time);
+    if (parsed != null) {
+      return DateFormat('h a').format(parsed);
+    }
+    return time.trim().isEmpty ? '--' : time.trim();
+  }
+
+  String _specificTimeLabel(String time) {
+    final parsed = _parseReadingTime(time);
+    if (parsed != null) {
+      return DateFormat('h:mm a').format(parsed);
+    }
+    return time.trim().isEmpty ? '--' : time.trim();
+  }
+
+  List<_ChartPoint> _buildChartPoints(List<ProductionReportRow> rows) {
+    final concise = rows.map((row) => _conciseTimeLabel(row.time)).toList();
+    final totalByLabel = <String, int>{};
+    for (final label in concise) {
+      totalByLabel[label] = (totalByLabel[label] ?? 0) + 1;
+    }
+    final seenByLabel = <String, int>{};
+
+    final points = <_ChartPoint>[];
+    for (var i = 0; i < rows.length; i++) {
+      final row = rows[i];
+      final base = concise[i];
+      final seen = (seenByLabel[base] ?? 0) + 1;
+      seenByLabel[base] = seen;
+      var axisLabel = base;
+      if ((totalByLabel[base] ?? 0) > 1) {
+        final specific = _specificTimeLabel(row.time);
+        axisLabel = specific == base ? '$base #$seen' : specific;
+      }
+      points.add(_ChartPoint(
+        x: i.toDouble(),
+        axisLabel: axisLabel,
+        row: row,
+      ));
+    }
+    return points;
+  }
+
+  double? _tryParsePositiveOrZero(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return null;
+    final value = double.tryParse(text);
+    if (value == null || value < 0) return null;
+    return value;
+  }
+
+  double? _seriesNumericValue(_ChartSeries series, ProductionReportRow row) {
+    switch (series) {
+      case _ChartSeries.tubingPressure:
+        return _tryParsePositiveOrZero(row.tbg);
+      case _ChartSeries.casingPressure:
+        return _tryParsePositiveOrZero(row.csg);
+      case _ChartSeries.gasRate:
+        return row.hourlyGas >= 0 ? row.hourlyGas : null;
+      case _ChartSeries.waterRate:
+        return row.waterProduction >= 0 ? row.waterProduction : null;
+      case _ChartSeries.oilRate:
+        return row.oilProduction >= 0 ? row.oilProduction : null;
+      case _ChartSeries.sandRate:
+        return _tryParsePositiveOrZero(row.sandRate);
+      case _ChartSeries.choke:
+        return _tryParsePositiveOrZero(row.choke);
+    }
+  }
+
+  String _seriesExactValue(_ChartSeries series, ProductionReportRow row) {
+    switch (series) {
+      case _ChartSeries.tubingPressure:
+        return row.tbg.trim();
+      case _ChartSeries.casingPressure:
+        return row.csg.trim();
+      case _ChartSeries.gasRate:
+        return row.hourlyGas.toString();
+      case _ChartSeries.waterRate:
+        return row.waterProduction.toString();
+      case _ChartSeries.oilRate:
+        return row.oilProduction.toString();
+      case _ChartSeries.sandRate:
+        return row.sandRate.trim();
+      case _ChartSeries.choke:
+        return row.choke.trim();
+    }
+  }
+
+  String _seriesUnit(_ChartSeries series) {
+    switch (series) {
+      case _ChartSeries.tubingPressure:
+      case _ChartSeries.casingPressure:
+        return 'psi';
+      case _ChartSeries.gasRate:
+        return _shift.inventory.gasUnit == 'mmcfd' ? 'mmcf/d' : 'mcf/d';
+      case _ChartSeries.waterRate:
+      case _ChartSeries.oilRate:
+        return 'bbl/hr';
+      case _ChartSeries.sandRate:
+        return '';
+      case _ChartSeries.choke:
+        return '';
+    }
+  }
+
+  String _seriesLabel(_ChartSeries series) {
+    switch (series) {
+      case _ChartSeries.tubingPressure:
+        return 'Tubing Pressure';
+      case _ChartSeries.casingPressure:
+        return 'Casing Pressure';
+      case _ChartSeries.gasRate:
+        return 'Gas Rate';
+      case _ChartSeries.waterRate:
+        return 'Water Rate';
+      case _ChartSeries.oilRate:
+        return 'Oil Rate';
+      case _ChartSeries.sandRate:
+        return 'Sand Rate';
+      case _ChartSeries.choke:
+        return 'Choke';
+    }
+  }
+
+  _AxisGroup _axisGroup(_ChartSeries series) {
+    switch (series) {
+      case _ChartSeries.tubingPressure:
+      case _ChartSeries.casingPressure:
+      case _ChartSeries.gasRate:
+        return _AxisGroup.left;
+      case _ChartSeries.waterRate:
+      case _ChartSeries.oilRate:
+      case _ChartSeries.sandRate:
+      case _ChartSeries.choke:
+        return _AxisGroup.right;
+    }
+  }
+
+  Color _seriesColor(_ChartSeries series, ColorScheme scheme) {
+    switch (series) {
+      case _ChartSeries.tubingPressure:
+        return scheme.primary;
+      case _ChartSeries.casingPressure:
+        return scheme.secondary;
+      case _ChartSeries.gasRate:
+        return scheme.tertiary;
+      case _ChartSeries.waterRate:
+        return scheme.error;
+      case _ChartSeries.oilRate:
+        return scheme.primaryContainer;
+      case _ChartSeries.sandRate:
+        return scheme.secondaryContainer;
+      case _ChartSeries.choke:
+        return scheme.tertiaryContainer;
+    }
+  }
+
+  Widget _chartLegendControl() {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      key: const Key('production-chart-card'),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Chart Lines',
+              style: TextStyle(
+                color: scheme.primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final series in _ChartSeries.values)
+                  FilterChip(
+                    key: Key('chart-series-${series.id}'),
+                    label: Text(_seriesLabel(series)),
+                    selected: _seriesVisibility[series] ?? false,
+                    onSelected: (selected) {
+                      setState(() {
+                        _seriesVisibility = {
+                          ..._seriesVisibility,
+                          series: selected,
+                        };
+                      });
+                      _saveChartPrefs();
+                    },
+                    selectedColor:
+                        _seriesColor(series, scheme).withValues(alpha: 0.25),
+                    checkmarkColor: _seriesColor(series, scheme),
+                    side: BorderSide(
+                      color: (_seriesVisibility[series] ?? false)
+                          ? _seriesColor(series, scheme)
+                          : scheme.outline,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                OutlinedButton(
+                  key: const Key('chart-select-all'),
+                  onPressed: () {
+                    setState(() {
+                      _seriesVisibility = {
+                        for (final series in _ChartSeries.values) series: true,
+                      };
+                    });
+                    _saveChartPrefs();
+                  },
+                  child: const Text('Select All'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  key: const Key('chart-clear-all'),
+                  onPressed: () {
+                    setState(() {
+                      _seriesVisibility = {
+                        for (final series in _ChartSeries.values) series: false,
+                      };
+                    });
+                    _saveChartPrefs();
+                  },
+                  child: const Text('Clear All'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _emptyChartState(String message) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Text(
+          message,
+          key: const Key('production-chart-empty-state'),
+          style: TextStyle(color: scheme.onSurfaceVariant),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChart() {
+    final rows = _rowsForSelectedWell;
+    if (rows.isEmpty) {
+      return _emptyChartState('No production readings available yet.');
+    }
+
+    final visibleSeries = _ChartSeries.values
+        .where((series) => _seriesVisibility[series] ?? false)
+        .toList(growable: false);
+    if (visibleSeries.isEmpty) {
+      return _emptyChartState('Select at least one chart line.');
+    }
+
+    final points = _buildChartPoints(rows);
+    final leftValues = <double>[];
+    final rightValues = <double>[];
+
+    final seriesCounts = <_ChartSeries, int>{};
+    final builtSeries = <_BuiltChartSeries>[];
+
+    for (final series in visibleSeries) {
+      final values = <double>[];
+      for (final point in points) {
+        final value = _seriesNumericValue(series, point.row);
+        if (value != null) {
+          values.add(value);
+        }
+      }
+      if (_axisGroup(series) == _AxisGroup.left) {
+        leftValues.addAll(values);
+      } else {
+        rightValues.addAll(values);
+      }
+    }
+
+    final transform = _AxisTransform.build(leftValues, rightValues);
+
+    final lineBars = <LineChartBarData>[];
+    for (final series in visibleSeries) {
+      final actualByX = <int, double>{};
+      final exactByX = <int, String>{};
+      final spots = <FlSpot>[];
+      for (var i = 0; i < points.length; i++) {
+        final point = points[i];
+        final value = _seriesNumericValue(series, point.row);
+        if (value == null) continue;
+        actualByX[i] = value;
+        exactByX[i] = _seriesExactValue(series, point.row);
+        final y = _axisGroup(series) == _AxisGroup.left
+            ? value
+            : transform.rightToLeft(value);
+        spots.add(FlSpot(point.x, y));
+      }
+      seriesCounts[series] = spots.length;
+
+      final color = _seriesColor(series, Theme.of(context).colorScheme);
+      builtSeries.add(_BuiltChartSeries(
+        series: series,
+        barData: LineChartBarData(
+          spots: spots,
+          isCurved: false,
+          color: color,
+          barWidth: 2.8,
+          dotData: FlDotData(
+            show: true,
+            getDotPainter: (_, __, ___, ____) => FlDotCirclePainter(
+              radius: 3.2,
+              color: color,
+              strokeWidth: 1.2,
+              strokeColor: Theme.of(context).colorScheme.surface,
+            ),
+          ),
+          belowBarData: BarAreaData(show: false),
+        ),
+        actualByX: actualByX,
+        exactByX: exactByX,
+      ));
+      lineBars.add(builtSeries.last.barData);
+    }
+
+    final pointsWithData = <int>{
+      for (final series in builtSeries) ...series.actualByX.keys,
+    }.length;
+
+    final chartWidth =
+        (points.length * 72).toDouble().clamp(320.0, 4200.0).toDouble();
+    final scheme = Theme.of(context).colorScheme;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Hourly Trend',
+              style: TextStyle(
+                color: scheme.primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Left axis: Tubing Pressure, Casing Pressure, Gas Rate\nRight axis: Water Rate, Oil Rate, Sand Rate, Choke',
+              style: TextStyle(color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: chartWidth,
+                height: 320,
+                child: LineChart(
+                  key: const Key('production-line-chart'),
+                  LineChartData(
+                    minX: 0,
+                    maxX: points.isEmpty ? 1 : (points.length - 1).toDouble(),
+                    minY: transform.plotMin,
+                    maxY: transform.plotMax,
+                    lineTouchData: LineTouchData(
+                      enabled: true,
+                      touchCallback: (event, response) {
+                        if (response == null ||
+                            response.lineBarSpots == null ||
+                            response.lineBarSpots!.isEmpty) {
+                          return;
+                        }
+                        final spot = response.lineBarSpots!.first;
+                        final series = builtSeries[spot.barIndex];
+                        final index = spot.x.round();
+                        if (index < 0 || index >= points.length) {
+                          return;
+                        }
+                        final point = points[index];
+                        final exact = series.exactByX[index] ?? '--';
+                        final unit = _seriesUnit(series.series);
+                        final suffix = unit.isEmpty ? '' : ' $unit';
+                        final detail =
+                            '${point.row.time} • ${_seriesLabel(series.series)}: $exact$suffix';
+                        if (!mounted) return;
+                        setState(() => _pointDetail = detail);
+                      },
+                      touchTooltipData: LineTouchTooltipData(
+                        getTooltipItems: (spots) {
+                          return spots.map((spot) {
+                            final series = builtSeries[spot.barIndex];
+                            final index = spot.x.round();
+                            final point = points[index];
+                            final exact = series.exactByX[index] ?? '--';
+                            final unit = _seriesUnit(series.series);
+                            final suffix = unit.isEmpty ? '' : ' $unit';
+                            return LineTooltipItem(
+                              '${point.row.time}\n${_seriesLabel(series.series)}: $exact$suffix',
+                              TextStyle(
+                                color: scheme.onInverseSurface,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            );
+                          }).toList(growable: false);
+                        },
+                      ),
+                    ),
+                    lineBarsData: lineBars,
+                    titlesData: FlTitlesData(
+                      topTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false),
+                      ),
+                      bottomTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 36,
+                          interval: 1,
+                          getTitlesWidget: (value, meta) {
+                            final index = value.round();
+                            if (index < 0 || index >= points.length) {
+                              return const SizedBox.shrink();
+                            }
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                points[index].axisLabel,
+                                style: TextStyle(
+                                  color: scheme.onSurfaceVariant,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      leftTitles: AxisTitles(
+                        axisNameWidget: Text(
+                          'Pressure / Gas',
+                          style: TextStyle(color: scheme.onSurfaceVariant),
+                        ),
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 50,
+                          getTitlesWidget: (value, meta) => Text(
+                            transform.leftLabel(value),
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      ),
+                      rightTitles: AxisTitles(
+                        axisNameWidget: Text(
+                          'Rates / Choke',
+                          style: TextStyle(color: scheme.onSurfaceVariant),
+                        ),
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 56,
+                          getTitlesWidget: (value, meta) => Text(
+                            transform.rightLabel(value),
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    borderData: FlBorderData(
+                      show: true,
+                      border: Border.all(color: scheme.outlineVariant),
+                    ),
+                    gridData: FlGridData(
+                      show: true,
+                      horizontalInterval:
+                          (transform.plotMax - transform.plotMin) / 4,
+                      getDrawingHorizontalLine: (_) => FlLine(
+                        color: scheme.outlineVariant.withValues(alpha: 0.45),
+                        strokeWidth: 1,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              key: const Key('production-chart-legend-wrap'),
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final series in visibleSeries)
+                  Chip(
+                    key: Key('chart-legend-${series.id}'),
+                    avatar: CircleAvatar(
+                      radius: 6,
+                      backgroundColor: _seriesColor(series, scheme),
+                    ),
+                    label: Text(
+                      '${_seriesLabel(series)} (${seriesCounts[series] ?? 0})',
+                    ),
+                  ),
+              ],
+            ),
+            if (_pointDetail.trim().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  _pointDetail,
+                  key: const Key('production-chart-point-detail'),
+                  style: TextStyle(color: scheme.onSurfaceVariant),
+                ),
+              ),
+            if (pointsWithData <= 1)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Only one reading is available. Add another reading to create a trend line.',
+                  key: const Key('production-chart-single-reading-state'),
+                  style: TextStyle(color: scheme.onSurfaceVariant),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReportTab(String summary) {
+    return ListView(
+      key: const Key('production-report-tab-report'),
+      padding: const EdgeInsets.all(18),
+      children: [
+        _activeJobBanner(),
+        _wellNavigationControls(),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (summary.isNotEmpty)
+                  Text(
+                    summary,
+                    style: const TextStyle(
+                      color: Color(0xFFCDA56A),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                if (summary.isNotEmpty) const SizedBox(height: 8),
+                Text(
+                  'Layout: ${_layout.name}',
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Saved hours: ${_activeJobRows.length}',
+                  style: const TextStyle(color: Colors.white70),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: _buildTable(),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _activeJobRows.isEmpty ? null : _previewReport,
+            icon: const Icon(Icons.preview_outlined),
+            label: const Text('Preview Text'),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _activeJobRows.isEmpty ? null : _copyReport,
+            icon: const Icon(Icons.copy_all),
+            label: const Text('Copy Text'),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _activeJobRows.isEmpty ? null : _exportReport,
+            icon: const Icon(Icons.share_outlined),
+            label: const Text('Export Production Report'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildChartTab(String summary) {
+    return ListView(
+      key: const Key('production-report-tab-chart'),
+      padding: const EdgeInsets.all(18),
+      children: [
+        _activeJobBanner(),
+        _wellNavigationControls(),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (summary.isNotEmpty)
+                  Text(
+                    summary,
+                    style: const TextStyle(
+                      color: Color(0xFFCDA56A),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                if (summary.isNotEmpty) const SizedBox(height: 8),
+                const Text(
+                  'Chart source: current Production Report rows for selected well only',
+                  key: const Key('production-chart-source-note'),
+                  style: const TextStyle(color: Colors.white70),
+                ),
+              ],
+            ),
+          ),
+        ),
+        _chartLegendControl(),
+        _buildChart(),
+      ],
+    );
   }
 
   Widget _wellNavigationControls() {
@@ -671,7 +1438,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     if (_loading) {
       return const Scaffold(
         appBar: AppHeader(title: 'Production Report', showBack: true),
-        body: Center(child: CircularProgressIndicator()),
+        body: Center(child: const CircularProgressIndicator()),
       );
     }
 
@@ -680,76 +1447,155 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         .where((item) => item.trim().isNotEmpty)
         .join(' • ');
 
-    return Scaffold(
-      appBar: const AppHeader(title: 'Production Report', showBack: true),
-      body: ListView(
-        padding: const EdgeInsets.all(18),
-        children: [
-          _activeJobBanner(),
-          _wellNavigationControls(),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (summary.isNotEmpty)
-                    Text(
-                      summary,
-                      style: const TextStyle(
-                        color: Color(0xFFCDA56A),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  if (summary.isNotEmpty) const SizedBox(height: 8),
-                  Text(
-                    'Layout: ${_layout.name}',
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Saved hours: ${_activeJobRows.length}',
-                    style: const TextStyle(color: Colors.white70),
-                  ),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: const AppHeader(title: 'Production Report', showBack: true),
+        body: Column(
+          children: [
+            Material(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              child: TabBar(
+                key: const Key('production-report-tabs'),
+                tabs: const [
+                  Tab(text: 'Report'),
+                  Tab(text: 'Chart'),
                 ],
               ),
             ),
-          ),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: _buildTable(),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _buildReportTab(summary),
+                  _buildChartTab(summary),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _activeJobRows.isEmpty ? null : _previewReport,
-              icon: const Icon(Icons.preview_outlined),
-              label: const Text('Preview Text'),
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _activeJobRows.isEmpty ? null : _copyReport,
-              icon: const Icon(Icons.copy_all),
-              label: const Text('Copy Text'),
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _activeJobRows.isEmpty ? null : _exportReport,
-              icon: const Icon(Icons.share_outlined),
-              label: const Text('Export Production Report'),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
+  }
+}
+
+enum _ChartSeries {
+  tubingPressure('tbg'),
+  casingPressure('csg'),
+  gasRate('gasRate'),
+  waterRate('waterRate'),
+  oilRate('oilRate'),
+  sandRate('sandRate'),
+  choke('choke');
+
+  const _ChartSeries(this.id);
+  final String id;
+}
+
+enum _AxisGroup { left, right }
+
+class _ChartPoint {
+  const _ChartPoint({
+    required this.x,
+    required this.axisLabel,
+    required this.row,
+  });
+
+  final double x;
+  final String axisLabel;
+  final ProductionReportRow row;
+}
+
+class _BuiltChartSeries {
+  const _BuiltChartSeries({
+    required this.series,
+    required this.barData,
+    required this.actualByX,
+    required this.exactByX,
+  });
+
+  final _ChartSeries series;
+  final LineChartBarData barData;
+  final Map<int, double> actualByX;
+  final Map<int, String> exactByX;
+}
+
+class _AxisTransform {
+  const _AxisTransform({
+    required this.leftMin,
+    required this.leftMax,
+    required this.rightMin,
+    required this.rightMax,
+    required this.plotMin,
+    required this.plotMax,
+  });
+
+  final double leftMin;
+  final double leftMax;
+  final double rightMin;
+  final double rightMax;
+  final double plotMin;
+  final double plotMax;
+
+  static _AxisTransform build(
+      List<double> leftValues, List<double> rightValues) {
+    final leftMin = leftValues.isEmpty
+        ? (rightValues.isEmpty
+            ? 0.0
+            : rightValues.reduce((a, b) => a < b ? a : b))
+        : leftValues.reduce((a, b) => a < b ? a : b);
+    final leftMax = leftValues.isEmpty
+        ? (rightValues.isEmpty
+            ? 1.0
+            : rightValues.reduce((a, b) => a > b ? a : b))
+        : leftValues.reduce((a, b) => a > b ? a : b);
+    final rightMin = rightValues.isEmpty
+        ? leftMin
+        : rightValues.reduce((a, b) => a < b ? a : b);
+    final rightMax = rightValues.isEmpty
+        ? leftMax
+        : rightValues.reduce((a, b) => a > b ? a : b);
+
+    final leftRange =
+        (leftMax - leftMin).abs() < 0.000001 ? 1.0 : leftMax - leftMin;
+    final plotMin = leftMin - (leftRange * 0.1);
+    final plotMax = leftMax + (leftRange * 0.1);
+
+    return _AxisTransform(
+      leftMin: leftMin,
+      leftMax: leftMax,
+      rightMin: rightMin,
+      rightMax: rightMax,
+      plotMin: plotMin,
+      plotMax: plotMax,
+    );
+  }
+
+  double rightToLeft(double rightValue) {
+    final rightRange =
+        (rightMax - rightMin).abs() < 0.000001 ? 1.0 : rightMax - rightMin;
+    final leftRange =
+        (leftMax - leftMin).abs() < 0.000001 ? 1.0 : leftMax - leftMin;
+    final ratio = (rightValue - rightMin) / rightRange;
+    return leftMin + (ratio * leftRange);
+  }
+
+  double leftToRight(double leftValue) {
+    final leftRange =
+        (leftMax - leftMin).abs() < 0.000001 ? 1.0 : leftMax - leftMin;
+    final rightRange =
+        (rightMax - rightMin).abs() < 0.000001 ? 1.0 : rightMax - rightMin;
+    final ratio = (leftValue - leftMin) / leftRange;
+    return rightMin + (ratio * rightRange);
+  }
+
+  String leftLabel(double value) => _compact(value);
+
+  String rightLabel(double value) => _compact(leftToRight(value));
+
+  String _compact(double value) {
+    if (value.isNaN || value.isInfinite) return '--';
+    if (value.abs() < 0.01) return '0';
+    if (value % 1 == 0) return value.toStringAsFixed(0);
+    return value.toStringAsFixed(1);
   }
 }
