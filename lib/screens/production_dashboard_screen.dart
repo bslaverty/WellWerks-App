@@ -34,12 +34,26 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _jobStorage.activeJobListenable.addListener(_handleActiveJobChanged);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _jobStorage.activeJobListenable.removeListener(_handleActiveJobChanged);
+    super.dispose();
+  }
+
+  void _handleActiveJobChanged() {
+    if (!mounted) return;
     _load();
   }
 
   Future<void> _load() async {
     var shift = await _shiftService.loadActiveShift();
-    final resolvedJob = await _jobStorage.resolveProductionActiveJob(shift);
+    final activeJob = await _jobStorage.ensureActiveJobLoaded();
+    final resolvedJob =
+        activeJob ?? await _jobStorage.resolveProductionActiveJob(shift);
     if (resolvedJob != null && shift.activeJobId != resolvedJob.id) {
       shift = shift.copyWith(activeJobId: resolvedJob.id);
       await _shiftService.saveActiveShift(shift);

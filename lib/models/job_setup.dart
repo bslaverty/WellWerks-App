@@ -2,6 +2,10 @@ class JobSetup {
   static const _unset = Object();
   static final RegExp _placeholderWellPattern =
       RegExp(r'^well\s*\d+$', caseSensitive: false);
+  static const Set<String> _placeholderWellLiterals = <String>{
+    'well name',
+    '-',
+  };
   static const List<String> chemicalOptions = <String>[
     'Biocide',
     'Scavenger',
@@ -95,7 +99,43 @@ class JobSetup {
       resolvedWellNames.isEmpty ? '' : resolvedWellNames.first;
 
   static bool isPlaceholderWellName(String value) {
-    return _placeholderWellPattern.hasMatch(value.trim());
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return true;
+    if (_placeholderWellPattern.hasMatch(trimmed)) return true;
+    return _placeholderWellLiterals.contains(trimmed.toLowerCase());
+  }
+
+  static bool isRealWellName(String value) {
+    return !isPlaceholderWellName(value);
+  }
+
+  static String resolveDisplayWellName({
+    required String preferredWellName,
+    required String leaseName,
+    required String legacyWellName,
+  }) {
+    final preferred = preferredWellName.trim();
+    if (isRealWellName(preferred)) {
+      return preferred;
+    }
+
+    final lease = leaseName.trim();
+    if (isRealWellName(lease)) {
+      return lease;
+    }
+
+    final legacy = legacyWellName.trim();
+    if (isRealWellName(legacy)) {
+      return legacy;
+    }
+
+    if (preferred.isNotEmpty) {
+      return preferred;
+    }
+    if (legacy.isNotEmpty) {
+      return legacy;
+    }
+    return '';
   }
 
   List<JobSetupWell> get resolvedWellEntries {
@@ -106,15 +146,15 @@ class JobSetup {
 
     for (int i = 0; i < maxCount; i++) {
       final existingEntry = i < wellEntries.length ? wellEntries[i] : null;
-      final rawName = existingEntry?.name ?? (i < wells.length ? wells[i] : '');
+      final rawName = existingEntry?.name ?? '';
+      final legacyName = i < wells.length ? wells[i] : '';
       final lease = i < leases.length ? leases[i].trim() : '';
 
-      var nextName = rawName.trim();
-      if (nextName.isEmpty && lease.isNotEmpty) {
-        nextName = lease;
-      } else if (isPlaceholderWellName(nextName) && lease.isNotEmpty) {
-        nextName = lease;
-      }
+      final nextName = resolveDisplayWellName(
+        preferredWellName: rawName,
+        leaseName: lease,
+        legacyWellName: legacyName,
+      );
       if (nextName.isEmpty) continue;
 
       final nextId = existingEntry != null && existingEntry.id.trim().isNotEmpty

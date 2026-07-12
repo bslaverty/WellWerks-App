@@ -129,7 +129,9 @@ void main() {
       JobSetup(
         company: 'Mach Energy',
         padName: 'Horse Pad',
-        wells: const ['Horse 16-2H'],
+        wells: const ['Well 1'],
+        leaseNames: const ['Horse 16-2H'],
+        wellEntries: const [JobSetupWell(id: 'well_a', name: 'Well Name')],
         shift: 'Day',
       ),
     );
@@ -138,15 +140,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Active Company'), findsOneWidget);
-    expect(find.text('Active Job'), findsOneWidget);
-    expect(find.text('Continue Active Job'), findsOneWidget);
-    expect(
-        find.textContaining('Horse Pad • Horse 16-2H • Day'), findsOneWidget);
+    expect(find.textContaining('Active Job: Horse Pad • Horse 16-2H • Day'),
+        findsOneWidget);
+    expect(find.text('Active Job'), findsNothing);
+    expect(find.text('Continue Active Job'), findsNothing);
+    expect(find.text('ACTIVE'), findsNothing);
+    expect(find.text('Manage / Edit Job'), findsNothing);
+    expect(find.textContaining('Horse Pad • - • Day'), findsNothing);
     expect(find.text('Reset Active Job'), findsNothing);
 
     await tester.tap(find.byTooltip('Expand details'));
     await tester.pumpAndSettle();
 
+    expect(find.text('Active Job'), findsOneWidget);
+    expect(find.text('Continue Active Job'), findsOneWidget);
+    expect(find.text('ACTIVE'), findsOneWidget);
     expect(find.text('Reset Active Job'), findsOneWidget);
     expect(find.text('Manage / Edit Job'), findsOneWidget);
   });
@@ -155,6 +163,8 @@ void main() {
       'Home no active job state keeps company selector and start action',
       (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
+    final jobStorage = JobStorageService();
+    await jobStorage.clearActiveJob();
     await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
     await tester.pumpAndSettle();
 
@@ -163,6 +173,86 @@ void main() {
     expect(find.text('Start Job'), findsOneWidget);
     expect(find.text('Continue Active Job'), findsNothing);
     expect(find.text('ACTIVE'), findsNothing);
+    expect(find.textContaining('Active Job:'), findsNothing);
+  });
+
+  test('Well name precedence replaces placeholders with lease names', () {
+    final job = JobSetup(
+      wells: const ['Well 1', '-'],
+      leaseNames: const ['Horse 16-2H', 'Horse 16-3H'],
+      wellEntries: const [
+        JobSetupWell(id: 'well_a', name: 'Well Name'),
+        JobSetupWell(id: 'well_b', name: '-'),
+      ],
+    );
+
+    expect(job.resolvedWellNames, const ['Horse 16-2H', 'Horse 16-3H']);
+    expect(job.wellIds, const ['well_a', 'well_b']);
+  });
+
+  test('Manual real well name beats lease name', () {
+    final job = JobSetup(
+      wells: const ['Custom Alpha'],
+      leaseNames: const ['Horse 16-2H'],
+      wellEntries: const [JobSetupWell(id: 'well_a', name: 'Custom Alpha')],
+    );
+
+    expect(job.resolvedWellNames, const ['Custom Alpha']);
+  });
+
+  test('Active job persistence normalizes placeholders and survives reload',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final storage = JobStorageService();
+
+    await storage.saveActiveJob(
+      JobSetup(
+        padName: 'Horse Pad',
+        shift: 'Day',
+        wells: const ['Well 1'],
+        leaseNames: const ['Horse 16-2H'],
+        wellEntries: const [JobSetupWell(id: 'well_a', name: 'Well Name')],
+      ),
+    );
+
+    final loaded = await storage.loadActiveJob();
+    expect(loaded, isNotNull);
+    expect(loaded!.resolvedWellNames, const ['Horse 16-2H']);
+    expect(loaded.wellEntries.first.name, 'Horse 16-2H');
+    expect(loaded.wellEntries.first.id, 'well_a');
+  });
+
+  test('Active job save publishes updated wells through shared notifier',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final storage = JobStorageService();
+    await storage.clearActiveJob();
+
+    final notifiedWells = <String>[];
+    void listener() {
+      final current = storage.activeJobListenable.value;
+      notifiedWells.add(current?.primaryWell ?? '');
+    }
+
+    storage.activeJobListenable.addListener(listener);
+    final first = await storage.saveActiveJob(
+      JobSetup(
+        padName: 'Horse Pad',
+        wells: const ['Well 1'],
+        leaseNames: const ['Horse 16-2H'],
+      ),
+    );
+    await storage.updateActiveJob(
+      first.copyWith(
+        wellEntries: const [JobSetupWell(id: 'well_a', name: 'Horse 16-3H')],
+        wells: const ['Horse 16-3H'],
+        leaseNames: const ['Horse 16-2H'],
+      ),
+    );
+    storage.activeJobListenable.removeListener(listener);
+
+    expect(notifiedWells, contains('Horse 16-2H'));
+    expect(notifiedWells, contains('Horse 16-3H'));
   });
 
   testWidgets('Bottoms Up shows tubing and casing selectors', (
@@ -649,6 +739,8 @@ void main() {
     WidgetTester tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
+    final jobStorage = JobStorageService();
+    await jobStorage.clearActiveJob();
     ActiveCompanyService.instance.resetForTest();
     final service = ProductionShiftService();
 
@@ -695,7 +787,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: ShiftReportScreen()));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Linked to active shift data'), findsWidgets);
+    expect(find.text('Well 1'), findsWidgets);
     final copyReportButton = tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'Copy Text'),
     );

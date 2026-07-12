@@ -45,13 +45,25 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   void initState() {
     super.initState();
     _recoveryState.saveLastModule(RecoveryModules.textUpdate);
+    _jobStorage.activeJobListenable.addListener(_handleActiveJobChanged);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _jobStorage.activeJobListenable.removeListener(_handleActiveJobChanged);
+    super.dispose();
+  }
+
+  void _handleActiveJobChanged() {
+    if (!mounted) return;
     _load();
   }
 
   Future<void> _load() async {
     var shift = await _shiftService.loadActiveShift();
     final settings = await _settingsService.load();
-    final activeJob = await _jobStorage.loadActiveJob();
+    final activeJob = await _jobStorage.ensureActiveJobLoaded();
     if (activeJob != null && shift.activeJobId != activeJob.id) {
       shift = shift.copyWith(activeJobId: activeJob.id);
       await _shiftService.saveActiveShift(shift);

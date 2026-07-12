@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/job_setup.dart';
@@ -10,6 +11,11 @@ class JobStorageService {
   static const _lastEndedJobKey = 'wellwerks_last_ended_job';
   static const _lastActiveJobIdKey = 'wellwerks_last_active_job_id_v1';
   static const _jobsKey = 'wellwerks_jobs_list_v1';
+  static final ValueNotifier<JobSetup?> _activeJobNotifier =
+      ValueNotifier<JobSetup?>(null);
+  static bool _activeJobHydrated = false;
+
+  ValueListenable<JobSetup?> get activeJobListenable => _activeJobNotifier;
 
   Future<JobSetup> saveActiveJob(JobSetup job) async {
     final prefs = await SharedPreferences.getInstance();
@@ -17,7 +23,16 @@ class JobStorageService {
     await prefs.setString(_activeJobKey, jsonEncode(normalized.toJson()));
     await prefs.setString(_lastActiveJobIdKey, normalized.id);
     await _upsertJobInList(normalized);
+    _activeJobHydrated = true;
+    _publishActiveJob(normalized);
     return normalized;
+  }
+
+  Future<JobSetup?> ensureActiveJobLoaded() async {
+    if (_activeJobHydrated) {
+      return _activeJobNotifier.value;
+    }
+    return loadActiveJob();
   }
 
   Future<List<JobSetup>> loadJobs() async {
@@ -53,12 +68,26 @@ class JobStorageService {
   Future<JobSetup?> loadActiveJob() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_activeJobKey);
-    if (raw == null || raw.isEmpty) return null;
+    if (raw == null || raw.isEmpty) {
+      _activeJobHydrated = true;
+      _publishActiveJob(null);
+      return null;
+    }
     try {
-      return JobSetup.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      final decoded =
+          JobSetup.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      final normalized = _normalizeActiveJob(decoded);
+      if (!_jobsEqual(decoded, normalized)) {
+        await prefs.setString(_activeJobKey, jsonEncode(normalized.toJson()));
+      }
+      _activeJobHydrated = true;
+      _publishActiveJob(normalized);
+      return normalized;
     } catch (_) {
       await prefs.remove(_activeJobKey);
       await prefs.remove(_lastActiveJobIdKey);
+      _activeJobHydrated = true;
+      _publishActiveJob(null);
       return null;
     }
   }
@@ -128,6 +157,8 @@ class JobStorageService {
     await prefs.remove(_activeJobKey);
     await prefs.remove(_lastActiveJobIdKey);
     await _upsertJobInList(endedJob);
+    _activeJobHydrated = true;
+    _publishActiveJob(null);
     return endedJob;
   }
 
@@ -196,6 +227,8 @@ class JobStorageService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_activeJobKey);
     await prefs.remove(_lastActiveJobIdKey);
+    _activeJobHydrated = true;
+    _publishActiveJob(null);
   }
 
   Future<void> clearLastEndedJob() async {
@@ -217,6 +250,20 @@ class JobStorageService {
       wells: resolvedEntries.map((entry) => entry.name).toList(),
       wellEntries: resolvedEntries,
     );
+  }
+
+  bool _jobsEqual(JobSetup? a, JobSetup? b) {
+    if (a == null || b == null) {
+      return a == b;
+    }
+    return jsonEncode(a.toJson()) == jsonEncode(b.toJson());
+  }
+
+  void _publishActiveJob(JobSetup? next) {
+    if (_jobsEqual(_activeJobNotifier.value, next)) {
+      return;
+    }
+    _activeJobNotifier.value = next;
   }
 
   Future<void> _upsertJobInList(JobSetup job) async {

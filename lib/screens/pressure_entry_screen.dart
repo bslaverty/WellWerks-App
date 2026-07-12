@@ -93,11 +93,18 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   void initState() {
     super.initState();
     _recoveryState.saveLastModule(RecoveryModules.quickRound);
+    _jobStorage.activeJobListenable.addListener(_handleActiveJobChanged);
+    _load();
+  }
+
+  void _handleActiveJobChanged() {
+    if (!mounted) return;
     _load();
   }
 
   @override
   void dispose() {
+    _jobStorage.activeJobListenable.removeListener(_handleActiveJobChanged);
     for (final controller in _controllers) {
       controller.dispose();
     }
@@ -113,7 +120,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       );
       await _service.saveActiveShift(shift);
     }
-    final activeJob = await _jobStorage.loadActiveJob();
+    final activeJob = await _jobStorage.ensureActiveJobLoaded();
     final settings = await _settingsService.load();
     if (activeJob != null && shift.activeJobId != activeJob.id) {
       shift = shift.copyWith(activeJobId: activeJob.id);
@@ -583,7 +590,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   Future<void> _refreshActiveJobReference() async {
-    final activeJob = await _jobStorage.loadActiveJob();
+    final activeJob = await _jobStorage.ensureActiveJobLoaded();
     _activeJob = activeJob;
     final activeJobId = activeJob?.id;
     if (activeJobId == null || _shift.activeJobId == activeJobId) {

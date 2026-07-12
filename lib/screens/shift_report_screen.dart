@@ -35,12 +35,24 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   void initState() {
     super.initState();
     _recoveryState.saveLastModule(RecoveryModules.productionReport);
+    _jobStorage.activeJobListenable.addListener(_handleActiveJobChanged);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _jobStorage.activeJobListenable.removeListener(_handleActiveJobChanged);
+    super.dispose();
+  }
+
+  void _handleActiveJobChanged() {
+    if (!mounted) return;
     _load();
   }
 
   Future<void> _load() async {
     var shift = await _shiftService.loadActiveShift();
-    final activeJob = await _jobStorage.loadActiveJob();
+    final activeJob = await _jobStorage.ensureActiveJobLoaded();
     if (activeJob != null && shift.activeJobId != activeJob.id) {
       shift = shift.copyWith(activeJobId: activeJob.id);
       await _shiftService.saveActiveShift(shift);

@@ -61,6 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _activeCompanyService.activeCompany
         .addListener(_handleActiveCompanyChanged);
+    _jobStorage.activeJobListenable.addListener(_handleActiveJobChanged);
     _loadRecovery();
   }
 
@@ -68,6 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _activeCompanyService.activeCompany
         .removeListener(_handleActiveCompanyChanged);
+    _jobStorage.activeJobListenable.removeListener(_handleActiveJobChanged);
     super.dispose();
   }
 
@@ -78,8 +80,18 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _handleActiveJobChanged() {
+    if (!mounted) return;
+    setState(() {
+      _activeJob = _jobStorage.activeJobListenable.value;
+      if (_activeJob == null) {
+        _activeJobExpanded = false;
+      }
+    });
+  }
+
   Future<void> _loadRecovery() async {
-    final activeJob = await _jobStorage.loadActiveJob();
+    final activeJob = await _jobStorage.ensureActiveJobLoaded();
     final lastActiveJobId = await _jobStorage.loadLastActiveJobId();
     final activeCompany = await _activeCompanyService.ensureLoaded();
     final snapshot = await _recoveryState.loadSnapshot(
@@ -305,131 +317,151 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               )
             else ...[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Active Job',
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () {
+                  setState(() {
+                    _activeJobExpanded = !_activeJobExpanded;
+                  });
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Active Job: ${_activeJobCollapsedSummary(job)}',
                           style: TextStyle(
-                            color: scheme.primary,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
+                            color: scheme.onSurface,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _activeJobCollapsedSummary(job),
-                          style: TextStyle(
-                            color: scheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: scheme.primary,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      'ACTIVE',
-                      style: TextStyle(
-                        color: scheme.onPrimary,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.4,
                       ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: _activeJobExpanded
-                        ? 'Collapse details'
-                        : 'Expand details',
-                    onPressed: () {
-                      setState(() {
-                        _activeJobExpanded = !_activeJobExpanded;
-                      });
-                    },
-                    icon: Icon(
-                      _activeJobExpanded
-                          ? Icons.keyboard_arrow_up
-                          : Icons.keyboard_arrow_down,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(56),
-                    textStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  onPressed: () => _continueActiveJob(context),
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('Continue Active Job'),
-                ),
-              ),
-              if (_activeJobExpanded)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 14),
-                    _infoLine(context, 'Pad', job.padName),
-                    _infoLine(
-                      context,
-                      job.isMultiWellJob ? 'Wells' : 'Well',
-                      job.resolvedWellNames.isEmpty
-                          ? '-'
-                          : job.resolvedWellNames.join(', '),
-                    ),
-                    _infoLine(context, 'Shift', job.shift),
-                    _infoLine(context, 'Started', _startedText(job)),
-                    _infoLine(context, 'Status', 'Active'),
-                    if (hasContinueModule) ...[
-                      const SizedBox(height: 4),
-                      _infoLine(
-                        context,
-                        'Continue To',
-                        _moduleLabel(_lastModule),
+                      IconButton(
+                        tooltip: _activeJobExpanded
+                            ? 'Collapse details'
+                            : 'Expand details',
+                        onPressed: () {
+                          setState(() {
+                            _activeJobExpanded = !_activeJobExpanded;
+                          });
+                        },
+                        icon: Icon(
+                          _activeJobExpanded
+                              ? Icons.keyboard_arrow_up
+                              : Icons.keyboard_arrow_down,
+                        ),
                       ),
                     ],
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () => open(
-                          context,
-                          const JobSetupScreen(editActiveOnOpen: true),
-                        ),
-                        icon: const Icon(Icons.edit_outlined),
-                        label: const Text('Manage / Edit Job'),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _confirmResetActiveJob,
-                        icon: const Icon(Icons.restart_alt),
-                        label: const Text('Reset Active Job'),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
+              ),
+              if (_activeJobExpanded) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerHighest.withValues(
+                      alpha: 0.45,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'Active Job',
+                            style: TextStyle(
+                              color: scheme.primary,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: scheme.primary,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              'ACTIVE',
+                              style: TextStyle(
+                                color: scheme.onPrimary,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _infoLine(context, 'Pad', job.padName),
+                      _infoLine(
+                        context,
+                        job.isMultiWellJob ? 'Wells' : 'Well',
+                        job.resolvedWellNames.isEmpty
+                            ? '-'
+                            : job.resolvedWellNames.join(', '),
+                      ),
+                      _infoLine(context, 'Shift', job.shift),
+                      _infoLine(context, 'Started', _startedText(job)),
+                      _infoLine(context, 'Status', 'Active'),
+                      if (hasContinueModule) ...[
+                        const SizedBox(height: 4),
+                        _infoLine(
+                          context,
+                          'Continue To',
+                          _moduleLabel(_lastModule),
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(52),
+                            textStyle: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          onPressed: () => _continueActiveJob(context),
+                          icon: const Icon(Icons.play_arrow),
+                          label: const Text('Continue Active Job'),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () => open(
+                            context,
+                            const JobSetupScreen(editActiveOnOpen: true),
+                          ),
+                          icon: const Icon(Icons.edit_outlined),
+                          label: const Text('Manage / Edit Job'),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _confirmResetActiveJob,
+                          icon: const Icon(Icons.restart_alt),
+                          label: const Text('Reset Active Job'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ],
         ),

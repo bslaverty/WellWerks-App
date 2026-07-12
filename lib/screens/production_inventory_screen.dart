@@ -74,6 +74,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     super.initState();
     _activeCompanyService.activeCompany
         .addListener(_handleActiveCompanyChanged);
+    _jobStorage.activeJobListenable.addListener(_handleActiveJobChanged);
     _load();
   }
 
@@ -82,10 +83,16 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     await _load();
   }
 
+  Future<void> _handleActiveJobChanged() async {
+    if (!mounted) return;
+    await _load();
+  }
+
   @override
   void dispose() {
     _activeCompanyService.activeCompany
         .removeListener(_handleActiveCompanyChanged);
+    _jobStorage.activeJobListenable.removeListener(_handleActiveJobChanged);
     for (final controller in [
       _company,
       _pad,
@@ -115,7 +122,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
 
   Future<void> _load() async {
     final shift = await _service.loadActiveShift();
-    final activeJob = await _jobStorage.loadActiveJob();
+    final activeJob = await _jobStorage.ensureActiveJobLoaded();
     _activeJobSetup = activeJob;
     final settings = await _settingsService.load();
     _layoutProfiles = await _layoutService.loadProfiles();
@@ -542,7 +549,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   Future<void> _saveInventory() async {
-    final activeJob = await _jobStorage.loadActiveJob();
+    final activeJob = await _jobStorage.ensureActiveJobLoaded();
     _activeJobSetup = activeJob;
     if (activeJob == null || activeJob.resolvedWellNames.isEmpty) {
       if (!mounted) return;
@@ -1352,7 +1359,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
             ),
             value: _useJobSetupTanks,
             onChanged: (value) async {
-              final activeJob = await _jobStorage.loadActiveJob();
+              final activeJob = await _jobStorage.ensureActiveJobLoaded();
               setState(() {
                 _useJobSetupTanks = value;
                 if (value && activeJob != null) {

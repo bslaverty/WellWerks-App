@@ -143,11 +143,18 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
   void initState() {
     super.initState();
     _recoveryState.saveLastModule(RecoveryModules.rigUpInventory);
+    _jobStorage.activeJobListenable.addListener(_handleActiveJobChanged);
+    _initialize();
+  }
+
+  void _handleActiveJobChanged() {
+    if (!mounted) return;
     _initialize();
   }
 
   @override
   void dispose() {
+    _jobStorage.activeJobListenable.removeListener(_handleActiveJobChanged);
     _customerController.dispose();
     _padController.dispose();
     _notesController.dispose();
@@ -166,7 +173,7 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
     final record = initialId.isEmpty
         ? null
         : await _inventoryService.loadRecord(initialId);
-    final activeJob = await _jobStorage.loadActiveJob();
+    final activeJob = await _jobStorage.ensureActiveJobLoaded();
 
     if (!mounted) return;
 

@@ -174,13 +174,18 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       _syncWellNameFromLease(index);
       return;
     }
+    if (JobSetup.isPlaceholderWellName(value)) {
+      wellNameManuallyEdited[index] = false;
+      _syncWellNameFromLease(index);
+      return;
+    }
     final lease = index < leaseNames.length ? leaseNames[index].trim() : '';
     wellNameManuallyEdited[index] = value.trim() != lease;
   }
 
   Future<void> _load() async {
     await _activeCompanyService.ensureLoaded();
-    final active = await _storage.loadActiveJob();
+    final active = await _storage.ensureActiveJobLoaded();
     if (active != null) {
       _applyJobToForm(active);
     } else {
@@ -355,8 +360,13 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     final normalizedPairs = <MapEntry<String, String>>[];
     final normalizedLeaseNames = <String>[];
     for (int i = 0; i < wells.length; i++) {
-      final name = wells[i].trim();
       final lease = i < leaseNames.length ? leaseNames[i].trim() : '';
+      final preferredName = wells[i].trim();
+      final name = JobSetup.resolveDisplayWellName(
+        preferredWellName: preferredName,
+        leaseName: lease,
+        legacyWellName: preferredName,
+      );
       if (name.isEmpty) continue;
       final id = i < wellIds.length && wellIds[i].trim().isNotEmpty
           ? wellIds[i].trim()

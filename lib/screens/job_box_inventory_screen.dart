@@ -45,6 +45,7 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
     super.initState();
     _activeCompanyService.activeCompany
         .addListener(_handleActiveCompanyChanged);
+    _jobStorage.activeJobListenable.addListener(_handleActiveJobChanged);
     _load();
   }
 
@@ -53,10 +54,16 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
     _load();
   }
 
+  void _handleActiveJobChanged() {
+    if (!mounted) return;
+    _load();
+  }
+
   @override
   void dispose() {
     _activeCompanyService.activeCompany
         .removeListener(_handleActiveCompanyChanged);
+    _jobStorage.activeJobListenable.removeListener(_handleActiveJobChanged);
     _customerController.dispose();
     _dateController.dispose();
     _wellNamesController.dispose();
@@ -69,7 +76,7 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
     final initialId = widget.initialRecordId?.trim() ?? '';
     final hideZeroPreference = await _service.loadHideZeroPreference();
     final activeCompany = await _activeCompanyService.ensureLoaded();
-    final activeJob = await _jobStorage.loadActiveJob();
+    final activeJob = await _jobStorage.ensureActiveJobLoaded();
     if (initialId.isNotEmpty) {
       record = await _service.loadRecord(initialId);
     }
