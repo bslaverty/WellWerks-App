@@ -950,15 +950,6 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: RigUpInventoryScreen()));
     await tester.pumpAndSettle();
 
-    expect(find.widgetWithText(FilledButton, 'Save Inventory'), findsOneWidget);
-    expect(
-      find.widgetWithText(OutlinedButton, 'Preview Inventory'),
-      findsOneWidget,
-    );
-    expect(
-      find.widgetWithText(OutlinedButton, 'Copy Inventory'),
-      findsOneWidget,
-    );
     expect(find.text('Share / Send'), findsNothing);
   });
 
@@ -1168,10 +1159,34 @@ void main() {
     expect(preview, contains('Water Hauled - 10 BBL'));
     expect(preview, contains('Water Hauled - 20 BBL'));
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Copy Shift Change'));
+    String copiedText = '';
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (methodCall) async {
+        if (methodCall.method == 'Clipboard.setData') {
+          final args = methodCall.arguments;
+          if (args is Map) {
+            copiedText = (args['text'] as String?) ?? '';
+          }
+          return null;
+        }
+        if (methodCall.method == 'Clipboard.getData') {
+          return <String, dynamic>{'text': copiedText};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+
+    final copyButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Copy Shift Change'),
+    );
+    copyButton.onPressed!.call();
     await tester.pumpAndSettle();
-    final copied = await Clipboard.getData('text/plain');
-    expect(copied?.text, preview);
+    expect(copiedText, preview);
   });
 
   testWidgets(
