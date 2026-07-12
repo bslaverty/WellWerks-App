@@ -13,6 +13,7 @@ import 'package:wellwerks/screens/equipment_layout_screen.dart';
 import 'package:wellwerks/screens/job_box_inventory_screen.dart';
 import 'package:wellwerks/screens/jsa_screen.dart';
 import 'package:wellwerks/screens/home_screen.dart';
+import 'package:wellwerks/screens/rig_up_inventory_screen.dart';
 import 'package:wellwerks/screens/pressure_entry_screen.dart';
 import 'package:wellwerks/screens/production_history_screen.dart';
 import 'package:wellwerks/screens/production_inventory_screen.dart';
@@ -26,6 +27,7 @@ import 'package:wellwerks/services/job_storage_service.dart';
 import 'package:wellwerks/services/jsa_storage_service.dart';
 import 'package:wellwerks/services/production_shift_service.dart';
 import 'package:wellwerks/services/report_profile_service.dart';
+import 'package:wellwerks/services/rig_up_inventory_service.dart';
 
 Finder labeledTextField(String label) {
   return find.byWidgetPredicate(
@@ -268,7 +270,6 @@ void main() {
   testWidgets('Wide layout shows persistent equipment library', (
     WidgetTester tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 800));
     await tester.pumpWidget(const MaterialApp(home: EquipmentLayoutScreen()));
     await tester.pumpAndSettle();
 
@@ -665,6 +666,142 @@ void main() {
     addTearDown(() {
       tester.binding.setSurfaceSize(null);
     });
+  });
+
+  testWidgets('Rig-Up assign by well enables after quantity increases', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final jobStorage = JobStorageService();
+    await jobStorage.saveActiveJob(
+      JobSetup(
+        company: 'Mach Energy',
+        padName: 'Rig Pad',
+        wells: const ['Horse 16-2H', 'Horse 16-3H'],
+        leaseNames: const ['Horse 16-2H', 'Horse 16-3H'],
+        wellEntries: const [
+          JobSetupWell(id: 'well_a', name: 'Horse 16-2H'),
+          JobSetupWell(id: 'well_b', name: 'Horse 16-3H'),
+        ],
+      ),
+    );
+
+    await tester.binding.setSurfaceSize(const Size(1200, 4200));
+    await tester.pumpWidget(const MaterialApp(home: RigUpInventoryScreen()));
+    await tester.pumpAndSettle();
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final assignButton =
+        find.byKey(const ValueKey('rig-up-assign-sphericalSeparator'));
+    expect(
+      tester.widget<TextButton>(assignButton).onPressed,
+      isNull,
+    );
+
+    await tester
+        .tap(find.byKey(const ValueKey('rig-up-increase-sphericalSeparator')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextButton>(assignButton).onPressed,
+      isNotNull,
+    );
+  });
+
+  test('Rig-Up assignment payload persists stable well IDs and Asset Numbers',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final service = RigUpInventoryService();
+    final recordId = await service.saveRecord(
+      payload: {
+        'customer': 'Mach Energy',
+        'pad': 'Rig Pad',
+        'wells': const ['Horse 16-2H', 'Horse 16-3H'],
+        'wellIds': const ['well_a', 'well_b'],
+        'assignByWellEnabled': {
+          'sphericalSeparator': true,
+        },
+        'assignedByWell': {
+          'sphericalSeparator': {
+            'well_a': 1,
+            'well_b': 1,
+          },
+        },
+        'assetNumbersByWell': {
+          'sphericalSeparator': {
+            'well_a': ['SS-1042'],
+            'well_b': ['SS-1088'],
+          },
+        },
+      },
+    );
+
+    final saved = await service.loadRecord(recordId);
+    expect(saved, isNotNull);
+    expect(saved!['wellIds'], ['well_a', 'well_b']);
+    expect(saved['assignByWellEnabled'], isA<Map>());
+    expect(saved['assignedByWell'], isA<Map>());
+    expect(saved['assetNumbersByWell'], isA<Map>());
+    expect(
+      (saved['assetNumbersByWell'] as Map)['sphericalSeparator']['well_a'],
+      ['SS-1042'],
+    );
+    expect(
+      (saved['assetNumbersByWell'] as Map)['sphericalSeparator']['well_b'],
+      ['SS-1088'],
+    );
+  });
+
+  testWidgets('Rig-Up quantity increase preserves existing Asset Numbers',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final jobStorage = JobStorageService();
+    await jobStorage.saveActiveJob(
+      JobSetup(
+        company: 'Mach Energy',
+        padName: 'Rig Pad',
+        wells: const ['Horse 16-2H'],
+        leaseNames: const ['Horse 16-2H'],
+        wellEntries: const [JobSetupWell(id: 'well_a', name: 'Horse 16-2H')],
+      ),
+    );
+
+    await tester.binding.setSurfaceSize(const Size(1200, 4200));
+    await tester.pumpWidget(const MaterialApp(home: RigUpInventoryScreen()));
+    await tester.pumpAndSettle();
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester
+        .tap(find.byKey(const ValueKey('rig-up-increase-sphericalSeparator')));
+    await tester.pumpAndSettle();
+
+    await tester
+        .tap(find.byKey(const ValueKey('rig-up-assign-sphericalSeparator')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(Switch).first);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, 'SS-1042');
+    await tester.tap(find.text('Done').last);
+    await tester.pumpAndSettle();
+
+    await tester
+        .tap(find.byKey(const ValueKey('rig-up-assign-sphericalSeparator')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Switch), findsWidgets);
+
+    final plusButtons = find.byIcon(Icons.add);
+    await tester.tap(plusButtons.last);
+    await tester.pumpAndSettle();
+
+    final assetFields = find.byType(TextField);
+    expect(assetFields, findsWidgets);
+    expect(
+      (tester.widget<TextField>(assetFields.at(0)).controller?.text ?? ''),
+      'SS-1042',
+    );
   });
 
   testWidgets(

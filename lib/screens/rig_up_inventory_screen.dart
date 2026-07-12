@@ -130,6 +130,7 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
   JobSetup? _activeJob;
 
   final List<String> _wells = <String>[];
+  final List<String> _wellIds = <String>[];
   Map<String, int> _counts = <String, int>{};
   Map<String, Map<String, int>> _assignedByWell = <String, Map<String, int>>{};
   Map<String, Map<String, String>> _tankSplits =
@@ -207,6 +208,24 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
           ..addAll(rawWells
               .map((well) => well.trim())
               .where((well) => well.isNotEmpty));
+        final rawWellIds =
+            List<String>.from(record['wellIds'] as List? ?? const []);
+        _wellIds
+          ..clear()
+          ..addAll(rawWellIds
+              .map((wellId) => wellId.trim())
+              .where((wellId) => wellId.isNotEmpty));
+        if (_wellIds.length != _wells.length && activeJob != null) {
+          final activeIds = activeJob.wellIds
+              .map((wellId) => wellId.trim())
+              .where((wellId) => wellId.isNotEmpty)
+              .toList();
+          if (activeIds.length == _wells.length) {
+            _wellIds
+              ..clear()
+              ..addAll(activeIds);
+          }
+        }
 
         final rawCounts = Map<String, dynamic>.from(
             record['counts'] as Map? ?? <String, dynamic>{});
@@ -239,10 +258,22 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
             .map((item) => item.trim())
             .where((item) => item.isNotEmpty)
             .toList();
+        final contextWellIds = (activeJob?.wellIds ?? const <String>[])
+            .map((item) => item.trim())
+            .where((item) => item.isNotEmpty)
+            .toList();
         if (contextWells.isNotEmpty) {
           _wells
             ..clear()
             ..addAll(contextWells);
+          _wellIds
+            ..clear()
+            ..addAll(contextWellIds.length == contextWells.length
+                ? contextWellIds
+                : [
+                    for (int i = 0; i < contextWells.length; i++)
+                      JobSetup.generateWellId(),
+                  ]);
         }
         if (activeJob != null) {
           if (_padController.text.trim().isEmpty) {
@@ -258,6 +289,37 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
       _loading = false;
     });
   }
+
+  List<String> get _activeWellNames => _wells
+      .map((item) => item.trim())
+      .where((item) => item.isNotEmpty)
+      .toList();
+
+  List<String> get _activeWellIds {
+    if (_wellIds.length == _wells.length && _wellIds.isNotEmpty) {
+      return List<String>.from(_wellIds);
+    }
+    return [
+      for (int i = 0; i < _wells.length; i++)
+        JobSetup.legacyWellId(_wells[i], i),
+    ];
+  }
+
+  String _wellIdAt(int index) {
+    if (index >= 0 && index < _activeWellIds.length) {
+      return _activeWellIds[index];
+    }
+    return '';
+  }
+
+  String _wellNameAt(int index) {
+    if (index >= 0 && index < _wells.length) {
+      return _wells[index].trim();
+    }
+    return '';
+  }
+
+  bool get _hasActiveWells => _activeWellNames.isNotEmpty;
 
   Map<String, Map<String, int>> _decodeAssignments(dynamic raw) {
     final out = <String, Map<String, int>>{};
@@ -347,24 +409,24 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
   void _reconcileToWells() {
     for (final item in _allItems) {
       final assigned = _assignedByWell[item.key] ?? <String, int>{};
-      assigned.removeWhere((well, _) => !_wells.contains(well));
-      for (final well in _wells) {
-        assigned.putIfAbsent(well, () => 0);
+      assigned.removeWhere((wellId, _) => !_activeWellIds.contains(wellId));
+      for (final wellId in _activeWellIds) {
+        assigned.putIfAbsent(wellId, () => 0);
       }
       _assignedByWell[item.key] = assigned;
 
       final splits = _tankSplits[item.key] ?? <String, String>{};
-      splits.removeWhere((well, _) => !_wells.contains(well));
-      for (final well in _wells) {
-        splits.putIfAbsent(well, () => '');
+      splits.removeWhere((wellId, _) => !_activeWellIds.contains(wellId));
+      for (final wellId in _activeWellIds) {
+        splits.putIfAbsent(wellId, () => '');
       }
       _tankSplits[item.key] = splits;
 
       final assetMap =
           _assetNumbersByWell[item.key] ?? <String, List<String>>{};
-      assetMap.removeWhere((well, _) => !_wells.contains(well));
-      for (final well in _wells) {
-        assetMap.putIfAbsent(well, () => <String>[]);
+      assetMap.removeWhere((wellId, _) => !_activeWellIds.contains(wellId));
+      for (final wellId in _activeWellIds) {
+        assetMap.putIfAbsent(wellId, () => <String>[]);
       }
       _assetNumbersByWell[item.key] = assetMap;
 
@@ -374,36 +436,36 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
         _assignByWellEnabled.putIfAbsent(item.key, () => false);
       }
 
-      for (final well in _wells) {
-        _syncAssetCapacityForWell(item, well);
+      for (final wellId in _activeWellIds) {
+        _syncAssetCapacityForWell(item, wellId);
       }
     }
   }
 
-  int _targetAssetCapacity(_InventoryItem item, String well) {
+  int _targetAssetCapacity(_InventoryItem item, String wellId) {
     if (item.splittable) {
       final splitByWell = _splitByWellEnabled[item.key] ?? false;
       if (!splitByWell) return 0;
-      final split = _tankSplits[item.key]?[well] ?? '';
+      final split = _tankSplits[item.key]?[wellId] ?? '';
       return split.isEmpty ? 0 : 1;
     }
     final assignByWell = _assignByWellEnabled[item.key] ?? false;
     if (assignByWell) {
-      return _assignedByWell[item.key]?[well] ?? 0;
+      return _assignedByWell[item.key]?[wellId] ?? 0;
     }
     return _countFor(item);
   }
 
-  void _syncAssetCapacityForWell(_InventoryItem item, String well) {
+  void _syncAssetCapacityForWell(_InventoryItem item, String wellId) {
     final perItem = _assetNumbersByWell[item.key] ?? <String, List<String>>{};
-    final existing = List<String>.from(perItem[well] ?? const <String>[]);
-    final target = _targetAssetCapacity(item, well);
+    final existing = List<String>.from(perItem[wellId] ?? const <String>[]);
+    final target = _targetAssetCapacity(item, wellId);
     if (existing.length < target) {
       existing.addAll(List<String>.filled(target - existing.length, ''));
     } else if (existing.length > target) {
       existing.removeRange(target, existing.length);
     }
-    perItem[well] = existing;
+    perItem[wellId] = existing;
     _assetNumbersByWell[item.key] = perItem;
   }
 
@@ -416,8 +478,8 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
     if (assignByWell) return false;
     final perItem =
         _assetNumbersByWell[item.key] ?? const <String, List<String>>{};
-    for (final well in _wells) {
-      final values = perItem[well] ?? const <String>[];
+    for (final wellId in _activeWellIds) {
+      final values = perItem[wellId] ?? const <String>[];
       for (int i = nextCount; i < values.length; i++) {
         if (values[i].trim().isNotEmpty) {
           return true;
@@ -435,10 +497,12 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
       _counts[item.key] = clamped;
       if (item.splittable && clamped == 0) {
         _splitByWellEnabled[item.key] = false;
-        _tankSplits[item.key] = {for (final well in _wells) well: ''};
+        _tankSplits[item.key] = {
+          for (final wellId in _activeWellIds) wellId: ''
+        };
       }
-      for (final well in _wells) {
-        _syncAssetCapacityForWell(item, well);
+      for (final wellId in _activeWellIds) {
+        _syncAssetCapacityForWell(item, wellId);
       }
     });
   }
@@ -479,27 +543,47 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
     _setCount(item, clamped);
   }
 
-  void _setAssignedForWell(_InventoryItem item, String well, int value) {
-    setState(() {
-      final map = _assignedByWell[item.key] ?? <String, int>{};
-      map[well] = value < 0 ? 0 : value;
-      _assignedByWell[item.key] = map;
-      _syncAssetCapacityForWell(item, well);
-    });
-  }
+  Future<void> _openAssignmentSheet(_InventoryItem item) async {
+    final quantity = _countFor(item);
+    if (_activeJob == null || !_hasActiveWells || quantity <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:
+              Text('Start a job and add wells before assigning equipment.'),
+        ),
+      );
+      return;
+    }
 
-  void _toggleAssignByWell(_InventoryItem item, bool enabled) {
+    final result = await Navigator.of(context).push<_RigUpAssignmentResult>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => _RigUpAssignmentSheet(
+          item: item,
+          wellNames: List<String>.from(_activeWellNames),
+          wellIds: List<String>.from(_activeWellIds),
+          defaultQuantity: quantity,
+          assignByWellEnabled: _assignByWellEnabled[item.key] ?? false,
+          assignedByWell: Map<String, int>.from(
+            _assignedByWell[item.key] ?? const <String, int>{},
+          ),
+          assetNumbersByWell: {
+            for (final entry in (_assetNumbersByWell[item.key] ??
+                    const <String, List<String>>{})
+                .entries)
+              entry.key: List<String>.from(entry.value),
+          },
+        ),
+      ),
+    );
+
+    if (!mounted || result == null) return;
     setState(() {
-      _assignByWellEnabled[item.key] = enabled;
-      if (enabled) {
-        final defaultQty = _countFor(item);
-        _assignedByWell[item.key] = {
-          for (final well in _wells)
-            well: (_assignedByWell[item.key]?[well] ?? defaultQty),
-        };
-      }
-      for (final well in _wells) {
-        _syncAssetCapacityForWell(item, well);
+      _assignByWellEnabled[item.key] = result.assignByWellEnabled;
+      _assignedByWell[item.key] = result.assignedByWell;
+      _assetNumbersByWell[item.key] = result.assetNumbersByWell;
+      for (final wellId in _activeWellIds) {
+        _syncAssetCapacityForWell(item, wellId);
       }
     });
   }
@@ -551,12 +635,12 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
     return units;
   }
 
-  void _setWellSplit(_InventoryItem item, String well, String value) {
+  void _setWellSplit(_InventoryItem item, String wellId, String value) {
     setState(() {
       final map = _tankSplits[item.key] ?? <String, String>{};
-      map[well] = value;
+      map[wellId] = value;
       _tankSplits[item.key] = map;
-      _syncAssetCapacityForWell(item, well);
+      _syncAssetCapacityForWell(item, wellId);
     });
   }
 
@@ -564,10 +648,12 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
     setState(() {
       _splitByWellEnabled[item.key] = enabled;
       if (!enabled) {
-        _tankSplits[item.key] = {for (final well in _wells) well: ''};
+        _tankSplits[item.key] = {
+          for (final wellId in _activeWellIds) wellId: ''
+        };
       }
-      for (final well in _wells) {
-        _syncAssetCapacityForWell(item, well);
+      for (final wellId in _activeWellIds) {
+        _syncAssetCapacityForWell(item, wellId);
       }
     });
   }
@@ -589,70 +675,35 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
     }
 
     setState(() {
-      _tankSplits[item.key] = {for (final well in _wells) well: split};
-      for (final well in _wells) {
-        _syncAssetCapacityForWell(item, well);
+      _tankSplits[item.key] = {
+        for (final wellId in _activeWellIds) wellId: split
+      };
+      for (final wellId in _activeWellIds) {
+        _syncAssetCapacityForWell(item, wellId);
       }
     });
   }
 
-  List<String> _assetListFor(_InventoryItem item, String well) {
+  List<String> _assetListFor(_InventoryItem item, String wellId) {
     final perItem =
         _assetNumbersByWell[item.key] ?? const <String, List<String>>{};
-    return List<String>.from(perItem[well] ?? const <String>[]);
+    return List<String>.from(perItem[wellId] ?? const <String>[]);
   }
 
   void _setAssetNumberAt(
     _InventoryItem item,
-    String well,
+    String wellId,
     int index,
     String value,
   ) {
     setState(() {
       final perItem = _assetNumbersByWell[item.key] ?? <String, List<String>>{};
-      final entries = List<String>.from(perItem[well] ?? const <String>[]);
+      final entries = List<String>.from(perItem[wellId] ?? const <String>[]);
       if (index < 0 || index >= entries.length) return;
       entries[index] = value.trim();
-      perItem[well] = entries;
+      perItem[wellId] = entries;
       _assetNumbersByWell[item.key] = perItem;
     });
-  }
-
-  String _assetNumbersText(_InventoryItem item, String well) {
-    final values = _assetListFor(item, well)
-        .map((value) => value.trim())
-        .where((value) => value.isNotEmpty)
-        .toList();
-    return values.join(', ');
-  }
-
-  List<Widget> _assetFieldsForWell(_InventoryItem item, String well) {
-    final assetValues = _assetListFor(item, well).asMap().entries.toList();
-    if (assetValues.isEmpty) return const <Widget>[];
-    return <Widget>[
-      const SizedBox(height: 6),
-      const Text(
-        'Asset Numbers',
-        style: TextStyle(color: Colors.white70),
-      ),
-      const SizedBox(height: 6),
-      for (final asset in assetValues)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: TextFormField(
-            initialValue: asset.value,
-            key: ValueKey(
-              'asset-${item.key}-$well-${asset.key}-${asset.value}',
-            ),
-            decoration: InputDecoration(
-              labelText: 'Asset ${asset.key + 1}',
-            ),
-            onChanged: (value) {
-              _setAssetNumberAt(item, well, asset.key, value);
-            },
-          ),
-        ),
-    ];
   }
 
   List<Widget> _splitAssetFieldForWell(_InventoryItem item, String well) {
@@ -760,88 +811,86 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
     final customer = _customerController.text.trim();
     final pad = _padController.text.trim();
     final dateText = DateFormat('yyyy-MM-dd').format(_date);
-
-    final perWellLines = <String>[];
-    final padTotals = <String, String>{};
-
-    for (final well in _wells) {
-      final entries = <String>[];
-
-      for (final item in _allItems.where((x) => !x.splittable)) {
-        final usePerWellAssignments = _assignByWellEnabled[item.key] ?? false;
-        final value = usePerWellAssignments
-            ? (_assignedByWell[item.key]?[well] ?? 0)
-            : _countFor(item);
-        if (value <= 0) continue;
-        entries.add('- ${item.label}: $value');
-        final assetText = _assetNumbersText(item, well);
-        if (assetText.isNotEmpty) {
-          entries.add('  Asset #: $assetText');
-        }
-        final current = int.tryParse(padTotals[item.label] ?? '0') ?? 0;
-        padTotals[item.label] = '${current + value}';
-      }
-
-      for (final item in _allItems.where((x) => x.splittable)) {
-        final totalPadQty = _countFor(item);
-        if (totalPadQty > 0) {
-          padTotals[item.label] = '$totalPadQty';
-        }
-
-        final splitByWell = _splitByWellEnabled[item.key] ?? false;
-        if (!splitByWell) continue;
-
-        final split = _tankSplits[item.key]?[well] ?? '';
-        if (split.isEmpty) continue;
-        entries.add('- ${item.label}: $split of $totalPadQty');
-        final assetText = _assetNumbersText(item, well);
-        if (assetText.isNotEmpty) {
-          entries.add('  Asset #: $assetText');
-        }
-      }
-
-      perWellLines.add(well);
-      if (entries.isEmpty) {
-        perWellLines.add('- None assigned');
-      } else {
-        perWellLines.addAll(entries);
-      }
-      perWellLines.add('');
-    }
-
-    final padLines = padTotals.entries
-        .where((entry) => entry.value != '0')
-        .toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
-
     final buffer = StringBuffer()
-      ..writeln('RIG-UP PACKAGE INVENTORY')
+      ..writeln('Rig-Up Inventory')
       ..writeln('')
       ..writeln('Customer: ${customer.isEmpty ? '-' : customer}')
       ..writeln('Pad: ${pad.isEmpty ? '-' : pad}')
       ..writeln('Date: $dateText')
-      ..writeln('')
-      ..writeln('PER-WELL INVENTORY')
       ..writeln('');
 
-    for (final line in perWellLines) {
-      buffer.writeln(line);
+    final sections = <String, List<_InventoryItem>>{};
+    for (final item in _allItems.where((item) => !item.splittable)) {
+      sections.putIfAbsent(item.section, () => <_InventoryItem>[]).add(item);
     }
 
-    buffer.writeln('PAD INVENTORY');
-    if (padLines.isEmpty) {
-      buffer.writeln('- None assigned');
-    } else {
-      for (final line in padLines) {
-        buffer.writeln('- ${line.key}: ${line.value}');
+    for (int index = 0; index < _wells.length; index++) {
+      final wellName = _wellNameAt(index);
+      final wellId = _wellIdAt(index);
+      if (wellName.trim().isEmpty) continue;
+
+      buffer
+        ..writeln(wellName)
+        ..writeln('');
+
+      for (final section in sections.entries) {
+        final sectionLines = <String>[];
+        for (final item in section.value) {
+          final usePerWellAssignments = _assignByWellEnabled[item.key] ?? false;
+          final quantity = usePerWellAssignments
+              ? (_assignedByWell[item.key]?[wellId] ?? 0)
+              : _countFor(item);
+          if (quantity <= 0) continue;
+
+          sectionLines.add('${item.label} - Qty: $quantity');
+          final assetNumbers = _assetListFor(item, wellId)
+              .map((value) => value.trim())
+              .where((value) => value.isNotEmpty)
+              .toList();
+          if (assetNumbers.isNotEmpty) {
+            if (assetNumbers.length == 1 && quantity == 1) {
+              sectionLines.add('Asset Number: ${assetNumbers.first}');
+            } else {
+              for (int unitIndex = 0;
+                  unitIndex < assetNumbers.length && unitIndex < quantity;
+                  unitIndex++) {
+                sectionLines.add(
+                  'Unit ${unitIndex + 1} Asset Number: ${assetNumbers[unitIndex]}',
+                );
+              }
+            }
+          }
+        }
+
+        if (sectionLines.isEmpty) continue;
+        buffer.writeln(section.key);
+        for (final line in sectionLines) {
+          buffer.writeln(line);
+        }
+        buffer.writeln('');
+      }
+
+      for (final item in _allItems.where((item) => item.splittable)) {
+        final totalPadQty = _countFor(item);
+        if (totalPadQty <= 0) continue;
+
+        final splitByWell = _splitByWellEnabled[item.key] ?? false;
+        if (!splitByWell) continue;
+
+        final split = _tankSplits[item.key]?[wellId] ?? '';
+        if (split.isEmpty) continue;
+        buffer
+          ..writeln(item.section)
+          ..writeln('${item.label} - Qty: $split of $totalPadQty')
+          ..writeln('');
       }
     }
 
     final notes = _notesController.text.trim();
     if (notes.isNotEmpty) {
       buffer
-        ..writeln('')
-        ..writeln('Notes: $notes');
+        ..writeln('Notes: $notes')
+        ..writeln('');
     }
 
     return buffer.toString().trim();
@@ -858,6 +907,7 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
         'pad': _padController.text.trim(),
         'date': DateFormat('yyyy-MM-dd').format(_date),
         'wells': _wells,
+        'wellIds': _activeWellIds,
         'counts': _counts,
         'assignedByWell': _assignedByWell,
         'assignByWellEnabled': _assignByWellEnabled,
@@ -1017,6 +1067,7 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
     return Row(
       children: [
         IconButton.filledTonal(
+          key: ValueKey('rig-up-decrease-${item.key}'),
           style: IconButton.styleFrom(
             backgroundColor: scheme.surfaceContainerHighest,
             foregroundColor: scheme.onSurface,
@@ -1041,6 +1092,7 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
         ),
         const SizedBox(width: 10),
         IconButton.filled(
+          key: ValueKey('rig-up-increase-${item.key}'),
           style: IconButton.styleFrom(
             backgroundColor: scheme.primary,
             foregroundColor: scheme.onPrimary,
@@ -1061,8 +1113,15 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
 
   Widget _dedicatedAssignmentEditor(_InventoryItem item) {
     final quantity = _countFor(item);
-    if (quantity <= 0) return const SizedBox.shrink();
     final assignByWell = _assignByWellEnabled[item.key] ?? false;
+    final canAssign = _activeJob != null && _hasActiveWells && quantity > 0;
+    final helperText = !canAssign
+        ? (_activeJob == null || !_hasActiveWells
+            ? 'Start a job and add wells before assigning equipment.'
+            : 'Set quantity above 0 to assign equipment by well.')
+        : (assignByWell
+            ? 'Custom assignments saved by well.'
+            : '${_quantityLabel(item)} applies to every well by default.');
 
     return Container(
       margin: const EdgeInsets.only(top: 10),
@@ -1076,72 +1135,25 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            assignByWell
-                ? 'Assign by Well is on for this item.'
-                : '${_quantityLabel(item)} applies to every well by default.',
+            helperText,
             style: const TextStyle(color: Colors.white70),
           ),
           const SizedBox(height: 8),
-          if (!assignByWell)
-            OutlinedButton.icon(
-              onPressed: _wells.length > 1
-                  ? () => _toggleAssignByWell(item, true)
-                  : null,
-              icon: const Icon(Icons.tune),
-              label: const Text('Assign by Well'),
-            )
-          else ...[
-            OutlinedButton.icon(
-              onPressed: () => _toggleAssignByWell(item, false),
-              icon: const Icon(Icons.restart_alt),
-              label: Text('Use ${_quantityLabel(item)} for all wells'),
-            ),
-            const SizedBox(height: 8),
-            for (final well in _wells)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            well,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                        IconButton.filledTonal(
-                          onPressed: () => _setAssignedForWell(
-                            item,
-                            well,
-                            (_assignedByWell[item.key]?[well] ?? quantity) - 1,
-                          ),
-                          icon: const Icon(Icons.remove),
-                        ),
-                        Container(
-                          width: 42,
-                          alignment: Alignment.center,
-                          child: Text(
-                            '${_assignedByWell[item.key]?[well] ?? quantity}',
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                        IconButton.filled(
-                          onPressed: () => _setAssignedForWell(
-                            item,
-                            well,
-                            (_assignedByWell[item.key]?[well] ?? quantity) + 1,
-                          ),
-                          icon: const Icon(Icons.add),
-                        ),
-                      ],
-                    ),
-                    ..._assetFieldsForWell(item, well),
-                  ],
-                ),
+          Row(
+            children: [
+              TextButton.icon(
+                key: ValueKey('rig-up-assign-${item.key}'),
+                onPressed: canAssign ? () => _openAssignmentSheet(item) : null,
+                icon: const Icon(Icons.tune),
+                label:
+                    Text(assignByWell ? 'Edit Assignments' : 'Assign by Well'),
               ),
-          ],
+              const SizedBox(width: 12),
+              if (assignByWell)
+                const Text('Assigned by Well',
+                    style: TextStyle(color: Colors.white70)),
+            ],
+          ),
         ],
       ),
     );
@@ -1170,7 +1182,7 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
             ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
-              onPressed: _wells.length > 1
+              onPressed: _hasActiveWells && _activeJob != null
                   ? () => _toggleSplitByWell(item, true)
                   : null,
               icon: const Icon(Icons.call_split),
@@ -1239,7 +1251,7 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
             label: const Text('Use Pad Inventory Only'),
           ),
           const SizedBox(height: 8),
-          for (final well in _wells)
+          for (int index = 0; index < _wells.length; index++)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Column(
@@ -1248,14 +1260,15 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: Text(well,
+                        child: Text(_wellNameAt(index),
                             style:
                                 const TextStyle(fontWeight: FontWeight.w700)),
                       ),
                       SizedBox(
                         width: 150,
                         child: DropdownButtonFormField<String>(
-                          initialValue: _tankSplits[item.key]?[well] ?? '',
+                          initialValue:
+                              _tankSplits[item.key]?[_wellIdAt(index)] ?? '',
                           decoration: const InputDecoration(
                             isDense: true,
                             contentPadding: EdgeInsets.symmetric(
@@ -1270,13 +1283,13 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
                                         Text(value.isEmpty ? 'Select' : value),
                                   ))
                               .toList(),
-                          onChanged: (value) =>
-                              _setWellSplit(item, well, value ?? ''),
+                          onChanged: (value) => _setWellSplit(
+                              item, _wellIdAt(index), value ?? ''),
                         ),
                       ),
                     ],
                   ),
-                  ..._splitAssetFieldForWell(item, well),
+                  ..._splitAssetFieldForWell(item, _wellIdAt(index)),
                 ],
               ),
             ),
@@ -1287,6 +1300,7 @@ class _RigUpInventoryScreenState extends State<RigUpInventoryScreen> {
 
   Widget _itemCard(_InventoryItem item) {
     return Card(
+      key: ValueKey('rig-up-card-${item.key}'),
       margin: const EdgeInsets.only(bottom: 10),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -1487,4 +1501,373 @@ class _InventoryItem {
   final String section;
   final String group;
   final bool splittable;
+}
+
+class _RigUpAssignmentResult {
+  const _RigUpAssignmentResult({
+    required this.assignByWellEnabled,
+    required this.assignedByWell,
+    required this.assetNumbersByWell,
+  });
+
+  final bool assignByWellEnabled;
+  final Map<String, int> assignedByWell;
+  final Map<String, List<String>> assetNumbersByWell;
+}
+
+class _RigUpAssignmentSheet extends StatefulWidget {
+  const _RigUpAssignmentSheet({
+    required this.item,
+    required this.wellNames,
+    required this.wellIds,
+    required this.defaultQuantity,
+    required this.assignByWellEnabled,
+    required this.assignedByWell,
+    required this.assetNumbersByWell,
+  });
+
+  final _InventoryItem item;
+  final List<String> wellNames;
+  final List<String> wellIds;
+  final int defaultQuantity;
+  final bool assignByWellEnabled;
+  final Map<String, int> assignedByWell;
+  final Map<String, List<String>> assetNumbersByWell;
+
+  @override
+  State<_RigUpAssignmentSheet> createState() => _RigUpAssignmentSheetState();
+}
+
+class _RigUpAssignmentSheetState extends State<_RigUpAssignmentSheet> {
+  late Map<String, int> _quantitiesByWellId;
+  late Map<String, List<TextEditingController>> _assetControllersByWellId;
+  bool _assignByWellEnabled = false;
+  final bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _assignByWellEnabled = widget.assignByWellEnabled;
+    _quantitiesByWellId = {
+      for (int i = 0; i < widget.wellIds.length; i++)
+        widget.wellIds[i]: (_assignByWellEnabled
+                ? (widget.assignedByWell[widget.wellIds[i]] ??
+                    widget.defaultQuantity)
+                : widget.defaultQuantity)
+            .clamp(0, 999),
+    };
+    _assetControllersByWellId = {
+      for (int i = 0; i < widget.wellIds.length; i++)
+        widget.wellIds[i]: _buildControllersForWell(
+          widget.wellIds[i],
+          _quantitiesByWellId[widget.wellIds[i]] ?? widget.defaultQuantity,
+        ),
+    };
+  }
+
+  List<TextEditingController> _buildControllersForWell(String wellId, int qty) {
+    final current = List<String>.from(
+        widget.assetNumbersByWell[wellId] ?? const <String>[]);
+    final controllers = <TextEditingController>[];
+    for (int index = 0; index < qty; index++) {
+      controllers.add(TextEditingController(
+          text: index < current.length ? current[index] : ''));
+    }
+    return controllers;
+  }
+
+  Future<bool> _confirmDiscardAssets() async {
+    final hasAssets = _assetControllersByWellId.values.any(
+      (controllers) =>
+          controllers.any((controller) => controller.text.trim().isNotEmpty),
+    );
+    if (!hasAssets) return true;
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Reset to Qty Per Well Defaults?'),
+            content: const Text(
+              'This will remove customized per-well quantities and any saved Asset Numbers for this item.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Reset'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    return confirmed;
+  }
+
+  Future<bool> _confirmReduceWithAssetLoss() async {
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Reduce Assigned Quantity?'),
+            content: const Text(
+              'This will remove equipment units with saved Asset Numbers for this well.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Remove Units'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    return confirmed;
+  }
+
+  void _setQuantity(String wellId, int next) async {
+    final clamped = next < 0 ? 0 : next;
+    final controllers =
+        _assetControllersByWellId[wellId] ?? <TextEditingController>[];
+    if (clamped < controllers.length) {
+      final removedHaveAssets = controllers
+          .skip(clamped)
+          .any((controller) => controller.text.trim().isNotEmpty);
+      if (removedHaveAssets) {
+        final confirmed = await _confirmReduceWithAssetLoss();
+        if (!confirmed || !mounted) return;
+      }
+      while (controllers.length > clamped) {
+        controllers.removeLast().dispose();
+      }
+    } else if (clamped > controllers.length) {
+      for (int i = controllers.length; i < clamped; i++) {
+        controllers.add(TextEditingController());
+      }
+    }
+    setState(() {
+      _quantitiesByWellId[wellId] = clamped;
+      _assetControllersByWellId[wellId] = controllers;
+    });
+  }
+
+  Future<void> _resetDefaults() async {
+    if (!await _confirmDiscardAssets()) return;
+    setState(() {
+      _assignByWellEnabled = false;
+      _quantitiesByWellId = {
+        for (final wellId in widget.wellIds) wellId: widget.defaultQuantity,
+      };
+      for (final entry in _assetControllersByWellId.entries) {
+        for (final controller in entry.value) {
+          controller.dispose();
+        }
+      }
+      _assetControllersByWellId = {
+        for (final wellId in widget.wellIds)
+          wellId: _buildControllersForWell(wellId, widget.defaultQuantity),
+      };
+    });
+  }
+
+  void _cancel() {
+    Navigator.of(context).pop();
+  }
+
+  void _save() {
+    final assetNumbersByWell = <String, List<String>>{};
+    for (final wellId in widget.wellIds) {
+      final controllers =
+          _assetControllersByWellId[wellId] ?? const <TextEditingController>[];
+      assetNumbersByWell[wellId] =
+          controllers.map((controller) => controller.text.trim()).toList();
+    }
+    Navigator.of(context).pop(
+      _RigUpAssignmentResult(
+        assignByWellEnabled: _assignByWellEnabled,
+        assignedByWell: {
+          for (final wellId in widget.wellIds)
+            wellId: _quantitiesByWellId[wellId] ?? widget.defaultQuantity,
+        },
+        assetNumbersByWell: assetNumbersByWell,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    for (final controllers in _assetControllersByWellId.values) {
+      for (final controller in controllers) {
+        controller.dispose();
+      }
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.item.label),
+        actions: [
+          TextButton(
+            onPressed: _saving ? null : _resetDefaults,
+            child: const Text('Reset to Qty Per Well Defaults'),
+          ),
+          TextButton(
+            onPressed: _saving ? null : _cancel,
+            child: const Text('Cancel'),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: _saving ? null : _save,
+            child: const Text('Done'),
+          ),
+          const SizedBox(width: 12),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.item.label,
+                    style: TextStyle(
+                      color: scheme.primary,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('Qty Per Well: ${widget.defaultQuantity}'),
+                  const SizedBox(height: 8),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Assign by Well'),
+                    subtitle: const Text(
+                        'Customize quantities and Asset Numbers per active well.'),
+                    value: _assignByWellEnabled,
+                    onChanged: widget.wellIds.isEmpty
+                        ? null
+                        : (value) =>
+                            setState(() => _assignByWellEnabled = value),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (int index = 0; index < widget.wellIds.length; index++)
+            Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.wellNames[index],
+                      style: TextStyle(
+                        color: scheme.primary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        IconButton.filledTonal(
+                          onPressed: () => _setQuantity(
+                            widget.wellIds[index],
+                            (_quantitiesByWellId[widget.wellIds[index]] ??
+                                    widget.defaultQuantity) -
+                                1,
+                          ),
+                          icon: const Icon(Icons.remove),
+                        ),
+                        const SizedBox(width: 12),
+                        Container(
+                          width: 72,
+                          alignment: Alignment.center,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: scheme.outline),
+                          ),
+                          child: Text(
+                            '${_quantitiesByWellId[widget.wellIds[index]] ?? widget.defaultQuantity}',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        IconButton.filled(
+                          onPressed: () => _setQuantity(
+                            widget.wellIds[index],
+                            (_quantitiesByWellId[widget.wellIds[index]] ??
+                                    widget.defaultQuantity) +
+                                1,
+                          ),
+                          icon: const Icon(Icons.add),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text('Assigned Quantity'),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    for (int unitIndex = 0;
+                        unitIndex <
+                            (_assetControllersByWellId[widget.wellIds[index]]
+                                    ?.length ??
+                                0);
+                        unitIndex++)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: TextField(
+                          controller: _assetControllersByWellId[
+                              widget.wellIds[index]]![unitIndex],
+                          textCapitalization: TextCapitalization.characters,
+                          decoration: InputDecoration(
+                            labelText: 'Unit ${unitIndex + 1} Asset Number',
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                    if ((_assetControllersByWellId[widget.wellIds[index]]
+                            ?.isEmpty ??
+                        true))
+                      const Text(
+                        'No units assigned yet.',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          const SizedBox(height: 24),
+          FilledButton(
+            onPressed: _saving ? null : _save,
+            child: const Text('Done'),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: _saving ? null : _cancel,
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
 }
