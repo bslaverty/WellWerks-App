@@ -43,9 +43,9 @@ Map<String, dynamic> _findByType(
 }
 
 void main() {
-  test('Build number is 110', () async {
+  test('Build number is 111', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+110'));
+    expect(pubspec, contains('version: 1.0.1+111'));
   });
 
   testWidgets('Compact defaults are applied while Facilities stays unchanged',
@@ -77,12 +77,16 @@ void main() {
     final plug = _findByType(items, 'plugCatcher');
     final facilities = _findByType(items, 'facilities');
 
-    expect((wellhead['width'] as num).toDouble(), closeTo(74, 0.01));
-    expect((wellhead['height'] as num).toDouble(), closeTo(58, 0.01));
-    expect((plug['width'] as num).toDouble(), closeTo(102, 0.01));
-    expect((plug['height'] as num).toDouble(), closeTo(60, 0.01));
+    expect((wellhead['width'] as num).toDouble(), closeTo(30, 0.01));
+    expect((wellhead['height'] as num).toDouble(), closeTo(28, 0.01));
+    expect((plug['width'] as num).toDouble(), closeTo(40, 0.01));
+    expect((plug['height'] as num).toDouble(), closeTo(26, 0.01));
     expect((facilities['width'] as num).toDouble(), closeTo(220, 0.01));
     expect((facilities['height'] as num).toDouble(), closeTo(112, 0.01));
+
+    // Build 111 restores icon container dimensions smaller than Build 110.
+    expect((wellhead['width'] as num).toDouble(), lessThan(74));
+    expect((wellhead['height'] as num).toDouble(), lessThan(58));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -107,8 +111,12 @@ void main() {
     final horizontalPadding = (shell.width - symbol.width) / 2;
     final verticalPadding = (shell.height - symbol.height) / 2;
 
-    expect(horizontalPadding, lessThanOrEqualTo(14));
-    expect(verticalPadding, inInclusiveRange(1, 6));
+    expect(symbol.width, lessThan(26));
+    expect(symbol.height, lessThan(26));
+    expect(horizontalPadding, inInclusiveRange(2, 5));
+    expect(verticalPadding, inInclusiveRange(2, 5));
+    expect(symbol.width, lessThan(shell.width - 2));
+    expect(symbol.height, lessThan(shell.height - 2));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -245,8 +253,8 @@ void main() {
     final wellhead = _findByType(items, 'wellhead');
     final facilities = _findByType(items, 'facilities');
 
-    expect((wellhead['width'] as num).toDouble(), closeTo(74, 0.01));
-    expect((wellhead['height'] as num).toDouble(), closeTo(58, 0.01));
+    expect((wellhead['width'] as num).toDouble(), closeTo(30, 0.01));
+    expect((wellhead['height'] as num).toDouble(), closeTo(28, 0.01));
 
     const oldCenterX = 300 + 98 / 2;
     const oldCenterY = 300 + 64 / 2;
@@ -268,6 +276,71 @@ void main() {
     final bypassCenterY = (bypass['y'] as num).toDouble() +
         (bypass['height'] as num).toDouble() / 2;
     expect(bypassCenterY, closeTo(ironCenterY, 0.1));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Build 110 saved dimensions migrate to Build 111 compact sizes',
+      (tester) async {
+    final build110Payload = <String, dynamic>{
+      'name': 'Build 110 Layout',
+      'nextId': 3,
+      'snapToGrid': true,
+      'items': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 1,
+          'type': 'wellhead',
+          'x': 200.0,
+          'y': 180.0,
+          'width': 74.0,
+          'height': 58.0,
+          'properties': <String, String>{},
+          'rotationTurns': 0,
+          'locked': false,
+        },
+        <String, dynamic>{
+          'id': 2,
+          'type': 'facilities',
+          'x': 420.0,
+          'y': 260.0,
+          'width': 220.0,
+          'height': 112.0,
+          'properties': <String, String>{},
+          'rotationTurns': 0,
+          'locked': false,
+        },
+      ],
+      'metadata': <String, dynamic>{'version': 1},
+    };
+
+    SharedPreferences.setMockInitialValues(
+      <String, Object>{
+        'wellwerks_layout_designer_v2': jsonEncode(build110Payload),
+      },
+    );
+
+    await tester.binding.setSurfaceSize(const Size(1280, 1500));
+    await tester.pumpWidget(const MaterialApp(home: EquipmentLayoutScreen()));
+    await tester.pumpAndSettle();
+
+    await _saveRigUp(tester);
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final wellhead = _findByType(items, 'wellhead');
+    final facilities = _findByType(items, 'facilities');
+
+    expect((wellhead['width'] as num).toDouble(), closeTo(30, 0.01));
+    expect((wellhead['height'] as num).toDouble(), closeTo(28, 0.01));
+    expect((facilities['width'] as num).toDouble(), closeTo(220, 0.01));
+    expect((facilities['height'] as num).toDouble(), closeTo(112, 0.01));
+
+    const build110CenterX = 200 + 74 / 2;
+    const build110CenterY = 180 + 58 / 2;
+    final migratedCenterX = (wellhead['x'] as num).toDouble() +
+        (wellhead['width'] as num).toDouble() / 2;
+    final migratedCenterY = (wellhead['y'] as num).toDouble() +
+        (wellhead['height'] as num).toDouble() / 2;
+    expect(migratedCenterX, closeTo(build110CenterX, 0.1));
+    expect(migratedCenterY, closeTo(build110CenterY, 0.1));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });

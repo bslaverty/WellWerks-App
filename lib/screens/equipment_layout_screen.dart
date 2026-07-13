@@ -5503,37 +5503,49 @@ extension _EquipmentTypeInfo on _EquipmentType {
   }
 
   double get defaultWidth {
-    if (this == _EquipmentType.wellhead) return 74;
-    if (this == _EquipmentType.plugCatcher) return 102;
-    if (this == _EquipmentType.lineHeater) return 110;
+    if (this == _EquipmentType.wellhead) return 30;
+    if (this == _EquipmentType.plugCatcher) return 40;
+    if (this == _EquipmentType.lineHeater) return 38;
     if (this == _EquipmentType.facilities) return 220;
-    if (this == _EquipmentType.sphericalSandSep) return 84;
-    if (this == _EquipmentType.cyclonicSandSep) return 82;
-    if (this == _EquipmentType.esdValve) return 52;
+    if (this == _EquipmentType.sphericalSandSep) return 34;
+    if (this == _EquipmentType.cyclonicSandSep) return 34;
+    if (this == _EquipmentType.esdValve) return 30;
+    if (this == _EquipmentType.chokeManifold) return 38;
+    if (this == _EquipmentType.flowbackTank) return 38;
+    if (this == _EquipmentType.productionTank) return 38;
+    if (this == _EquipmentType.testSeparator) return 36;
+    if (this == _EquipmentType.flare) return 32;
+    if (this == _EquipmentType.compressor) return 36;
     if (this == _EquipmentType.ironHorizontal) return 150;
     if (this == _EquipmentType.ironVertical) return 28;
     if (this == _EquipmentType.bypass) return 66;
     if (name.startsWith('tee')) return 42;
     if (name.startsWith('elbow')) return 42;
     if (isIron) return 76;
-    return 86;
+    return 36;
   }
 
   double get defaultHeight {
-    if (this == _EquipmentType.wellhead) return 58;
-    if (this == _EquipmentType.plugCatcher) return 60;
-    if (this == _EquipmentType.lineHeater) return 62;
+    if (this == _EquipmentType.wellhead) return 28;
+    if (this == _EquipmentType.plugCatcher) return 26;
+    if (this == _EquipmentType.lineHeater) return 26;
     if (this == _EquipmentType.facilities) return 112;
-    if (this == _EquipmentType.sphericalSandSep) return 84;
-    if (this == _EquipmentType.cyclonicSandSep) return 78;
-    if (this == _EquipmentType.esdValve) return 38;
+    if (this == _EquipmentType.sphericalSandSep) return 34;
+    if (this == _EquipmentType.cyclonicSandSep) return 32;
+    if (this == _EquipmentType.esdValve) return 24;
+    if (this == _EquipmentType.chokeManifold) return 24;
+    if (this == _EquipmentType.flowbackTank) return 28;
+    if (this == _EquipmentType.productionTank) return 28;
+    if (this == _EquipmentType.testSeparator) return 28;
+    if (this == _EquipmentType.flare) return 28;
+    if (this == _EquipmentType.compressor) return 28;
     if (this == _EquipmentType.ironHorizontal) return 24;
     if (this == _EquipmentType.ironVertical) return 150;
     if (this == _EquipmentType.bypass) return 34;
     if (name.startsWith('tee')) return 42;
     if (name.startsWith('elbow')) return 42;
     if (isIron) return 76;
-    return 56;
+    return 28;
   }
 
   Size get build109LegacySize {
@@ -5554,10 +5566,32 @@ extension _EquipmentTypeInfo on _EquipmentType {
     return const Size(116, 72);
   }
 
+  Size get build110LegacySize {
+    if (this == _EquipmentType.wellhead) return const Size(74, 58);
+    if (this == _EquipmentType.plugCatcher) return const Size(102, 60);
+    if (this == _EquipmentType.lineHeater) return const Size(110, 62);
+    if (this == _EquipmentType.facilities) return const Size(220, 112);
+    if (this == _EquipmentType.sphericalSandSep) return const Size(84, 84);
+    if (this == _EquipmentType.cyclonicSandSep) return const Size(82, 78);
+    if (this == _EquipmentType.esdValve) return const Size(52, 38);
+    if (this == _EquipmentType.ironHorizontal) return const Size(150, 24);
+    if (this == _EquipmentType.ironVertical) return const Size(28, 150);
+    if (this == _EquipmentType.bypass) return const Size(66, 34);
+    if (name.startsWith('tee') || name.startsWith('elbow')) {
+      return const Size(42, 42);
+    }
+    if (isIron) return const Size(76, 76);
+    return const Size(86, 56);
+  }
+
   bool matchesLegacyDimensions(double width, double height) {
-    final legacy = build109LegacySize;
-    return (width - legacy.width).abs() < 0.2 &&
-        (height - legacy.height).abs() < 0.2;
+    final v109 = build109LegacySize;
+    final v110 = build110LegacySize;
+    final isV109 =
+        (width - v109.width).abs() < 0.2 && (height - v109.height).abs() < 0.2;
+    final isV110 =
+        (width - v110.width).abs() < 0.2 && (height - v110.height).abs() < 0.2;
+    return isV109 || isV110;
   }
 }
 
@@ -5865,8 +5899,8 @@ class _LayoutTile extends StatelessWidget {
                         final iconSize = isFacilities
                             ? (shortest * 0.36)
                                 .clamp(16.0, compact ? 24.0 : 30.0)
-                            : (constraints.maxHeight - inset * 2 - 2)
-                                .clamp(18.0, compact ? 52.0 : 56.0);
+                            : (shortest * 0.62)
+                                .clamp(14.0, compact ? 22.0 : 24.0);
 
                         return Padding(
                           padding: EdgeInsets.all(inset),
@@ -5938,9 +5972,9 @@ class _LayoutTile extends StatelessWidget {
             ),
           if (item.locked)
             const Positioned(
-              right: 4,
-              top: 4,
-              child: Icon(Icons.lock, size: 14, color: Color(0xFFCDA56A)),
+              right: 2,
+              top: 2,
+              child: Icon(Icons.lock, size: 12, color: Color(0xFFCDA56A)),
             ),
         ],
       ),
