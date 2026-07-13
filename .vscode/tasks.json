@@ -613,6 +613,287 @@
 				"status",
 				"--short"
 			]
+		},
+		{
+			"label": "build114-git-branch-status",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"-sb"
+			]
+		},
+		{
+			"label": "build114-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build114-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build114-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build114-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build114-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build114-single-debug",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart",
+				"--plain-name",
+				"Dragging endpoint within snap radius creates an iron-to-iron connection that survives save reload and can disconnect",
+				"--reporter",
+				"expanded"
+			]
+		},
+		{
+			"label": "build114-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build114-single-debug",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart",
+				"--plain-name",
+				"Dragging endpoint within snap radius creates an iron-to-iron connection that survives save reload and can disconnect",
+				"--reporter",
+				"expanded"
+			]
+		},
+		{
+			"label": "build114-single-debug",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart",
+				"--plain-name",
+				"Dragging endpoint within snap radius creates an iron-to-iron connection that survives save reload and can disconnect",
+				"--reporter",
+				"expanded"
+			]
+		},
+		{
+			"label": "build114-single-debug2",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart",
+				"--plain-name",
+				"Bypass slides horizontally and vertically without drifting off axis",
+				"--reporter",
+				"expanded"
+			]
+		},
+		{
+			"label": "build114-single-debug",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart",
+				"--plain-name",
+				"Dragging endpoint within snap radius creates an iron-to-iron connection that survives save reload and can disconnect",
+				"--reporter",
+				"expanded"
+			]
+		},
+		{
+			"label": "build114-single-debug3",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart",
+				"--plain-name",
+				"Bypass slides horizontally and vertically without drifting off axis",
+				"--reporter",
+				"expanded"
+			]
+		},
+		{
+			"label": "build114-single-debug",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart",
+				"--plain-name",
+				"Dragging endpoint within snap radius creates an iron-to-iron connection that survives save reload and can disconnect",
+				"--reporter",
+				"expanded"
+			]
+		},
+		{
+			"label": "build114-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build114-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build114-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build114-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build114-pub-get",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"pub",
+				"get"
+			]
+		},
+		{
+			"label": "build114-format",
+			"type": "shell",
+			"command": "dart",
+			"args": [
+				"format",
+				"."
+			]
+		},
+		{
+			"label": "build114-analyze",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"analyze"
+			]
+		},
+		{
+			"label": "build114-analyze",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"analyze"
+			]
+		},
+		{
+			"label": "build114-all-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test"
+			]
+		},
+		{
+			"label": "build114-git-status",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short"
+			]
+		},
+		{
+			"label": "build114-git-add",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"lib/screens/equipment_layout_screen.dart",
+				"pubspec.yaml",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build114-commit",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"Build 114 - fix core iron connection logic"
+			]
+		},
+		{
+			"label": "build114-push",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"feature/equipment-bypass"
+			]
+		},
+		{
+			"label": "build114-git-status-post",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short"
+			]
 		}
 	]
 }
