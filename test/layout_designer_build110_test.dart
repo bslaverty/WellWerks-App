@@ -139,9 +139,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 113', () async {
+  test('Build number is 114', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+113'));
+    expect(pubspec, contains('version: 1.0.1+114'));
   });
 
   testWidgets(
@@ -274,6 +274,74 @@ void main() {
   });
 
   testWidgets(
+      'Dragging endpoint outside snap radius creates no iron-to-iron connection',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 120, y: 96, width: 80),
+        _ironItem(2, x: 270, y: 96, width: 120),
+      ],
+      selectedId: 1,
+      selectedEndpointLeading: false,
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('item-hitbox-1')),
+      const Offset(24, 0),
+    );
+    await tester.pumpAndSettle();
+
+    await _saveRigUp(tester);
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final props =
+        (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
+    expect(props['jointEnd'], isNull);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Self-connection is prevented and duplicate endpoint joins are stable',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 120, y: 96, width: 80),
+        _ironItem(2, x: 214, y: 96, width: 120),
+      ],
+      selectedId: 1,
+      selectedEndpointLeading: false,
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('item-hitbox-1')),
+      const Offset(24, 0),
+    );
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    var items = _itemsFromPayload(await _savedLayoutPayload());
+    final firstJoin = ((_findById(items, 1)['properties'] as Map)
+        .cast<String, dynamic>())['jointEnd'];
+    expect(firstJoin, isNotNull);
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('item-hitbox-1')),
+      const Offset(2, 0),
+    );
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    items = _itemsFromPayload(await _savedLayoutPayload());
+    final props =
+        (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
+    expect(props['jointEnd'], firstJoin);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
       'Dragging endpoint to equipment anchor creates and preserves a real connection',
       (tester) async {
     await _pumpLayout(
@@ -312,43 +380,146 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Bypass first and second side attachments persist independently',
+  testWidgets(
+      'Dragging endpoint to cyclonic separator anchor creates connection and follows movement',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 120, y: 88, width: 140),
+        _equipmentItem(2, 'cyclonicSandSep',
+            x: 260, y: 76, width: 56, height: 34),
+      ],
+      selectedId: 1,
+      selectedEndpointLeading: false,
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('item-hitbox-1')),
+      const Offset(24, 0),
+    );
+    await tester.pumpAndSettle();
+
+    await _saveRigUp(tester);
+    var items = _itemsFromPayload(await _savedLayoutPayload());
+    var props =
+        (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
+    expect(props['anchorEndItemId'], '2');
+    expect(props['anchorEndSide'], isNotNull);
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('item-hitbox-2')),
+      const Offset(36, 0),
+    );
+    await tester.pumpAndSettle();
+
+    await _saveRigUp(tester);
+    items = _itemsFromPayload(await _savedLayoutPayload());
+    props = (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
+    expect(props['anchorEndItemId'], '2');
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Iron endpoint connects to bypass left handle and persists',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 110, y: 110, width: 70),
+        _bypassItem(3, x: 180, y: 110),
+      ],
+      selectedId: 1,
+      selectedEndpointLeading: false,
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('item-hitbox-1')),
+      const Offset(24, 0),
+    );
+    await tester.pumpAndSettle();
+
+    await _saveRigUp(tester);
+    var items = _itemsFromPayload(await _savedLayoutPayload());
+    var props =
+        (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
+    expect(props['anchorEndItemId'], '3');
+    expect(props['anchorEndSide'], 'bypassPrimary');
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('item-hitbox-3')),
+      const Offset(48, 0),
+    );
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    items = _itemsFromPayload(await _savedLayoutPayload());
+    props = (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
+    expect(props['anchorEndItemId'], '3');
+    expect(props['anchorEndSide'], 'bypassPrimary');
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Iron endpoint connects to bypass right handle and persists',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _bypassItem(3, x: 180, y: 110),
+        _ironItem(1, x: 246, y: 110, width: 74),
+      ],
+      selectedId: 1,
+      selectedEndpointLeading: true,
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('item-hitbox-1')),
+      const Offset(-24, 0),
+    );
+    await tester.pumpAndSettle();
+
+    await _saveRigUp(tester);
+    var items = _itemsFromPayload(await _savedLayoutPayload());
+    var props =
+        (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
+    expect(props['anchorStartItemId'], '3');
+    expect(props['anchorStartSide'], 'bypassSecondary');
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('item-hitbox-3')),
+      const Offset(-36, 0),
+    );
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    items = _itemsFromPayload(await _savedLayoutPayload());
+    props = (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
+    expect(props['anchorStartItemId'], '3');
+    expect(props['anchorStartSide'], 'bypassSecondary');
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Bypass left and right attachments persist independently',
       (tester) async {
     await _pumpLayout(
       tester,
       items: <Map<String, dynamic>>[
         _ironItem(1, x: 120, y: 96, width: 240),
         _ironItem(2, x: 120, y: 168, width: 240),
-        _bypassItem(3, x: 180, y: 110),
+        _bypassItem(3, x: 180, y: 110, properties: <String, String>{
+          'bypassPrimaryIronId': '1',
+          'bypassPrimaryT': '0.3500',
+          'bypassSecondaryIronId': '2',
+          'bypassSecondaryT': '0.3400',
+        }),
       ],
       selectedId: 3,
-      selectedBypassHandle: 'Primary',
     );
-
-    await tester.drag(
-      find.byKey(const ValueKey<String>('item-hitbox-3')),
-      const Offset(0, -24),
-    );
-    await tester.pumpAndSettle();
 
     await _saveRigUp(tester);
-    var items = _itemsFromPayload(await _savedLayoutPayload());
-
-    await _pumpLayout(
-      tester,
-      items: items,
-      nextId: 10,
-      selectedId: 3,
-      selectedBypassHandle: 'Secondary',
-    );
-    await tester.drag(
-      find.byKey(const ValueKey<String>('item-hitbox-3')),
-      const Offset(0, 34),
-    );
-    await tester.pumpAndSettle();
-
-    await _saveRigUp(tester);
-    items = _itemsFromPayload(await _savedLayoutPayload());
+    final items = _itemsFromPayload(await _savedLayoutPayload());
     final props =
         (_findById(items, 3)['properties'] as Map).cast<String, dynamic>();
     expect(props['bypassPrimaryIronId'], '1');
