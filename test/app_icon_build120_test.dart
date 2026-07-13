@@ -48,13 +48,15 @@ Future<_DecodedImage> _decodePng(File file) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('Build number is 120 in pubspec', () async {
+  test('Build number is 121 in pubspec', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+120'));
+    expect(pubspec, contains('version: 1.0.1+121'));
+    expect(
+        pubspec, contains('image_path: "assets/icons/app_icon_build121.png"'));
   });
 
   test('Master app icon exists and is at least 1024x1024', () async {
-    final iconFile = File('assets/icons/app_icon.png');
+    final iconFile = File('assets/icons/app_icon_build121.png');
     expect(iconFile.existsSync(), isTrue);
 
     final icon = await _decodePng(iconFile);
@@ -62,9 +64,10 @@ void main() {
     expect(icon.height, greaterThanOrEqualTo(1024));
   });
 
-  test('Master app icon has matte black interior and full opaque edge coverage',
+  test(
+      'Master app icon restores older rich colors and full opaque edge coverage',
       () async {
-    final icon = await _decodePng(File('assets/icons/app_icon.png'));
+    final icon = await _decodePng(File('assets/icons/app_icon_build121.png'));
 
     final blackProbePoints = <List<double>>[
       <double>[0.25, 0.25],
@@ -78,9 +81,9 @@ void main() {
         (icon.width * pt[0]).round(),
         (icon.height * pt[1]).round(),
       );
-      expect(px[0], lessThanOrEqualTo(8));
-      expect(px[1], lessThanOrEqualTo(8));
-      expect(px[2], lessThanOrEqualTo(8));
+      expect(px[0], inInclusiveRange(0, 40));
+      expect(px[1], inInclusiveRange(0, 40));
+      expect(px[2], inInclusiveRange(0, 40));
       expect(px[3], 255);
     }
 
@@ -97,8 +100,13 @@ void main() {
         (icon.height * pt[1]).round(),
       );
       expect(px[3], 255);
-      expect(px[0] + px[1] + px[2], greaterThan(240));
-      expect(px[0], greaterThanOrEqualTo(120));
+      expect(px[0], inInclusiveRange(188, 214));
+      expect(px[1], inInclusiveRange(156, 180));
+      expect(px[2], inInclusiveRange(116, 135));
+
+      // Guard against the pale Build 120 gold treatment.
+      expect(px[0], lessThanOrEqualTo(214));
+      expect(px[1], lessThanOrEqualTo(180));
     }
 
     for (var x = 0; x < icon.width; x += 32) {

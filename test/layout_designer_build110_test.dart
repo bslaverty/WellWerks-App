@@ -147,9 +147,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 120', () async {
+  test('Build number is 121', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+120'));
+    expect(pubspec, contains('version: 1.0.1+121'));
   });
 
   testWidgets(
@@ -237,7 +237,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey<String>('selection-dock-toolbar')),
-        findsNothing);
+        findsOneWidget);
 
     await _saveRigUp(tester);
     final items = _itemsFromPayload(await _savedLayoutPayload());
@@ -269,7 +269,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('D-pad center deselects and hides selected controls',
+  testWidgets('D-pad center deselects while fixed strip stays visible',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -281,10 +281,34 @@ void main() {
 
     expect(find.byKey(const ValueKey<String>('selection-dock-toolbar')),
         findsOneWidget);
-    await tester.tap(find.byTooltip('Deselect'));
+    await tester.tap(find.byTooltip('Deselect'), warnIfMissed: false);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey<String>('selection-dock-toolbar')),
-        findsNothing);
+        findsOneWidget);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Fixed edit strip keeps a stable height through select and deselect',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'wellhead', x: 280, y: 260, width: 30, height: 28),
+      ],
+      selectedId: 1,
+    );
+
+    final stripFinder =
+        find.byKey(const ValueKey<String>('selection-dock-toolbar'));
+    final selectedHeight = tester.getSize(stripFinder).height;
+
+    await tester.tapAt(const Offset(40, 520));
+    await tester.pumpAndSettle();
+
+    final deselectedHeight = tester.getSize(stripFinder).height;
+    expect(deselectedHeight, closeTo(selectedHeight, 0.01));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -365,7 +389,7 @@ void main() {
   });
 
   testWidgets(
-      'Floating toolbar hides during drag, then reappears and stays off item',
+      'Fixed strip stays visible during drag and remains off dragged item',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -387,7 +411,7 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const ValueKey<String>('selection-dock-toolbar')),
-        findsNothing);
+        findsOneWidget);
 
     await gesture.up();
     await tester.pumpAndSettle();
