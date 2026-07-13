@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
@@ -121,6 +122,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     if (box is! RenderBox) return globalPoint;
     final viewportPoint = box.globalToLocal(globalPoint);
     return _scenePointFromViewport(viewportPoint);
+  }
+
+  Offset _sceneDeltaFromScreen(Offset screenDelta) {
+    final originScene = _scenePointFromViewport(Offset.zero);
+    final translatedScene = _scenePointFromViewport(screenDelta);
+    return translatedScene - originScene;
   }
 
   Offset _clampToCanvas(Offset point) {
@@ -264,6 +271,15 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   }
 
   Offset _equipmentAnchorPoint(_LayoutItem item, String side) {
+    if (item.type == _EquipmentType.bypass) {
+      switch (side) {
+        case 'bypassPrimary':
+          return Offset(item.x, item.y + item.height / 2);
+        case 'bypassSecondary':
+          return Offset(item.x + item.width, item.y + item.height / 2);
+      }
+    }
+
     switch (side) {
       case 'left':
         return Offset(item.x, item.y + item.height / 2);
@@ -460,6 +476,27 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     return best;
   }
 
+  _BypassHandleCandidate? _nearestBypassHandleCandidate(Offset target) {
+    _BypassHandleCandidate? best;
+    for (final item in _items) {
+      if (item.type != _EquipmentType.bypass) continue;
+      for (final side in const <String>['bypassPrimary', 'bypassSecondary']) {
+        final point = _equipmentAnchorPoint(item, side);
+        final distance = (point - target).distance;
+        if (distance > _equipmentAnchorSnapRadius) continue;
+        if (best == null || distance < best.score) {
+          best = _BypassHandleCandidate(
+            itemId: item.id,
+            side: side,
+            point: point,
+            score: distance,
+          );
+        }
+      }
+    }
+    return best;
+  }
+
   void _connectIronEndpoints(
     _LayoutItem item,
     bool leading,
@@ -493,6 +530,22 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     _snapIndicatorScene = candidate.point;
   }
 
+  void _attachIronEndpointToBypass(
+    _LayoutItem item,
+    bool leading,
+    _BypassHandleCandidate candidate,
+  ) {
+    _clearEndpointAttachment(item, leading);
+    _setEndpointAnchor(
+      item,
+      leading,
+      anchorItemId: candidate.itemId,
+      side: candidate.side,
+    );
+    _setIronEndpointPosition(item, leading, candidate.point);
+    _snapIndicatorScene = candidate.point;
+  }
+
   double? _bypassAttachmentT(_LayoutItem item, String slot) {
     return double.tryParse(item.properties[_bypassTKey(slot)] ?? '');
   }
@@ -513,7 +566,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     item.properties[_bypassTKey(slot)] = t.clamp(0.0, 1.0).toStringAsFixed(4);
   }
 
-  _SnapCandidate? _nearestBypassRail(_LayoutItem item, Offset desiredTopLeft) {
+  _SnapCandidate? _nearestBypassRail(
+    _LayoutItem item,
+    Offset desiredTopLeft, {
+    int? excludedIronId,
+    double maxDistance = _equipmentAnchorSnapRadius,
+  }) {
     final center = Offset(
       desiredTopLeft.dx + item.width / 2,
       desiredTopLeft.dy + item.height / 2,
@@ -521,6 +579,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     _SnapCandidate? best;
     for (final iron in _items) {
       if (!_isStraightIronType(iron.type)) continue;
+      if (excludedIronId != null && iron.id == excludedIronId) continue;
       final horizontal = iron.type == _EquipmentType.ironHorizontal;
       final projected = horizontal
           ? Offset(center.dx.clamp(iron.x, iron.x + iron.width),
@@ -528,7 +587,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
           : Offset(iron.x + iron.width / 2,
               center.dy.clamp(iron.y, iron.y + iron.height));
       final distance = (projected - center).distance;
-      if (distance > _equipmentAnchorSnapRadius) continue;
+      if (distance > maxDistance) continue;
       if (best == null || distance < best.score) {
         best = _SnapCandidate(
           ironId: iron.id,
@@ -902,6 +961,53 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       return;
     }
 
+    if (anchor.id == _selectedId &&
+        _isStraightIronType(anchor.type) &&
+        _selectedEndpointLeading != null) {
+      setState(() {
+        final leading = _selectedEndpointLeading!;
+        final endpoint = _ironEndpoint(anchor, leading);
+        final bypassCandidate = _nearestBypassHandleCandidate(endpoint);
+        final equipmentCandidate =
+            _nearestEquipmentAnchorCandidate(anchor, endpoint);
+        final endpointCandidate =
+            _nearestEndpointCandidate(anchor, leading, endpoint);
+        if (bypassCandidate != null) {
+          _attachIronEndpointToBypass(anchor, leading, bypassCandidate);
+        } else if (equipmentCandidate != null &&
+            (endpointCandidate == null ||
+                equipmentCandidate.score <= endpointCandidate.score)) {
+          _attachIronEndpointToEquipment(anchor, leading, equipmentCandidate);
+        } else if (endpointCandidate != null) {
+          _connectIronEndpoints(anchor, leading, endpointCandidate);
+        }
+        _reflowSnappedFittings();
+      });
+    }
+
+    if (anchor.id == _selectedId &&
+        anchor.type == _EquipmentType.bypass &&
+        _selectedBypassHandle != null) {
+      setState(() {
+        final candidate =
+            _nearestBypassRail(anchor, Offset(anchor.x, anchor.y));
+        if (candidate != null) {
+          final iron = _findItemById(candidate.ironId);
+          if (iron != null) {
+            final center = Offset(
+                anchor.x + anchor.width / 2, anchor.y + anchor.height / 2);
+            _setBypassAttachment(
+              anchor,
+              _selectedBypassHandle!,
+              iron,
+              _normalizedPositionAlongIron(iron, center),
+            );
+            _reflowSnappedFittings();
+          }
+        }
+      });
+    }
+
     if (_dragActive && _snapToGrid) {
       setState(() {
         final canvasSize = _virtualCanvasSize;
@@ -953,6 +1059,55 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
           _normalizedPositionAlongIron(
               _bypassAttachmentIron(item, 'Secondary')!, desiredCenter));
     }
+  }
+
+  void _commitIronEndpointConnection(_LayoutItem item, bool leading) {
+    final endpoint = _ironEndpoint(item, leading);
+    final bypassCandidate = _nearestBypassHandleCandidate(endpoint);
+    final equipmentCandidate = _nearestEquipmentAnchorCandidate(item, endpoint);
+    final endpointCandidate =
+        _nearestEndpointCandidate(item, leading, endpoint);
+    if (bypassCandidate != null) {
+      _attachIronEndpointToBypass(item, leading, bypassCandidate);
+    } else if (equipmentCandidate != null &&
+        (endpointCandidate == null ||
+            equipmentCandidate.score <= endpointCandidate.score)) {
+      _attachIronEndpointToEquipment(item, leading, equipmentCandidate);
+    } else if (endpointCandidate != null) {
+      _connectIronEndpoints(item, leading, endpointCandidate);
+    }
+    _reflowSnappedFittings();
+  }
+
+  void _commitBypassHandleAttachment(_LayoutItem item, String slot) {
+    final otherSlot = slot == 'Primary' ? 'Secondary' : 'Primary';
+    final otherIron = _bypassAttachmentIron(item, otherSlot);
+    final candidate = _nearestBypassRail(
+          item,
+          Offset(item.x, item.y),
+          excludedIronId: otherIron?.id,
+          maxDistance: otherIron == null
+              ? _equipmentAnchorSnapRadius
+              : _equipmentAnchorSnapRadius * 4,
+        ) ??
+        _nearestBypassRail(item, Offset(item.x, item.y));
+    if (candidate == null) {
+      _reflowSnappedFittings();
+      return;
+    }
+    final iron = _findItemById(candidate.ironId);
+    if (iron == null) {
+      _reflowSnappedFittings();
+      return;
+    }
+    final center = Offset(item.x + item.width / 2, item.y + item.height / 2);
+    _setBypassAttachment(
+      item,
+      slot,
+      iron,
+      _normalizedPositionAlongIron(iron, center),
+    );
+    _reflowSnappedFittings();
   }
 
   void _undoLayoutChange() {
@@ -1080,23 +1235,27 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       _selectedEndpointLeading = leading;
       _selectedBypassHandle = null;
       final current = _ironEndpoint(item, leading);
+      final sceneDelta = _sceneDeltaFromScreen(details.delta);
       final desired = item.type == _EquipmentType.ironHorizontal
-          ? Offset(current.dx + details.delta.dx, current.dy)
-          : Offset(current.dx, current.dy + details.delta.dy);
+          ? Offset(current.dx + sceneDelta.dx, current.dy)
+          : Offset(current.dx, current.dy + sceneDelta.dy);
       _clearEndpointAttachment(item, leading);
       _setIronEndpointPosition(item, leading, desired);
 
       final snappedPoint = _ironEndpoint(item, leading);
+      final bypassCandidate = _nearestBypassHandleCandidate(snappedPoint);
       final endpointCandidate =
           _nearestEndpointCandidate(item, leading, snappedPoint);
       final anchorCandidate =
           _nearestEquipmentAnchorCandidate(item, snappedPoint);
-      if (endpointCandidate != null &&
-          (anchorCandidate == null ||
-              endpointCandidate.score <= anchorCandidate.score)) {
-        _connectIronEndpoints(item, leading, endpointCandidate);
-      } else if (anchorCandidate != null) {
+      if (bypassCandidate != null) {
+        _attachIronEndpointToBypass(item, leading, bypassCandidate);
+      } else if (anchorCandidate != null &&
+          (endpointCandidate == null ||
+              anchorCandidate.score <= endpointCandidate.score)) {
         _attachIronEndpointToEquipment(item, leading, anchorCandidate);
+      } else if (endpointCandidate != null) {
+        _connectIronEndpoints(item, leading, endpointCandidate);
       } else {
         _snapIndicatorScene = null;
       }
@@ -1125,8 +1284,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     setState(() {
       _selectedBypassHandle = slot;
       _selectedEndpointLeading = null;
-      final desired =
-          Offset(item.x + details.delta.dx, item.y + details.delta.dy);
+      final sceneDelta = _sceneDeltaFromScreen(details.delta);
+      final desired = Offset(item.x + sceneDelta.dx, item.y + sceneDelta.dy);
       final candidate = _nearestBypassRail(item, desired);
       if (candidate == null) {
         _snapIndicatorScene = null;
@@ -1168,6 +1327,46 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       _drawIronMode = false;
       _ironStartPoint = null;
     });
+  }
+
+  void _commitPendingSelectionConnections() {
+    final selected = _selectedItem;
+    if (selected == null) return;
+    if (_isStraightIronType(selected.type) &&
+        _selectedEndpointLeading != null) {
+      _commitIronEndpointConnection(selected, _selectedEndpointLeading!);
+      return;
+    }
+    if (selected.type == _EquipmentType.bypass &&
+        _selectedBypassHandle != null) {
+      _commitBypassHandleAttachment(selected, _selectedBypassHandle!);
+      final primaryIron = _bypassAttachmentIron(selected, 'Primary');
+      final secondaryIron = _bypassAttachmentIron(selected, 'Secondary');
+      if (primaryIron != null && secondaryIron == null) {
+        final complement = _nearestBypassRail(
+          selected,
+          Offset(selected.x, selected.y),
+          excludedIronId: primaryIron.id,
+          maxDistance: _equipmentAnchorSnapRadius * 6,
+        );
+        if (complement != null) {
+          final iron = _findItemById(complement.ironId);
+          if (iron != null) {
+            final center = Offset(
+              selected.x + selected.width / 2,
+              selected.y + selected.height / 2,
+            );
+            _setBypassAttachment(
+              selected,
+              'Secondary',
+              iron,
+              _normalizedPositionAlongIron(iron, center),
+            );
+            _reflowSnappedFittings();
+          }
+        }
+      }
+    }
   }
 
   void _handleCanvasTap(Offset point) {
@@ -1598,6 +1797,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
 
   Future<void> _saveLayoutInternal() async {
     final prefs = await SharedPreferences.getInstance();
+    _commitPendingSelectionConnections();
     final name = _layoutName.text.trim().isEmpty
         ? 'New Layout'
         : _layoutName.text.trim();
@@ -1796,6 +1996,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
 
   Future<void> _saveRigUp() async {
     final prefs = await SharedPreferences.getInstance();
+    _commitPendingSelectionConnections();
     final name = _layoutName.text.trim().isEmpty
         ? 'New Rig-Up'
         : _layoutName.text.trim();
@@ -5864,9 +6065,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                                               true,
                                             ),
                                             onPanEnd: () {
-                                              if (!_snapToGrid) return;
-                                              setState(() =>
-                                                  _reflowSnappedFittings());
+                                              setState(() {
+                                                _commitIronEndpointConnection(
+                                                    item, true);
+                                                if (_snapToGrid) {
+                                                  _reflowSnappedFittings();
+                                                }
+                                              });
                                             },
                                           ),
                                           _IronStretchHandle(
@@ -5893,9 +6098,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                                               false,
                                             ),
                                             onPanEnd: () {
-                                              if (!_snapToGrid) return;
-                                              setState(() =>
-                                                  _reflowSnappedFittings());
+                                              setState(() {
+                                                _commitIronEndpointConnection(
+                                                    item, false);
+                                                if (_snapToGrid) {
+                                                  _reflowSnappedFittings();
+                                                }
+                                              });
                                             },
                                           ),
                                         ],
@@ -5921,8 +6130,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                                             onPanUpdate: (details) =>
                                                 _attachBypassHandleToNearestRail(
                                                     item, 'Primary', details),
-                                            onPanEnd: () => setState(
-                                                _reflowSnappedFittings),
+                                            onPanEnd: () => setState(() {
+                                              _commitBypassHandleAttachment(
+                                                  item, 'Primary');
+                                            }),
                                           ),
                                           _BypassAttachmentHandle(
                                             item: item,
@@ -5946,8 +6157,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                                             onPanUpdate: (details) =>
                                                 _attachBypassHandleToNearestRail(
                                                     item, 'Secondary', details),
-                                            onPanEnd: () => setState(
-                                                _reflowSnappedFittings),
+                                            onPanEnd: () => setState(() {
+                                              _commitBypassHandleAttachment(
+                                                  item, 'Secondary');
+                                            }),
                                           ),
                                         ],
                                       ],
@@ -6018,6 +6231,20 @@ class _EquipmentAnchorCandidate {
   final double score;
 
   const _EquipmentAnchorCandidate({
+    required this.itemId,
+    required this.side,
+    required this.point,
+    required this.score,
+  });
+}
+
+class _BypassHandleCandidate {
+  final int itemId;
+  final String side;
+  final Offset point;
+  final double score;
+
+  const _BypassHandleCandidate({
     required this.itemId,
     required this.side,
     required this.point,
@@ -6665,12 +6892,13 @@ class _IronStretchHandle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isHorizontal = item.type == _EquipmentType.ironHorizontal;
+    const handleSize = 36.0;
     final left = isHorizontal
-        ? (leading ? -9.0 : item.width - 9.0)
-        : (item.width / 2) - 9.0;
+        ? (leading ? -handleSize / 2 : item.width - handleSize / 2)
+        : (item.width / 2) - handleSize / 2;
     final top = isHorizontal
-        ? (item.height / 2) - 9.0
-        : (leading ? -9.0 : item.height - 9.0);
+        ? (item.height / 2) - handleSize / 2
+        : (leading ? -handleSize / 2 : item.height - handleSize / 2);
 
     return Positioned(
       left: left + interactionPadding,
@@ -6678,15 +6906,16 @@ class _IronStretchHandle extends StatelessWidget {
       child: GestureDetector(
         key: ValueKey<String>(
             'iron-handle-${item.id}-${leading ? 'start' : 'end'}'),
-        behavior: HitTestBehavior.translucent,
+        behavior: HitTestBehavior.opaque,
+        dragStartBehavior: DragStartBehavior.down,
         onTap: onTap,
         onPanStart: (_) => onPanStart(),
         onPanUpdate: onPanUpdate,
         onPanEnd: (_) => onPanEnd(),
         child: Container(
-          width: 24,
-          height: 24,
-          padding: const EdgeInsets.all(3),
+          width: handleSize,
+          height: handleSize,
+          padding: const EdgeInsets.all(9),
           decoration: BoxDecoration(
             color: Colors.transparent,
             shape: BoxShape.circle,
@@ -6735,22 +6964,24 @@ class _BypassAttachmentHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final left = trailing ? item.width - 8 : -8.0;
-    final top = item.height / 2 - 8;
+    const handleSize = 34.0;
+    final left = trailing ? item.width - handleSize / 2 : -handleSize / 2;
+    final top = item.height / 2 - handleSize / 2;
     return Positioned(
       left: left + interactionPadding,
       top: top + interactionPadding,
       child: GestureDetector(
         key: ValueKey<String>('bypass-handle-${item.id}-${slot.toLowerCase()}'),
-        behavior: HitTestBehavior.translucent,
+        behavior: HitTestBehavior.opaque,
+        dragStartBehavior: DragStartBehavior.down,
         onTap: onTap,
         onPanStart: (_) => onPanStart(),
         onPanUpdate: onPanUpdate,
         onPanEnd: (_) => onPanEnd(),
         child: Container(
-          width: 22,
-          height: 22,
-          padding: const EdgeInsets.all(4),
+          width: handleSize,
+          height: handleSize,
+          padding: const EdgeInsets.all(9),
           decoration: const BoxDecoration(
             color: Colors.transparent,
             shape: BoxShape.circle,

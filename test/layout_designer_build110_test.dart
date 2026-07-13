@@ -139,9 +139,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 112', () async {
+  test('Build number is 113', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+112'));
+    expect(pubspec, contains('version: 1.0.1+113'));
   });
 
   testWidgets(
@@ -228,21 +228,23 @@ void main() {
   });
 
   testWidgets(
-      'Connected iron joints survive save reload and can be disconnected without deleting segments',
+      'Dragging endpoint within snap radius creates an iron-to-iron connection that survives save reload and can disconnect',
       (tester) async {
     await _pumpLayout(
       tester,
       items: <Map<String, dynamic>>[
-        _ironItem(1, x: 120, y: 96, width: 94, properties: <String, String>{
-          'jointEnd': 'joint_a',
-        }),
-        _ironItem(2, x: 214, y: 96, width: 120, properties: <String, String>{
-          'jointStart': 'joint_a',
-        }),
+        _ironItem(1, x: 120, y: 96, width: 80),
+        _ironItem(2, x: 214, y: 96, width: 120),
       ],
       selectedId: 1,
       selectedEndpointLeading: false,
     );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('item-hitbox-1')),
+      const Offset(24, 0),
+    );
+    await tester.pumpAndSettle();
 
     await _saveRigUp(tester);
     var items = _itemsFromPayload(await _savedLayoutPayload());
@@ -250,15 +252,14 @@ void main() {
     var iron2 = _findById(items, 2);
     var props1 = (iron1['properties'] as Map).cast<String, dynamic>();
     var props2 = (iron2['properties'] as Map).cast<String, dynamic>();
-    expect(props1['jointEnd'], 'joint_a');
-    expect(props2['jointStart'], 'joint_a');
+    expect(props1['jointEnd'], isNotNull);
+    expect(props1['jointEnd'], props2['jointStart']);
 
     await _pumpLayout(
       tester,
       items: items,
       nextId: 10,
       selectedId: 1,
-      selectedEndpointLeading: false,
     );
     await tester.tap(find.byTooltip('Disconnect'));
     await tester.pumpAndSettle();
@@ -273,18 +274,23 @@ void main() {
   });
 
   testWidgets(
-      'Equipment anchor connections persist and moving equipment carries attached iron endpoints',
+      'Dragging endpoint to equipment anchor creates and preserves a real connection',
       (tester) async {
     await _pumpLayout(
       tester,
       items: <Map<String, dynamic>>[
-        _ironItem(1, x: 120, y: 88, width: 140, properties: <String, String>{
-          'anchorEndItemId': '2',
-          'anchorEndSide': 'left',
-        }),
+        _ironItem(1, x: 120, y: 88, width: 140),
         _equipmentItem(2, 'wellhead', x: 260, y: 86, width: 30, height: 28),
       ],
+      selectedId: 1,
+      selectedEndpointLeading: false,
     );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('item-hitbox-1')),
+      const Offset(24, 0),
+    );
+    await tester.pumpAndSettle();
 
     await _saveRigUp(tester);
     var items = _itemsFromPayload(await _savedLayoutPayload());
@@ -313,18 +319,36 @@ void main() {
       items: <Map<String, dynamic>>[
         _ironItem(1, x: 120, y: 96, width: 240),
         _ironItem(2, x: 120, y: 168, width: 240),
-        _bypassItem(3, x: 180, y: 110, properties: <String, String>{
-          'bypassPrimaryIronId': '1',
-          'bypassPrimaryT': '0.3000',
-          'bypassSecondaryIronId': '2',
-          'bypassSecondaryT': '0.3000',
-        }),
+        _bypassItem(3, x: 180, y: 110),
       ],
       selectedId: 3,
+      selectedBypassHandle: 'Primary',
     );
 
+    await tester.drag(
+      find.byKey(const ValueKey<String>('item-hitbox-3')),
+      const Offset(0, -24),
+    );
+    await tester.pumpAndSettle();
+
     await _saveRigUp(tester);
-    final items = _itemsFromPayload(await _savedLayoutPayload());
+    var items = _itemsFromPayload(await _savedLayoutPayload());
+
+    await _pumpLayout(
+      tester,
+      items: items,
+      nextId: 10,
+      selectedId: 3,
+      selectedBypassHandle: 'Secondary',
+    );
+    await tester.drag(
+      find.byKey(const ValueKey<String>('item-hitbox-3')),
+      const Offset(0, 34),
+    );
+    await tester.pumpAndSettle();
+
+    await _saveRigUp(tester);
+    items = _itemsFromPayload(await _savedLayoutPayload());
     final props =
         (_findById(items, 3)['properties'] as Map).cast<String, dynamic>();
     expect(props['bypassPrimaryIronId'], '1');
