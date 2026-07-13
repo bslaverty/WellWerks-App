@@ -305,6 +305,314 @@
 				"status",
 				"--short"
 			]
+		},
+		{
+			"label": "build113-focused-layout-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build113-pub-get",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"pub",
+				"get"
+			]
+		},
+		{
+			"label": "build113-format",
+			"type": "shell",
+			"command": "dart",
+			"args": [
+				"format",
+				"."
+			]
+		},
+		{
+			"label": "build113-analyze",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"analyze"
+			]
+		},
+		{
+			"label": "build113-test",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test"
+			]
+		},
+		{
+			"label": "build113-status",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short",
+				"--branch"
+			]
+		},
+		{
+			"label": "build113-focused-layout-tests-creation",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build113-focused-layout-tests-creation2",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build113-focused-layout-tests-creation3",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build113-focused-layout-tests-creation4",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build113-focused-layout-tests-creation5",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build113-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build113-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build113-single-test",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart",
+				"--plain-name",
+				"Dragging endpoint within snap radius creates an iron-to-iron connection that survives save reload and can disconnect"
+			]
+		},
+		{
+			"label": "build113-single-test",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart",
+				"--plain-name",
+				"Dragging endpoint within snap radius creates an iron-to-iron connection that survives save reload and can disconnect"
+			]
+		},
+		{
+			"label": "build113-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build113-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build113-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build113-single-test",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart",
+				"--plain-name",
+				"Dragging endpoint within snap radius creates an iron-to-iron connection that survives save reload and can disconnect"
+			]
+		},
+		{
+			"label": "build113-single-test-expanded",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart",
+				"--reporter",
+				"expanded",
+				"--plain-name",
+				"Dragging endpoint within snap radius creates an iron-to-iron connection that survives save reload and can disconnect"
+			]
+		},
+		{
+			"label": "build113-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build113-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build113-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build113-focused-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build113-pub-get",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"pub",
+				"get"
+			]
+		},
+		{
+			"label": "build113-format",
+			"type": "shell",
+			"command": "dart",
+			"args": [
+				"format",
+				"."
+			]
+		},
+		{
+			"label": "build113-analyze",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"analyze"
+			]
+		},
+		{
+			"label": "build113-all-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test"
+			]
+		},
+		{
+			"label": "build113-git-status",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short"
+			]
+		},
+		{
+			"label": "build113-git-add",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"lib/screens/equipment_layout_screen.dart",
+				"pubspec.yaml",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build113-commit",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"Build 113 - fix layout connection creation"
+			]
+		},
+		{
+			"label": "build113-push",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"feature/equipment-bypass"
+			]
+		},
+		{
+			"label": "build113-git-status-post",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short"
+			]
 		}
 	]
 }
