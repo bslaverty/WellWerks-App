@@ -594,6 +594,9 @@ class ProductionTank {
 }
 
 class ProductionWellCheckData {
+  static const String measurementTank = 'tank';
+  static const String measurementMeter = 'meter';
+
   static const List<String> supportedChemicals = <String>[
     'Biocide',
     'Scavenger',
@@ -630,6 +633,12 @@ class ProductionWellCheckData {
     this.oilTankGauges = const [],
     this.waterTankGaugeEntries = const [],
     this.oilTankGaugeEntries = const [],
+    this.waterMeasurementMethod = measurementTank,
+    this.oilMeasurementMethod = measurementTank,
+    this.waterMeterReading = '',
+    this.oilMeterReading = '',
+    this.startingWaterMeter = '',
+    this.startingOilMeter = '',
     this.waterHauled = '',
     this.oilHauled = '',
     this.waterPumped = '',
@@ -700,6 +709,14 @@ class ProductionWellCheckData {
           parseGaugeEntries(json['waterTankGaugeEntries'], waterGauges),
       oilTankGaugeEntries:
           parseGaugeEntries(json['oilTankGaugeEntries'], oilGauges),
+      waterMeasurementMethod:
+          normalizeMeasurementMethod(json['waterMeasurementMethod']),
+      oilMeasurementMethod:
+          normalizeMeasurementMethod(json['oilMeasurementMethod']),
+      waterMeterReading: json['waterMeterReading'] as String? ?? '',
+      oilMeterReading: json['oilMeterReading'] as String? ?? '',
+      startingWaterMeter: json['startingWaterMeter'] as String? ?? '',
+      startingOilMeter: json['startingOilMeter'] as String? ?? '',
       waterHauled: json['waterHauled'] as String? ?? '',
       oilHauled: json['oilHauled'] as String? ?? '',
       waterPumped: json['waterPumped'] as String? ?? '',
@@ -742,6 +759,14 @@ class ProductionWellCheckData {
       oilTankGauges: check.oilTankGauges,
       waterTankGaugeEntries: check.waterTankGaugeEntries,
       oilTankGaugeEntries: check.oilTankGaugeEntries,
+      waterMeasurementMethod:
+          normalizeMeasurementMethod(check.waterMeasurementMethod),
+      oilMeasurementMethod:
+          normalizeMeasurementMethod(check.oilMeasurementMethod),
+      waterMeterReading: check.waterMeterReading,
+      oilMeterReading: check.oilMeterReading,
+      startingWaterMeter: check.startingWaterMeter,
+      startingOilMeter: check.startingOilMeter,
       waterHauled: check.waterHauled,
       oilHauled: check.oilHauled,
       waterPumped: check.waterPumped,
@@ -782,6 +807,12 @@ class ProductionWellCheckData {
   final List<String> oilTankGauges;
   final List<ProductionGaugeEntry> waterTankGaugeEntries;
   final List<ProductionGaugeEntry> oilTankGaugeEntries;
+  final String waterMeasurementMethod;
+  final String oilMeasurementMethod;
+  final String waterMeterReading;
+  final String oilMeterReading;
+  final String startingWaterMeter;
+  final String startingOilMeter;
   final String waterHauled;
   final String oilHauled;
   final String waterPumped;
@@ -824,6 +855,13 @@ class ProductionWellCheckData {
           waterTankGaugeEntries.map((item) => item.toJson()).toList(),
       'oilTankGaugeEntries':
           oilTankGaugeEntries.map((item) => item.toJson()).toList(),
+      'waterMeasurementMethod':
+          normalizeMeasurementMethod(waterMeasurementMethod),
+      'oilMeasurementMethod': normalizeMeasurementMethod(oilMeasurementMethod),
+      'waterMeterReading': waterMeterReading,
+      'oilMeterReading': oilMeterReading,
+      'startingWaterMeter': startingWaterMeter,
+      'startingOilMeter': startingOilMeter,
       'waterHauled': waterHauled,
       'oilHauled': oilHauled,
       'waterPumped': waterPumped,
@@ -834,6 +872,11 @@ class ProductionWellCheckData {
       'expectedOilInventory': expectedOilInventory,
       'maximumCushion': maximumCushion,
     };
+  }
+
+  static String normalizeMeasurementMethod(dynamic value) {
+    final normalized = value?.toString().trim().toLowerCase();
+    return normalized == measurementMeter ? measurementMeter : measurementTank;
   }
 }
 
@@ -870,6 +913,12 @@ class ProductionHourlyCheck {
     this.oilTankGauges = const [],
     this.waterTankGaugeEntries = const [],
     this.oilTankGaugeEntries = const [],
+    this.waterMeasurementMethod = ProductionWellCheckData.measurementTank,
+    this.oilMeasurementMethod = ProductionWellCheckData.measurementTank,
+    this.waterMeterReading = '',
+    this.oilMeterReading = '',
+    this.startingWaterMeter = '',
+    this.startingOilMeter = '',
     this.waterHauled = '',
     this.oilHauled = '',
     this.waterPumped = '',
@@ -949,6 +998,17 @@ class ProductionHourlyCheck {
           parseGaugeEntries(json['waterTankGaugeEntries'], waterGauges),
       oilTankGaugeEntries:
           parseGaugeEntries(json['oilTankGaugeEntries'], oilGauges),
+      waterMeasurementMethod:
+          ProductionWellCheckData.normalizeMeasurementMethod(
+        json['waterMeasurementMethod'],
+      ),
+      oilMeasurementMethod: ProductionWellCheckData.normalizeMeasurementMethod(
+        json['oilMeasurementMethod'],
+      ),
+      waterMeterReading: json['waterMeterReading'] as String? ?? '',
+      oilMeterReading: json['oilMeterReading'] as String? ?? '',
+      startingWaterMeter: json['startingWaterMeter'] as String? ?? '',
+      startingOilMeter: json['startingOilMeter'] as String? ?? '',
       waterHauled: json['waterHauled'] as String? ?? '',
       oilHauled: json['oilHauled'] as String? ?? '',
       waterPumped: json['waterPumped'] as String? ?? '',
@@ -989,6 +1049,12 @@ class ProductionHourlyCheck {
   final List<String> oilTankGauges;
   final List<ProductionGaugeEntry> waterTankGaugeEntries;
   final List<ProductionGaugeEntry> oilTankGaugeEntries;
+  final String waterMeasurementMethod;
+  final String oilMeasurementMethod;
+  final String waterMeterReading;
+  final String oilMeterReading;
+  final String startingWaterMeter;
+  final String startingOilMeter;
   final String waterHauled;
   final String oilHauled;
   final String waterPumped;
@@ -1028,6 +1094,12 @@ class ProductionHourlyCheck {
     List<String>? oilTankGauges,
     List<ProductionGaugeEntry>? waterTankGaugeEntries,
     List<ProductionGaugeEntry>? oilTankGaugeEntries,
+    String? waterMeasurementMethod,
+    String? oilMeasurementMethod,
+    String? waterMeterReading,
+    String? oilMeterReading,
+    String? startingWaterMeter,
+    String? startingOilMeter,
     String? waterHauled,
     String? oilHauled,
     String? waterPumped,
@@ -1070,6 +1142,17 @@ class ProductionHourlyCheck {
       waterTankGaugeEntries:
           waterTankGaugeEntries ?? this.waterTankGaugeEntries,
       oilTankGaugeEntries: oilTankGaugeEntries ?? this.oilTankGaugeEntries,
+      waterMeasurementMethod:
+          ProductionWellCheckData.normalizeMeasurementMethod(
+        waterMeasurementMethod ?? this.waterMeasurementMethod,
+      ),
+      oilMeasurementMethod: ProductionWellCheckData.normalizeMeasurementMethod(
+        oilMeasurementMethod ?? this.oilMeasurementMethod,
+      ),
+      waterMeterReading: waterMeterReading ?? this.waterMeterReading,
+      oilMeterReading: oilMeterReading ?? this.oilMeterReading,
+      startingWaterMeter: startingWaterMeter ?? this.startingWaterMeter,
+      startingOilMeter: startingOilMeter ?? this.startingOilMeter,
       waterHauled: waterHauled ?? this.waterHauled,
       oilHauled: oilHauled ?? this.oilHauled,
       waterPumped: waterPumped ?? this.waterPumped,
@@ -1116,6 +1199,18 @@ class ProductionHourlyCheck {
           waterTankGaugeEntries.map((item) => item.toJson()).toList(),
       'oilTankGaugeEntries':
           oilTankGaugeEntries.map((item) => item.toJson()).toList(),
+      'waterMeasurementMethod':
+          ProductionWellCheckData.normalizeMeasurementMethod(
+        waterMeasurementMethod,
+      ),
+      'oilMeasurementMethod':
+          ProductionWellCheckData.normalizeMeasurementMethod(
+        oilMeasurementMethod,
+      ),
+      'waterMeterReading': waterMeterReading,
+      'oilMeterReading': oilMeterReading,
+      'startingWaterMeter': startingWaterMeter,
+      'startingOilMeter': startingOilMeter,
       'waterHauled': waterHauled,
       'oilHauled': oilHauled,
       'waterPumped': waterPumped,
@@ -1162,6 +1257,10 @@ class ProductionReportRow {
     required this.oilGaugeText,
     required this.currentWaterBbl,
     required this.currentOilBbl,
+    this.currentWaterMeter = -1,
+    this.currentOilMeter = -1,
+    this.waterMeasurementMethod = ProductionWellCheckData.measurementTank,
+    this.oilMeasurementMethod = ProductionWellCheckData.measurementTank,
     required this.currentGasAccum,
     this.hoursSincePrevious = 0,
     required this.waterHauled,
@@ -1214,6 +1313,15 @@ class ProductionReportRow {
       oilGaugeText: json['oilGaugeText'] as String? ?? '',
       currentWaterBbl: asDouble(json['currentWaterBbl']),
       currentOilBbl: asDouble(json['currentOilBbl']),
+      currentWaterMeter: asDouble(json['currentWaterMeter']),
+      currentOilMeter: asDouble(json['currentOilMeter']),
+      waterMeasurementMethod:
+          ProductionWellCheckData.normalizeMeasurementMethod(
+        json['waterMeasurementMethod'],
+      ),
+      oilMeasurementMethod: ProductionWellCheckData.normalizeMeasurementMethod(
+        json['oilMeasurementMethod'],
+      ),
       currentGasAccum: asDouble(json['currentGasAccum']),
       hoursSincePrevious: asDouble(json['hoursSincePrevious']),
       waterHauled: asDouble(json['waterHauled']),
@@ -1258,6 +1366,10 @@ class ProductionReportRow {
   final String oilGaugeText;
   final double currentWaterBbl;
   final double currentOilBbl;
+  final double currentWaterMeter;
+  final double currentOilMeter;
+  final String waterMeasurementMethod;
+  final String oilMeasurementMethod;
   final double currentGasAccum;
   final double hoursSincePrevious;
   final double waterHauled;
@@ -1302,6 +1414,16 @@ class ProductionReportRow {
       'oilGaugeText': oilGaugeText,
       'currentWaterBbl': currentWaterBbl,
       'currentOilBbl': currentOilBbl,
+      'currentWaterMeter': currentWaterMeter,
+      'currentOilMeter': currentOilMeter,
+      'waterMeasurementMethod':
+          ProductionWellCheckData.normalizeMeasurementMethod(
+        waterMeasurementMethod,
+      ),
+      'oilMeasurementMethod':
+          ProductionWellCheckData.normalizeMeasurementMethod(
+        oilMeasurementMethod,
+      ),
       'currentGasAccum': currentGasAccum,
       'hoursSincePrevious': hoursSincePrevious,
       'waterHauled': waterHauled,
