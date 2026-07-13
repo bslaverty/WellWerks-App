@@ -8,6 +8,7 @@ import 'package:wellwerks/main.dart';
 import 'package:wellwerks/models/production_shift.dart';
 import 'package:wellwerks/models/job_setup.dart';
 import 'package:wellwerks/models/jsa_draft.dart';
+import 'package:wellwerks/models/jsa_template.dart';
 import 'package:wellwerks/screens/chart_reference_screen.dart';
 import 'package:wellwerks/screens/bottoms_up_screen.dart';
 import 'package:wellwerks/screens/equipment_layout_screen.dart';
@@ -1652,5 +1653,156 @@ void main() {
     final draft = await jsaStorage.loadDraft();
     expect(draft, isNotNull);
     expect(draft!.activeJobId, activeJob.id);
+  });
+
+  testWidgets('JSA Build 105 tabs and built-in templates render', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+
+    await tester.pumpWidget(const MaterialApp(home: JsaScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Current JSA'), findsOneWidget);
+    expect(find.text('Templates'), findsOneWidget);
+    expect(find.text('History'), findsOneWidget);
+
+    await tester.tap(find.text('Templates'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Production'), findsOneWidget);
+    expect(find.text('Production Startup'), findsOneWidget);
+    expect(find.text('Drillout'), findsOneWidget);
+
+    expect(
+      JsaBuiltInTemplates.all.map((template) => template.name).toList(),
+      const <String>[
+        'Production',
+        'Production Startup',
+        'Drillout',
+        'Rig Up',
+        'Rig Down',
+      ],
+    );
+    expect(JsaBuiltInTemplates.all.length, 5);
+  });
+
+  testWidgets('Using template confirms replace and persists template metadata',
+      (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+
+    final jobStorage = JobStorageService();
+    final jsaStorage = JsaStorageService();
+    final activeJob = await jobStorage.saveActiveJob(
+      JobSetup(
+        company: 'Mach Energy',
+        padName: 'Template Pad',
+        wells: const ['Template Well'],
+      ),
+    );
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day)
+        .toIso8601String()
+        .split('T')
+        .first;
+
+    await jsaStorage.saveDraft(
+      JsaDraft(
+        activeJobId: activeJob.id,
+        company: 'Mach Energy',
+        date: today,
+        time: '06:00',
+        location: 'Template Pad',
+        task: 'General',
+        steps: const ['Custom typed step'],
+        hazards: const ['Existing hazard'],
+        recommendations: const ['Existing action'],
+        employees: List.generate(6, (_) => JsaEmployee()),
+        notes: '',
+      ),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: JsaScreen()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Templates'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('use-template-production')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Replace Current JSA Content?'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Replace Current JSA Content?'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('use-template-production')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Use Template').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('JSA Type: Production'), findsOneWidget);
+    final saved =
+        await jsaStorage.loadDraft(activeJobId: activeJob.id, date: today);
+
+    expect(saved, isNotNull);
+    expect(saved!.templateId, 'production');
+    expect(saved.templateName, 'Production');
+    expect(saved.steps, isEmpty);
+    expect(saved.hazards, isEmpty);
+    expect(saved.recommendations, isEmpty);
+  });
+
+  testWidgets('History tab opens legacy draft without template metadata', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+
+    final jobStorage = JobStorageService();
+    final jsaStorage = JsaStorageService();
+    final activeJob = await jobStorage.saveActiveJob(
+      JobSetup(
+        company: 'Mach Energy',
+        padName: 'Legacy Pad',
+        wells: const ['Legacy Well'],
+      ),
+    );
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day)
+        .toIso8601String()
+        .split('T')
+        .first;
+
+    await jsaStorage.saveDraft(
+      JsaDraft(
+        activeJobId: activeJob.id,
+        company: 'Mach Energy',
+        date: today,
+        time: '06:00',
+        location: 'Legacy Pad',
+        task: 'Flowback',
+        steps: const ['Legacy step'],
+        hazards: const ['Legacy hazard'],
+        recommendations: const ['Legacy action'],
+        employees: List.generate(6, (_) => JsaEmployee()),
+        notes: '',
+      ),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: JsaScreen()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('History'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('JSA Type: Flowback'), findsOneWidget);
+
+    expect(find.text('Open Saved JSA'), findsOneWidget);
   });
 }

@@ -63,6 +63,8 @@ class JsaEmployee {
 class JsaDraft {
   JsaDraft({
     this.activeJobId = '',
+    this.templateId = '',
+    this.templateName = '',
     required this.company,
     required this.date,
     required this.time,
@@ -84,6 +86,8 @@ class JsaDraft {
   }) : tasks = tasks ?? (task.isEmpty ? <String>[] : <String>[task]);
 
   String activeJobId;
+  String templateId;
+  String templateName;
   String company;
   String date;
   String time;
@@ -105,6 +109,8 @@ class JsaDraft {
 
   Map<String, dynamic> toJson() => {
         'activeJobId': activeJobId,
+        'templateId': templateId,
+        'templateName': templateName,
         'company': company,
         'date': date,
         'time': time,
@@ -127,6 +133,8 @@ class JsaDraft {
 
   factory JsaDraft.fromJson(Map<String, dynamic> json) => JsaDraft(
         activeJobId: json['activeJobId'] as String? ?? '',
+        templateId: json['templateId'] as String? ?? '',
+        templateName: json['templateName'] as String? ?? '',
         company: json['company'] as String? ?? '',
         date: json['date'] as String? ?? '',
         time: json['time'] as String? ?? '',

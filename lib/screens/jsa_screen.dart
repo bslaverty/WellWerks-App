@@ -14,6 +14,7 @@ import 'package:signature/signature.dart';
 
 import '../models/job_setup.dart';
 import '../models/jsa_draft.dart';
+import '../models/jsa_template.dart';
 import '../services/jsa_export_service.dart';
 import '../services/active_company_service.dart';
 import '../services/job_profile_defaults_service.dart';
@@ -22,6 +23,7 @@ import '../services/jsa_storage_service.dart';
 import '../services/recovery_state_service.dart';
 import '../services/app_settings_service.dart';
 import '../widgets/app_header.dart';
+import '../widgets/jsa_history_pane.dart';
 
 class JsaScreen extends StatefulWidget {
   const JsaScreen({
@@ -43,7 +45,8 @@ enum _JsaShareFormat {
   savePngToPhotos,
 }
 
-class _JsaScreenState extends State<JsaScreen> {
+class _JsaScreenState extends State<JsaScreen>
+    with SingleTickerProviderStateMixin {
   Color get gold => Theme.of(context).colorScheme.primary;
 
   final _storage = JsaStorageService();
@@ -59,6 +62,9 @@ class _JsaScreenState extends State<JsaScreen> {
   final _weatherTemperature = TextEditingController();
   final _weatherConditions = TextEditingController();
   final _weatherWind = TextEditingController();
+  final _stepsEditor = TextEditingController();
+  final _hazardsEditor = TextEditingController();
+  final _recommendationsEditor = TextEditingController();
 
   final _employeeNames = List.generate(6, (_) => TextEditingController());
   final _employeeCompanies = List.generate(6, (_) => TextEditingController());
@@ -72,182 +78,30 @@ class _JsaScreenState extends State<JsaScreen> {
   );
 
   String _company = JobProfileDefaultsService.companyNone;
+  String _selectedTemplateId = '';
+  String _selectedTemplateName = '';
   JobSetup? _activeJob;
   JsaDraft? _exportPreviewDraft;
   DateTime _date = DateTime.now();
   TimeOfDay _time = TimeOfDay.now();
-  final Set<String> _selectedTasks = {'Flowback'};
   bool _exporting = false;
   bool _weatherLoading = false;
   Position? _currentPosition;
   final _settingsService = AppSettingsService();
   final _activeCompanyService = ActiveCompanyService.instance;
+  late final TabController _tabController;
   late AppSettingsData _settings;
 
-  final Map<String, Map<String, List<String>>> _taskLibrary = const {
-    'Flowback': {
-      'steps': [
-        'Monitor well flow',
-        'Check pressures',
-        'Check tanks',
-        'Record readings'
-      ],
-      'hazards': [
-        'High pressure',
-        'H2S/gas exposure',
-        'Slips/trips',
-        'Hot surfaces'
-      ],
-      'recommendations': [
-        'Wear PPE',
-        'Stay out of line of fire',
-        'Verify valves before operating',
-        'Communicate changes'
-      ],
-    },
-    'Dump Sand': {
-      'steps': [
-        'Confirm safe position',
-        'Isolate equipment',
-        'Bleed off PSI',
-        'Dump sand'
-      ],
-      'hazards': [
-        'Stored pressure',
-        'Flying debris',
-        'Pinch points',
-        'Heavy sand discharge'
-      ],
-      'recommendations': [
-        'Stand in safe position',
-        'Isolate and bleed off PSI',
-        'Use face shield',
-        'Keep hands clear'
-      ],
-    },
-    'Fixing Leaks': {
-      'steps': [
-        'Identify leak',
-        'Notify crew',
-        'Isolate equipment',
-        'Bleed off PSI',
-        'Repair leak'
-      ],
-      'hazards': [
-        'High pressure leak',
-        'Chemical exposure',
-        'Hot work area',
-        'Pinch points'
-      ],
-      'recommendations': [
-        'Do not tighten under pressure',
-        'Isolate and bleed off PSI',
-        'Use correct tools',
-        'Verify repair before returning to service'
-      ],
-    },
-    'Rig Up': {
-      'steps': [
-        'Spot equipment',
-        'Connect iron',
-        'Secure lines',
-        'Pressure test'
-      ],
-      'hazards': [
-        'Suspended loads',
-        'Pinch points',
-        'High pressure',
-        'Backing equipment'
-      ],
-      'recommendations': [
-        'Use spotters',
-        'Stay clear of suspended loads',
-        'Inspect iron',
-        'Confirm pressure test'
-      ],
-    },
-    'Rig Down': {
-      'steps': [
-        'Shut in/secure well',
-        'Bleed off lines',
-        'Disconnect iron',
-        'Load equipment'
-      ],
-      'hazards': [
-        'Residual pressure',
-        'Heavy equipment',
-        'Pinch points',
-        'Slips/trips'
-      ],
-      'recommendations': [
-        'Verify zero energy',
-        'Use proper lifting',
-        'Keep work area clean',
-        'Communicate all lifts'
-      ],
-    },
-    'Change Choke': {
-      'steps': [
-        'Notify crew',
-        'Verify choke position',
-        'Make controlled adjustment',
-        'Monitor pressures'
-      ],
-      'hazards': [
-        'Pressure change',
-        'Line of fire',
-        'Pinch points',
-        'Unexpected flow change'
-      ],
-      'recommendations': [
-        'Communicate before adjustment',
-        'Stand clear of pressure points',
-        'Use proper tools',
-        'Record change and response'
-      ],
-    },
-    'Pressure Test': {
-      'steps': [
-        'Inspect connections',
-        'Clear test area',
-        'Bring pressure up slowly',
-        'Monitor for leaks',
-        'Bleed down safely'
-      ],
-      'hazards': [
-        'High pressure',
-        'Failed iron',
-        'Flying debris',
-        'Stored energy'
-      ],
-      'recommendations': [
-        'Use rated iron',
-        'Keep non-essential personnel clear',
-        'Never stand in line of fire',
-        'Confirm bleed down before work'
-      ],
-    },
-  };
-
-  List<String> get _tasks => _selectedTasks.toList()..sort();
-
-  List<String> _combined(String key) {
-    final out = <String>[];
-    for (final task in _tasks) {
-      for (final item in _taskLibrary[task]?[key] ?? const <String>[]) {
-        if (!out.contains(item)) out.add(item);
-      }
-    }
-    return out;
-  }
-
-  List<String> get _steps => _combined('steps');
-  List<String> get _hazards => _combined('hazards');
-  List<String> get _recommendations => _combined('recommendations');
+  static const List<Tab> _tabs = <Tab>[
+    Tab(text: 'Current JSA'),
+    Tab(text: 'Templates'),
+    Tab(text: 'History'),
+  ];
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: _tabs.length, vsync: this);
     _settings = const AppSettingsData(
       defaultGasUnit: AppSettingsDefaults.gasUnit,
       defaultGaugeType: AppSettingsDefaults.gaugeType,
@@ -519,6 +373,39 @@ class _JsaScreenState extends State<JsaScreen> {
 
   String get _draftDateKey => DateFormat('yyyy-MM-dd').format(_date);
 
+  List<String> _linesFromEditor(TextEditingController controller) {
+    return controller.text
+        .split('\n')
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+
+  String _editorTextFromLines(List<String> items) {
+    return items
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .join('\n');
+  }
+
+  List<String> get _steps => _linesFromEditor(_stepsEditor);
+  List<String> get _hazards => _linesFromEditor(_hazardsEditor);
+  List<String> get _recommendations => _linesFromEditor(_recommendationsEditor);
+
+  String get _currentJsaTypeLabel {
+    final selected = _selectedTemplateName.trim();
+    if (selected.isNotEmpty) {
+      return selected;
+    }
+    return 'General';
+  }
+
+  bool get _hasCurrentJobContent {
+    return _steps.isNotEmpty ||
+        _hazards.isNotEmpty ||
+        _recommendations.isNotEmpty;
+  }
+
   void _clearFormValues({required bool resetDateTime}) {
     _location.clear();
     _county.clear();
@@ -528,6 +415,11 @@ class _JsaScreenState extends State<JsaScreen> {
     _weatherTemperature.clear();
     _weatherConditions.clear();
     _weatherWind.clear();
+    _stepsEditor.clear();
+    _hazardsEditor.clear();
+    _recommendationsEditor.clear();
+    _selectedTemplateId = '';
+    _selectedTemplateName = '';
     for (final controller in _employeeNames) {
       controller.clear();
     }
@@ -543,9 +435,6 @@ class _JsaScreenState extends State<JsaScreen> {
             ? ''
             : activeCompany)
         : '';
-    _selectedTasks
-      ..clear()
-      ..add('Flowback');
     if (resetDateTime) {
       _date = DateTime.now();
       _time = TimeOfDay.now();
@@ -557,13 +446,8 @@ class _JsaScreenState extends State<JsaScreen> {
     _company = activeCompany == JobProfileDefaultsService.companyNone
         ? ''
         : activeCompany;
-    _selectedTasks
-      ..clear()
-      ..addAll(draft.tasks.where(_taskLibrary.containsKey));
-    if (_selectedTasks.isEmpty && _taskLibrary.containsKey(draft.task)) {
-      _selectedTasks.add(draft.task);
-    }
-    if (_selectedTasks.isEmpty) _selectedTasks.add('Flowback');
+    _selectedTemplateId = draft.templateId.trim();
+    _selectedTemplateName = draft.templateName.trim();
     _location.text = draft.location;
     _county.text = draft.county;
     _cityState.text = draft.cityState;
@@ -572,6 +456,9 @@ class _JsaScreenState extends State<JsaScreen> {
     _weatherTemperature.text = draft.weatherTemperature;
     _weatherConditions.text = draft.weatherConditions;
     _weatherWind.text = draft.weatherWind;
+    _stepsEditor.text = _editorTextFromLines(draft.steps);
+    _hazardsEditor.text = _editorTextFromLines(draft.hazards);
+    _recommendationsEditor.text = _editorTextFromLines(draft.recommendations);
     _date = DateTime.tryParse(draft.date) ?? _date;
     final parts = draft.time.split(':');
     if (parts.length >= 2) {
@@ -601,6 +488,7 @@ class _JsaScreenState extends State<JsaScreen> {
 
   @override
   void dispose() {
+    _tabController.dispose();
     _location.dispose();
     _county.dispose();
     _cityState.dispose();
@@ -609,6 +497,9 @@ class _JsaScreenState extends State<JsaScreen> {
     _weatherTemperature.dispose();
     _weatherConditions.dispose();
     _weatherWind.dispose();
+    _stepsEditor.dispose();
+    _hazardsEditor.dispose();
+    _recommendationsEditor.dispose();
     for (final controller in _employeeNames) {
       controller.dispose();
     }
@@ -661,8 +552,11 @@ class _JsaScreenState extends State<JsaScreen> {
             .toList(),
       ));
     }
+    final selectedType = _currentJsaTypeLabel;
     return JsaDraft(
       activeJobId: _activeJob?.id ?? '',
+      templateId: _selectedTemplateId,
+      templateName: _selectedTemplateName,
       company: _company,
       date: DateFormat('yyyy-MM-dd').format(_date),
       time:
@@ -671,8 +565,8 @@ class _JsaScreenState extends State<JsaScreen> {
       county: _county.text.trim(),
       cityState: _cityState.text.trim(),
       gpsCoordinates: _gpsCoordinates.text.trim(),
-      task: _tasks.join(', '),
-      tasks: _tasks,
+      task: selectedType,
+      tasks: <String>[selectedType],
       steps: _steps,
       hazards: _hazards,
       recommendations: _recommendations,
@@ -706,6 +600,62 @@ class _JsaScreenState extends State<JsaScreen> {
       );
     }
     return draft;
+  }
+
+  Future<bool> _confirmTemplateReplace(String templateName) async {
+    if (!_hasCurrentJobContent) {
+      return true;
+    }
+    final decision = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Replace Current JSA Content?'),
+        content: Text(
+          'Using "$templateName" will replace current Basic Job Steps, Hazards, and Recommended Actions. '
+          'Header/job information stays the same. Signatures are never copied from templates.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Use Template'),
+          ),
+        ],
+      ),
+    );
+    return decision ?? false;
+  }
+
+  Future<void> _useTemplate(JsaTemplateDefinition template) async {
+    final changingTemplate = _selectedTemplateId.trim() != template.id;
+    if (changingTemplate) {
+      final confirmed = await _confirmTemplateReplace(template.name);
+      if (!confirmed || !mounted) {
+        return;
+      }
+    }
+
+    setState(() {
+      _selectedTemplateId = template.id;
+      _selectedTemplateName = template.name;
+      _stepsEditor.text = _editorTextFromLines(template.basicJobSteps);
+      _hazardsEditor.text = _editorTextFromLines(template.hazards);
+      _recommendationsEditor.text =
+          _editorTextFromLines(template.recommendedActions);
+      _tabController.animateTo(0);
+    });
+    await _saveDraft(showFeedback: false);
+  }
+
+  Future<void> _openDraftFromHistory(JsaDraft draft) async {
+    setState(() {
+      _clearFormValues(resetDateTime: false);
+      _applyDraft(draft);
+      _tabController.animateTo(0);
+    });
   }
 
   Widget _activeJobBanner() {
@@ -940,192 +890,282 @@ class _JsaScreenState extends State<JsaScreen> {
     });
   }
 
-  void _toggleTask(String task, bool selected) {
-    setState(() {
-      if (selected) {
-        _selectedTasks.add(task);
-      } else if (_selectedTasks.length > 1) {
-        _selectedTasks.remove(task);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Select at least one JSA step.')));
-      }
-    });
+  Widget _editableListSection({
+    required String label,
+    required TextEditingController controller,
+    required String helper,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: controller,
+        minLines: 3,
+        maxLines: 6,
+        decoration: InputDecoration(
+          labelText: label,
+          helperText: helper,
+        ),
+      ),
+    );
+  }
+
+  Widget _currentJsaTab() {
+    final dateText = DateFormat('MM/dd/yyyy').format(_date);
+    final timeText = _time.format(context);
+
+    return ListView(
+      key: const Key('jsa-current-tab'),
+      padding: const EdgeInsets.all(18),
+      children: [
+        _activeJobBanner(),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Text(
+              'JSA Type: $_currentJsaTypeLabel',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        _section('Job Info'),
+        InputDecorator(
+          decoration: const InputDecoration(labelText: 'Company'),
+          child: Text(_company.trim().isEmpty ? 'None' : _company),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _location,
+          decoration: const InputDecoration(
+            labelText: 'Location / Pad',
+            helperText: 'Lease name, pad name, or job location',
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _pickDate,
+                child: Text('Date: $dateText'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _pickTime,
+                child: Text('Time: $timeText'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _county,
+          readOnly: true,
+          decoration: const InputDecoration(labelText: 'County'),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _cityState,
+          readOnly: true,
+          decoration: const InputDecoration(labelText: 'City, State'),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _gpsCoordinates,
+                readOnly: true,
+                decoration: const InputDecoration(labelText: 'GPS Coordinates'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            IconButton.filled(
+              onPressed: _copyGpsCoordinates,
+              icon: const Icon(Icons.copy),
+              tooltip: 'Copy GPS Coordinates',
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _weatherTemperature,
+                decoration: const InputDecoration(labelText: 'Temperature'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: _weatherWind,
+                decoration: const InputDecoration(labelText: 'Wind'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _weatherConditions,
+          decoration: const InputDecoration(labelText: 'Conditions'),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _weatherLoading ? null : _refreshLocationWeather,
+            icon: _weatherLoading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.cloud_sync_outlined),
+            label: const Text('Refresh Weather'),
+          ),
+        ),
+        const SizedBox(height: 18),
+        _section('JSA Job Content'),
+        _editableListSection(
+          label: 'Basic Job Steps',
+          controller: _stepsEditor,
+          helper: 'One step per line.',
+        ),
+        _editableListSection(
+          label: 'Hazards',
+          controller: _hazardsEditor,
+          helper: 'One hazard per line.',
+        ),
+        _editableListSection(
+          label: 'Recommended Actions',
+          controller: _recommendationsEditor,
+          helper: 'One recommended action per line.',
+        ),
+        _section('Notes'),
+        TextField(
+          controller: _notes,
+          minLines: 3,
+          maxLines: 6,
+          decoration: const InputDecoration(labelText: 'Additional notes'),
+        ),
+        const SizedBox(height: 18),
+        _section('Employees & Signatures'),
+        for (var i = 0; i < 6; i++) _employeeCard(i),
+        const SizedBox(height: 18),
+        FilledButton.icon(
+          key: const Key('jsa-save-button'),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(56),
+            textStyle: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          onPressed: _exporting ? null : () => _saveDraft(),
+          icon: const Icon(Icons.save_outlined),
+          label: const Text('Save'),
+        ),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(56),
+            textStyle: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          onPressed: _exporting ? null : _shareSend,
+          icon: const Icon(Icons.share_outlined),
+          label: const Text('Share / Send'),
+        ),
+        const SizedBox(height: 10),
+        TextButton(onPressed: _clearDraft, child: const Text('Clear JSA')),
+      ],
+    );
+  }
+
+  Widget _templatesTab() {
+    return ListView(
+      key: const Key('jsa-templates-tab'),
+      padding: const EdgeInsets.all(18),
+      children: [
+        for (final template in JsaBuiltInTemplates.all)
+          Card(
+            margin: const EdgeInsets.only(bottom: 14),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    template.name,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Built-in JSA template structure. Final approved safety content will be added in a future build.',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      key: Key('use-template-${template.id}'),
+                      onPressed: () => _useTemplate(template),
+                      child: const Text('Use Template'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final dateText = DateFormat('MM/dd/yyyy').format(_date);
-    final timeText = _time.format(context);
-
     return Scaffold(
       appBar: const AppHeader(title: 'JSA', showBack: true),
       body: Stack(
         clipBehavior: Clip.none,
         children: [
-          ListView(
-            padding: const EdgeInsets.all(18),
+          Column(
             children: [
-              _activeJobBanner(),
-              _section('Job Info'),
-              InputDecorator(
-                decoration: const InputDecoration(labelText: 'Company'),
-                child: Text(_company.trim().isEmpty ? 'None' : _company),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _location,
-                decoration: const InputDecoration(
-                  labelText: 'Location / Pad',
-                  helperText: 'Lease name, pad name, or job location',
+              Material(
+                color: Theme.of(context).colorScheme.surface,
+                child: TabBar(
+                  key: const Key('jsa-tab-bar'),
+                  controller: _tabController,
+                  tabs: _tabs,
+                  isScrollable: false,
                 ),
               ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                      child: OutlinedButton(
-                          onPressed: _pickDate,
-                          child: Text('Date: $dateText'))),
-                  const SizedBox(width: 12),
-                  Expanded(
-                      child: OutlinedButton(
-                          onPressed: _pickTime,
-                          child: Text('Time: $timeText'))),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _county,
-                readOnly: true,
-                decoration: const InputDecoration(labelText: 'County'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _cityState,
-                readOnly: true,
-                decoration: const InputDecoration(labelText: 'City, State'),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _gpsCoordinates,
-                      readOnly: true,
-                      decoration:
-                          const InputDecoration(labelText: 'GPS Coordinates'),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _currentJsaTab(),
+                    _templatesTab(),
+                    JsaHistoryPane(
+                      key: const Key('jsa-history-tab'),
+                      onOpenDraft: _openDraftFromHistory,
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  IconButton.filled(
-                    onPressed: _copyGpsCoordinates,
-                    icon: const Icon(Icons.copy),
-                    tooltip: 'Copy GPS Coordinates',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _weatherTemperature,
-                      decoration:
-                          const InputDecoration(labelText: 'Temperature'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _weatherWind,
-                      decoration: const InputDecoration(labelText: 'Wind'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _weatherConditions,
-                decoration: const InputDecoration(labelText: 'Conditions'),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _weatherLoading ? null : _refreshLocationWeather,
-                  icon: _weatherLoading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.cloud_sync_outlined),
-                  label: const Text('Refresh Weather'),
+                  ],
                 ),
               ),
-              const SizedBox(height: 18),
-              _section('JSA Steps / Tasks'),
-              const Text('Select everything that applies to this job.',
-                  style: TextStyle(color: Colors.white70)),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: _taskLibrary.keys.map((task) {
-                  final selected = _selectedTasks.contains(task);
-                  return FilterChip(
-                    selected: selected,
-                    label: Text(task),
-                    onSelected: (v) => _toggleTask(task, v),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 18),
-              _infoCard('Selected JSA Items', _tasks),
-              _infoCard('Basic Steps', _steps),
-              _infoCard('Hazards', _hazards),
-              _infoCard('Recommendations', _recommendations),
-              _section('Notes'),
-              TextField(
-                controller: _notes,
-                minLines: 3,
-                maxLines: 6,
-                decoration:
-                    const InputDecoration(labelText: 'Additional notes'),
-              ),
-              const SizedBox(height: 18),
-              _section('Employees & Signatures'),
-              for (var i = 0; i < 6; i++) _employeeCard(i),
-              const SizedBox(height: 18),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(56),
-                  textStyle: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                onPressed: _exporting ? null : () => _saveDraft(),
-                icon: const Icon(Icons.save_outlined),
-                label: const Text('Save'),
-              ),
-              const SizedBox(height: 10),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(56),
-                  textStyle: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                onPressed: _exporting ? null : _shareSend,
-                icon: const Icon(Icons.share_outlined),
-                label: const Text('Share / Send'),
-              ),
-              const SizedBox(height: 10),
-              TextButton(
-                  onPressed: _clearDraft, child: const Text('Clear JSA')),
             ],
           ),
           Positioned(
@@ -1147,9 +1187,12 @@ class _JsaScreenState extends State<JsaScreen> {
   }
 
   Widget _exportPreviewCard(JsaDraft? draft) {
+    final selectedType = _currentJsaTypeLabel;
     final exportDraft = draft ??
         JsaDraft(
           activeJobId: _activeJob?.id ?? '',
+          templateId: _selectedTemplateId,
+          templateName: _selectedTemplateName,
           company: _company,
           date: _draftDateKey,
           time:
@@ -1158,8 +1201,8 @@ class _JsaScreenState extends State<JsaScreen> {
           county: _county.text.trim(),
           cityState: _cityState.text.trim(),
           gpsCoordinates: _gpsCoordinates.text.trim(),
-          task: _tasks.join(', '),
-          tasks: _tasks,
+          task: selectedType,
+          tasks: <String>[selectedType],
           steps: _steps,
           hazards: _hazards,
           recommendations: _recommendations,
@@ -1199,6 +1242,14 @@ class _JsaScreenState extends State<JsaScreen> {
             _exportPreviewSection('Job Information', [
               _previewLine('Date', exportDraft.date),
               _previewLine('Time', exportDraft.time),
+              _previewLine(
+                'JSA Type',
+                exportDraft.templateName.trim().isEmpty
+                    ? (exportDraft.task.trim().isEmpty
+                        ? 'General'
+                        : exportDraft.task.trim())
+                    : exportDraft.templateName.trim(),
+              ),
               _previewLine('Company', exportDraft.company),
               _previewLine('Location / Pad', exportDraft.location),
               _previewLine('County', exportDraft.county),
@@ -1379,27 +1430,6 @@ class _JsaScreenState extends State<JsaScreen> {
         child: Text(title,
             style: TextStyle(
                 color: gold, fontSize: 18, fontWeight: FontWeight.w800)),
-      );
-
-  Widget _infoCard(String title, List<String> items) => Card(
-        margin: const EdgeInsets.only(bottom: 12),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title,
-                  style: TextStyle(color: gold, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              if (items.isEmpty) const Text('None selected.'),
-              for (final item in items)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text('• $item'),
-                ),
-            ],
-          ),
-        ),
       );
 
   Widget _employeeCard(int index) => Card(
