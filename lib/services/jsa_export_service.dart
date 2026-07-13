@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -228,7 +227,7 @@ class JsaExportService {
             child: logoBytes == null
                 ? pw.Text(
                     'WW',
-                    style: pw.TextStyle(
+                    style: const pw.TextStyle(
                       fontSize: 12,
                       fontWeight: pw.FontWeight.bold,
                       color: _gold,
@@ -246,7 +245,7 @@ class JsaExportService {
               children: [
                 pw.Text(
                   'WellWerks JSA',
-                  style: pw.TextStyle(
+                  style: const pw.TextStyle(
                     fontSize: 18,
                     fontWeight: pw.FontWeight.bold,
                     color: _gold,
@@ -310,7 +309,7 @@ class JsaExportService {
             decoration: const pw.BoxDecoration(color: _headerFill),
             child: pw.Text(
               'Job Information',
-              style: pw.TextStyle(
+              style: const pw.TextStyle(
                 fontWeight: pw.FontWeight.bold,
                 color: _gold,
                 fontSize: 11,
@@ -501,7 +500,7 @@ class JsaExportService {
       ),
       child: pw.Text(
         title,
-        style: pw.TextStyle(
+        style: const pw.TextStyle(
           color: _gold,
           fontWeight: pw.FontWeight.bold,
           fontSize: 11,
@@ -515,7 +514,7 @@ class JsaExportService {
       padding: const pw.EdgeInsets.all(6),
       child: pw.Text(
         text,
-        style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+        style: const pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
       ),
     );
   }

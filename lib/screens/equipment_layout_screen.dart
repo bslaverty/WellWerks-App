@@ -3916,13 +3916,25 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       child: outlined
           ? OutlinedButton.icon(
               onPressed: () => _addItem(type),
-              icon: Icon(type.icon),
+              icon: _EquipmentSymbol(
+                type: type,
+                color: _gold,
+                size: 18,
+                symbolKey:
+                    ValueKey<String>('library-symbol-${type.name}-button'),
+              ),
               label: Text(type.label, maxLines: 2),
               style: _compactOutlineStyle(highlighted: true),
             )
           : FilledButton.icon(
               onPressed: () => _addItem(type),
-              icon: Icon(type.icon),
+              icon: _EquipmentSymbol(
+                type: type,
+                color: _gold,
+                size: 18,
+                symbolKey:
+                    ValueKey<String>('library-symbol-${type.name}-button'),
+              ),
               label: Text(type.label, maxLines: 2),
               style: _compactFilledStyle(highlighted: true),
             ),
@@ -4206,7 +4218,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(type.icon, color: _gold, size: 24),
+                  _EquipmentSymbol(
+                    type: type,
+                    color: _gold,
+                    size: 24,
+                    symbolKey:
+                        ValueKey<String>('library-symbol-${type.name}-card'),
+                  ),
                   const SizedBox(height: 4),
                   Text(type.label,
                       textAlign: TextAlign.center,
@@ -5382,6 +5400,9 @@ extension _EquipmentTypeInfo on _EquipmentType {
       name.startsWith('tee') ||
       this == _EquipmentType.bypass;
 
+  bool get usesCompactEquipmentFootprint =>
+      !isIron && this != _EquipmentType.facilities;
+
   String get label {
     switch (this) {
       case _EquipmentType.wellhead:
@@ -5482,37 +5503,61 @@ extension _EquipmentTypeInfo on _EquipmentType {
   }
 
   double get defaultWidth {
-    if (this == _EquipmentType.wellhead) return 98;
-    if (this == _EquipmentType.plugCatcher) return 170;
-    if (this == _EquipmentType.lineHeater) return 178;
+    if (this == _EquipmentType.wellhead) return 74;
+    if (this == _EquipmentType.plugCatcher) return 102;
+    if (this == _EquipmentType.lineHeater) return 110;
     if (this == _EquipmentType.facilities) return 220;
-    if (this == _EquipmentType.sphericalSandSep) return 134;
-    if (this == _EquipmentType.cyclonicSandSep) return 116;
-    if (this == _EquipmentType.esdValve) return 64;
+    if (this == _EquipmentType.sphericalSandSep) return 84;
+    if (this == _EquipmentType.cyclonicSandSep) return 82;
+    if (this == _EquipmentType.esdValve) return 52;
     if (this == _EquipmentType.ironHorizontal) return 150;
     if (this == _EquipmentType.ironVertical) return 28;
     if (this == _EquipmentType.bypass) return 66;
     if (name.startsWith('tee')) return 42;
     if (name.startsWith('elbow')) return 42;
     if (isIron) return 76;
-    return 116;
+    return 86;
   }
 
   double get defaultHeight {
-    if (this == _EquipmentType.wellhead) return 64;
-    if (this == _EquipmentType.plugCatcher) return 94;
-    if (this == _EquipmentType.lineHeater) return 98;
+    if (this == _EquipmentType.wellhead) return 58;
+    if (this == _EquipmentType.plugCatcher) return 60;
+    if (this == _EquipmentType.lineHeater) return 62;
     if (this == _EquipmentType.facilities) return 112;
-    if (this == _EquipmentType.sphericalSandSep) return 124;
-    if (this == _EquipmentType.cyclonicSandSep) return 110;
-    if (this == _EquipmentType.esdValve) return 44;
+    if (this == _EquipmentType.sphericalSandSep) return 84;
+    if (this == _EquipmentType.cyclonicSandSep) return 78;
+    if (this == _EquipmentType.esdValve) return 38;
     if (this == _EquipmentType.ironHorizontal) return 24;
     if (this == _EquipmentType.ironVertical) return 150;
     if (this == _EquipmentType.bypass) return 34;
     if (name.startsWith('tee')) return 42;
     if (name.startsWith('elbow')) return 42;
     if (isIron) return 76;
-    return 72;
+    return 56;
+  }
+
+  Size get build109LegacySize {
+    if (this == _EquipmentType.wellhead) return const Size(98, 64);
+    if (this == _EquipmentType.plugCatcher) return const Size(170, 94);
+    if (this == _EquipmentType.lineHeater) return const Size(178, 98);
+    if (this == _EquipmentType.facilities) return const Size(220, 112);
+    if (this == _EquipmentType.sphericalSandSep) return const Size(134, 124);
+    if (this == _EquipmentType.cyclonicSandSep) return const Size(116, 110);
+    if (this == _EquipmentType.esdValve) return const Size(64, 44);
+    if (this == _EquipmentType.ironHorizontal) return const Size(150, 24);
+    if (this == _EquipmentType.ironVertical) return const Size(28, 150);
+    if (this == _EquipmentType.bypass) return const Size(66, 34);
+    if (name.startsWith('tee') || name.startsWith('elbow')) {
+      return const Size(42, 42);
+    }
+    if (isIron) return const Size(76, 76);
+    return const Size(116, 72);
+  }
+
+  bool matchesLegacyDimensions(double width, double height) {
+    final legacy = build109LegacySize;
+    return (width - legacy.width).abs() < 0.2 &&
+        (height - legacy.height).abs() < 0.2;
   }
 }
 
@@ -5556,13 +5601,33 @@ class _LayoutItem {
     final type = _EquipmentType.values.firstWhere(
         (item) => item.name == typeName,
         orElse: () => _EquipmentType.plugCatcher);
+    final rawWidth = (json['width'] as num?)?.toDouble();
+    final rawHeight = (json['height'] as num?)?.toDouble();
+    var width = rawWidth ?? type.defaultWidth;
+    var height = rawHeight ?? type.defaultHeight;
+    var x = (json['x'] as num? ?? 20).toDouble();
+    var y = (json['y'] as num? ?? 20).toDouble();
+
+    // Keep saved layout centers stable while migrating legacy defaults.
+    if (rawWidth != null &&
+        rawHeight != null &&
+        type.usesCompactEquipmentFootprint &&
+        type.matchesLegacyDimensions(width, height)) {
+      final centerX = x + width / 2;
+      final centerY = y + height / 2;
+      width = type.defaultWidth;
+      height = type.defaultHeight;
+      x = centerX - width / 2;
+      y = centerY - height / 2;
+    }
+
     return _LayoutItem(
       id: json['id'] as int? ?? 0,
       type: type,
-      x: (json['x'] as num? ?? 20).toDouble(),
-      y: (json['y'] as num? ?? 20).toDouble(),
-      width: (json['width'] as num? ?? type.defaultWidth).toDouble(),
-      height: (json['height'] as num? ?? type.defaultHeight).toDouble(),
+      x: x,
+      y: y,
+      width: width,
+      height: height,
       properties: Map<String, String>.from(json['properties'] as Map? ?? {}),
       rotationTurns: json['rotationTurns'] as int? ?? 0,
       locked: json['locked'] as bool? ?? false,
@@ -5625,6 +5690,88 @@ extension _LayoutItemProperties on _LayoutItem {
   }
 }
 
+class _EquipmentSymbol extends StatelessWidget {
+  final _EquipmentType type;
+  final Color color;
+  final double size;
+  final Key? symbolKey;
+
+  const _EquipmentSymbol({
+    required this.type,
+    required this.color,
+    required this.size,
+    this.symbolKey,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (type == _EquipmentType.wellhead) {
+      return SizedBox(
+        key: symbolKey,
+        width: size,
+        height: size,
+        child: CustomPaint(
+          painter: _WellheadTreePainter(color: color),
+        ),
+      );
+    }
+    return Icon(type.icon, key: symbolKey, color: color, size: size);
+  }
+}
+
+class _WellheadTreePainter extends CustomPainter {
+  final Color color;
+
+  const _WellheadTreePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = (size.shortestSide * 0.085).clamp(1.6, 2.8)
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final valve = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = (stroke.strokeWidth * 0.82).clamp(1.2, 2.2)
+      ..strokeCap = StrokeCap.round;
+
+    final centerX = size.width * 0.5;
+    final topY = size.height * 0.14;
+    final branchY = size.height * 0.38;
+    final lowerY = size.height * 0.66;
+    final baseY = size.height * 0.84;
+
+    canvas.drawLine(Offset(centerX, topY), Offset(centerX, baseY), stroke);
+    canvas.drawLine(Offset(size.width * 0.2, branchY),
+        Offset(size.width * 0.8, branchY), stroke);
+    canvas.drawLine(Offset(centerX, lowerY), Offset(centerX, baseY), stroke);
+    canvas.drawLine(Offset(size.width * 0.28, baseY),
+        Offset(size.width * 0.72, baseY), stroke);
+
+    void drawValve(double x, double y) {
+      final radius = (size.shortestSide * 0.09).clamp(1.6, 3.2);
+      canvas.drawCircle(Offset(x, y), radius, valve);
+      canvas.drawLine(
+          Offset(x - radius * 0.8, y), Offset(x + radius * 0.8, y), valve);
+      canvas.drawLine(
+          Offset(x, y - radius * 0.8), Offset(x, y + radius * 0.8), valve);
+    }
+
+    drawValve(centerX, topY);
+    drawValve(size.width * 0.2, branchY);
+    drawValve(size.width * 0.8, branchY);
+    drawValve(centerX, lowerY);
+  }
+
+  @override
+  bool shouldRepaint(covariant _WellheadTreePainter oldDelegate) {
+    return oldDelegate.color != color;
+  }
+}
+
 class _LayoutTile extends StatelessWidget {
   final _LayoutItem item;
   final bool selected;
@@ -5638,7 +5785,9 @@ class _LayoutTile extends StatelessWidget {
       this.snapHighlight = false});
 
   double get _labelBottomOffset {
-    return -15;
+    if (item.type == _EquipmentType.facilities) return -15;
+    if (item.height <= 62) return -18;
+    return -16;
   }
 
   Widget _labelChip({
@@ -5671,6 +5820,7 @@ class _LayoutTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isIron = item.type.isIron;
+    final isFacilities = item.type == _EquipmentType.facilities;
     final showSnapHighlight = snapHighlight &&
         (item.type == _EquipmentType.ironHorizontal ||
             item.type == _EquipmentType.ironVertical);
@@ -5682,15 +5832,15 @@ class _LayoutTile extends StatelessWidget {
             color: selected || showSnapHighlight
                 ? const Color(0xFFCDA56A)
                 : Colors.transparent,
-            width: selected ? 2.5 : (showSnapHighlight ? 2.0 : 1.2)),
+            width: selected ? 1.8 : (showSnapHighlight ? 1.6 : 1.0)),
         borderRadius: BorderRadius.circular(
-            item.type == _EquipmentType.sphericalSandSep ? 999 : 14),
+            item.type == _EquipmentType.sphericalSandSep ? 999 : 10),
         boxShadow: selected || showSnapHighlight
             ? [
                 BoxShadow(
                     color: const Color(0xFFCDA56A)
-                        .withOpacity(showSnapHighlight ? .4 : .25),
-                    blurRadius: showSnapHighlight ? 16 : 12)
+                        .withOpacity(showSnapHighlight ? .34 : .2),
+                    blurRadius: showSnapHighlight ? 12 : 9)
               ]
             : null,
       ),
@@ -5709,33 +5859,42 @@ class _LayoutTile extends StatelessWidget {
                             constraints.maxWidth, constraints.maxHeight);
                         final compact = constraints.maxHeight < 78 ||
                             constraints.maxWidth < 120;
-                        final inset = (shortest * 0.12).clamp(4.0, 12.0);
-                        final iconSize = (shortest * 0.36)
-                            .clamp(16.0, compact ? 24.0 : 30.0);
+                        final inset = isFacilities
+                            ? (shortest * 0.12).clamp(4.0, 12.0)
+                            : (shortest < 66 ? 2.0 : 3.0);
+                        final iconSize = isFacilities
+                            ? (shortest * 0.36)
+                                .clamp(16.0, compact ? 24.0 : 30.0)
+                            : (constraints.maxHeight - inset * 2 - 2)
+                                .clamp(18.0, compact ? 52.0 : 56.0);
 
                         return Padding(
                           padding: EdgeInsets.all(inset),
                           child: DecoratedBox(
+                            key: ValueKey<String>('equipment-shell-${item.id}'),
                             decoration: BoxDecoration(
-                              color: item.type == _EquipmentType.facilities
+                              color: isFacilities
                                   ? const Color(0xFF202327)
                                   : const Color(0xFF191B1F),
                               border: Border.all(
                                 color: selected
                                     ? const Color(0xFFCDA56A)
+                                        .withValues(alpha: 0.72)
                                     : const Color(0xFF4A4A4A),
-                                width: selected ? 1.8 : 1.0,
+                                width: selected ? 1.2 : 1.0,
                               ),
                               borderRadius: BorderRadius.circular(
                                   item.type == _EquipmentType.sphericalSandSep
                                       ? 999
-                                      : 12),
+                                      : (isFacilities ? 12 : 8)),
                             ),
                             child: Center(
-                              child: Icon(
-                                item.type.icon,
+                              child: _EquipmentSymbol(
+                                type: item.type,
                                 color: const Color(0xFFF3C77D),
                                 size: iconSize,
+                                symbolKey: ValueKey<String>(
+                                    'equipment-symbol-${item.id}'),
                               ),
                             ),
                           ),
@@ -6016,12 +6175,27 @@ class _ShapePainter extends CustomPainter {
     }
 
     if (type == _EquipmentType.wellhead) {
-      canvas.drawCircle(Offset(size.width * .5, size.height * .5),
-          size.shortestSide * .22, accent);
-      canvas.drawLine(Offset(size.width * .5, size.height * .18),
-          Offset(size.width * .5, size.height * .82), accent);
-      canvas.drawLine(Offset(size.width * .2, size.height * .5),
-          Offset(size.width * .8, size.height * .5), accent);
+      final topY = size.height * .18;
+      final branchY = size.height * .4;
+      final lowerY = size.height * .66;
+      final baseY = size.height * .84;
+      final centerX = size.width * .5;
+
+      canvas.drawLine(Offset(centerX, topY), Offset(centerX, baseY), accent);
+      canvas.drawLine(Offset(size.width * .24, branchY),
+          Offset(size.width * .76, branchY), accent);
+      canvas.drawLine(Offset(centerX, lowerY), Offset(centerX, baseY), accent);
+      canvas.drawLine(Offset(size.width * .3, baseY),
+          Offset(size.width * .7, baseY), accent);
+
+      for (final point in <Offset>[
+        Offset(centerX, topY),
+        Offset(size.width * .24, branchY),
+        Offset(size.width * .76, branchY),
+        Offset(centerX, lowerY),
+      ]) {
+        canvas.drawCircle(point, size.shortestSide * .06, accent);
+      }
     } else if (type == _EquipmentType.esdValve) {
       canvas.drawLine(Offset(size.width * .16, size.height * .5),
           Offset(size.width * .84, size.height * .5), accent);
