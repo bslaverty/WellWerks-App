@@ -80,8 +80,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   Color get _gold => Theme.of(context).colorScheme.primary;
   Color get _bg => Theme.of(context).colorScheme.surface;
   static const double _ironBodyInteractionPadding = 14.0;
-  static const double _endpointInteractionScreenRadius = 26.0;
+  static const double _endpointInteractionScreenRadius = 30.0;
   static const double _toolbarViewportPadding = 8.0;
+  static const double _toolbarSelectionGap = 16.0;
+  static const double _toolbarBottomClearance = 84.0;
   static const double _equipmentAnchorSnapRadius = 24.0;
 
   @override
@@ -179,10 +181,44 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   void _openEquipmentDrawer(
       {_DrawerLibrarySection section = _DrawerLibrarySection.equipment}) {
     setState(() {
+      if (!_drawIronMode) {
+        _selectedId = null;
+        _selectedEndpointLeading = null;
+        _selectedBypassHandle = null;
+        _selectedIds.clear();
+      }
       _showSideLibrary = true;
       _mobileDrawerSection = section;
     });
   }
+
+  double _interactionPaddingForItem(_LayoutItem item) {
+    if (_isStraightIronType(item.type)) return _ironBodyInteractionPadding;
+    if (item.type == _EquipmentType.bypass) return 18.0;
+    return 8.0;
+  }
+
+  _LayoutItem? _itemAtScenePoint(Offset scenePoint) {
+    for (final item in _items.reversed) {
+      if (!_itemIsVisible(item)) continue;
+      final pad = _interactionPaddingForItem(item);
+      final hitRect = Rect.fromLTWH(
+        item.x - pad,
+        item.y - pad,
+        item.width + (pad * 2),
+        item.height + (pad * 2),
+      );
+      if (hitRect.contains(scenePoint)) {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  bool get _hideFloatingToolbar =>
+      _interactionMode == _InteractionMode.itemDrag ||
+      _interactionMode == _InteractionMode.stretchEndpoint ||
+      _interactionMode == _InteractionMode.attachBypass;
 
   _LayoutItem? get _selectedItem {
     final id = _selectedId;
@@ -430,24 +466,17 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     bool leading,
     Offset target,
   ) {
-    final endpointRadius = _sceneRadiusFromScreen(24);
-    final orthogonalRadius = _sceneRadiusFromScreen(12);
+    final endpointRadius = _sceneRadiusFromScreen(32);
     _EndpointCandidate? best;
     for (final other in _items) {
       if (other.id == item.id || !_isStraightIronType(other.type)) continue;
       for (final otherLeading in const <bool>[true, false]) {
         final point = _ironEndpoint(other, otherLeading);
-        final axisDistance = item.type == _EquipmentType.ironHorizontal
-            ? (point.dx - target.dx).abs()
-            : (point.dy - target.dy).abs();
-        final orthogonalDistance = item.type == _EquipmentType.ironHorizontal
-            ? (point.dy - target.dy).abs()
-            : (point.dx - target.dx).abs();
-        if (axisDistance > endpointRadius ||
-            orthogonalDistance > orthogonalRadius) {
+        final distance = (point - target).distance;
+        if (distance > endpointRadius) {
           continue;
         }
-        final score = axisDistance + orthogonalDistance * 0.5;
+        final score = distance;
         if (best == null || score < best.score) {
           best = _EndpointCandidate(
             itemId: other.id,
@@ -527,6 +556,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     bool leading,
     Offset target,
   ) {
+    final endpointCandidate = _nearestEndpointCandidate(item, leading, target);
+    if (endpointCandidate != null) {
+      return _EndpointSnapTarget(
+        point: endpointCandidate.point,
+        endpoint: endpointCandidate,
+      );
+    }
+
     final bypassCandidate = _nearestBypassHandleCandidate(target);
     if (bypassCandidate != null) {
       return _EndpointSnapTarget(
@@ -543,15 +580,33 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       );
     }
 
-    final endpointCandidate = _nearestEndpointCandidate(item, leading, target);
-    if (endpointCandidate != null) {
-      return _EndpointSnapTarget(
-        point: endpointCandidate.point,
-        endpoint: endpointCandidate,
-      );
-    }
-
     return null;
+  }
+
+  _EndpointSnapTarget? _stabilizeEndpointSnapTarget({
+    required Offset sourcePoint,
+    required _EndpointSnapTarget? previous,
+    required _EndpointSnapTarget? candidate,
+  }) {
+    if (candidate == null) return null;
+    if (previous == null ||
+        previous.endpoint == null ||
+        candidate.endpoint == null) {
+      return candidate;
+    }
+    final sameEndpoint =
+        previous.endpoint!.itemId == candidate.endpoint!.itemId &&
+            previous.endpoint!.leading == candidate.endpoint!.leading;
+    if (sameEndpoint) {
+      return candidate;
+    }
+    final switchBias = _sceneRadiusFromScreen(4.0);
+    final previousDistance = (previous.point - sourcePoint).distance;
+    final candidateDistance = (candidate.point - sourcePoint).distance;
+    if (candidateDistance + switchBias < previousDistance) {
+      return candidate;
+    }
+    return previous;
   }
 
   void _connectIronEndpoints(
@@ -971,6 +1026,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     _dragItemStart
       ..clear()
       ..addEntries(moving.map((it) => MapEntry(it.id, Offset(it.x, it.y))));
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _updateItemDrag(_LayoutItem anchor, DragUpdateDetails details) {
@@ -1107,12 +1165,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       });
     }
 
-    _dragSceneStart = null;
-    _dragItemStart.clear();
-    _dragActive = false;
-    _activeEndpointDrag = null;
-    _interactionMode =
-        _drawIronMode ? _InteractionMode.placeIron : _InteractionMode.idle;
+    setState(() {
+      _dragSceneStart = null;
+      _dragItemStart.clear();
+      _dragActive = false;
+      _activeEndpointDrag = null;
+      _interactionMode =
+          _drawIronMode ? _InteractionMode.placeIron : _InteractionMode.idle;
+    });
     if (_snapCandidateIronId != null || _snapIndicatorScene != null) {
       setState(() {
         _snapCandidateIronId = null;
@@ -1333,7 +1393,17 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       _setIronEndpointPosition(item, leading, desired);
 
       final snappedPoint = _ironEndpoint(item, leading);
-      final target = _nearestEndpointSnapTarget(item, leading, snappedPoint);
+      final candidate = _nearestEndpointSnapTarget(item, leading, snappedPoint);
+      final prior = (_activeEndpointDrag != null &&
+              _activeEndpointDrag!.ironId == item.id &&
+              _activeEndpointDrag!.leading == leading)
+          ? _activeEndpointDrag!.target
+          : null;
+      final target = _stabilizeEndpointSnapTarget(
+        sourcePoint: snappedPoint,
+        previous: prior,
+        candidate: candidate,
+      );
       _activeEndpointDrag = _ActiveEndpointDrag(
         ironId: item.id,
         leading: leading,
@@ -1448,7 +1518,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       return;
     }
 
-    if (!_drawIronMode) return;
+    if (!_drawIronMode) {
+      final hitItem = _itemAtScenePoint(clampedPoint);
+      if (hitItem == null && _selectedIds.isNotEmpty) {
+        _clearSelection();
+      }
+      return;
+    }
     final canvasSize = _virtualCanvasSize;
     final snappedPoint = Offset(
       _snap(clampedPoint.dx).clamp(0.0, canvasSize.width),
@@ -5659,15 +5735,18 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       _LayoutItem item, Size viewportSize, bool isLocked) {
     final showDisconnect =
         _isStraightIronType(item.type) && _selectedEndpointLeading != null;
-    final width = showDisconnect ? 296.0 : 248.0;
-    const height = 46.0;
+    final width = showDisconnect ? 248.0 : 206.0;
+    const height = 44.0;
     final media = MediaQuery.of(context);
     final topSafe = media.padding.top + _toolbarViewportPadding;
-    final bottomSafe = media.padding.bottom + _toolbarViewportPadding;
+    final bottomSafe = media.padding.bottom +
+        _toolbarViewportPadding +
+        _toolbarBottomClearance;
     final sceneOrigin = Offset(item.x, item.y);
     final viewportOrigin = _viewportPointFromScene(sceneOrigin);
     final scale = _canvasTransform.value.getMaxScaleOnAxis().clamp(0.1, 8.0);
     final viewportItemWidth = item.width * scale;
+    final viewportItemHeight = item.height * scale;
     final maxLeft = math.max(
       _toolbarViewportPadding,
       viewportSize.width - width - _toolbarViewportPadding,
@@ -5676,24 +5755,65 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       topSafe,
       viewportSize.height - height - bottomSafe,
     );
+    final itemLeft = viewportOrigin.dx;
+    final itemTop = viewportOrigin.dy;
+    final itemRight = itemLeft + viewportItemWidth;
+    final itemBottom = itemTop + viewportItemHeight;
+    final itemCenterX = itemLeft + (viewportItemWidth / 2);
+    final canPlaceAbove = itemTop - _toolbarSelectionGap - height >= topSafe;
+    final canPlaceBelow = itemBottom + _toolbarSelectionGap + height <=
+        viewportSize.height - bottomSafe;
+    final canPlaceRight = itemRight + _toolbarSelectionGap + width <=
+        viewportSize.width - _toolbarViewportPadding;
+    final canPlaceLeft =
+        itemLeft - _toolbarSelectionGap - width >= _toolbarViewportPadding;
 
-    final preferredLeft = viewportOrigin.dx + viewportItemWidth + 12;
-    final alternateLeft = viewportOrigin.dx - width - 12;
-    final left = (preferredLeft + width <= maxLeft + width)
-        ? preferredLeft
-        : alternateLeft.clamp(_toolbarViewportPadding, maxLeft).toDouble();
-    final top = (viewportOrigin.dy - 58).clamp(
-      topSafe,
-      maxTop,
-    );
+    double left;
+    double top;
+    if (canPlaceAbove) {
+      left = (itemCenterX - (width / 2))
+          .clamp(_toolbarViewportPadding, maxLeft)
+          .toDouble();
+      top = (itemTop - _toolbarSelectionGap - height)
+          .clamp(topSafe, maxTop)
+          .toDouble();
+    } else if (canPlaceBelow) {
+      left = (itemCenterX - (width / 2))
+          .clamp(_toolbarViewportPadding, maxLeft)
+          .toDouble();
+      top =
+          (itemBottom + _toolbarSelectionGap).clamp(topSafe, maxTop).toDouble();
+    } else if (canPlaceRight) {
+      left = (itemRight + _toolbarSelectionGap)
+          .clamp(_toolbarViewportPadding, maxLeft)
+          .toDouble();
+      top = (itemTop + (viewportItemHeight - height) / 2)
+          .clamp(topSafe, maxTop)
+          .toDouble();
+    } else if (canPlaceLeft) {
+      left = (itemLeft - _toolbarSelectionGap - width)
+          .clamp(_toolbarViewportPadding, maxLeft)
+          .toDouble();
+      top = (itemTop + (viewportItemHeight - height) / 2)
+          .clamp(topSafe, maxTop)
+          .toDouble();
+    } else {
+      left = (itemCenterX - (width / 2))
+          .clamp(_toolbarViewportPadding, maxLeft)
+          .toDouble();
+      top = (itemTop - _toolbarSelectionGap - height)
+          .clamp(topSafe, maxTop)
+          .toDouble();
+    }
 
     return Positioned(
       left: left,
       top: top,
       child: Container(
+        key: const ValueKey<String>('floating-selection-toolbar'),
         width: width,
         height: height,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
         decoration: BoxDecoration(
           color: const Color(0xFF0F1114),
           borderRadius: BorderRadius.circular(12),
@@ -5712,6 +5832,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
             Expanded(
               child: IconButton(
                 onPressed: () => _duplicateSingleForQuickDrag(item),
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                padding: EdgeInsets.zero,
+                iconSize: 20,
                 icon: const Icon(Icons.copy_outlined, color: Colors.white),
                 tooltip: 'Duplicate',
               ),
@@ -5719,6 +5842,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
             Expanded(
               child: IconButton(
                 onPressed: _rotateSelected,
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                padding: EdgeInsets.zero,
+                iconSize: 20,
                 icon: const Icon(Icons.rotate_right, color: Colors.white),
                 tooltip: 'Rotate 90°',
               ),
@@ -5726,6 +5852,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
             Expanded(
               child: IconButton(
                 onPressed: _toggleSelectedLock,
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                padding: EdgeInsets.zero,
+                iconSize: 20,
                 icon: Icon(
                   isLocked ? Icons.lock_open : Icons.lock_outline,
                   color: Colors.white,
@@ -5736,6 +5865,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
             Expanded(
               child: IconButton(
                 onPressed: _deleteSelected,
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                padding: EdgeInsets.zero,
+                iconSize: 20,
                 icon: const Icon(Icons.delete_outline, color: Colors.white),
                 tooltip: 'Delete',
               ),
@@ -5744,6 +5876,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
               Expanded(
                 child: IconButton(
                   onPressed: _disconnectSelectedConnection,
+                  constraints:
+                      const BoxConstraints(minWidth: 44, minHeight: 44),
+                  padding: EdgeInsets.zero,
+                  iconSize: 20,
                   icon: const Icon(Icons.link_off, color: Colors.white),
                   tooltip: 'Disconnect',
                 ),
@@ -6038,6 +6174,15 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                         },
                         child: InteractiveViewer(
                           transformationController: _canvasTransform,
+                          onInteractionStart: (details) {
+                            if (_drawIronMode || _measureMode) return;
+                            final scenePoint = _scenePointFromViewport(
+                                details.localFocalPoint);
+                            if (_itemAtScenePoint(scenePoint) == null &&
+                                _selectedIds.isNotEmpty) {
+                              _clearSelection();
+                            }
+                          },
                           minScale: 0.45,
                           maxScale: 3.5,
                           boundaryMargin: const EdgeInsets.all(420),
@@ -6105,12 +6250,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                                 for (final item in _items)
                                   () {
                                     final interactionPadding =
-                                        _isStraightIronType(item.type)
-                                            ? _ironBodyInteractionPadding
-                                            : (item.type ==
-                                                    _EquipmentType.bypass
-                                                ? 18.0
-                                                : 8.0);
+                                        _interactionPaddingForItem(item);
                                     return Positioned(
                                       left: item.x - interactionPadding,
                                       top: item.y - interactionPadding,
@@ -6314,7 +6454,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                           ),
                         ),
                       ),
-                      if (_selectedItems.length == 1 && _selectedItem != null)
+                      if (_selectedItems.length == 1 &&
+                          _selectedItem != null &&
+                          !_hideFloatingToolbar)
                         _floatingSelectionToolbar(
                           _selectedItem!,
                           viewportSize,
@@ -6582,7 +6724,7 @@ extension _EquipmentTypeInfo on _EquipmentType {
     if (this == _EquipmentType.compressor) return 36;
     if (this == _EquipmentType.ironHorizontal) return 150;
     if (this == _EquipmentType.ironVertical) return 28;
-    if (this == _EquipmentType.bypass) return 66;
+    if (this == _EquipmentType.bypass) return 46;
     if (name.startsWith('tee')) return 42;
     if (name.startsWith('elbow')) return 42;
     if (isIron) return 76;
@@ -6605,7 +6747,7 @@ extension _EquipmentTypeInfo on _EquipmentType {
     if (this == _EquipmentType.compressor) return 28;
     if (this == _EquipmentType.ironHorizontal) return 24;
     if (this == _EquipmentType.ironVertical) return 150;
-    if (this == _EquipmentType.bypass) return 34;
+    if (this == _EquipmentType.bypass) return 32;
     if (name.startsWith('tee')) return 42;
     if (name.startsWith('elbow')) return 42;
     if (isIron) return 76;
@@ -6711,6 +6853,19 @@ class _LayoutItem {
         rawHeight != null &&
         type.usesCompactEquipmentFootprint &&
         type.matchesLegacyDimensions(width, height)) {
+      final centerX = x + width / 2;
+      final centerY = y + height / 2;
+      width = type.defaultWidth;
+      height = type.defaultHeight;
+      x = centerX - width / 2;
+      y = centerY - height / 2;
+    }
+
+    if (rawWidth != null &&
+        rawHeight != null &&
+        type == _EquipmentType.bypass &&
+        (rawWidth - 66.0).abs() < 0.2 &&
+        (rawHeight - 34.0).abs() < 0.2) {
       final centerX = x + width / 2;
       final centerY = y + height / 2;
       width = type.defaultWidth;

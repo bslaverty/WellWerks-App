@@ -139,9 +139,147 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 116', () async {
+  test('Build number is 117', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+116'));
+    expect(pubspec, contains('version: 1.0.1+117'));
+  });
+
+  testWidgets(
+      'Build 117 default bypass is narrower and keeps usable attachment handles',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 1,
+          'type': 'bypass',
+          'x': 180.0,
+          'y': 110.0,
+          'properties': <String, String>{'ironSize': '3'},
+          'rotationTurns': 0,
+          'locked': false,
+        },
+      ],
+      selectedId: 1,
+    );
+
+    expect(find.byKey(const ValueKey<String>('bypass-handle-1-primary')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('bypass-handle-1-secondary')),
+        findsOneWidget);
+
+    await _saveRigUp(tester);
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final bypass = _findByType(items, 'bypass');
+    expect((bypass['width'] as num).toDouble(), closeTo(46, 0.01));
+    expect((bypass['height'] as num).toDouble(), closeTo(32, 0.01));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Legacy bypass dimensions migrate to compact width with center preserved',
+      (tester) async {
+    const legacyX = 180.0;
+    const legacyY = 110.0;
+    const legacyWidth = 66.0;
+    const legacyHeight = 34.0;
+    const legacyCenterX = legacyX + legacyWidth / 2;
+    const legacyCenterY = legacyY + legacyHeight / 2;
+
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _bypassItem(3, x: legacyX, y: legacyY),
+      ],
+      selectedId: 3,
+    );
+
+    await _saveRigUp(tester);
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final bypass = _findById(items, 3);
+    final width = (bypass['width'] as num).toDouble();
+    final height = (bypass['height'] as num).toDouble();
+    final x = (bypass['x'] as num).toDouble();
+    final y = (bypass['y'] as num).toDouble();
+
+    expect(width, closeTo(46, 0.01));
+    expect(height, closeTo(32, 0.01));
+    expect(x + width / 2, closeTo(legacyCenterX, 0.01));
+    expect(y + height / 2, closeTo(legacyCenterY, 0.01));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Empty canvas tap clears selection and creates neither iron nor duplicate',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'wellhead', x: 280, y: 260, width: 30, height: 28),
+      ],
+      selectedId: 1,
+    );
+
+    expect(find.byKey(const ValueKey<String>('floating-selection-toolbar')),
+        findsOneWidget);
+
+    await tester.tapAt(const Offset(40, 520));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey<String>('floating-selection-toolbar')),
+        findsNothing);
+
+    await _saveRigUp(tester);
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    expect(items.length, 1);
+    expect(_findById(items, 1)['type'], 'wellhead');
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Floating toolbar hides during drag, then reappears and stays off item',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'wellhead', x: 340, y: 320, width: 30, height: 28),
+      ],
+      selectedId: 1,
+    );
+
+    expect(find.byKey(const ValueKey<String>('floating-selection-toolbar')),
+        findsOneWidget);
+
+    final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey<String>('item-hitbox-1'))));
+    await tester.pump();
+    await gesture.moveBy(const Offset(90, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(10, 0));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey<String>('floating-selection-toolbar')),
+        findsNothing);
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final toolbarFinder =
+        find.byKey(const ValueKey<String>('floating-selection-toolbar'));
+    expect(toolbarFinder, findsOneWidget);
+    final toolbarRect = tester.getRect(toolbarFinder);
+    final itemRect =
+        tester.getRect(find.byKey(const ValueKey<String>('item-hitbox-1')));
+    final logicalSize = tester.view.physicalSize / tester.view.devicePixelRatio;
+
+    expect(toolbarRect.overlaps(itemRect), isFalse);
+    expect(toolbarRect.left, greaterThanOrEqualTo(0));
+    expect(toolbarRect.right, lessThanOrEqualTo(logicalSize.width));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
   testWidgets(
