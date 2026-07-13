@@ -23,7 +23,7 @@ class JsaHistoryPane extends StatefulWidget {
 class _JsaHistoryPaneState extends State<JsaHistoryPane> {
   final _jsaStorage = JsaStorageService();
   final _jobStorage = JobStorageService();
-  final _exportService = const JsaExportService();
+  final _exportService = JsaExportService();
   final _dateFilter = TextEditingController();
   final _companyFilter = TextEditingController();
   final _jobPadFilter = TextEditingController();

@@ -28,7 +28,7 @@ class _JobManagementScreenState extends State<JobManagementScreen> {
   final _historyService = JobHistoryService();
   final _shiftService = ProductionShiftService();
   final _jsaStorage = JsaStorageService();
-  final _jsaExportService = const JsaExportService();
+  final _jsaExportService = JsaExportService();
 
   ProductionShift _shift = ProductionShift.empty();
   JobSetup? _activeJob;

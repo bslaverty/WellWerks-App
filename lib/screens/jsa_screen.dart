@@ -1,13 +1,8 @@
 import 'dart:convert';
-import 'dart:ui' as ui;
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'package:image_gallery_saver/image_gallery_saver.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:signature/signature.dart';
@@ -43,8 +38,17 @@ class JsaScreen extends StatefulWidget {
 
 enum _JsaShareFormat {
   pdf,
-  png,
-  savePngToPhotos,
+  pageImages,
+}
+
+class _JsaExportDialogResult {
+  const _JsaExportDialogResult({
+    required this.format,
+    required this.baseFileName,
+  });
+
+  final _JsaShareFormat format;
+  final String baseFileName;
 }
 
 class _JsaScreenState extends State<JsaScreen>
@@ -52,11 +56,11 @@ class _JsaScreenState extends State<JsaScreen>
   Color get gold => Theme.of(context).colorScheme.primary;
 
   final _storage = JsaStorageService();
-  final _exportService = const JsaExportService();
+  final _exportService = JsaExportService();
   final _jobStorage = JobStorageService();
   final _recoveryState = RecoveryStateService();
-  final _exportImageKey = GlobalKey();
   final _location = TextEditingController();
+  final _wellName = TextEditingController();
   final _county = TextEditingController();
   final _cityState = TextEditingController();
   final _gpsCoordinates = TextEditingController();
@@ -83,7 +87,6 @@ class _JsaScreenState extends State<JsaScreen>
   String _selectedTemplateId = '';
   String _selectedTemplateName = '';
   JobSetup? _activeJob;
-  JsaDraft? _exportPreviewDraft;
   DateTime _date = DateTime.now();
   TimeOfDay _time = TimeOfDay.now();
   bool _exporting = false;
@@ -412,6 +415,7 @@ class _JsaScreenState extends State<JsaScreen>
 
   void _clearFormValues({required bool resetDateTime}) {
     _location.clear();
+    _wellName.clear();
     _county.clear();
     _cityState.clear();
     _gpsCoordinates.clear();
@@ -453,6 +457,7 @@ class _JsaScreenState extends State<JsaScreen>
     _selectedTemplateId = draft.templateId.trim();
     _selectedTemplateName = draft.templateName.trim();
     _location.text = draft.location;
+    _wellName.text = draft.wellName;
     _county.text = draft.county;
     _cityState.text = draft.cityState;
     _gpsCoordinates.text = draft.gpsCoordinates;
@@ -491,6 +496,7 @@ class _JsaScreenState extends State<JsaScreen>
   void dispose() {
     _tabController.dispose();
     _location.dispose();
+    _wellName.dispose();
     _county.dispose();
     _cityState.dispose();
     _gpsCoordinates.dispose();
@@ -566,6 +572,7 @@ class _JsaScreenState extends State<JsaScreen>
       date: DateFormat('yyyy-MM-dd').format(_date),
       time: formatJsaTime(_time),
       location: _location.text.trim(),
+      wellName: _wellName.text.trim(),
       county: _county.text.trim(),
       cityState: _cityState.text.trim(),
       gpsCoordinates: _gpsCoordinates.text.trim(),
@@ -585,7 +592,6 @@ class _JsaScreenState extends State<JsaScreen>
   Future<JsaDraft> _saveDraft({bool showFeedback = true}) async {
     final draft = await _buildDraft();
     await _storage.saveDraft(draft);
-    _exportPreviewDraft = draft;
     if (!mounted) return draft;
     if (showFeedback) {
       final persisted = await _storage.loadDraft(
@@ -716,97 +722,108 @@ class _JsaScreenState extends State<JsaScreen>
     );
   }
 
-  Future<Uint8List?> _captureExportImageBytes(JsaDraft draft) async {
-    setState(() => _exportPreviewDraft = draft);
-    await WidgetsBinding.instance.endOfFrame;
-    await WidgetsBinding.instance.endOfFrame;
-    final boundary = _exportImageKey.currentContext?.findRenderObject();
-    if (boundary is! RenderRepaintBoundary) {
-      return null;
-    }
-    final image = await boundary.toImage(pixelRatio: 2.5);
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    return byteData?.buffer.asUint8List();
+  String _defaultExportBaseName(JsaDraft draft) {
+    return _exportService.suggestBaseFileName(draft);
   }
 
-  Future<void> _shareSend() async {
-    if (_exporting) return;
-
-    final canSaveToPhotos =
-        !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
-
-    final format = await showDialog<_JsaShareFormat>(
+  Future<_JsaExportDialogResult?> _showExportDialog(String initialBaseName) {
+    final controller = TextEditingController(text: initialBaseName);
+    return showDialog<_JsaExportDialogResult>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Share As'),
+        title: const Text('Export JSA'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            TextField(
+              key: const Key('jsa-export-filename-field'),
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: 'File Name',
+                helperText: 'Edit the base filename before exporting.',
+              ),
+            ),
+            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: () => Navigator.of(context).pop(_JsaShareFormat.pdf),
+                key: const Key('jsa-export-save-pdf'),
+                onPressed: () {
+                  Navigator.of(context).pop(
+                    _JsaExportDialogResult(
+                      format: _JsaShareFormat.pdf,
+                      baseFileName: controller.text,
+                    ),
+                  );
+                },
                 icon: const Icon(Icons.picture_as_pdf_outlined),
-                label: const Text('PDF'),
+                label: const Text('Save PDF'),
               ),
             ),
             const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () => Navigator.of(context).pop(_JsaShareFormat.png),
+                key: const Key('jsa-export-page-images'),
+                onPressed: () {
+                  Navigator.of(context).pop(
+                    _JsaExportDialogResult(
+                      format: _JsaShareFormat.pageImages,
+                      baseFileName: controller.text,
+                    ),
+                  );
+                },
                 icon: const Icon(Icons.image_outlined),
-                label: const Text('Image (PNG)'),
+                label: const Text('Export Page Images'),
               ),
             ),
-            if (canSaveToPhotos) ...[
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => Navigator.of(context)
-                      .pop(_JsaShareFormat.savePngToPhotos),
-                  icon: const Icon(Icons.photo_library_outlined),
-                  label: const Text('Save Image to Photos'),
-                ),
-              ),
-            ],
           ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
       ),
-    );
+    ).whenComplete(controller.dispose);
+  }
 
-    if (format == null) return;
+  Future<void> _shareSend() async {
+    if (_exporting) return;
+
+    final draft = await _buildDraft();
+    if (!mounted) return;
+    final exportRequest =
+        await _showExportDialog(_defaultExportBaseName(draft));
+    if (exportRequest == null) {
+      return;
+    }
+
+    final baseName = exportRequest.baseFileName.trim();
 
     setState(() => _exporting = true);
     try {
-      final draft = await _buildDraft();
-      _exportPreviewDraft = draft;
-
-      if (format == _JsaShareFormat.pdf) {
+      if (exportRequest.format == _JsaShareFormat.pdf) {
         final exported = await _exportService.exportPdf(
           draft: draft,
           activeJob: _activeJob,
+          baseFileName: baseName,
         );
-        await _shareFile(
-          exported,
+        await _shareFiles(
+          <ExportedJsaFile>[exported],
           successMessage: 'JSA PDF ready to share.',
         );
-      } else if (format == _JsaShareFormat.png) {
-        final imageBytes = await _captureExportImageBytes(draft);
-        if (imageBytes == null) {
-          throw StateError('Unable to capture JSA image.');
-        }
-        final exported = await _exportService.exportImage(
-          draft: draft,
-          pngBytes: imageBytes,
-        );
-        await _shareFile(
-          exported,
-          successMessage: 'JSA image ready to share.',
-        );
       } else {
-        await _saveImageToPhotos(draft);
+        final images = await _exportService.exportPageImages(
+          draft: draft,
+          activeJob: _activeJob,
+          baseFileName: baseName,
+        );
+        await _shareFiles(
+          images,
+          successMessage: 'JSA page images ready to share.',
+        );
       }
     } catch (_) {
       if (!mounted) return;
@@ -823,36 +840,8 @@ class _JsaScreenState extends State<JsaScreen>
     }
   }
 
-  Future<void> _saveImageToPhotos(JsaDraft draft) async {
-    final imageBytes = await _captureExportImageBytes(draft);
-    if (imageBytes == null) {
-      throw StateError('Unable to capture JSA image.');
-    }
-
-    final now = DateTime.now();
-    final name =
-        'wellwerks_jsa_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
-    final result = await ImageGallerySaver.saveImage(
-      imageBytes,
-      quality: 100,
-      name: name,
-    );
-
-    final map = result is Map ? result : <String, dynamic>{};
-    final dynamic raw = map['isSuccess'] ?? map['success'];
-    final success = raw == true || raw == 1 || raw?.toString() == 'true';
-    if (!success) {
-      throw StateError('Unable to save image to Photos.');
-    }
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('JSA image saved to Photos.')),
-    );
-  }
-
-  Future<void> _shareFile(
-    ExportedJsaFile exported, {
+  Future<void> _shareFiles(
+    List<ExportedJsaFile> exportedFiles, {
     required String successMessage,
   }) async {
     final box = context.findRenderObject() as RenderBox?;
@@ -860,19 +849,25 @@ class _JsaScreenState extends State<JsaScreen>
         ? box.localToGlobal(Offset.zero) & box.size
         : const Rect.fromLTWH(0, 0, 1, 1);
 
-    final lowerName = exported.fileName.toLowerCase();
-    final mimeType = lowerName.endsWith('.png')
-        ? 'image/png'
-        : (lowerName.endsWith('.pdf') ? 'application/pdf' : null);
-    final isImage = mimeType == 'image/png';
-    final fileToShare = mimeType == null
-        ? XFile(exported.filePath)
-        : XFile(exported.filePath, mimeType: mimeType);
+    final filesToShare = exportedFiles.map((exported) {
+      final lowerName = exported.fileName.toLowerCase();
+      final mimeType = lowerName.endsWith('.png')
+          ? 'image/png'
+          : (lowerName.endsWith('.pdf') ? 'application/pdf' : null);
+      return mimeType == null
+          ? XFile(exported.filePath)
+          : XFile(exported.filePath, mimeType: mimeType);
+    }).toList();
+
+    final isSinglePdf = filesToShare.length == 1 &&
+        filesToShare.first.name.toLowerCase().endsWith('.pdf');
 
     await Share.shareXFiles(
-      [fileToShare],
-      subject: isImage ? null : 'WellWerks JSA',
-      text: isImage ? null : 'JSA exported from WellWerks.',
+      filesToShare,
+      subject: isSinglePdf ? 'WellWerks JSA' : 'WellWerks JSA Page Images',
+      text: isSinglePdf
+          ? 'JSA exported from WellWerks.'
+          : 'JSA page images exported from WellWerks.',
       sharePositionOrigin: shareOrigin,
     );
 
@@ -946,6 +941,14 @@ class _JsaScreenState extends State<JsaScreen>
           decoration: const InputDecoration(
             labelText: 'Location / Pad',
             helperText: 'Lease name, pad name, or job location',
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _wellName,
+          decoration: const InputDecoration(
+            labelText: 'Well Name (optional)',
+            helperText: 'Optional well identifier for exports and history.',
           ),
         ),
         const SizedBox(height: 12),
@@ -1143,289 +1146,33 @@ class _JsaScreenState extends State<JsaScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const AppHeader(title: 'JSA', showBack: true),
-      body: Stack(
-        clipBehavior: Clip.none,
+      body: Column(
         children: [
-          Column(
-            children: [
-              Material(
-                color: Theme.of(context).colorScheme.surface,
-                child: TabBar(
-                  key: const Key('jsa-tab-bar'),
-                  controller: _tabController,
-                  tabs: _tabs,
-                  isScrollable: false,
-                ),
-              ),
-              Expanded(
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _currentJsaTab(),
-                    _templatesTab(),
-                    JsaHistoryPane(
-                      key: const Key('jsa-history-tab'),
-                      onOpenDraft: _openDraftFromHistory,
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          Material(
+            color: Theme.of(context).colorScheme.surface,
+            child: TabBar(
+              key: const Key('jsa-tab-bar'),
+              controller: _tabController,
+              tabs: _tabs,
+              isScrollable: false,
+            ),
           ),
-          Positioned(
-            left: -5000,
-            top: 0,
-            child: IgnorePointer(
-              child: RepaintBoundary(
-                key: _exportImageKey,
-                child: SizedBox(
-                  width: 900,
-                  child: _exportPreviewCard(_exportPreviewDraft),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _currentJsaTab(),
+                _templatesTab(),
+                JsaHistoryPane(
+                  key: const Key('jsa-history-tab'),
+                  onOpenDraft: _openDraftFromHistory,
                 ),
-              ),
+              ],
             ),
           ),
         ],
       ),
     );
-  }
-
-  Widget _exportPreviewCard(JsaDraft? draft) {
-    final selectedType = _currentJsaTypeLabel;
-    final exportDraft = draft ??
-        JsaDraft(
-          activeJobId: _activeJob?.id ?? '',
-          templateId: _selectedTemplateId,
-          templateName: _selectedTemplateName,
-          company: _company,
-          date: _draftDateKey,
-          time: formatJsaTime(_time),
-          location: _location.text.trim(),
-          county: _county.text.trim(),
-          cityState: _cityState.text.trim(),
-          gpsCoordinates: _gpsCoordinates.text.trim(),
-          task: selectedType,
-          tasks: <String>[selectedType],
-          steps: _steps,
-          hazards: _hazards,
-          recommendations: _recommendations,
-          employees: const [],
-          notes: _notes.text.trim(),
-          weatherTemperature: _weatherTemperature.text.trim(),
-          weatherConditions: _weatherConditions.text.trim(),
-          weatherWind: _weatherWind.text.trim(),
-        );
-
-    return Material(
-      color: const Color(0xFF111111),
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        color: const Color(0xFF111111),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'WellWerks JSA',
-              style: TextStyle(
-                color: gold,
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              exportDraft.company.trim(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 18),
-            _exportPreviewSection('Job Information', [
-              _previewLine('Date', exportDraft.date),
-              _previewLine('Time', exportDraft.time),
-              _previewLine(
-                'JSA Type',
-                exportDraft.templateName.trim().isEmpty
-                    ? (exportDraft.task.trim().isEmpty
-                        ? 'General'
-                        : exportDraft.task.trim())
-                    : exportDraft.templateName.trim(),
-              ),
-              _previewLine('Company', exportDraft.company),
-              _previewLine('Location / Pad', exportDraft.location),
-              _previewLine('County', exportDraft.county),
-              _previewLine('City, State', exportDraft.cityState),
-              _previewLine('GPS Coordinates', exportDraft.gpsCoordinates),
-              _previewLine('Temperature', exportDraft.weatherTemperature),
-              _previewLine('Wind', exportDraft.weatherWind),
-              _previewLine('Conditions', exportDraft.weatherConditions),
-            ]),
-            _exportPreviewSection(
-                'Selected Steps', _previewBullets(exportDraft.tasks)),
-            _exportPreviewSection(
-                'Basic Steps', _previewBullets(exportDraft.steps)),
-            _exportPreviewSection(
-                'Hazards', _previewBullets(exportDraft.hazards)),
-            _exportPreviewSection(
-              'Recommendations',
-              _previewBullets(exportDraft.recommendations),
-            ),
-            _exportPreviewSection('Employees & Signatures', [
-              if (exportDraft.employees
-                  .where((employee) =>
-                      employee.name.trim().isNotEmpty ||
-                      employee.company.trim().isNotEmpty ||
-                      (employee.signaturePngBase64 ?? '').trim().isNotEmpty)
-                  .isEmpty)
-                const Text(
-                  'No employees entered.',
-                  style: TextStyle(color: Colors.white70),
-                ),
-              for (final employee in exportDraft.employees)
-                if (employee.name.trim().isNotEmpty ||
-                    employee.company.trim().isNotEmpty ||
-                    (employee.signaturePngBase64 ?? '').trim().isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white24),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          employee.name.trim().isEmpty
-                              ? 'Unnamed employee'
-                              : employee.name.trim(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          employee.company.trim().isEmpty
-                              ? 'Company not entered'
-                              : employee.company.trim(),
-                          style: const TextStyle(color: Colors.white70),
-                        ),
-                        if ((employee.signaturePngBase64 ?? '')
-                            .trim()
-                            .isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Container(
-                            height: 90,
-                            width: 220,
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: Colors.black,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.white24),
-                            ),
-                            child: _signatureImage(employee.signaturePngBase64),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-            ]),
-            _exportPreviewSection('Notes / Comments', [
-              Text(
-                exportDraft.notes.trim(),
-                style: const TextStyle(color: Colors.white70),
-              ),
-            ]),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _exportPreviewSection(String title, List<Widget> children) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF17130E),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: gold,
-              fontWeight: FontWeight.w800,
-              fontSize: 18,
-            ),
-          ),
-          const SizedBox(height: 10),
-          ...children,
-        ],
-      ),
-    );
-  }
-
-  List<Widget> _previewBullets(List<String> items) {
-    final visibleItems = items
-        .map((item) => item.trim())
-        .where((item) => item.isNotEmpty)
-        .toList();
-    if (visibleItems.isEmpty) {
-      return const [
-        Text('None entered.', style: TextStyle(color: Colors.white70)),
-      ];
-    }
-    return visibleItems
-        .map(
-          (item) => Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child:
-                Text('• $item', style: const TextStyle(color: Colors.white70)),
-          ),
-        )
-        .toList();
-  }
-
-  Widget _previewLine(String label, String value) {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: RichText(
-        text: TextSpan(
-          children: [
-            TextSpan(
-              text: '$label: ',
-              style: TextStyle(
-                color: gold,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            TextSpan(
-              text: trimmed,
-              style: const TextStyle(color: Colors.white70),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _signatureImage(String? base64Value) {
-    try {
-      final bytes = base64Decode(base64Value ?? '');
-      return Image.memory(bytes, fit: BoxFit.contain);
-    } catch (_) {
-      return const SizedBox.shrink();
-    }
   }
 
   Widget _section(String title) => Padding(

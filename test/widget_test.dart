@@ -1707,6 +1707,8 @@ void main() {
 
     final timeButton = find.widgetWithText(OutlinedButton, 'Time: 6:05 PM');
     expect(timeButton, findsOneWidget);
+    await tester.ensureVisible(timeButton);
+    await tester.pumpAndSettle();
 
     await tester.tap(timeButton);
     await tester.pumpAndSettle();

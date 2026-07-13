@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -49,8 +50,9 @@ void main() {
       date: '2026-07-12',
       time: '06:00',
       location: 'Pad A',
+      wellName: 'Alpha 12H',
       county: 'County A',
-      cityState: 'City, ST',
+      cityState: 'Midland, TX',
       gpsCoordinates: '12.34567, -98.76543',
       task: production.name,
       tasks: <String>[production.name],
@@ -65,9 +67,8 @@ void main() {
     );
   }
 
-  test('PDF export contains loaded template content and supports long content',
-      () async {
-    const service = JsaExportService();
+  test('PDF export contains expected document/table tokens', () async {
+    final service = JsaExportService();
     final draft = buildTemplateDraft();
 
     final exported = await service.exportPdf(draft: draft);
@@ -78,29 +79,148 @@ void main() {
     expect(bytes.length, greaterThan(1000));
 
     final text = latin1.decode(bytes, allowInvalid: true);
-    expect(text, contains('[(STEP)]TJ'));
-    expect(text, contains('[(10)]TJ'));
-    expect(text, contains('[(unnecessary)]TJ'));
-    expect(text, contains('[(restrictions)]TJ'));
+    expect(text, contains('[(WellWerks)]TJ'));
+    expect(text, contains('[(JSA)]TJ'));
+    expect(text, contains('[(Job)]TJ'));
+    expect(text, contains('[(Information)]TJ'));
+    expect(text, contains('[(Basic)]TJ'));
+    expect(text, contains('[(Hazard)]TJ'));
+    expect(text, contains('[(Recommended)]TJ'));
+    expect(text, contains('[(Well)]TJ'));
+    expect(text, contains('[(Name)]TJ'));
+    expect(text, contains('[(Page)]TJ'));
   });
 
-  test('Image export writes provided bytes and preserves long content payload',
+  test('Template-driven row export writes step, hazard, and action tokens',
       () async {
-    const service = JsaExportService();
+    final service = JsaExportService();
     final draft = buildTemplateDraft();
-    final pngBytes =
-        Uint8List.fromList(List<int>.generate(2048, (i) => i % 255));
+    final exported = await service.exportPdf(draft: draft);
+    final bytes = await File(exported.filePath).readAsBytes();
+    final text = latin1.decode(bytes, allowInvalid: true);
 
-    final exported = await service.exportImage(
+    expect(text, contains('[(Conduct)]TJ'));
+    expect(text, contains('[(Unfamiliar)]TJ'));
+    expect(text, contains('[(Review)]TJ'));
+    expect(text, contains('[(Inspect)]TJ'));
+    expect(text, contains('[(High-pressure)]TJ'));
+  });
+
+  test('Current JSA edits export and removed template rows are omitted',
+      () async {
+    final service = JsaExportService();
+    final draft = JsaDraft(
+      activeJobId: 'job-edit',
+      templateId: 'production',
+      templateName: 'Production',
+      company: 'Mach Energy',
+      date: '2026-07-12',
+      time: '6:00 PM',
+      location: 'Pad B',
+      wellName: 'Edited Well',
+      county: 'County B',
+      cityState: 'Odessa, TX',
+      gpsCoordinates: '1, 2',
+      task: 'Production',
+      tasks: const <String>['Production'],
+      steps: const <String>[
+        'Operator edited step one',
+        'Operator edited step two',
+      ],
+      hazards: const <String>[
+        'STEP 1',
+        '• Operator hazard one',
+        '• Operator hazard two',
+        'STEP 2',
+        '• Operator hazard three',
+      ],
+      recommendations: const <String>[
+        'STEP 1',
+        '• Operator action one',
+        'STEP 2',
+        '• Operator action two',
+      ],
+      employees: List.generate(6, (_) => JsaEmployee()),
+      notes: 'Edited note',
+    );
+
+    final editedBytes =
+        await File((await service.exportPdf(draft: draft)).filePath)
+            .readAsBytes();
+    final templateBytes = await File(
+      (await service.exportPdf(draft: buildTemplateDraft())).filePath,
+    ).readAsBytes();
+
+    expect(latin1.decode(editedBytes, allowInvalid: true),
+        contains('[(Operator)]TJ'));
+    expect(editedBytes.length, isNot(templateBytes.length));
+  });
+
+  test('PDF includes page numbering on long exports', () async {
+    final service = JsaExportService();
+    final draft = buildTemplateDraft();
+    final longNotes =
+        List<String>.generate(200, (index) => 'Long note $index').join('\n');
+
+    final exported = await service.exportPdf(
       draft: draft,
-      pngBytes: pngBytes,
+      baseFileName: 'long_jsa',
     );
     final file = File(exported.filePath);
+    final firstBytes = await file.readAsBytes();
+    final firstText = latin1.decode(firstBytes, allowInvalid: true);
+    expect(firstText, contains('[(Page)]TJ'));
 
-    expect(await file.exists(), isTrue);
-    final stored = await file.readAsBytes();
-    expect(stored.length, pngBytes.length);
-    expect(stored, pngBytes);
+    final exportedLong = await service.exportPdf(
+      draft: JsaDraft(
+        activeJobId: draft.activeJobId,
+        templateId: draft.templateId,
+        templateName: draft.templateName,
+        company: draft.company,
+        date: draft.date,
+        time: draft.time,
+        location: draft.location,
+        wellName: draft.wellName,
+        county: draft.county,
+        cityState: draft.cityState,
+        gpsCoordinates: draft.gpsCoordinates,
+        task: draft.task,
+        tasks: draft.tasks,
+        steps: draft.steps,
+        hazards: draft.hazards,
+        recommendations: draft.recommendations,
+        employees: draft.employees,
+        notes: longNotes,
+      ),
+      baseFileName: 'long_jsa_multi',
+    );
+    final longText = latin1.decode(
+      await File(exportedLong.filePath).readAsBytes(),
+      allowInvalid: true,
+    );
+    expect(longText, contains('[(Page)]TJ'));
+  });
+
+  test('Page image export writes one file per page with sequential names',
+      () async {
+    final service = JsaExportService(
+      rasterizer: (pdfBytes) async => <Uint8List>[
+        Uint8List.fromList(List<int>.filled(64, 1)),
+        Uint8List.fromList(List<int>.filled(64, 2)),
+      ],
+    );
+    final draft = buildTemplateDraft();
+
+    final exported = await service.exportPageImages(
+      draft: draft,
+      baseFileName: 'Custom_JSA.pdf',
+    );
+
+    expect(exported, hasLength(2));
+    expect(exported.first.fileName, 'Custom_JSA_Page-1.png');
+    expect(exported.last.fileName, 'Custom_JSA_Page-2.png');
+    expect(await File(exported.first.filePath).exists(), isTrue);
+    expect(await File(exported.last.filePath).exists(), isTrue);
   });
 
   test('Old JSA records remain compatible without template identifiers', () {

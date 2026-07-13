@@ -43,7 +43,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   final _jobStorage = JobStorageService();
   final _shiftService = ProductionShiftService();
   final _jsaStorage = JsaStorageService();
-  final _jsaExportService = const JsaExportService();
+  final _jsaExportService = JsaExportService();
   final _recoveryState = RecoveryStateService();
 
   final _companySearch = TextEditingController();
