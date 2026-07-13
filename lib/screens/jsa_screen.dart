@@ -22,8 +22,10 @@ import '../services/job_storage_service.dart';
 import '../services/jsa_storage_service.dart';
 import '../services/recovery_state_service.dart';
 import '../services/app_settings_service.dart';
+import '../utils/jsa_time_format.dart';
 import '../widgets/app_header.dart';
 import '../widgets/jsa_history_pane.dart';
+import '../widgets/time_wheel_picker_sheet.dart';
 
 class JsaScreen extends StatefulWidget {
   const JsaScreen({
@@ -87,6 +89,7 @@ class _JsaScreenState extends State<JsaScreen>
   bool _exporting = false;
   bool _weatherLoading = false;
   Position? _currentPosition;
+  bool _hasLoadedDraft = false;
   final _settingsService = AppSettingsService();
   final _activeCompanyService = ActiveCompanyService.instance;
   late final TabController _tabController;
@@ -157,6 +160,7 @@ class _JsaScreenState extends State<JsaScreen>
       _activeJob = targetJob;
       _clearFormValues(resetDateTime: false);
       if (draft != null) {
+        _hasLoadedDraft = true;
         _applyDraft(draft);
       }
       if (targetJob != null) {
@@ -181,7 +185,7 @@ class _JsaScreenState extends State<JsaScreen>
       if (loaded.jsaAutoDate) {
         _date = DateTime.now();
       }
-      if (loaded.jsaAutoTime) {
+      if (loaded.jsaAutoTime && !_hasLoadedDraft) {
         _time = TimeOfDay.now();
       }
     });
@@ -460,12 +464,9 @@ class _JsaScreenState extends State<JsaScreen>
     _hazardsEditor.text = _editorTextFromLines(draft.hazards);
     _recommendationsEditor.text = _editorTextFromLines(draft.recommendations);
     _date = DateTime.tryParse(draft.date) ?? _date;
-    final parts = draft.time.split(':');
-    if (parts.length >= 2) {
-      _time = TimeOfDay(
-        hour: int.tryParse(parts[0]) ?? _time.hour,
-        minute: int.tryParse(parts[1]) ?? _time.minute,
-      );
+    final parsedTime = parseJsaTime(draft.time);
+    if (parsedTime != null) {
+      _time = parsedTime;
     }
     for (var i = 0; i < draft.employees.length && i < 6; i++) {
       final employee = draft.employees[i];
@@ -525,7 +526,11 @@ class _JsaScreenState extends State<JsaScreen>
   }
 
   Future<void> _pickTime() async {
-    final picked = await showTimePicker(context: context, initialTime: _time);
+    final picked = await showTimeWheelPickerSheet(
+      context,
+      initialTime: _time,
+      use24Hour: false,
+    );
     if (picked != null) {
       setState(() => _time = picked);
     }
@@ -559,8 +564,7 @@ class _JsaScreenState extends State<JsaScreen>
       templateName: _selectedTemplateName,
       company: _company,
       date: DateFormat('yyyy-MM-dd').format(_date),
-      time:
-          '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}',
+      time: formatJsaTime(_time),
       location: _location.text.trim(),
       county: _county.text.trim(),
       cityState: _cityState.text.trim(),
@@ -911,7 +915,7 @@ class _JsaScreenState extends State<JsaScreen>
 
   Widget _currentJsaTab() {
     final dateText = DateFormat('MM/dd/yyyy').format(_date);
-    final timeText = _time.format(context);
+    final timeText = formatJsaTime(_time);
 
     return ListView(
       key: const Key('jsa-current-tab'),
@@ -1195,8 +1199,7 @@ class _JsaScreenState extends State<JsaScreen>
           templateName: _selectedTemplateName,
           company: _company,
           date: _draftDateKey,
-          time:
-              '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}',
+          time: formatJsaTime(_time),
           location: _location.text.trim(),
           county: _county.text.trim(),
           cityState: _cityState.text.trim(),

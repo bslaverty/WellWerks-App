@@ -8,6 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../models/job_setup.dart';
 import '../models/jsa_draft.dart';
+import '../utils/jsa_time_format.dart';
 
 class ExportedJsaFile {
   const ExportedJsaFile({
@@ -136,7 +137,7 @@ class JsaExportService {
     }
 
     addRow('Date', draft.date);
-    addRow('Time', draft.time);
+    addRow('Time', formatStoredJsaTime(draft.time));
     addRow(
       'JSA Type',
       draft.templateName.trim().isEmpty

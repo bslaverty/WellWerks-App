@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,6 +32,7 @@ import 'package:wellwerks/services/jsa_storage_service.dart';
 import 'package:wellwerks/services/production_shift_service.dart';
 import 'package:wellwerks/services/report_profile_service.dart';
 import 'package:wellwerks/services/rig_up_inventory_service.dart';
+import 'package:wellwerks/utils/jsa_time_format.dart';
 
 Finder labeledTextField(String label) {
   return find.byWidgetPredicate(
@@ -1653,6 +1655,100 @@ void main() {
     final draft = await jsaStorage.loadDraft();
     expect(draft, isNotNull);
     expect(draft!.activeJobId, activeJob.id);
+  });
+
+  test('JSA time parsing normalizes legacy values', () {
+    expect(formatJsaTime(const TimeOfDay(hour: 18, minute: 5)), '6:05 PM');
+    expect(parseJsaTime('18:05')?.hour, 18);
+    expect(parseJsaTime('6:05 pm')?.minute, 5);
+    expect(formatStoredJsaTime('18:05'), '6:05 PM');
+    expect(parseJsaTime('Night'), isNull);
+  });
+
+  testWidgets('JSA time picker commits only on Done', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+
+    final jobStorage = JobStorageService();
+    final jsaStorage = JsaStorageService();
+    final activeJob = await jobStorage.saveActiveJob(
+      JobSetup(
+        company: 'Mach Energy',
+        padName: 'Time Pad',
+        wells: const ['Time Well'],
+      ),
+    );
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day)
+        .toIso8601String()
+        .split('T')
+        .first;
+
+    await jsaStorage.saveDraft(
+      JsaDraft(
+        activeJobId: activeJob.id,
+        company: 'Mach Energy',
+        date: today,
+        time: '6:05 PM',
+        location: 'Time Pad',
+        task: 'Flowback',
+        steps: const ['Monitor well flow'],
+        hazards: const ['High pressure'],
+        recommendations: const ['Wear PPE'],
+        employees: List.generate(6, (_) => JsaEmployee()),
+        notes: '',
+      ),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: JsaScreen()));
+    await tester.pumpAndSettle();
+
+    final timeButton = find.widgetWithText(OutlinedButton, 'Time: 6:05 PM');
+    expect(timeButton, findsOneWidget);
+
+    await tester.tap(timeButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Select Time'), findsOneWidget);
+
+    await tester.drag(
+      find.byType(CupertinoPicker).at(1),
+      const Offset(0, -264),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Select Time'), findsNothing);
+    expect(
+        find.widgetWithText(OutlinedButton, 'Time: 6:05 PM'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Time: 6:05 PM'));
+    await tester.pumpAndSettle();
+
+    await tester.drag(
+      find.byType(CupertinoPicker).at(1),
+      const Offset(0, -264),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Select Time'), findsNothing);
+    expect(find.widgetWithText(OutlinedButton, 'Time: 6:05 PM'), findsNothing);
+    expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is OutlinedButton &&
+              widget.child is Text &&
+              (widget.child as Text).data?.startsWith('Time: ') == true,
+          description: 'Updated time button',
+        ),
+        findsOneWidget);
   });
 
   testWidgets('JSA Build 105 tabs and built-in templates render', (
