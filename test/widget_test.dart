@@ -1753,9 +1753,10 @@ void main() {
     expect(saved, isNotNull);
     expect(saved!.templateId, 'production');
     expect(saved.templateName, 'Production');
-    expect(saved.steps, isEmpty);
-    expect(saved.hazards, isEmpty);
-    expect(saved.recommendations, isEmpty);
+    expect(saved.steps.length, 10);
+    expect(saved.steps.first, 'Conduct pre-job meeting and inspect location');
+    expect(saved.hazards, contains('STEP 1'));
+    expect(saved.recommendations, contains('STEP 1'));
   });
 
   testWidgets('History tab opens legacy draft without template metadata', (
@@ -1804,5 +1805,100 @@ void main() {
     expect(find.text('JSA Type: Flowback'), findsOneWidget);
 
     expect(find.text('Open Saved JSA'), findsOneWidget);
+  });
+
+  testWidgets(
+      'Switching templates replaces reusable content and preserves header and signatures',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+
+    final jobStorage = JobStorageService();
+    final jsaStorage = JsaStorageService();
+    final activeJob = await jobStorage.saveActiveJob(
+      JobSetup(
+        company: 'Mach Energy',
+        padName: 'Template Swap Pad',
+        wells: const ['Template Swap Well'],
+      ),
+    );
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day)
+        .toIso8601String()
+        .split('T')
+        .first;
+
+    await jsaStorage.saveDraft(
+      JsaDraft(
+        activeJobId: activeJob.id,
+        company: 'Mach Energy',
+        date: today,
+        time: '06:30',
+        location: 'Header Pad Location',
+        county: 'County Header',
+        cityState: 'City, ST',
+        gpsCoordinates: '33.00000, -97.00000',
+        weatherTemperature: '80 F',
+        weatherConditions: 'Clear',
+        weatherWind: '5 mph',
+        task: 'General',
+        steps: const <String>['Operator custom step'],
+        hazards: const <String>['Operator custom hazard'],
+        recommendations: const <String>['Operator custom action'],
+        employees: List<JsaEmployee>.generate(
+          6,
+          (index) => JsaEmployee(
+            name: index == 0 ? 'Operator One' : '',
+            company: index == 0 ? 'Mach Energy' : '',
+          ),
+        ),
+        notes: '',
+      ),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: JsaScreen()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Templates'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('use-template-production')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Use Template').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('JSA Type: Production'), findsOneWidget);
+
+    await tester.tap(find.text('Templates'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('use-template-production_startup')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Use Template').last);
+    await tester.pumpAndSettle();
+
+    final saved =
+        await jsaStorage.loadDraft(activeJobId: activeJob.id, date: today);
+    expect(saved, isNotNull);
+    expect(saved!.templateId, 'production_startup');
+    expect(saved.templateName, 'Production Startup');
+
+    expect(saved.location, 'Header Pad Location');
+    expect(saved.county, 'County Header');
+    expect(saved.cityState, 'City, ST');
+    expect(saved.gpsCoordinates, '33.00000, -97.00000');
+    expect(saved.weatherTemperature, '80 F');
+    expect(saved.weatherConditions, 'Clear');
+    expect(saved.weatherWind, '5 mph');
+
+    expect(
+        saved.steps.first, 'Conduct pre-job meeting and review startup plan');
+    expect(saved.steps.length, 10);
+
+    expect(saved.employees.first.name, 'Operator One');
+    expect(saved.employees.first.company, 'Mach Energy');
+    expect(
+        saved.employees.every(
+            (employee) => (employee.signaturePngBase64 ?? '').trim().isEmpty),
+        isTrue);
   });
 }

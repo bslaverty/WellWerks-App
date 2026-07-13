@@ -1113,7 +1113,7 @@ class _JsaScreenState extends State<JsaScreen>
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Built-in JSA template structure. Final approved safety content will be added in a future build.',
+                    'Built-in approved JSA safety content. Loading a template replaces only Basic Job Steps, Hazards, and Recommended Actions.',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),

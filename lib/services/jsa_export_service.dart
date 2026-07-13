@@ -26,7 +26,14 @@ class JsaExportService {
     required JsaDraft draft,
     JobSetup? activeJob,
   }) async {
-    final doc = pw.Document();
+    final doc = pw.Document(compress: false);
+    final listSections = <pw.Widget>[
+      ..._listSectionWidgets('Selected Steps', draft.tasks),
+      ..._listSectionWidgets('Basic Steps', draft.steps),
+      ..._listSectionWidgets('Hazards', draft.hazards),
+      ..._listSectionWidgets('Recommendations', draft.recommendations),
+    ];
+
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.letter,
@@ -36,10 +43,7 @@ class JsaExportService {
           pw.SizedBox(height: 10),
           _infoSection(draft),
           pw.SizedBox(height: 10),
-          _listSection('Selected Steps', draft.tasks),
-          _listSection('Basic Steps', draft.steps),
-          _listSection('Hazards', draft.hazards),
-          _listSection('Recommendations', draft.recommendations),
+          ...listSections,
           _employeesSection(draft.employees),
           _notesSection(draft.notes),
         ],
@@ -133,6 +137,12 @@ class JsaExportService {
 
     addRow('Date', draft.date);
     addRow('Time', draft.time);
+    addRow(
+      'JSA Type',
+      draft.templateName.trim().isEmpty
+          ? (draft.task.trim().isEmpty ? 'General' : draft.task)
+          : draft.templateName,
+    );
     addRow('Company', draft.company);
     addRow('Location / Pad', draft.location);
     addRow('County', draft.county);
@@ -168,27 +178,64 @@ class JsaExportService {
     );
   }
 
-  pw.Widget _listSection(String title, List<String> items) {
+  List<pw.Widget> _listSectionWidgets(String title, List<String> items) {
     final visibleItems = items
         .map((item) => item.trim())
         .where((item) => item.isNotEmpty)
         .toList();
-    return _sectionCard(
-      title,
-      visibleItems.isEmpty
-          ? pw.Text('None entered.')
-          : pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: visibleItems
-                  .map(
-                    (item) => pw.Padding(
-                      padding: const pw.EdgeInsets.only(bottom: 4),
-                      child: pw.Text('• $item'),
-                    ),
-                  )
-                  .toList(),
-            ),
-    );
+    if (visibleItems.isEmpty) {
+      return <pw.Widget>[
+        _sectionCard(
+          title,
+          pw.Text('None entered.'),
+        ),
+      ];
+    }
+
+    const maxLinesPerSectionCard = 20;
+    final widgets = <pw.Widget>[];
+    for (var start = 0;
+        start < visibleItems.length;
+        start += maxLinesPerSectionCard) {
+      final end = (start + maxLinesPerSectionCard < visibleItems.length)
+          ? start + maxLinesPerSectionCard
+          : visibleItems.length;
+      final chunk = visibleItems.sublist(start, end);
+      final heading = start == 0 ? title : '$title (cont.)';
+
+      widgets.add(
+        _sectionCard(
+          heading,
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: chunk
+                .map(
+                  (item) => pw.Padding(
+                    padding: const pw.EdgeInsets.only(bottom: 4),
+                    child: _listLine(item),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+      );
+    }
+    return widgets;
+  }
+
+  pw.Widget _listLine(String item) {
+    final normalized = _safe(item);
+    if (normalized.startsWith('STEP ')) {
+      return pw.Text(
+        normalized,
+        style: const pw.TextStyle(fontWeight: pw.FontWeight.bold),
+      );
+    }
+
+    final stripped = normalized.startsWith('•')
+        ? normalized.substring(1).trim()
+        : normalized;
+    return pw.Text('- $stripped');
   }
 
   pw.Widget _employeesSection(List<JsaEmployee> employees) {
@@ -291,6 +338,6 @@ class JsaExportService {
 
   String _safe(String value) {
     final trimmed = value.trim();
-    return trimmed;
+    return trimmed.replaceAll('₂', '2').replaceAll('•', '-');
   }
 }
