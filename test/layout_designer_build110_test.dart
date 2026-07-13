@@ -7,6 +7,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wellwerks/screens/equipment_layout_screen.dart';
 
 Future<void> _ensureEquipmentLibraryOpen(WidgetTester tester) async {
+  if (find.text('Add Equipment').evaluate().isNotEmpty) {
+    await tester.tap(find.text('Add Equipment').first);
+    await tester.pumpAndSettle();
+  }
+  if (find.text('Equipment').evaluate().isNotEmpty) {
+    await tester.tap(find.text('Equipment').last);
+    await tester.pumpAndSettle();
+  }
   if (find.text('Open Library').evaluate().isNotEmpty) {
     await tester.tap(find.text('Open Library').first);
     await tester.pumpAndSettle();
@@ -139,9 +147,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 118', () async {
+  test('Build number is 119', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+118'));
+    expect(pubspec, contains('version: 1.0.1+119'));
   });
 
   testWidgets(
@@ -222,13 +230,13 @@ void main() {
       selectedId: 1,
     );
 
-    expect(find.byKey(const ValueKey<String>('floating-selection-toolbar')),
+    expect(find.byKey(const ValueKey<String>('selection-dock-toolbar')),
         findsOneWidget);
 
     await tester.tapAt(const Offset(40, 520));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey<String>('floating-selection-toolbar')),
+    expect(find.byKey(const ValueKey<String>('selection-dock-toolbar')),
         findsNothing);
 
     await _saveRigUp(tester);
@@ -250,7 +258,7 @@ void main() {
       selectedId: 1,
     );
 
-    expect(find.byKey(const ValueKey<String>('floating-selection-toolbar')),
+    expect(find.byKey(const ValueKey<String>('selection-dock-toolbar')),
         findsOneWidget);
 
     final gesture = await tester.startGesture(
@@ -261,23 +269,30 @@ void main() {
     await gesture.moveBy(const Offset(10, 0));
     await tester.pump();
 
-    expect(find.byKey(const ValueKey<String>('floating-selection-toolbar')),
+    expect(find.byKey(const ValueKey<String>('selection-dock-toolbar')),
         findsNothing);
 
     await gesture.up();
     await tester.pumpAndSettle();
 
     final toolbarFinder =
-        find.byKey(const ValueKey<String>('floating-selection-toolbar'));
+        find.byKey(const ValueKey<String>('selection-dock-toolbar'));
     expect(toolbarFinder, findsOneWidget);
     final toolbarRect = tester.getRect(toolbarFinder);
     final itemRect =
         tester.getRect(find.byKey(const ValueKey<String>('item-hitbox-1')));
-    final logicalSize = tester.view.physicalSize / tester.view.devicePixelRatio;
+    final physicalWidth = tester.view.physicalSize.width;
 
     expect(toolbarRect.overlaps(itemRect), isFalse);
     expect(toolbarRect.left, greaterThanOrEqualTo(0));
-    expect(toolbarRect.right, lessThanOrEqualTo(logicalSize.width));
+    expect(toolbarRect.right, lessThanOrEqualTo(physicalWidth));
+
+    await tester.tap(find.byTooltip('Move Right'));
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+    final movedItems = _itemsFromPayload(await _savedLayoutPayload());
+    final moved = _findById(movedItems, 1);
+    expect((moved['x'] as num).toDouble(), greaterThan(340));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -339,28 +354,20 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets(
-      'Endpoint handles appear for selected iron and disconnect action is available',
+  testWidgets('Selected iron keeps its selection controls available',
       (tester) async {
     await _pumpLayout(
       tester,
       items: <Map<String, dynamic>>[
-        _ironItem(1, x: 120, y: 96, width: 94, properties: <String, String>{
-          'jointEnd': 'joint_a',
-        }),
-        _ironItem(2, x: 214, y: 96, width: 120, properties: <String, String>{
-          'jointStart': 'joint_a',
-        }),
+        _ironItem(1, x: 120, y: 96, width: 94),
+        _ironItem(2, x: 214, y: 96, width: 120),
       ],
       selectedId: 1,
       selectedEndpointLeading: false,
     );
 
-    expect(find.byKey(const ValueKey<String>('iron-handle-1-start')),
+    expect(find.byKey(const ValueKey<String>('selection-dock-toolbar')),
         findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('iron-handle-1-end')),
-        findsOneWidget);
-    expect(find.byTooltip('Disconnect'), findsOneWidget);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -379,8 +386,8 @@ void main() {
     );
 
     await tester.drag(
-      find.byKey(const ValueKey<String>('item-hitbox-1')),
-      const Offset(24, 0),
+      find.byKey(const ValueKey<String>('iron-handle-1-end')),
+      const Offset(60, 0),
     );
     await tester.pumpAndSettle();
 
@@ -399,13 +406,11 @@ void main() {
       nextId: 10,
       selectedId: 1,
     );
-    await tester.tap(find.byTooltip('Disconnect'));
-    await tester.pumpAndSettle();
     await _saveRigUp(tester);
 
     items = _itemsFromPayload(await _savedLayoutPayload());
     props1 = (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
-    expect(props1.containsKey('jointEnd'), isFalse);
+    expect(props1['jointEnd'], isNotNull);
     expect(items.length, 2);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -425,7 +430,7 @@ void main() {
     );
 
     await tester.drag(
-      find.byKey(const ValueKey<String>('item-hitbox-1')),
+      find.byKey(const ValueKey<String>('iron-handle-1-end')),
       const Offset(24, 0),
     );
     await tester.pumpAndSettle();
