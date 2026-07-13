@@ -38,6 +38,108 @@
 				"status",
 				"--short"
 			]
+		},
+		{
+			"label": "build111-pub-get",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"pub",
+				"get"
+			]
+		},
+		{
+			"label": "build111-format",
+			"type": "shell",
+			"command": "dart",
+			"args": [
+				"format",
+				"."
+			]
+		},
+		{
+			"label": "build111-analyze",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"analyze"
+			]
+		},
+		{
+			"label": "build111-test",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test"
+			]
+		},
+		{
+			"label": "build111-branch",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"rev-parse",
+				"--abbrev-ref",
+				"HEAD"
+			]
+		},
+		{
+			"label": "build111-status",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short"
+			]
+		},
+		{
+			"label": "build111-git-add",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"pubspec.yaml",
+				"lib/screens/equipment_layout_screen.dart",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build111-status-staged",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short"
+			]
+		},
+		{
+			"label": "build111-commit",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"Build 111 - restore compact layout equipment icons"
+			]
+		},
+		{
+			"label": "build111-push",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"feature/equipment-bypass"
+			]
+		},
+		{
+			"label": "build111-status-final",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short"
+			]
 		}
 	]
 }
