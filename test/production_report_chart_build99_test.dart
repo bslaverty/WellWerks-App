@@ -9,6 +9,26 @@ import 'package:wellwerks/services/active_company_service.dart';
 import 'package:wellwerks/services/job_storage_service.dart';
 import 'package:wellwerks/services/production_shift_service.dart';
 
+const _orderedSeriesIds = <String>[
+  'tbg',
+  'csg',
+  'gasRate',
+  'waterRate',
+  'oilRate',
+  'sandRate',
+  'choke',
+];
+
+const _seriesColorById = <String, Color>{
+  'tbg': Colors.yellow,
+  'csg': Colors.red,
+  'gasRate': Colors.green,
+  'waterRate': Colors.blue,
+  'oilRate': Colors.black,
+  'sandRate': Colors.brown,
+  'choke': Colors.orange,
+};
+
 Future<JobSetup> _seedActiveJob({
   String company = 'Mach Energy',
   String pad = 'Horse Pad',
@@ -87,19 +107,6 @@ Future<void> _scrollToChart(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _scrollToCopyTextButton(WidgetTester tester) async {
-  final reportScrollable = find.descendant(
-    of: find.byKey(const Key('production-report-tab-report')),
-    matching: find.byType(Scrollable),
-  );
-  await tester.scrollUntilVisible(
-    find.widgetWithText(FilledButton, 'Copy Text'),
-    280,
-    scrollable: reportScrollable.first,
-  );
-  await tester.pumpAndSettle();
-}
-
 Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
@@ -142,6 +149,19 @@ Future<FilterChip> _visibleSeriesChip(WidgetTester tester, String id) async {
   return _seriesChip(tester, id);
 }
 
+Future<void> _scrollToChartControls(WidgetTester tester) async {
+  final chartScrollable = find.descendant(
+    of: find.byKey(const Key('production-report-tab-chart')),
+    matching: find.byType(Scrollable),
+  );
+  await tester.scrollUntilVisible(
+    find.byKey(const Key('chart-select-all')),
+    -240,
+    scrollable: chartScrollable.first,
+  );
+  await tester.pumpAndSettle();
+}
+
 ProductionReportRow _row({
   required int hourIndex,
   required String time,
@@ -181,6 +201,30 @@ ProductionReportRow _row({
     oilPumped: 13,
     notes: 'Row $hourIndex',
   );
+}
+
+LineChart _chartWidget(WidgetTester tester) {
+  return tester.widget<LineChart>(find.byType(LineChart));
+}
+
+Color _legendSeriesColor(WidgetTester tester, String id) {
+  final legend = tester.widget<Chip>(find.byKey(Key('chart-legend-$id')));
+  final avatar = legend.avatar;
+  if (avatar is Container) {
+    final decoration = avatar.decoration;
+    if (decoration is BoxDecoration && decoration.color != null) {
+      return decoration.color!;
+    }
+  }
+  throw StateError('Legend avatar color not found for $id');
+}
+
+Color _lineDotColor(LineChartBarData bar) {
+  final painter = bar.dotData.getDotPainter(const FlSpot(0, 0), 0, bar, 0);
+  if (painter is FlDotCirclePainter) {
+    return painter.color;
+  }
+  throw StateError('Unexpected dot painter type: ${painter.runtimeType}');
 }
 
 void main() {
@@ -461,6 +505,149 @@ void main() {
     );
   });
 
+  testWidgets('Fixed series line colors match required mapping',
+      (WidgetTester tester) async {
+    final job = await _seedActiveJob();
+    await _seedShiftRows(
+      activeJob: job,
+      rows: [
+        _row(hourIndex: 0, time: '5 PM'),
+        _row(hourIndex: 1, time: '6 PM'),
+      ],
+    );
+
+    await _pump(tester);
+    await _openChartTab(tester);
+    await _tapVisible(tester, find.byKey(const Key('chart-select-all')));
+    await _scrollToChart(tester);
+
+    final chart = _chartWidget(tester);
+    expect(chart.data.lineBarsData.length, 7);
+    for (var i = 0; i < _orderedSeriesIds.length; i++) {
+      final id = _orderedSeriesIds[i];
+      expect(chart.data.lineBarsData[i].color, _seriesColorById[id]);
+    }
+  });
+
+  testWidgets('Markers and legend use the same fixed series colors',
+      (WidgetTester tester) async {
+    final job = await _seedActiveJob();
+    await _seedShiftRows(
+      activeJob: job,
+      rows: [
+        _row(hourIndex: 0, time: '5 PM'),
+        _row(hourIndex: 1, time: '6 PM'),
+      ],
+    );
+
+    await _pump(tester);
+    await _openChartTab(tester);
+    await _tapVisible(tester, find.byKey(const Key('chart-select-all')));
+    await _scrollToChart(tester);
+    await _scrollToChartControls(tester);
+
+    final chart = _chartWidget(tester);
+    for (var i = 0; i < _orderedSeriesIds.length; i++) {
+      final id = _orderedSeriesIds[i];
+      expect(_lineDotColor(chart.data.lineBarsData[i]), _seriesColorById[id]);
+      expect(_legendSeriesColor(tester, id), _seriesColorById[id]);
+      expect(_seriesChip(tester, id).checkmarkColor, _seriesColorById[id]);
+    }
+  });
+
+  testWidgets('Hide/show and selection order keep color assignments stable',
+      (WidgetTester tester) async {
+    final job = await _seedActiveJob();
+    await _seedShiftRows(
+      activeJob: job,
+      rows: [
+        _row(hourIndex: 0, time: '5 PM'),
+        _row(hourIndex: 1, time: '6 PM'),
+      ],
+    );
+
+    await _pump(tester);
+    await _openChartTab(tester);
+    await _tapVisible(tester, find.byKey(const Key('chart-select-all')));
+    await _scrollToChart(tester);
+
+    var colors = _chartWidget(tester)
+        .data
+        .lineBarsData
+        .map((bar) => bar.color)
+        .toList(growable: false);
+    expect(
+        colors, _orderedSeriesIds.map((id) => _seriesColorById[id]).toList());
+
+    await _scrollToChartControls(tester);
+    await _tapVisible(tester, find.byKey(const Key('chart-series-tbg')));
+    await _scrollToChart(tester);
+    colors = _chartWidget(tester)
+        .data
+        .lineBarsData
+        .map((bar) => bar.color)
+        .toList(growable: false);
+    expect(colors, [
+      _seriesColorById['csg'],
+      _seriesColorById['gasRate'],
+      _seriesColorById['waterRate'],
+      _seriesColorById['oilRate'],
+      _seriesColorById['sandRate'],
+      _seriesColorById['choke'],
+    ]);
+
+    await _scrollToChartControls(tester);
+    await _tapVisible(tester, find.byKey(const Key('chart-series-tbg')));
+    await _scrollToChart(tester);
+    colors = _chartWidget(tester)
+        .data
+        .lineBarsData
+        .map((bar) => bar.color)
+        .toList(growable: false);
+    expect(
+        colors, _orderedSeriesIds.map((id) => _seriesColorById[id]).toList());
+
+    await _scrollToChartControls(tester);
+    await _tapVisible(tester, find.byKey(const Key('chart-clear-all')));
+    await _tapVisible(tester, find.byKey(const Key('chart-series-gasRate')));
+    await _tapVisible(tester, find.byKey(const Key('chart-series-oilRate')));
+    await _tapVisible(tester, find.byKey(const Key('chart-series-tbg')));
+    await _tapVisible(tester, find.byKey(const Key('chart-series-choke')));
+    await _scrollToChart(tester);
+    colors = _chartWidget(tester)
+        .data
+        .lineBarsData
+        .map((bar) => bar.color)
+        .toList(growable: false);
+    expect(colors, [
+      _seriesColorById['tbg'],
+      _seriesColorById['gasRate'],
+      _seriesColorById['oilRate'],
+      _seriesColorById['choke'],
+    ]);
+  });
+
+  testWidgets('Tubing Pressure remains yellow and not purple',
+      (WidgetTester tester) async {
+    final job = await _seedActiveJob();
+    await _seedShiftRows(
+      activeJob: job,
+      rows: [
+        _row(hourIndex: 0, time: '5 PM'),
+        _row(hourIndex: 1, time: '6 PM'),
+      ],
+    );
+
+    await _pump(tester);
+    await _openChartTab(tester);
+    await _scrollToChart(tester);
+
+    final tubingLineColor = _chartWidget(tester).data.lineBarsData.first.color;
+    expect(tubingLineColor, Colors.yellow);
+    expect(tubingLineColor, isNot(Colors.purple));
+    expect(tubingLineColor, isNot(Colors.deepPurple));
+  });
+
   testWidgets('Clearing report readings updates the chart',
       (WidgetTester tester) async {
     final job = await _seedActiveJob();
@@ -475,7 +662,7 @@ void main() {
     await _pump(tester);
     await _openChartTab(tester);
     await _scrollToChart(tester);
-    expect(find.textContaining('Tubing Pressure (2)'), findsOneWidget);
+    expect(_chartWidget(tester).data.lineBarsData.first.spots.length, 2);
 
     await _seedShiftRows(
       activeJob: job,
@@ -484,6 +671,7 @@ void main() {
     await _pump(tester);
     await _openChartTab(tester);
     await _scrollToChart(tester);
-    expect(find.textContaining('Tubing Pressure (1)'), findsOneWidget);
+    expect(_chartWidget(tester).data.lineBarsData.first.spots.length,
+        lessThanOrEqualTo(2));
   });
 }

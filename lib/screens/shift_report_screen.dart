@@ -39,6 +39,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   int _selectedWellIndex = 0;
   Map<_ChartSeries, bool> _seriesVisibility = _defaultSeriesVisibility();
   String _pointDetail = '';
+  _ChartSeries? _pointDetailSeries;
 
   @override
   void initState() {
@@ -763,23 +764,56 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     }
   }
 
-  Color _seriesColor(_ChartSeries series, ColorScheme scheme) {
-    switch (series) {
-      case _ChartSeries.tubingPressure:
-        return scheme.primary;
-      case _ChartSeries.casingPressure:
-        return scheme.secondary;
-      case _ChartSeries.gasRate:
-        return scheme.tertiary;
-      case _ChartSeries.waterRate:
-        return scheme.error;
-      case _ChartSeries.oilRate:
-        return scheme.primaryContainer;
-      case _ChartSeries.sandRate:
-        return scheme.secondaryContainer;
-      case _ChartSeries.choke:
-        return scheme.tertiaryContainer;
+  // Centralized fixed color mapping for all production chart series UI.
+  static const Map<_ChartSeries, Color> _seriesColors = {
+    _ChartSeries.tubingPressure: Colors.yellow,
+    _ChartSeries.casingPressure: Colors.red,
+    _ChartSeries.gasRate: Colors.green,
+    _ChartSeries.waterRate: Colors.blue,
+    _ChartSeries.oilRate: Colors.black,
+    _ChartSeries.sandRate: Colors.brown,
+    _ChartSeries.choke: Colors.orange,
+  };
+
+  Color _seriesColor(_ChartSeries series) {
+    return _seriesColors[series] ?? Colors.white;
+  }
+
+  Color _seriesStrokeColor(_ChartSeries series, ColorScheme scheme) {
+    if (series == _ChartSeries.oilRate) {
+      return Colors.white.withValues(alpha: 0.85);
     }
+    return scheme.surface;
+  }
+
+  Shadow _seriesLineShadow(_ChartSeries series) {
+    if (series == _ChartSeries.oilRate) {
+      return Shadow(
+        color: Colors.white.withValues(alpha: 0.68),
+        blurRadius: 3.0,
+        offset: Offset.zero,
+      );
+    }
+    return const Shadow(color: Colors.transparent);
+  }
+
+  Widget _seriesColorDot(
+    _ChartSeries series,
+    ColorScheme scheme, {
+    double size = 12,
+  }) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: _seriesColor(series),
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: _seriesStrokeColor(series, scheme),
+          width: 1.1,
+        ),
+      ),
+    );
   }
 
   Widget _chartLegendControl() {
@@ -806,6 +840,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
                 for (final series in _ChartSeries.values)
                   FilterChip(
                     key: Key('chart-series-${series.id}'),
+                    avatar: _seriesColorDot(series, scheme),
                     label: Text(_seriesLabel(series)),
                     selected: _seriesVisibility[series] ?? false,
                     onSelected: (selected) {
@@ -817,12 +852,11 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
                       });
                       _saveChartPrefs();
                     },
-                    selectedColor:
-                        _seriesColor(series, scheme).withValues(alpha: 0.25),
-                    checkmarkColor: _seriesColor(series, scheme),
+                    selectedColor: _seriesColor(series).withValues(alpha: 0.25),
+                    checkmarkColor: _seriesColor(series),
                     side: BorderSide(
                       color: (_seriesVisibility[series] ?? false)
-                          ? _seriesColor(series, scheme)
+                          ? _seriesColor(series)
                           : scheme.outline,
                     ),
                   ),
@@ -892,6 +926,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     }
 
     final points = _buildChartPoints(rows);
+    final scheme = Theme.of(context).colorScheme;
     final leftValues = <double>[];
     final rightValues = <double>[];
 
@@ -933,7 +968,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       }
       seriesCounts[series] = spots.length;
 
-      final color = _seriesColor(series, Theme.of(context).colorScheme);
+      final color = _seriesColor(series);
       builtSeries.add(_BuiltChartSeries(
         series: series,
         barData: LineChartBarData(
@@ -941,13 +976,14 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
           isCurved: false,
           color: color,
           barWidth: 2.8,
+          shadow: _seriesLineShadow(series),
           dotData: FlDotData(
             show: true,
             getDotPainter: (_, __, ___, ____) => FlDotCirclePainter(
               radius: 3.2,
               color: color,
               strokeWidth: 1.2,
-              strokeColor: Theme.of(context).colorScheme.surface,
+              strokeColor: _seriesStrokeColor(series, scheme),
             ),
           ),
           belowBarData: BarAreaData(show: false),
@@ -964,7 +1000,6 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
 
     final chartWidth =
         (points.length * 72).toDouble().clamp(320.0, 4200.0).toDouble();
-    final scheme = Theme.of(context).colorScheme;
 
     return Card(
       child: Padding(
@@ -1018,7 +1053,10 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
                         final detail =
                             '${point.row.time} • ${_seriesLabel(series.series)}: $exact$suffix';
                         if (!mounted) return;
-                        setState(() => _pointDetail = detail);
+                        setState(() {
+                          _pointDetail = detail;
+                          _pointDetailSeries = series.series;
+                        });
                       },
                       touchTooltipData: LineTouchTooltipData(
                         getTooltipItems: (spots) {
@@ -1032,7 +1070,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
                             return LineTooltipItem(
                               '${point.row.time}\n${_seriesLabel(series.series)}: $exact$suffix',
                               TextStyle(
-                                color: scheme.onInverseSurface,
+                                color: _seriesColor(series.series),
                                 fontWeight: FontWeight.w700,
                               ),
                             );
@@ -1129,10 +1167,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
                 for (final series in visibleSeries)
                   Chip(
                     key: Key('chart-legend-${series.id}'),
-                    avatar: CircleAvatar(
-                      radius: 6,
-                      backgroundColor: _seriesColor(series, scheme),
-                    ),
+                    avatar: _seriesColorDot(series, scheme),
                     label: Text(
                       '${_seriesLabel(series)} (${seriesCounts[series] ?? 0})',
                     ),
@@ -1142,10 +1177,22 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
             if (_pointDetail.trim().isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  _pointDetail,
+                child: Row(
                   key: const Key('production-chart-point-detail'),
-                  style: TextStyle(color: scheme.onSurfaceVariant),
+                  children: [
+                    _seriesColorDot(
+                      _pointDetailSeries ?? _ChartSeries.tubingPressure,
+                      scheme,
+                      size: 10,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _pointDetail,
+                        style: TextStyle(color: scheme.onSurfaceVariant),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             if (pointsWithData <= 1)
@@ -1259,8 +1306,8 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
                 if (summary.isNotEmpty) const SizedBox(height: 8),
                 const Text(
                   'Chart source: current Production Report rows for selected well only',
-                  key: const Key('production-chart-source-note'),
-                  style: const TextStyle(color: Colors.white70),
+                  key: Key('production-chart-source-note'),
+                  style: TextStyle(color: Colors.white70),
                 ),
               ],
             ),
@@ -1438,7 +1485,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     if (_loading) {
       return const Scaffold(
         appBar: AppHeader(title: 'Production Report', showBack: true),
-        body: Center(child: const CircularProgressIndicator()),
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -1455,9 +1502,9 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
           children: [
             Material(
               color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              child: TabBar(
-                key: const Key('production-report-tabs'),
-                tabs: const [
+              child: const TabBar(
+                key: Key('production-report-tabs'),
+                tabs: [
                   Tab(text: 'Report'),
                   Tab(text: 'Chart'),
                 ],
