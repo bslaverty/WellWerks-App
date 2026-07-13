@@ -139,9 +139,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 117', () async {
+  test('Build number is 118', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+117'));
+    expect(pubspec, contains('version: 1.0.1+118'));
   });
 
   testWidgets(
