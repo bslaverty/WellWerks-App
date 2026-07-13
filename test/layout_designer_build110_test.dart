@@ -147,9 +147,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 121', () async {
+  test('Build number is 122', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+121'));
+    expect(pubspec, contains('version: 1.0.1+122'));
   });
 
   testWidgets(
@@ -336,7 +336,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Snap ON D-pad nudge moves selected item by one grid increment',
+  testWidgets('Snap ON D-pad nudge moves selected item by one unit',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -352,7 +352,7 @@ void main() {
     await _saveRigUp(tester);
     final items = _itemsFromPayload(await _savedLayoutPayload());
     final moved = _findById(items, 1);
-    expect((moved['x'] as num).toDouble(), closeTo(304.0, 0.01));
+    expect((moved['x'] as num).toDouble(), closeTo(281.0, 0.01));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -377,7 +377,7 @@ void main() {
     await _saveRigUp(tester);
     final afterHoldItems = _itemsFromPayload(await _savedLayoutPayload());
     final afterHoldX = (_findById(afterHoldItems, 1)['x'] as num).toDouble();
-    expect(afterHoldX, greaterThanOrEqualTo(304.0));
+    expect(afterHoldX, greaterThanOrEqualTo(281.0));
 
     await tester.pump(const Duration(milliseconds: 260));
     await _saveRigUp(tester);

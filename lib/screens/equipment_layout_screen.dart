@@ -45,7 +45,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   bool _measureMode = false;
   bool _showEquipment = true;
   bool _showIron = true;
-  bool _showLabels = true;
+  bool _showLabels = false;
   bool _showGrid = true;
   Offset? _measurementStart;
   Offset? _measurementEnd;
@@ -82,6 +82,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   int? _dragPreviewItemId;
   Offset? _dragPreviewScenePosition;
   Offset? _libraryDragScenePoint;
+  _ConnectionTarget? _drawIronStartTarget;
+  _ConnectionTarget? _drawIronHoverTarget;
+  Offset? _drawIronPointerScene;
   final _jobStorage = JobStorageService();
   final _recoveryState = RecoveryStateService();
   JobSetup? _activeJob;
@@ -97,6 +100,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   static const double _mobileLibraryMinHeight = 56.0;
   static const double _mobileLibraryDefaultFraction = 0.38;
   static const double _mobileLibraryMaxFraction = 0.82;
+  static const double _dragLiftScreenOffsetY = 64.0;
+  static const String _labelsPrefKey = 'wellwerks_layout_show_labels_v1';
 
   @override
   void initState() {
@@ -226,6 +231,49 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     _dragPreviewScenePosition = null;
   }
 
+  Future<void> _persistShowLabelsPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_labelsPrefKey, _showLabels);
+  }
+
+  void _toggleShowEquipmentLabels() {
+    setState(() => _showLabels = !_showLabels);
+    _persistShowLabelsPreference();
+  }
+
+  void _enterDrawIronMode({bool minimizeLibrary = true}) {
+    setState(() {
+      _drawIronMode = true;
+      _interactionMode = _InteractionMode.placeIron;
+      _ironStartPoint = null;
+      _drawIronStartTarget = null;
+      _drawIronHoverTarget = null;
+      _drawIronPointerScene = null;
+      if (minimizeLibrary) {
+        _showSideLibrary = false;
+      }
+    });
+  }
+
+  void _clearDrawIronSelection({bool exitMode = false}) {
+    setState(() {
+      _drawIronStartTarget = null;
+      _drawIronHoverTarget = null;
+      _drawIronPointerScene = null;
+      _ironStartPoint = null;
+      if (exitMode) {
+        _drawIronMode = false;
+        _interactionMode = _InteractionMode.idle;
+      }
+    });
+  }
+
+  String get _drawIronStatusText {
+    if (!_drawIronMode) return '';
+    if (_drawIronStartTarget == null) return 'Select starting connection';
+    return 'Connect to equipment or iron';
+  }
+
   void _openEquipmentDrawer(
       {_DrawerLibrarySection section = _DrawerLibrarySection.equipment}) {
     _stopArrowRepeat();
@@ -236,6 +284,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _activeEndpointDrag = null;
       _snapCandidateIronId = null;
       _snapIndicatorScene = null;
+      _drawIronHoverTarget = null;
+      _drawIronPointerScene = null;
       _interactionMode =
           _drawIronMode ? _InteractionMode.placeIron : _InteractionMode.idle;
       if (!_drawIronMode) {
@@ -265,6 +315,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _activeEndpointDrag = null;
       _snapCandidateIronId = null;
       _snapIndicatorScene = null;
+      _drawIronHoverTarget = null;
+      _drawIronPointerScene = null;
       _interactionMode =
           _drawIronMode ? _InteractionMode.placeIron : _InteractionMode.idle;
       if (opening && !_drawIronMode) {
@@ -340,6 +392,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _snapIndicatorScene = null;
       _clearDragPreview();
       _libraryDragScenePoint = null;
+      _drawIronHoverTarget = null;
+      _drawIronPointerScene = null;
       _selectedEndpointLeading = null;
       _selectedBypassHandle = null;
       _interactionMode =
@@ -355,6 +409,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _snapIndicatorScene = null;
       _clearDragPreview();
       _libraryDragScenePoint = null;
+      _drawIronHoverTarget = null;
+      _drawIronPointerScene = null;
       _selectedEndpointLeading = null;
       _selectedBypassHandle = null;
       _interactionMode =
@@ -369,6 +425,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _activeEndpointDrag = null;
       _snapCandidateIronId = null;
       _snapIndicatorScene = null;
+      _drawIronHoverTarget = null;
+      _drawIronPointerScene = null;
       _selectedEndpointLeading = null;
       _selectedBypassHandle = null;
       _interactionMode =
@@ -422,7 +480,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Offset _nudgeDelta(Offset directionUnit) {
-    final step = _snapToGrid ? 24.0 : 1.0;
+    const step = 1.0;
     return Offset(directionUnit.dx * step, directionUnit.dy * step);
   }
 
@@ -713,26 +771,91 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Offset _equipmentAnchorPoint(_LayoutItem item, String side) {
-    if (item.type == _EquipmentType.bypass) {
-      switch (side) {
-        case 'bypassPrimary':
-          return Offset(item.x, item.y + item.height / 2);
-        case 'bypassSecondary':
-          return Offset(item.x + item.width, item.y + item.height / 2);
+    for (final anchor in _equipmentAnchorCandidates(item)) {
+      if (anchor.side == side) {
+        return anchor.point;
       }
     }
+    return Offset(item.x + item.width / 2, item.y + item.height / 2);
+  }
 
-    switch (side) {
-      case 'left':
-        return Offset(item.x, item.y + item.height / 2);
-      case 'right':
-        return Offset(item.x + item.width, item.y + item.height / 2);
-      case 'top':
-        return Offset(item.x + item.width / 2, item.y);
-      case 'bottom':
+  List<_AnchorDefinition> _anchorDefinitionsForType(_EquipmentType type) {
+    switch (type) {
+      case _EquipmentType.bypass:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('bypassPrimary', 0.0, 0.5),
+          _AnchorDefinition('bypassSecondary', 1.0, 0.5),
+        ];
+      case _EquipmentType.wellhead:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('bottom', 0.5, 1.0),
+          _AnchorDefinition('left', 0.0, 0.5),
+          _AnchorDefinition('right', 1.0, 0.5),
+        ];
+      case _EquipmentType.chokeManifold:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('top', 0.5, 0.0),
+          _AnchorDefinition('bottom', 0.5, 1.0),
+          _AnchorDefinition('left', 0.0, 0.5),
+          _AnchorDefinition('right', 1.0, 0.5),
+        ];
+      case _EquipmentType.plugCatcher:
+      case _EquipmentType.cyclonicSandSep:
+      case _EquipmentType.sphericalSandSep:
+      case _EquipmentType.esdValve:
+      case _EquipmentType.lineHeater:
+      case _EquipmentType.flowbackTank:
+      case _EquipmentType.productionTank:
+      case _EquipmentType.testSeparator:
+      case _EquipmentType.flare:
+      case _EquipmentType.compressor:
+      case _EquipmentType.facilities:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('left', 0.0, 0.5),
+          _AnchorDefinition('right', 1.0, 0.5),
+        ];
       default:
-        return Offset(item.x + item.width / 2, item.y + item.height);
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('left', 0.0, 0.5),
+          _AnchorDefinition('right', 1.0, 0.5),
+        ];
     }
+  }
+
+  Offset _rotatedLocalAnchorPoint(_LayoutItem item, _AnchorDefinition anchor) {
+    final local = Offset(item.width * anchor.u, item.height * anchor.v);
+    final center = Offset(item.width / 2, item.height / 2);
+    final turns = ((item.rotationTurns % 4) + 4) % 4;
+    final delta = local - center;
+    Offset rotated;
+    switch (turns) {
+      case 1:
+        rotated = Offset(-delta.dy, delta.dx);
+        break;
+      case 2:
+        rotated = Offset(-delta.dx, -delta.dy);
+        break;
+      case 3:
+        rotated = Offset(delta.dy, -delta.dx);
+        break;
+      default:
+        rotated = delta;
+    }
+    return center + rotated;
+  }
+
+  List<_EquipmentAnchorCandidate> _equipmentAnchorCandidates(_LayoutItem item) {
+    if (_isStraightIronType(item.type))
+      return const <_EquipmentAnchorCandidate>[];
+    return _anchorDefinitionsForType(item.type).map((anchor) {
+      final local = _rotatedLocalAnchorPoint(item, anchor);
+      return _EquipmentAnchorCandidate(
+        itemId: item.id,
+        side: anchor.id,
+        point: Offset(item.x + local.dx, item.y + local.dy),
+        score: 0,
+      );
+    }).toList(growable: false);
   }
 
   String? _jointId(_LayoutItem item, bool leading) =>
@@ -877,43 +1000,179 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     return best;
   }
 
-  _EquipmentAnchorCandidate? _nearestEquipmentAnchorCandidate(
-    _LayoutItem iron,
-    Offset target,
-  ) {
-    final anchorRadius = _sceneRadiusFromScreen(32);
-    final orthogonalRadius = _sceneRadiusFromScreen(16);
-    _EquipmentAnchorCandidate? best;
-    final horizontal = iron.type == _EquipmentType.ironHorizontal;
-    final sides = horizontal
-        ? const <String>['left', 'right']
-        : const <String>['top', 'bottom'];
+  _ConnectionTarget _connectionTargetFromAnchor(_EquipmentAnchorCandidate c,
+      {required double distance, required bool exact}) {
+    return _ConnectionTarget(
+      kind: _ConnectionTargetKind.equipmentAnchor,
+      point: c.point,
+      distance: distance,
+      isExactHit: exact,
+      equipmentItemId: c.itemId,
+      anchorId: c.side,
+    );
+  }
+
+  _ConnectionTarget _connectionTargetFromEndpoint(_EndpointCandidate c,
+      {required double distance, required bool exact}) {
+    return _ConnectionTarget(
+      kind: _ConnectionTargetKind.ironEndpoint,
+      point: c.point,
+      distance: distance,
+      isExactHit: exact,
+      ironItemId: c.itemId,
+      ironLeading: c.leading,
+    );
+  }
+
+  _ConnectionTarget? _nearestAnchorTarget(
+    Offset target, {
+    required double radius,
+    required bool exact,
+  }) {
+    _ConnectionTarget? best;
+    var bestDistance = double.infinity;
     for (final item in _items) {
-      if (item.type.isIron || item.type == _EquipmentType.bypass) continue;
-      for (final side in sides) {
-        final point = _equipmentAnchorPoint(item, side);
-        final axisDistance = horizontal
-            ? (point.dx - target.dx).abs()
-            : (point.dy - target.dy).abs();
-        final orthogonalDistance = horizontal
-            ? (point.dy - target.dy).abs()
-            : (point.dx - target.dx).abs();
-        if (axisDistance > anchorRadius ||
-            orthogonalDistance > orthogonalRadius) {
+      if (_isStraightIronType(item.type)) continue;
+      for (final anchor in _equipmentAnchorCandidates(item)) {
+        final distance = (anchor.point - target).distance;
+        if (distance > radius) continue;
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = _connectionTargetFromAnchor(anchor,
+              distance: distance, exact: exact);
+        }
+      }
+    }
+    return best;
+  }
+
+  _ConnectionTarget? _nearestIronEndpointTarget(
+    Offset target, {
+    required double radius,
+    required bool exact,
+    int? movingIronId,
+    bool? movingIronLeading,
+  }) {
+    _ConnectionTarget? best;
+    var bestDistance = double.infinity;
+    for (final other in _items) {
+      if (!_isStraightIronType(other.type)) continue;
+      if (movingIronId != null && other.id == movingIronId) continue;
+      for (final leading in const <bool>[true, false]) {
+        if (movingIronId != null &&
+            movingIronLeading != null &&
+            other.id == movingIronId &&
+            leading == movingIronLeading) {
           continue;
         }
-        final score = axisDistance + orthogonalDistance * 0.5;
-        if (best == null || score < best.score) {
-          best = _EquipmentAnchorCandidate(
-            itemId: item.id,
-            side: side,
-            point: point,
-            score: score,
+        final point = _ironEndpoint(other, leading);
+        final distance = (point - target).distance;
+        if (distance > radius) continue;
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = _connectionTargetFromEndpoint(
+            _EndpointCandidate(
+              itemId: other.id,
+              leading: leading,
+              point: point,
+              score: distance,
+            ),
+            distance: distance,
+            exact: exact,
           );
         }
       }
     }
     return best;
+  }
+
+  _ConnectionTarget? _findBestConnectionTarget(
+    Offset target, {
+    int? movingIronId,
+    bool? movingIronLeading,
+  }) {
+    final exactRadius = _sceneRadiusFromScreen(22.0);
+    final magneticRadius = _sceneRadiusFromScreen(40.0);
+
+    // Priority order:
+    // 1) exact equipment anchor, 2) exact iron endpoint,
+    // 3) nearest equipment anchor, 4) nearest iron endpoint.
+    final exactAnchor =
+        _nearestAnchorTarget(target, radius: exactRadius, exact: true);
+    if (exactAnchor != null) return exactAnchor;
+
+    final exactEndpoint = _nearestIronEndpointTarget(
+      target,
+      radius: exactRadius,
+      exact: true,
+      movingIronId: movingIronId,
+      movingIronLeading: movingIronLeading,
+    );
+    if (exactEndpoint != null) return exactEndpoint;
+
+    final nearestAnchor =
+        _nearestAnchorTarget(target, radius: magneticRadius, exact: false);
+    if (nearestAnchor != null) return nearestAnchor;
+
+    return _nearestIronEndpointTarget(
+      target,
+      radius: magneticRadius,
+      exact: false,
+      movingIronId: movingIronId,
+      movingIronLeading: movingIronLeading,
+    );
+  }
+
+  _EndpointSnapTarget _snapTargetFromConnection(_ConnectionTarget target) {
+    if (target.kind == _ConnectionTargetKind.ironEndpoint) {
+      return _EndpointSnapTarget(
+        point: target.point,
+        endpoint: _EndpointCandidate(
+          itemId: target.ironItemId!,
+          leading: target.ironLeading!,
+          point: target.point,
+          score: target.distance,
+        ),
+      );
+    }
+    if (target.anchorId == 'bypassPrimary' ||
+        target.anchorId == 'bypassSecondary') {
+      return _EndpointSnapTarget(
+        point: target.point,
+        bypass: _BypassHandleCandidate(
+          itemId: target.equipmentItemId!,
+          side: target.anchorId!,
+          point: target.point,
+          score: target.distance,
+        ),
+      );
+    }
+    return _EndpointSnapTarget(
+      point: target.point,
+      equipment: _EquipmentAnchorCandidate(
+        itemId: target.equipmentItemId!,
+        side: target.anchorId!,
+        point: target.point,
+        score: target.distance,
+      ),
+    );
+  }
+
+  _EquipmentAnchorCandidate? _nearestEquipmentAnchorCandidate(
+    _LayoutItem iron,
+    Offset target,
+  ) {
+    final best = _nearestAnchorTarget(target,
+        radius: _sceneRadiusFromScreen(40), exact: false);
+    if (best == null || best.kind != _ConnectionTargetKind.equipmentAnchor) {
+      return null;
+    }
+    return _EquipmentAnchorCandidate(
+      itemId: best.equipmentItemId!,
+      side: best.anchorId!,
+      point: best.point,
+      score: best.distance,
+    );
   }
 
   _BypassHandleCandidate? _nearestBypassHandleCandidate(Offset target) {
@@ -943,42 +1202,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     bool leading,
     Offset target,
   ) {
-    _EndpointSnapTarget? best;
-    double bestDistance = double.infinity;
-
-    void consider(_EndpointSnapTarget candidate) {
-      final distance = (candidate.point - target).distance;
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = candidate;
-      }
-    }
-
-    final endpointCandidate = _nearestEndpointCandidate(item, leading, target);
-    if (endpointCandidate != null) {
-      consider(_EndpointSnapTarget(
-        point: endpointCandidate.point,
-        endpoint: endpointCandidate,
-      ));
-    }
-
-    final bypassCandidate = _nearestBypassHandleCandidate(target);
-    if (bypassCandidate != null) {
-      consider(_EndpointSnapTarget(
-        point: bypassCandidate.point,
-        bypass: bypassCandidate,
-      ));
-    }
-
-    final equipmentCandidate = _nearestEquipmentAnchorCandidate(item, target);
-    if (equipmentCandidate != null) {
-      consider(_EndpointSnapTarget(
-        point: equipmentCandidate.point,
-        equipment: equipmentCandidate,
-      ));
-    }
-
-    return best;
+    final resolved = _findBestConnectionTarget(
+      target,
+      movingIronId: item.id,
+      movingIronLeading: leading,
+    );
+    if (resolved == null) return null;
+    return _snapTargetFromConnection(resolved);
   }
 
   _EndpointSnapTarget? _stabilizeEndpointSnapTarget({
@@ -1494,10 +1724,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           it.x = desired.dx.clamp(0.0, canvasSize.width - it.width);
           it.y = desired.dy.clamp(0.0, canvasSize.height - it.height);
         }
-        if (it.id == _selectedId &&
-            !it.type.isIron &&
-            it.type != _EquipmentType.bypass &&
-            (it.width <= 56 || it.height <= 56)) {
+        if (it.id == _selectedId && !it.type.isIron) {
           _dragPreviewItemId = it.id;
           _dragPreviewScenePosition =
               Offset(it.x + it.width / 2, it.y + it.height / 2);
@@ -1934,21 +2161,71 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       }
       return;
     }
-    final canvasSize = _virtualCanvasSize;
-    final snappedPoint = Offset(
-      _snap(clampedPoint.dx).clamp(0.0, canvasSize.width),
-      _snap(clampedPoint.dy).clamp(0.0, canvasSize.height),
-    );
-
-    final start = _ironStartPoint;
-    if (start == null) {
-      setState(() => _ironStartPoint = snappedPoint);
+    if (_drawIronStartTarget == null) {
+      final startTarget = _findBestConnectionTarget(clampedPoint);
+      if (startTarget == null) return;
+      setState(() {
+        _drawIronStartTarget = startTarget;
+        _drawIronPointerScene = startTarget.point;
+        _drawIronHoverTarget = null;
+      });
       return;
     }
 
-    final dx = snappedPoint.dx - start.dx;
-    final dy = snappedPoint.dy - start.dy;
-    if (dx.abs() < 12 && dy.abs() < 12) return;
+    _finalizeDrawIron(clampedPoint);
+  }
+
+  void _updateDrawIronPreview(Offset scenePoint) {
+    if (!_drawIronMode || _drawIronStartTarget == null) return;
+    final clamped = _clampToCanvas(scenePoint);
+    final hover = _findBestConnectionTarget(clamped);
+    setState(() {
+      _drawIronPointerScene = clamped;
+      _drawIronHoverTarget = hover;
+      _snapIndicatorScene = hover?.point;
+    });
+  }
+
+  void _handleDrawIronPanStart(DragStartDetails details) {
+    if (!_drawIronMode) return;
+    final scenePoint = _scenePointFromGlobal(details.globalPosition);
+    if (_drawIronStartTarget == null) {
+      final start = _findBestConnectionTarget(scenePoint);
+      if (start == null) return;
+      setState(() {
+        _drawIronStartTarget = start;
+        _drawIronPointerScene = start.point;
+        _drawIronHoverTarget = null;
+      });
+      return;
+    }
+    _updateDrawIronPreview(scenePoint);
+  }
+
+  void _handleDrawIronPanUpdate(DragUpdateDetails details) {
+    if (!_drawIronMode || _drawIronStartTarget == null) return;
+    _updateDrawIronPreview(_scenePointFromGlobal(details.globalPosition));
+  }
+
+  void _handleDrawIronPanEnd(DragEndDetails details) {
+    if (!_drawIronMode || _drawIronStartTarget == null) return;
+    final endPoint = _drawIronHoverTarget?.point ?? _drawIronPointerScene;
+    if (endPoint == null) return;
+    _finalizeDrawIron(endPoint);
+  }
+
+  void _finalizeDrawIron(Offset scenePoint) {
+    final start = _drawIronStartTarget;
+    if (start == null) return;
+    final clamped = _clampToCanvas(scenePoint);
+    final endTarget = _findBestConnectionTarget(clamped);
+    final startPoint = start.point;
+    final endPoint = endTarget?.point ?? clamped;
+    final dx = endPoint.dx - startPoint.dx;
+    final dy = endPoint.dy - startPoint.dy;
+    if (dx.abs() < 12 && dy.abs() < 12) {
+      return;
+    }
 
     final horizontal = dx.abs() >= dy.abs();
     final type = horizontal
@@ -1961,14 +2238,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         ? type.defaultHeight
         : dy.abs().clamp(36.0, 1200.0).toDouble();
     final x = horizontal
-        ? (dx >= 0 ? start.dx : snappedPoint.dx)
-        : start.dx - width / 2;
+        ? (dx >= 0 ? startPoint.dx : endPoint.dx)
+        : startPoint.dx - width / 2;
     final y = horizontal
-        ? start.dy - height / 2
-        : (dy >= 0 ? start.dy : snappedPoint.dy);
+        ? startPoint.dy - height / 2
+        : (dy >= 0 ? startPoint.dy : endPoint.dy);
+    final canvasSize = _virtualCanvasSize;
 
-    _recordUndo();
-    setState(() {
+    _runHistoryChange(() {
       final id = _nextId++;
       final newIron = _LayoutItem(
         id: id,
@@ -1980,16 +2257,45 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         properties: <String, String>{'ironSize': _drawIronSize},
       );
       _items.add(newIron);
-      _commitInitialIronConnections(newIron);
+      final startDistanceToLeading =
+          (_ironEndpoint(newIron, true) - start.point).distance;
+      final startIsLeading = startDistanceToLeading <=
+          (_ironEndpoint(newIron, false) - start.point).distance;
+      _applyConnectionTargetToIronEndpoint(newIron, startIsLeading, start);
+      if (endTarget != null) {
+        _applyConnectionTargetToIronEndpoint(
+            newIron, !startIsLeading, endTarget);
+      }
+      _reflowSnappedFittings();
       _selectedId = id;
       _selectedIds
         ..clear()
         ..add(id);
-      _ironStartPoint = null;
-      _drawIronMode = false;
-      _interactionMode = _InteractionMode.idle;
+      _drawIronStartTarget = null;
+      _drawIronHoverTarget = null;
+      _drawIronPointerScene = null;
+      _snapIndicatorScene = null;
     });
-    _appendHistoryEntry(type.isIron ? 'Added iron' : 'Added equipment');
+    _appendHistoryEntry('Added iron');
+  }
+
+  void _applyConnectionTargetToIronEndpoint(
+    _LayoutItem item,
+    bool leading,
+    _ConnectionTarget target,
+  ) {
+    final snapTarget = _snapTargetFromConnection(target);
+    if (snapTarget.endpoint != null) {
+      _connectIronEndpoints(item, leading, snapTarget.endpoint!);
+      return;
+    }
+    if (snapTarget.bypass != null) {
+      _attachIronEndpointToBypass(item, leading, snapTarget.bypass!);
+      return;
+    }
+    if (snapTarget.equipment != null) {
+      _attachIronEndpointToEquipment(item, leading, snapTarget.equipment!);
+    }
   }
 
   void _commitInitialIronConnections(_LayoutItem item) {
@@ -2538,6 +2844,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   Future<void> _loadLayout() async {
     final activeJob = await _jobStorage.loadActiveJob();
     final prefs = await SharedPreferences.getInstance();
+    _showLabels = prefs.getBool(_labelsPrefKey) ?? false;
     final raw = prefs.getString('wellwerks_layout_designer_v2') ??
         prefs.getString('wellwerks_layout_designer_v1');
     _activeJob = activeJob;
@@ -4891,12 +5198,15 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                             )),
                             action(OutlinedButton.icon(
                               onPressed: () {
-                                setState(() => _showLabels = !_showLabels);
+                                _toggleShowEquipmentLabels();
                                 setSheetState(() {});
                               },
                               icon: const Icon(Icons.label_outline),
                               label: Text(
-                                  _showLabels ? 'Labels On' : 'Labels Off'),
+                                _showLabels
+                                    ? 'Show Equipment Labels: On'
+                                    : 'Show Equipment Labels: Off',
+                              ),
                               style: _compactOutlineStyle(),
                             )),
                             action(OutlinedButton.icon(
@@ -5224,17 +5534,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               backgroundColor: Theme.of(context).colorScheme.surface,
               selected: _mobileDrawerSection == tab.value,
               label: Text(tab.key),
-              onSelected: (_) => setState(() {
-                _mobileDrawerSection = tab.value;
+              onSelected: (_) {
+                setState(() => _mobileDrawerSection = tab.value);
                 if (tab.value == _DrawerLibrarySection.iron) {
-                  _drawIronMode = true;
-                  _interactionMode = _InteractionMode.placeIron;
+                  _enterDrawIronMode(minimizeLibrary: false);
                 } else if (_drawIronMode) {
-                  _drawIronMode = false;
-                  _interactionMode = _InteractionMode.idle;
-                  _ironStartPoint = null;
+                  _clearDrawIronSelection(exitMode: true);
                 }
-              }),
+              },
             ),
             const SizedBox(width: 8),
           ],
@@ -5245,11 +5552,18 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   Widget _equipmentButtonForLibrary(_EquipmentType type,
       {required bool outlined, required bool isMobile}) {
+    final isStraightIron = _isStraightIronType(type);
     final button = SizedBox(
       width: isMobile ? 162 : 138,
       child: outlined
           ? OutlinedButton.icon(
-              onPressed: () => _addItem(type),
+              onPressed: () {
+                if (isStraightIron) {
+                  _enterDrawIronMode();
+                } else {
+                  _addItem(type);
+                }
+              },
               icon: _EquipmentSymbol(
                 type: type,
                 color: _gold,
@@ -5261,7 +5575,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               style: _compactOutlineStyle(highlighted: true),
             )
           : FilledButton.icon(
-              onPressed: () => _addItem(type),
+              onPressed: () {
+                if (isStraightIron) {
+                  _enterDrawIronMode();
+                } else {
+                  _addItem(type);
+                }
+              },
               icon: _EquipmentSymbol(
                 type: type,
                 color: _gold,
@@ -5273,6 +5593,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               style: _compactFilledStyle(highlighted: true),
             ),
     );
+    if (isStraightIron) {
+      return button;
+    }
     return LongPressDraggable<_EquipmentType>(
       data: type,
       dragAnchorStrategy: pointerDragAnchorStrategy,
@@ -5343,10 +5666,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 SizedBox(
                   width: isMobile ? 162 : 138,
                   child: FilledButton.icon(
-                    onPressed: () => setState(() {
-                      _drawIronMode = true;
-                      _interactionMode = _InteractionMode.placeIron;
-                    }),
+                    onPressed: () => _enterDrawIronMode(minimizeLibrary: false),
                     icon: const Icon(Icons.edit_road),
                     label: Text(_drawIronMode ? 'Draw Iron ON' : 'Draw Iron'),
                     style: _compactFilledStyle(highlighted: _drawIronMode),
@@ -5355,11 +5675,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 SizedBox(
                   width: isMobile ? 162 : 138,
                   child: OutlinedButton.icon(
-                    onPressed: () => setState(() {
-                      _drawIronMode = false;
-                      _interactionMode = _InteractionMode.idle;
-                      _ironStartPoint = null;
-                    }),
+                    onPressed: () => _clearDrawIronSelection(exitMode: true),
                     icon: const Icon(Icons.pan_tool_alt_outlined),
                     label: const Text('Select / Move'),
                     style: _compactOutlineStyle(),
@@ -5454,9 +5770,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 SizedBox(
                   width: isMobile ? 162 : 138,
                   child: FilledButton.icon(
-                    onPressed: () => setState(() => _showLabels = !_showLabels),
+                    onPressed: _toggleShowEquipmentLabels,
                     icon: const Icon(Icons.label_outline),
-                    label: Text(_showLabels ? 'Labels On' : 'Labels Off'),
+                    label: Text(
+                      _showLabels
+                          ? 'Show Equipment Labels: On'
+                          : 'Show Equipment Labels: Off',
+                    ),
                     style: _compactFilledStyle(highlighted: _showLabels),
                   ),
                 ),
@@ -5582,7 +5902,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           child: SizedBox(
             width: type.isIron ? 104 : 118,
             child: OutlinedButton(
-              onPressed: () => _addItem(type),
+              onPressed: () {
+                if (_isStraightIronType(type)) {
+                  _enterDrawIronMode();
+                } else {
+                  _addItem(type);
+                }
+              },
               style: OutlinedButton.styleFrom(
                 side: BorderSide(color: Theme.of(context).dividerColor),
                 shape: RoundedRectangleBorder(
@@ -5760,18 +6086,16 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                     break;
                   case 'drawIron':
                     setState(() {
-                      _drawIronMode = !_drawIronMode;
-                      _interactionMode = _drawIronMode
-                          ? _InteractionMode.placeIron
-                          : _InteractionMode.idle;
-                      if (!_drawIronMode) {
-                        _ironStartPoint = null;
-                      }
                       _mobileDrawerSection = _DrawerLibrarySection.iron;
-                      if (!isWide && _drawIronMode) {
-                        _showSideLibrary = true;
-                      }
                     });
+                    if (_drawIronMode) {
+                      _clearDrawIronSelection(exitMode: true);
+                    } else {
+                      _enterDrawIronMode(minimizeLibrary: false);
+                    }
+                    if (!isWide && _drawIronMode) {
+                      setState(() => _showSideLibrary = true);
+                    }
                     break;
                   case 'loadRigUp':
                     _showLoadRigUps();
@@ -5898,12 +6222,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           children: [
             FilledButton.icon(
               onPressed: () {
-                setState(() {
-                  _showSideLibrary = true;
-                  _drawIronMode = false;
-                  _interactionMode = _InteractionMode.idle;
-                  _ironStartPoint = null;
-                });
+                setState(() => _showSideLibrary = true);
+                _clearDrawIronSelection(exitMode: true);
               },
               icon: const Icon(Icons.add_box_outlined),
               label: const Text('Add Equipment'),
@@ -5912,12 +6232,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
             const SizedBox(width: 8),
             FilledButton.icon(
               onPressed: () {
-                setState(() {
-                  _showSideLibrary = true;
-                  _drawIronMode = true;
-                  _interactionMode = _InteractionMode.placeIron;
-                  _ironStartPoint = null;
-                });
+                setState(() => _showSideLibrary = true);
+                _enterDrawIronMode(minimizeLibrary: false);
               },
               icon: const Icon(Icons.edit_road),
               label: const Text('Add Iron'),
@@ -5927,11 +6243,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
             OutlinedButton.icon(
               onPressed: () {
                 if (!_drawIronMode) return;
-                setState(() {
-                  _drawIronMode = false;
-                  _interactionMode = _InteractionMode.idle;
-                  _ironStartPoint = null;
-                });
+                _clearDrawIronSelection(exitMode: true);
               },
               icon: const Icon(Icons.pan_tool_alt_outlined),
               label: const Text('Select / Move'),
@@ -6176,6 +6488,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final hasConnection = selected != null &&
         _isStraightIronType(selected.type) &&
         _selectedEndpointLeading != null;
+    final selectedName = selected?.displayLabel ?? 'No selection';
 
     return Container(
       key: const ValueKey<String>('selection-dock-toolbar'),
@@ -6197,6 +6510,34 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
+                  Container(
+                    constraints: const BoxConstraints(maxWidth: 180),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1D23),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFF3A3A3A)),
+                    ),
+                    child: Text(
+                      selectedName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: hasSelection ? _gold : Colors.white60,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  OutlinedButton.icon(
+                    onPressed: hasSelection ? _clearSelection : null,
+                    icon: const Icon(Icons.done_all),
+                    label: const Text('Done'),
+                    style: _compactOutlineStyle(),
+                  ),
+                  const SizedBox(width: 6),
                   OutlinedButton.icon(
                     onPressed: canAct ? _duplicateSelected : null,
                     icon: const Icon(Icons.copy),
@@ -6720,6 +7061,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                 _scenePointFromViewport(details.localPosition);
                             _handleCanvasTap(scenePoint);
                           },
+                          onPanStart:
+                              _drawIronMode ? _handleDrawIronPanStart : null,
+                          onPanUpdate:
+                              _drawIronMode ? _handleDrawIronPanUpdate : null,
+                          onPanEnd:
+                              _drawIronMode ? _handleDrawIronPanEnd : null,
                           child: InteractiveViewer(
                             transformationController: _canvasTransform,
                             onInteractionEnd: (_) {
@@ -6744,18 +7091,48 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                   Positioned.fill(
                                     child: CustomPaint(painter: _GridPainter()),
                                   ),
-                                  if (_drawIronMode && _ironStartPoint != null)
-                                    Positioned(
-                                      left: _ironStartPoint!.dx - 7,
-                                      top: _ironStartPoint!.dy - 7,
-                                      child: Container(
-                                        width: 14,
-                                        height: 14,
-                                        decoration: BoxDecoration(
-                                          color: _gold,
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
-                                              color: Colors.black, width: 2),
+                                  if (_drawIronMode)
+                                    for (final it in _items)
+                                      if (!_isStraightIronType(it.type))
+                                        for (final anchor
+                                            in _equipmentAnchorCandidates(it))
+                                          Positioned(
+                                            left: anchor.point.dx - 9,
+                                            top: anchor.point.dy - 9,
+                                            child: IgnorePointer(
+                                              child: Container(
+                                                width: 18,
+                                                height: 18,
+                                                decoration: BoxDecoration(
+                                                  color: _gold,
+                                                  shape: BoxShape.circle,
+                                                  border: Border.all(
+                                                    color: Colors.black,
+                                                    width: 2,
+                                                  ),
+                                                  boxShadow: const [
+                                                    BoxShadow(
+                                                      color: Color(0x66000000),
+                                                      blurRadius: 6,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                  if (_drawIronMode &&
+                                      _drawIronStartTarget != null &&
+                                      (_drawIronHoverTarget != null ||
+                                          _drawIronPointerScene != null))
+                                    Positioned.fill(
+                                      child: IgnorePointer(
+                                        child: CustomPaint(
+                                          painter: _DrawIronPreviewPainter(
+                                            start: _drawIronStartTarget!.point,
+                                            end: _drawIronHoverTarget?.point ??
+                                                _drawIronPointerScene!,
+                                            color: _gold,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -6796,6 +7173,38 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                             border: Border.all(
                                               color: const Color(0xFFCDA56A),
                                               width: 2,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  if (_drawIronMode)
+                                    Positioned(
+                                      right: 12,
+                                      top: 12,
+                                      child: IgnorePointer(
+                                        child: DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xDD0F1014),
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            border: Border.all(
+                                              color:
+                                                  _gold.withValues(alpha: 0.65),
+                                            ),
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 8,
+                                            ),
+                                            child: Text(
+                                              _drawIronStatusText,
+                                              style: TextStyle(
+                                                color: _gold,
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 12,
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -7052,7 +7461,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                               _dragPreviewScenePosition!);
                           final left = (vp.dx - 30)
                               .clamp(8.0, viewportSize.width - 68.0);
-                          final top = (vp.dy - 86)
+                          final top = (vp.dy - _dragLiftScreenOffsetY)
                               .clamp(8.0, viewportSize.height - 80.0);
                           return Positioned(
                             left: left,
@@ -7115,6 +7524,82 @@ enum _LayoutAlign { left, right, top, bottom, horizontalCenter, verticalCenter }
 enum _LayoutDistribution { horizontal, vertical }
 
 enum _DrawerLibrarySection { equipment, iron, tees, nineties, bypass, labels }
+
+class _AnchorDefinition {
+  final String id;
+  final double u;
+  final double v;
+
+  const _AnchorDefinition(this.id, this.u, this.v);
+}
+
+enum _ConnectionTargetKind {
+  equipmentAnchor,
+  ironEndpoint,
+}
+
+class _ConnectionTarget {
+  final _ConnectionTargetKind kind;
+  final Offset point;
+  final double distance;
+  final bool isExactHit;
+  final int? equipmentItemId;
+  final String? anchorId;
+  final int? ironItemId;
+  final bool? ironLeading;
+
+  const _ConnectionTarget({
+    required this.kind,
+    required this.point,
+    required this.distance,
+    required this.isExactHit,
+    this.equipmentItemId,
+    this.anchorId,
+    this.ironItemId,
+    this.ironLeading,
+  });
+}
+
+class _DrawIronPreviewPainter extends CustomPainter {
+  final Offset start;
+  final Offset end;
+  final Color color;
+
+  const _DrawIronPreviewPainter({
+    required this.start,
+    required this.end,
+    required this.color,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withValues(alpha: 0.95)
+      ..strokeWidth = 5
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(start, end, paint);
+
+    final halo = Paint()
+      ..color = color.withValues(alpha: 0.24)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(end, 10, halo);
+    canvas.drawCircle(
+      end,
+      5,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.fill,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _DrawIronPreviewPainter oldDelegate) {
+    return oldDelegate.start != start ||
+        oldDelegate.end != end ||
+        oldDelegate.color != color;
+  }
+}
 
 class _SnapCandidate {
   final int ironId;

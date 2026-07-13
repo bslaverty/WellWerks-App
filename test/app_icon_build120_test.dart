@@ -48,15 +48,15 @@ Future<_DecodedImage> _decodePng(File file) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('Build number is 121 in pubspec', () async {
+  test('Build number is 122 in pubspec', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+121'));
+    expect(pubspec, contains('version: 1.0.1+122'));
     expect(
-        pubspec, contains('image_path: "assets/icons/app_icon_build121.png"'));
+        pubspec, contains('image_path: "assets/icons/app_icon_build122.png"'));
   });
 
   test('Master app icon exists and is at least 1024x1024', () async {
-    final iconFile = File('assets/icons/app_icon_build121.png');
+    final iconFile = File('assets/icons/app_icon_build122.png');
     expect(iconFile.existsSync(), isTrue);
 
     final icon = await _decodePng(iconFile);
@@ -64,10 +64,9 @@ void main() {
     expect(icon.height, greaterThanOrEqualTo(1024));
   });
 
-  test(
-      'Master app icon restores older rich colors and full opaque edge coverage',
+  test('Master app icon keeps deep black and full opaque edge coverage',
       () async {
-    final icon = await _decodePng(File('assets/icons/app_icon_build121.png'));
+    final icon = await _decodePng(File('assets/icons/app_icon_build122.png'));
 
     final blackProbePoints = <List<double>>[
       <double>[0.25, 0.25],
@@ -81,9 +80,9 @@ void main() {
         (icon.width * pt[0]).round(),
         (icon.height * pt[1]).round(),
       );
-      expect(px[0], inInclusiveRange(0, 40));
-      expect(px[1], inInclusiveRange(0, 40));
-      expect(px[2], inInclusiveRange(0, 40));
+      expect(px[0], inInclusiveRange(0, 10));
+      expect(px[1], inInclusiveRange(0, 10));
+      expect(px[2], inInclusiveRange(0, 10));
       expect(px[3], 255);
     }
 
