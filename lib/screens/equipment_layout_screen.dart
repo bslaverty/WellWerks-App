@@ -46,6 +46,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   bool _showEquipment = true;
   bool _showIron = true;
   bool _showLabels = false;
+  bool _showConnectionPoints = false;
   bool _showGrid = true;
   Offset? _measurementStart;
   Offset? _measurementEnd;
@@ -78,6 +79,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   final _preparedBy = TextEditingController();
   final _notes = TextEditingController();
   bool _showSideLibrary = false;
+  bool _moveControlsActive = false;
   double _mobileLibraryHeight = 0;
   int? _dragPreviewItemId;
   Offset? _dragPreviewScenePosition;
@@ -101,6 +103,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   static const double _mobileLibraryDefaultFraction = 0.38;
   static const double _mobileLibraryMaxFraction = 0.82;
   static const double _dragLiftScreenOffsetY = 64.0;
+  static const double _connectionSnapRadius = 24.0;
   static const String _labelsPrefKey = 'wellwerks_layout_show_labels_v1';
 
   @override
@@ -336,9 +339,30 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   double _interactionPaddingForItem(_LayoutItem item) {
-    if (_isStraightIronType(item.type)) return 18.0;
+    if (_isStraightIronType(item.type)) return 24.0;
     if (item.type == _EquipmentType.bypass) return 20.0;
     return 12.0;
+  }
+
+  bool get _showAnchorsForConnection {
+    return _showConnectionPoints || _activeEndpointDrag != null;
+  }
+
+  bool _shouldShowAnchorCandidate(_EquipmentAnchorCandidate anchor) {
+    if (_showConnectionPoints) return true;
+    final active = _activeEndpointDrag;
+    if (active == null) return false;
+    final radius = _sceneRadiusFromScreen(_connectionSnapRadius * 1.4);
+    return (anchor.point - active.worldPosition).distance <= radius;
+  }
+
+  void _toggleMoveControls() {
+    if (!_hasSelectedItem) return;
+    setState(() => _moveControlsActive = !_moveControlsActive);
+  }
+
+  void _toggleShowConnectionPoints() {
+    setState(() => _showConnectionPoints = !_showConnectionPoints);
   }
 
   _LayoutItem? _itemAtScenePoint(Offset scenePoint) {
@@ -526,7 +550,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         opacity: disabled ? 0.45 : 1.0,
         child: Material(
           color: const Color(0xFF15181D),
-          shape: const CircleBorder(),
+          borderRadius: BorderRadius.circular(8),
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTapDown: disabled || isCenter
@@ -555,9 +579,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                     _arrowHoldTriggered = false;
                   },
             child: SizedBox(
-              width: 34,
-              height: 34,
-              child: Icon(icon, color: _gold, size: isCenter ? 14 : 18),
+              width: 20,
+              height: 20,
+              child: Icon(icon, color: _gold, size: isCenter ? 13 : 17),
             ),
           ),
         ),
@@ -567,18 +591,19 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   Widget _selectionDPad({required bool disabled}) {
     return Container(
-      width: 106,
-      height: 106,
-      padding: const EdgeInsets.all(6),
+      width: 84,
+      height: 54,
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: const Color(0xFF0D1014),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFF3A3A3A)),
       ),
       child: Stack(
         children: [
-          Align(
-            alignment: Alignment.topCenter,
+          Positioned(
+            top: 0,
+            left: 30,
             child: _selectionNudgeButton(
               icon: Icons.keyboard_arrow_up,
               tooltip: 'Move Up',
@@ -586,8 +611,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               disabled: disabled,
             ),
           ),
-          Align(
-            alignment: Alignment.centerLeft,
+          Positioned(
+            top: 17,
+            left: 8,
             child: _selectionNudgeButton(
               icon: Icons.keyboard_arrow_left,
               tooltip: 'Move Left',
@@ -595,8 +621,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               disabled: disabled,
             ),
           ),
-          Align(
-            alignment: Alignment.center,
+          Positioned(
+            top: 17,
+            left: 30,
             child: _selectionNudgeButton(
               icon: Icons.close,
               tooltip: 'Deselect',
@@ -604,8 +631,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               isCenter: true,
             ),
           ),
-          Align(
-            alignment: Alignment.centerRight,
+          Positioned(
+            top: 17,
+            left: 52,
             child: _selectionNudgeButton(
               icon: Icons.keyboard_arrow_right,
               tooltip: 'Move Right',
@@ -613,8 +641,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               disabled: disabled,
             ),
           ),
-          Align(
-            alignment: Alignment.bottomCenter,
+          Positioned(
+            top: 34,
+            left: 30,
             child: _selectionNudgeButton(
               icon: Icons.keyboard_arrow_down,
               tooltip: 'Move Down',
@@ -786,38 +815,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           _AnchorDefinition('bypassPrimary', 0.0, 0.5),
           _AnchorDefinition('bypassSecondary', 1.0, 0.5),
         ];
-      case _EquipmentType.wellhead:
-        return const <_AnchorDefinition>[
-          _AnchorDefinition('bottom', 0.5, 1.0),
-          _AnchorDefinition('left', 0.0, 0.5),
-          _AnchorDefinition('right', 1.0, 0.5),
-        ];
-      case _EquipmentType.chokeManifold:
-        return const <_AnchorDefinition>[
-          _AnchorDefinition('top', 0.5, 0.0),
-          _AnchorDefinition('bottom', 0.5, 1.0),
-          _AnchorDefinition('left', 0.0, 0.5),
-          _AnchorDefinition('right', 1.0, 0.5),
-        ];
-      case _EquipmentType.plugCatcher:
-      case _EquipmentType.cyclonicSandSep:
-      case _EquipmentType.sphericalSandSep:
-      case _EquipmentType.esdValve:
-      case _EquipmentType.lineHeater:
-      case _EquipmentType.flowbackTank:
-      case _EquipmentType.productionTank:
-      case _EquipmentType.testSeparator:
-      case _EquipmentType.flare:
-      case _EquipmentType.compressor:
-      case _EquipmentType.facilities:
-        return const <_AnchorDefinition>[
-          _AnchorDefinition('left', 0.0, 0.5),
-          _AnchorDefinition('right', 1.0, 0.5),
-        ];
       default:
         return const <_AnchorDefinition>[
+          _AnchorDefinition('top', 0.5, 0.0),
           _AnchorDefinition('left', 0.0, 0.5),
           _AnchorDefinition('right', 1.0, 0.5),
+          _AnchorDefinition('bottom', 0.5, 1.0),
         ];
     }
   }
@@ -1091,36 +1094,25 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     int? movingIronId,
     bool? movingIronLeading,
   }) {
-    final exactRadius = _sceneRadiusFromScreen(22.0);
-    final magneticRadius = _sceneRadiusFromScreen(40.0);
-
-    // Priority order:
-    // 1) exact equipment anchor, 2) exact iron endpoint,
-    // 3) nearest equipment anchor, 4) nearest iron endpoint.
-    final exactAnchor =
-        _nearestAnchorTarget(target, radius: exactRadius, exact: true);
-    if (exactAnchor != null) return exactAnchor;
-
-    final exactEndpoint = _nearestIronEndpointTarget(
+    final snapRadius = _sceneRadiusFromScreen(_connectionSnapRadius);
+    final nearestAnchor = _nearestAnchorTarget(
       target,
-      radius: exactRadius,
-      exact: true,
-      movingIronId: movingIronId,
-      movingIronLeading: movingIronLeading,
+      radius: snapRadius,
+      exact: false,
     );
-    if (exactEndpoint != null) return exactEndpoint;
-
-    final nearestAnchor =
-        _nearestAnchorTarget(target, radius: magneticRadius, exact: false);
-    if (nearestAnchor != null) return nearestAnchor;
-
-    return _nearestIronEndpointTarget(
+    final nearestEndpoint = _nearestIronEndpointTarget(
       target,
-      radius: magneticRadius,
+      radius: snapRadius,
       exact: false,
       movingIronId: movingIronId,
       movingIronLeading: movingIronLeading,
     );
+
+    if (nearestAnchor == null) return nearestEndpoint;
+    if (nearestEndpoint == null) return nearestAnchor;
+    return nearestAnchor.distance <= nearestEndpoint.distance
+        ? nearestAnchor
+        : nearestEndpoint;
   }
 
   _EndpointSnapTarget _snapTargetFromConnection(_ConnectionTarget target) {
@@ -2339,6 +2331,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   void _selectOnly(int id) {
     setState(() {
       _selectedId = id;
+      _moveControlsActive = true;
       _selectedEndpointLeading = null;
       _selectedBypassHandle = null;
       _selectedIds
@@ -2357,12 +2350,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         _selectedIds.add(id);
       }
       _selectedId = _selectedIds.isEmpty ? null : id;
+      _moveControlsActive = _selectedIds.isNotEmpty;
     });
   }
 
   void _clearSelection() {
     setState(() {
       _selectedId = null;
+      _moveControlsActive = false;
       _selectedEndpointLeading = null;
       _selectedBypassHandle = null;
       _selectedIds.clear();
@@ -2561,6 +2556,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           .toString();
       _notes.text = data['notes'] as String? ?? '';
       _selectedId = restoredSelectedId;
+      _moveControlsActive =
+          restoredSelectedId != null || restoredSelectedIds.isNotEmpty;
       _selectedEndpointLeading = restoredSelectedEndpointLeading;
       _selectedBypassHandle = restoredSelectedBypassHandle;
       _selectedIds
@@ -5430,6 +5427,17 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                     width: dockWidth,
                     child: _sideLibraryPanel(),
                   ),
+                if (isWide && !_showSideLibrary)
+                  Positioned(
+                    left: 12,
+                    top: 12,
+                    child: FilledButton.icon(
+                      onPressed: _toggleSideLibrary,
+                      icon: const Icon(Icons.view_sidebar_outlined),
+                      label: const Text('Open Library'),
+                      style: _compactFilledStyle(highlighted: true),
+                    ),
+                  ),
                 if (!isWide)
                   Positioned(
                     left: 10,
@@ -5508,8 +5516,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           '90s', _DrawerLibrarySection.nineties),
       MapEntry<String, _DrawerLibrarySection>(
           'Bypass', _DrawerLibrarySection.bypass),
-      MapEntry<String, _DrawerLibrarySection>(
-          'Labels', _DrawerLibrarySection.labels),
     ];
 
     return SingleChildScrollView(
@@ -5674,15 +5680,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 ),
                 SizedBox(
                   width: isMobile ? 162 : 138,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _clearDrawIronSelection(exitMode: true),
-                    icon: const Icon(Icons.pan_tool_alt_outlined),
-                    label: const Text('Select / Move'),
-                    style: _compactOutlineStyle(),
-                  ),
-                ),
-                SizedBox(
-                  width: isMobile ? 162 : 138,
                   child: FilledButton(
                     onPressed: () => setState(() => _drawIronSize = '2'),
                     style:
@@ -5730,60 +5727,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         outlined = true;
         title = 'Bypass';
         break;
-      case _DrawerLibrarySection.labels:
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Labels',
-              style: TextStyle(
-                color: Color(0xFFCDA56A),
-                fontWeight: FontWeight.w700,
-                fontSize: 15,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                SizedBox(
-                  width: isMobile ? 162 : 138,
-                  child: OutlinedButton.icon(
-                    onPressed: _hasSelectedItem ? _renameSelected : null,
-                    icon: const Icon(Icons.drive_file_rename_outline),
-                    label: const Text('Rename Label'),
-                    style: _compactOutlineStyle(highlighted: true),
-                  ),
-                ),
-                SizedBox(
-                  width: isMobile ? 162 : 138,
-                  child: OutlinedButton.icon(
-                    onPressed: _selectedCanHaveProperties
-                        ? _showSelectedProperties
-                        : null,
-                    icon: const Icon(Icons.edit_note),
-                    label: const Text('Properties'),
-                    style: _compactOutlineStyle(),
-                  ),
-                ),
-                SizedBox(
-                  width: isMobile ? 162 : 138,
-                  child: FilledButton.icon(
-                    onPressed: _toggleShowEquipmentLabels,
-                    icon: const Icon(Icons.label_outline),
-                    label: Text(
-                      _showLabels
-                          ? 'Show Equipment Labels: On'
-                          : 'Show Equipment Labels: Off',
-                    ),
-                    style: _compactFilledStyle(highlighted: _showLabels),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        );
     }
 
     return Column(
@@ -6016,9 +5959,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Widget _toolbar({required bool isWide}) {
-    final hasSelected = _hasSelectedItem;
-    final locked = _selectedItem?.locked ?? false;
-    final drawIronLabel = _drawIronMode ? 'Stop Draw Iron' : 'Start Draw Iron';
+    final labelsLabel = _showLabels
+        ? 'Show Equipment Labels: On'
+        : 'Show Equipment Labels: Off';
+    final anchorLabel = _showConnectionPoints
+        ? 'Show Connection Points: On'
+        : 'Show Connection Points: Off';
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       decoration: BoxDecoration(
@@ -6030,27 +5976,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            FilledButton.icon(
-              onPressed: _toggleSideLibrary,
-              icon: const Icon(Icons.view_sidebar_outlined),
-              label: Text(_showSideLibrary ? 'Close Library' : 'Open Library'),
-              style: _compactFilledStyle(highlighted: true),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: _undoStack.isNotEmpty ? _undoLayoutChange : null,
-              icon: const Icon(Icons.undo),
-              label: const Text('Undo'),
-              style: _compactOutlineStyle(),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: _redoStack.isNotEmpty ? _redoLayoutChange : null,
-              icon: const Icon(Icons.redo),
-              label: const Text('Redo'),
-              style: _compactOutlineStyle(),
-            ),
-            const SizedBox(width: 8),
             FilledButton.icon(
               onPressed: _saveRigUp,
               icon: const Icon(Icons.save_alt),
@@ -6069,33 +5994,26 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               tooltip: 'More actions',
               onSelected: (value) {
                 switch (value) {
-                  case 'clear':
-                    _confirmClearLayout();
+                  case 'undo':
+                    _undoLayoutChange();
                     break;
-                  case 'duplicate':
-                    _duplicateSelected();
+                  case 'redo':
+                    _redoLayoutChange();
                     break;
-                  case 'lock':
-                    _toggleSelectedLock();
+                  case 'labels':
+                    _toggleShowEquipmentLabels();
                     break;
-                  case 'delete':
-                    _deleteSelected();
+                  case 'anchors':
+                    _toggleShowConnectionPoints();
                     break;
-                  case 'tools':
+                  case 'library':
+                    _toggleSideLibrary();
+                    break;
+                  case 'layoutSettings':
                     _showToolsDrawer();
                     break;
-                  case 'drawIron':
-                    setState(() {
-                      _mobileDrawerSection = _DrawerLibrarySection.iron;
-                    });
-                    if (_drawIronMode) {
-                      _clearDrawIronSelection(exitMode: true);
-                    } else {
-                      _enterDrawIronMode(minimizeLibrary: false);
-                    }
-                    if (!isWide && _drawIronMode) {
-                      setState(() => _showSideLibrary = true);
-                    }
+                  case 'clear':
+                    _confirmClearLayout();
                     break;
                   case 'loadRigUp':
                     _showLoadRigUps();
@@ -6122,8 +6040,28 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               },
               itemBuilder: (context) => [
                 PopupMenuItem<String>(
-                  value: 'drawIron',
-                  child: Text(drawIronLabel),
+                  value: 'undo',
+                  enabled: _undoStack.isNotEmpty,
+                  child: const Text('Undo'),
+                ),
+                PopupMenuItem<String>(
+                  value: 'redo',
+                  enabled: _redoStack.isNotEmpty,
+                  child: const Text('Redo'),
+                ),
+                PopupMenuItem<String>(
+                  value: 'labels',
+                  child: Text(labelsLabel),
+                ),
+                PopupMenuItem<String>(
+                  value: 'anchors',
+                  child: Text(anchorLabel),
+                ),
+                PopupMenuItem<String>(
+                  value: 'library',
+                  child: Text(_showSideLibrary
+                      ? 'Hide Rig-Up Library'
+                      : 'Open Rig-Up Library'),
                 ),
                 const PopupMenuItem<String>(
                   value: 'loadRigUp',
@@ -6157,24 +6095,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                   value: 'clear',
                   child: Text('Clear Layout'),
                 ),
-                PopupMenuItem<String>(
-                  value: 'duplicate',
-                  enabled: hasSelected,
-                  child: const Text('Duplicate Selected'),
-                ),
-                PopupMenuItem<String>(
-                  value: 'lock',
-                  enabled: hasSelected,
-                  child: Text(locked ? 'Unlock Selected' : 'Lock Selected'),
-                ),
-                PopupMenuItem<String>(
-                  value: 'delete',
-                  enabled: hasSelected,
-                  child: const Text('Delete Selected'),
-                ),
                 const PopupMenuItem<String>(
-                  value: 'tools',
-                  child: Text('More Tools'),
+                  value: 'layoutSettings',
+                  child: Text('Layout Settings'),
                 ),
               ],
               child: Container(
@@ -6503,8 +6426,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       ),
       child: Row(
         children: [
-          _selectionDPad(disabled: !canMove),
-          const SizedBox(width: 8),
+          if (_moveControlsActive) ...[
+            _selectionDPad(disabled: !canMove),
+            const SizedBox(width: 8),
+          ],
           Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -6529,6 +6454,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                         fontSize: 12,
                       ),
                     ),
+                  ),
+                  const SizedBox(width: 6),
+                  FilledButton.icon(
+                    onPressed: canMove ? _toggleMoveControls : null,
+                    icon: const Icon(Icons.open_with),
+                    label: Text(_moveControlsActive ? 'Move ON' : 'Move'),
+                    style:
+                        _compactFilledStyle(highlighted: _moveControlsActive),
                   ),
                   const SizedBox(width: 6),
                   OutlinedButton.icon(
@@ -7096,30 +7029,44 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                       if (!_isStraightIronType(it.type))
                                         for (final anchor
                                             in _equipmentAnchorCandidates(it))
-                                          Positioned(
-                                            left: anchor.point.dx - 9,
-                                            top: anchor.point.dy - 9,
-                                            child: IgnorePointer(
-                                              child: Container(
-                                                width: 18,
-                                                height: 18,
-                                                decoration: BoxDecoration(
-                                                  color: _gold,
-                                                  shape: BoxShape.circle,
-                                                  border: Border.all(
-                                                    color: Colors.black,
-                                                    width: 2,
+                                          if (_shouldShowAnchorCandidate(
+                                              anchor))
+                                            Positioned(
+                                              left: anchor.point.dx - 3,
+                                              top: anchor.point.dy - 3,
+                                              child: IgnorePointer(
+                                                child: Container(
+                                                  width: 6,
+                                                  height: 6,
+                                                  decoration: BoxDecoration(
+                                                    color: _gold,
+                                                    shape: BoxShape.circle,
                                                   ),
-                                                  boxShadow: const [
-                                                    BoxShadow(
-                                                      color: Color(0x66000000),
-                                                      blurRadius: 6,
-                                                    ),
-                                                  ],
                                                 ),
                                               ),
                                             ),
-                                          ),
+                                  if (_showAnchorsForConnection &&
+                                      !_drawIronMode)
+                                    for (final it in _items)
+                                      if (!_isStraightIronType(it.type))
+                                        for (final anchor
+                                            in _equipmentAnchorCandidates(it))
+                                          if (_shouldShowAnchorCandidate(
+                                              anchor))
+                                            Positioned(
+                                              left: anchor.point.dx - 3,
+                                              top: anchor.point.dy - 3,
+                                              child: IgnorePointer(
+                                                child: Container(
+                                                  width: 6,
+                                                  height: 6,
+                                                  decoration: BoxDecoration(
+                                                    color: _gold,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
                                   if (_drawIronMode &&
                                       _drawIronStartTarget != null &&
                                       (_drawIronHoverTarget != null ||
@@ -7275,10 +7222,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                                           item.id,
                                                 ),
                                               ),
-                                              if (_selectedIds
-                                                  .contains(item.id))
-                                                ..._selectedConnectionDots(
-                                                    item),
                                               if (_selectedIds
                                                       .contains(item.id) &&
                                                   (item.type ==
@@ -7523,7 +7466,7 @@ enum _LayoutAlign { left, right, top, bottom, horizontalCenter, verticalCenter }
 
 enum _LayoutDistribution { horizontal, vertical }
 
-enum _DrawerLibrarySection { equipment, iron, tees, nineties, bypass, labels }
+enum _DrawerLibrarySection { equipment, iron, tees, nineties, bypass }
 
 class _AnchorDefinition {
   final String id;
@@ -8198,17 +8141,9 @@ class _LayoutTile extends StatelessWidget {
             color: selected || showSnapHighlight
                 ? const Color(0xFFCDA56A)
                 : Colors.transparent,
-            width: selected ? 1.8 : (showSnapHighlight ? 1.6 : 1.0)),
+            width: selected ? 1.2 : (showSnapHighlight ? 1.3 : 1.0)),
         borderRadius: BorderRadius.circular(
             item.type == _EquipmentType.sphericalSandSep ? 999 : 10),
-        boxShadow: selected || showSnapHighlight
-            ? [
-                BoxShadow(
-                    color: const Color(0xFFCDA56A)
-                        .withOpacity(showSnapHighlight ? .34 : .2),
-                    blurRadius: showSnapHighlight ? 12 : 9)
-              ]
-            : null,
       ),
       child: Stack(
         clipBehavior: Clip.none,
