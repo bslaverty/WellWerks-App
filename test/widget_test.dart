@@ -568,8 +568,6 @@ void main() {
 
     expect(find.textContaining('Active Hour • 7 AM'), findsOneWidget);
 
-    await tester.enterText(
-        labeledTextField('Hours Since Previous Reading').first, '1.0');
     await tester.enterText(labeledTextField('Current Gas Accum').first, '8100');
     await tester.enterText(labeledTextField('Current Gauge (in)').at(0), '60');
     await tester.enterText(labeledTextField('Current Gauge (in)').at(1), '35');

@@ -428,6 +428,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           oilTankCount: _shift.inventory.oilTanks.length,
           gaugeEntryType: _shift.inventory.gaugeEntryType,
           chokeTypeForWell: _chokeTypeForWell,
+          selectedChokeForWell: _selectedChokeForWell,
+          selectedChokeTypeForWell: _selectedChokeTypeForWell,
         ),
       ));
   }
@@ -486,7 +488,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     }
     return check.copyWith(
       well: normalizedWell,
-      chokeType: _chokeTypeForWell(normalizedWell),
+      chokeType: _selectedChokeTypeForWell(normalizedWell),
       waterTankGauges: water,
       oilTankGauges: oil,
       waterTankGaugeEntries: waterEntries,
@@ -528,7 +530,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   ProductionWellCheckData _wellDataForHour(int hourIndex, String well) {
-    return _controllers[hourIndex].dataForWell(well, _chokeTypeForWell(well));
+    return _controllers[hourIndex]
+        .dataForWell(well, _selectedChokeTypeForWell(well));
   }
 
   List<String> get _activeChemicals {
@@ -551,7 +554,6 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   bool _isWellEntered(int hourIndex, String well) {
     final data = _wellDataForHour(hourIndex, well);
     final hasScalarValue = [
-      data.hoursSincePrevious,
       data.choke,
       data.tbg,
       data.icp,
@@ -769,6 +771,26 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     return _shift.header.wellChokeTypes[well] ?? _shift.header.chokeType;
   }
 
+  String _selectedChokeForWell(String well) {
+    return _shift.wellSelectedChokes[well]?.trim() ?? '';
+  }
+
+  String _selectedChokeTypeForWell(String well) {
+    final raw = (_shift.wellSelectedChokeTypes[well] ?? '').trim();
+    if (raw.isEmpty) {
+      return _chokeTypeForWell(well);
+    }
+    return raw.toUpperCase() == 'POS' ? 'POS' : 'ADJ';
+  }
+
+  double _intervalHoursForWell(int index, String well) {
+    final hasPrevious = _latestSavedBefore(index, well) != null;
+    if (!hasPrevious) {
+      return double.nan;
+    }
+    return 1.0;
+  }
+
   String _formatChk(String chokeValue, String chokeType) {
     final value = chokeValue.trim();
     if (value.isEmpty) return '-';
@@ -952,14 +974,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   double _hourlyGas(int index) {
     final currentWell = _controllers[index].well;
-    final hasPrevious = _latestSavedBefore(index, currentWell) != null;
-    if (!hasPrevious) {
-      return double.nan;
-    }
-    final intervalHours =
-        double.tryParse(_controllers[index].hoursSincePrevious.text.trim()) ??
-            0;
-    if (intervalHours <= 0) {
+    final intervalHours = _intervalHoursForWell(index, currentWell);
+    if (intervalHours.isNaN || intervalHours <= 0) {
       return double.nan;
     }
 
@@ -995,13 +1011,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   double _waterProduction(int index) {
     final check = _controllers[index];
     final currentWell = check.well;
-    final hasPrevious = _latestSavedBefore(index, currentWell) != null;
-    if (!hasPrevious) {
-      return double.nan;
-    }
-    final intervalHours =
-        double.tryParse(check.hoursSincePrevious.text.trim()) ?? 0;
-    if (intervalHours <= 0) {
+    final intervalHours = _intervalHoursForWell(index, currentWell);
+    if (intervalHours.isNaN || intervalHours <= 0) {
       return double.nan;
     }
 
@@ -1030,13 +1041,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   double _oilProduction(int index) {
     final check = _controllers[index];
     final currentWell = check.well;
-    final hasPrevious = _latestSavedBefore(index, currentWell) != null;
-    if (!hasPrevious) {
-      return double.nan;
-    }
-    final intervalHours =
-        double.tryParse(check.hoursSincePrevious.text.trim()) ?? 0;
-    if (intervalHours <= 0) {
+    final intervalHours = _intervalHoursForWell(index, currentWell);
+    if (intervalHours.isNaN || intervalHours <= 0) {
       return double.nan;
     }
 
@@ -1135,7 +1141,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   Widget _oilCushionSection(int index) {
     final data = _controllers[index].dataForWell(
       _controllers[index].well,
-      _chokeTypeForWell(_controllers[index].well),
+      _selectedChokeTypeForWell(_controllers[index].well),
     );
     final current = _currentOilBblForData(data);
     final expected = _expectedOilInventoryForData(data);
@@ -1233,13 +1239,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   double _hourlyGasForData(
       int index, ProductionWellCheckData data, String well) {
-    final previous = _latestSavedBefore(index, well);
-    if (previous == null) {
-      return _missingCalcValue;
-    }
-    final intervalHours =
-        double.tryParse(data.hoursSincePrevious.trim()) ?? _missingCalcValue;
-    if (_isMissingCalc(intervalHours) || intervalHours <= 0) {
+    final intervalHours = _intervalHoursForWell(index, well);
+    if (intervalHours.isNaN || intervalHours <= 0) {
       return _missingCalcValue;
     }
     if (!_useGasAccumulator) {
@@ -1284,13 +1285,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   double _waterProductionForData(
       int index, ProductionWellCheckData data, String well) {
-    final previousRow = _latestSavedBefore(index, well);
-    if (previousRow == null) {
-      return _missingCalcValue;
-    }
-    final intervalHours =
-        double.tryParse(data.hoursSincePrevious.trim()) ?? _missingCalcValue;
-    if (_isMissingCalc(intervalHours) || intervalHours <= 0) {
+    final intervalHours = _intervalHoursForWell(index, well);
+    if (intervalHours.isNaN || intervalHours <= 0) {
       return _missingCalcValue;
     }
 
@@ -1322,13 +1318,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   double _oilProductionForData(
       int index, ProductionWellCheckData data, String well) {
-    final previousRow = _latestSavedBefore(index, well);
-    if (previousRow == null) {
-      return _missingCalcValue;
-    }
-    final intervalHours =
-        double.tryParse(data.hoursSincePrevious.trim()) ?? _missingCalcValue;
-    if (_isMissingCalc(intervalHours) || intervalHours <= 0) {
+    final intervalHours = _intervalHoursForWell(index, well);
+    if (intervalHours.isNaN || intervalHours <= 0) {
       return _missingCalcValue;
     }
 
@@ -1388,7 +1379,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       time: _controllers[hourIndex].time,
       well: well,
       choke: data.choke.trim(),
-      chokeType: _chokeTypeForWell(well),
+      chokeType: _selectedChokeTypeForWell(well),
       tbg: data.tbg.trim(),
       icp: data.icp.trim(),
       csg: data.csg.trim(),
@@ -1424,7 +1415,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       currentWaterBbl: currentWaterBbl,
       currentOilBbl: currentOilBbl,
       currentGasAccum: currentGasAccum,
-      hoursSincePrevious: double.tryParse(data.hoursSincePrevious.trim()) ?? 0,
+      hoursSincePrevious: _latestSavedBefore(hourIndex, well) == null ? 0 : 1,
       waterHauled: _showInventorySection ? _n(data.waterHauled) : 0,
       oilHauled: _showInventorySection ? _n(data.oilHauled) : 0,
       waterPumped: _showInventorySection ? _n(data.waterPumped) : 0,
@@ -1450,7 +1441,6 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     }
 
     for (final controller in [
-      current.hoursSincePrevious,
       current.choke,
       current.tbg,
       current.icp,
@@ -1501,27 +1491,6 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         const SnackBar(
           content: Text('Enter at least one value before saving this hour.'),
         ),
-      );
-      return;
-    }
-
-    final wellsMissingHours = <String>[];
-    for (final well in enteredWells) {
-      final hasPrevious = _latestSavedBefore(hourIndex, well) != null;
-      if (!hasPrevious) continue;
-      final data = _wellDataForHour(hourIndex, well);
-      final hours = double.tryParse(data.hoursSincePrevious.trim()) ?? 0;
-      if (hours <= 0) {
-        wellsMissingHours.add(well);
-      }
-    }
-
-    if (wellsMissingHours.isNotEmpty) {
-      final message =
-          'Enter Hours Since Previous Reading for: ${wellsMissingHours.join(', ')}';
-      setState(() => _hourValidationMessage = message);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
       );
       return;
     }
@@ -1678,11 +1647,27 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         return ai.compareTo(bi);
       });
 
+    final nextSelectedChokes =
+        Map<String, String>.from(_shift.wellSelectedChokes);
+    final nextSelectedTypes =
+        Map<String, String>.from(_shift.wellSelectedChokeTypes);
+    for (final row in rows) {
+      if (row.choke.trim().isEmpty) {
+        nextSelectedChokes.remove(row.well);
+        nextSelectedTypes.remove(row.well);
+      } else {
+        nextSelectedChokes[row.well] = row.choke.trim();
+        nextSelectedTypes[row.well] = row.chokeType;
+      }
+    }
+
     _shift = _shift.copyWith(
       activeJobId: _activeJob?.id ?? _shift.activeJobId,
       hourlyChecks: _controllers.map((item) => item.toCheck()).toList(),
       savedRows: updatedRows,
       inventory: _shift.inventory.copyWith(productionRows: updatedRows),
+      wellSelectedChokes: nextSelectedChokes,
+      wellSelectedChokeTypes: nextSelectedTypes,
       selectedTextHour: _shift.selectedTextHour ?? hourIndex,
     );
     await _service.saveActiveShift(_shift);
@@ -1721,7 +1706,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   ProductionWellCheckData? _latestSavedWellData(int hourIndex, String well) {
     for (var index = hourIndex - 1; index >= 0; index--) {
       if (!_isHourSaved(index)) continue;
-      return _controllers[index].dataForWell(well, _chokeTypeForWell(well));
+      return _controllers[index]
+          .dataForWell(well, _selectedChokeTypeForWell(well));
     }
     return null;
   }
@@ -2058,7 +2044,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         onChanged: (value) {
           if (value == null) return;
           setState(() {
-            controller.selectWell(value, _chokeTypeForWell(value));
+            controller.selectWell(value, _selectedChokeTypeForWell(value));
           });
           _persistShift();
         },
@@ -2074,12 +2060,6 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         ),
       ),
       const SizedBox(height: 8),
-      _field(
-        'Hours Since Previous Reading',
-        controller.hoursSincePrevious,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        helperText: 'Required after the first saved reading for this well.',
-      ),
       _field('TBG', controller.tbg, suffix: 'PSI'),
       _field('ICP', controller.icp, suffix: 'PSI'),
       _field('CSG', controller.csg, suffix: 'PSI'),
@@ -2188,13 +2168,29 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     if (!mounted || picked == null) return;
 
     setState(() {
+      final nextSelectedChokes = Map<String, String>.from(
+        _shift.wellSelectedChokes,
+      );
+      final nextSelectedTypes = Map<String, String>.from(
+        _shift.wellSelectedChokeTypes,
+      );
       if (picked.isNone || picked.size64 == null) {
         controller.choke.clear();
         controller.chokeType = '';
-        return;
+        nextSelectedChokes.remove(controller.well);
+        nextSelectedTypes.remove(controller.well);
+      } else {
+        controller.chokeType =
+            picked.type == ChokeTypes.positive ? 'POS' : 'ADJ';
+        controller.choke.text = '${picked.size64}/64"';
+        nextSelectedChokes[controller.well] = controller.choke.text.trim();
+        nextSelectedTypes[controller.well] = controller.chokeType;
       }
-      controller.chokeType = picked.type == ChokeTypes.positive ? 'POS' : 'ADJ';
-      controller.choke.text = '${picked.size64}/64"';
+
+      _shift = _shift.copyWith(
+        wellSelectedChokes: nextSelectedChokes,
+        wellSelectedChokeTypes: nextSelectedTypes,
+      );
     });
     await _persistShift();
   }
@@ -2624,8 +2620,17 @@ class _HourlyCheckControllers {
     required int oilTankCount,
     required String gaugeEntryType,
     required String Function(String well) chokeTypeForWell,
+    required String Function(String well) selectedChokeForWell,
+    required String Function(String well) selectedChokeTypeForWell,
   }) {
-    ProductionWellCheckData normalizeData(ProductionWellCheckData data) {
+    String normalizedType(String value) {
+      return value.trim().toUpperCase() == 'POS' ? 'POS' : 'ADJ';
+    }
+
+    ProductionWellCheckData normalizeData(
+      String well,
+      ProductionWellCheckData data,
+    ) {
       final water = List<String>.from(data.waterTankGauges);
       final oil = List<String>.from(data.oilTankGauges);
       final waterEntries = List<ProductionGaugeEntry>.from(
@@ -2665,9 +2670,19 @@ class _HourlyCheckControllers {
         oilEntries.removeRange(oilTankCount, oilEntries.length);
       }
 
+      final fallbackChoke = selectedChokeForWell(well);
+      final fallbackChokeType = selectedChokeTypeForWell(well);
+      final normalizedChoke =
+          data.choke.trim().isEmpty ? fallbackChoke : data.choke.trim();
+      final normalizedChokeType = normalizedChoke.isEmpty
+          ? fallbackChokeType
+          : normalizedType(data.chokeType.trim().isEmpty
+              ? fallbackChokeType
+              : data.chokeType);
+
       return ProductionWellCheckData(
-        choke: data.choke,
-        chokeType: data.chokeType,
+        choke: normalizedChoke,
+        chokeType: normalizedChokeType,
         hoursSincePrevious: data.hoursSincePrevious,
         tbg: data.tbg,
         icp: data.icp,
@@ -2718,8 +2733,12 @@ class _HourlyCheckControllers {
     final wellDataByName = <String, ProductionWellCheckData>{
       for (final well in wells)
         well: normalizeData(
+          well,
           persistedMap[well] ??
-              ProductionWellCheckData(chokeType: chokeTypeForWell(well)),
+              ProductionWellCheckData(
+                choke: selectedChokeForWell(well),
+                chokeType: selectedChokeTypeForWell(well),
+              ),
         ),
     };
 
@@ -2733,7 +2752,11 @@ class _HourlyCheckControllers {
       hoursSincePrevious:
           TextEditingController(text: selectedData.hoursSincePrevious),
       choke: TextEditingController(text: selectedData.choke),
-      chokeType: chokeTypeForWell(selectedWell),
+      chokeType: normalizedType(
+        selectedData.chokeType.trim().isEmpty
+            ? selectedChokeTypeForWell(selectedWell)
+            : selectedData.chokeType,
+      ),
       tbg: TextEditingController(text: selectedData.tbg),
       icp: TextEditingController(text: selectedData.icp),
       csg: TextEditingController(text: selectedData.csg),
@@ -2870,7 +2893,10 @@ class _HourlyCheckControllers {
   void _loadWellData(ProductionWellCheckData data, String nextChokeType) {
     hoursSincePrevious.text = data.hoursSincePrevious;
     choke.text = data.choke;
-    chokeType = nextChokeType;
+    final storedType = data.chokeType.trim().toUpperCase();
+    chokeType = storedType == 'POS'
+        ? 'POS'
+        : (storedType == 'ADJ' ? 'ADJ' : nextChokeType);
     tbg.text = data.tbg;
     icp.text = data.icp;
     csg.text = data.csg;

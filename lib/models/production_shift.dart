@@ -7,6 +7,8 @@ class ProductionShift {
     required this.checkCount,
     required this.hourlyChecks,
     required this.savedRows,
+    this.wellSelectedChokes = const {},
+    this.wellSelectedChokeTypes = const {},
     required this.selectedTextHour,
     required this.updatedAt,
   });
@@ -20,6 +22,8 @@ class ProductionShift {
       checkCount: 12,
       hourlyChecks: const [],
       savedRows: const [],
+      wellSelectedChokes: const {},
+      wellSelectedChokeTypes: const {},
       selectedTextHour: null,
       updatedAt: DateTime.now(),
     );
@@ -48,6 +52,15 @@ class ProductionShift {
           .map((item) => ProductionReportRow.fromJson(
               Map<String, dynamic>.from(item as Map)))
           .toList(),
+      wellSelectedChokes: ((json['wellSelectedChokes'] as Map?) ?? const {})
+          .map((key, value) => MapEntry(key.toString(), value.toString())),
+      wellSelectedChokeTypes:
+          ((json['wellSelectedChokeTypes'] as Map?) ?? const {}).map(
+        (key, value) => MapEntry(
+          key.toString(),
+          ProductionShiftHeader._normalizeChokeType(value?.toString()),
+        ),
+      ),
       selectedTextHour: json['selectedTextHour'] as int?,
       updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? '') ??
           DateTime.now(),
@@ -61,6 +74,8 @@ class ProductionShift {
   final int checkCount;
   final List<ProductionHourlyCheck> hourlyChecks;
   final List<ProductionReportRow> savedRows;
+  final Map<String, String> wellSelectedChokes;
+  final Map<String, String> wellSelectedChokeTypes;
   final int? selectedTextHour;
   final DateTime updatedAt;
 
@@ -72,6 +87,8 @@ class ProductionShift {
     int? checkCount,
     List<ProductionHourlyCheck>? hourlyChecks,
     List<ProductionReportRow>? savedRows,
+    Map<String, String>? wellSelectedChokes,
+    Map<String, String>? wellSelectedChokeTypes,
     int? selectedTextHour,
     bool clearSelectedTextHour = false,
     DateTime? updatedAt,
@@ -84,6 +101,9 @@ class ProductionShift {
       checkCount: checkCount ?? this.checkCount,
       hourlyChecks: hourlyChecks ?? this.hourlyChecks,
       savedRows: savedRows ?? this.savedRows,
+      wellSelectedChokes: wellSelectedChokes ?? this.wellSelectedChokes,
+      wellSelectedChokeTypes:
+          wellSelectedChokeTypes ?? this.wellSelectedChokeTypes,
       selectedTextHour: clearSelectedTextHour
           ? null
           : (selectedTextHour ?? this.selectedTextHour),
@@ -100,6 +120,8 @@ class ProductionShift {
       'checkCount': checkCount,
       'hourlyChecks': hourlyChecks.map((item) => item.toJson()).toList(),
       'savedRows': savedRows.map((item) => item.toJson()).toList(),
+      'wellSelectedChokes': wellSelectedChokes,
+      'wellSelectedChokeTypes': wellSelectedChokeTypes,
       'selectedTextHour': selectedTextHour,
       'updatedAt': updatedAt.toIso8601String(),
     };
