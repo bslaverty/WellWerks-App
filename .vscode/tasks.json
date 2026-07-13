@@ -140,6 +140,171 @@
 				"status",
 				"--short"
 			]
+		},
+		{
+			"label": "build112-focused-layout-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build112-focused-layout-tests-rerun",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build112-focused-layout-tests-rerun2",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build112-focused-layout-tests-rerun3",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build112-focused-layout-tests-rerun4",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build112-focused-layout-tests-rerun5",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build112-focused-layout-tests-final",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build112-focused-layout-tests-clean",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build112-focused-layout-tests-pass",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build112-pub-get",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"pub",
+				"get"
+			]
+		},
+		{
+			"label": "build112-format",
+			"type": "shell",
+			"command": "dart",
+			"args": [
+				"format",
+				"."
+			]
+		},
+		{
+			"label": "build112-analyze",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"analyze"
+			]
+		},
+		{
+			"label": "build112-test",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test"
+			]
+		},
+		{
+			"label": "build112-branch-status",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short",
+				"--branch"
+			]
+		},
+		{
+			"label": "build112-git-add",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"pubspec.yaml",
+				"lib/screens/equipment_layout_screen.dart",
+				"test/layout_designer_build110_test.dart"
+			]
+		},
+		{
+			"label": "build112-git-commit",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"Build 112 - improve iron connections and bypass sliding"
+			]
+		},
+		{
+			"label": "build112-git-push",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"feature/equipment-bypass"
+			]
+		},
+		{
+			"label": "build112-git-status-final",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short"
+			]
 		}
 	]
 }
