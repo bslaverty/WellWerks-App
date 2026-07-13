@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -152,7 +154,7 @@ void main() {
     expect(find.byKey(const Key('drillout-status-dropdown')), findsNothing);
     expect(find.byKey(const Key('drillout-plug-number-field')), findsNothing);
     expect(find.byKey(const Key('drillout-coil-depth-field')), findsNothing);
-    expect(find.byKey(const Key('drillout-gas-spot-rate-field')), findsNothing);
+    expect(find.byKey(const Key('drillout-gas-dropdown')), findsNothing);
     expect(find.byKey(const Key('drillout-sand-dropdown')), findsNothing);
 
     await _tapVisible(tester, find.byKey(const Key('drillout-toggle-status')));
@@ -175,10 +177,10 @@ void main() {
 
     await _tapVisible(
       tester,
-      find.byKey(const Key('drillout-toggle-gas-spot-rate')),
+      find.byKey(const Key('drillout-toggle-gas')),
     );
     expect(
-      find.byKey(const Key('drillout-gas-spot-rate-field')),
+      find.byKey(const Key('drillout-gas-dropdown')),
       findsOneWidget,
     );
 
@@ -237,14 +239,10 @@ void main() {
       '12450',
     );
 
-    await _tapVisible(
-      tester,
-      find.byKey(const Key('drillout-toggle-gas-spot-rate')),
-    );
-    await tester.enterText(
-      find.byKey(const Key('drillout-gas-spot-rate-field')),
-      '425',
-    );
+    await _tapVisible(tester, find.byKey(const Key('drillout-toggle-gas')));
+    await _tapVisible(tester, find.byKey(const Key('drillout-gas-dropdown')));
+    await tester.tap(find.text('Light').last);
+    await tester.pumpAndSettle();
 
     await _tapVisible(tester, find.byKey(const Key('drillout-toggle-sand')));
     await _tapVisible(tester, find.byKey(const Key('drillout-sand-dropdown')));
@@ -274,7 +272,9 @@ void main() {
     expect(preview, contains('Status: Drilling Plugs'));
     expect(preview, contains('Plug #: 12'));
     expect(preview, contains('Coil Depth: 12450 ft'));
-    expect(preview, contains('Gas: 425 MCFD'));
+    expect(preview, contains('Gas: Light'));
+    expect(preview.contains('MCFD'), isFalse);
+    expect(preview.contains('MMCFD'), isFalse);
     expect(preview, contains('Sand: Light'));
 
     final order = <String>[
@@ -285,7 +285,7 @@ void main() {
       'Status: Drilling Plugs',
       'Plug #: 12',
       'Coil Depth: 12450 ft',
-      'Gas: 425 MCFD',
+      'Gas: Light',
       'Sand: Light',
       'Rate:',
       'Notes: Test note',
@@ -435,12 +435,11 @@ void main() {
 
     await _tapVisible(
       tester,
-      find.byKey(const Key('drillout-toggle-gas-spot-rate')),
+      find.byKey(const Key('drillout-toggle-gas')),
     );
-    await tester.enterText(
-      find.byKey(const Key('drillout-gas-spot-rate-field')),
-      '333',
-    );
+    await _tapVisible(tester, find.byKey(const Key('drillout-gas-dropdown')));
+    await tester.tap(find.text('Heavy').last);
+    await tester.pumpAndSettle();
 
     await _tapVisible(tester, find.byKey(const Key('drillout-toggle-sand')));
     await _tapVisible(tester, find.byKey(const Key('drillout-sand-dropdown')));
@@ -472,7 +471,7 @@ void main() {
     expect(find.byKey(const Key('drillout-plug-number-field')), findsOneWidget);
     expect(find.byKey(const Key('drillout-coil-depth-field')), findsOneWidget);
     expect(
-      find.byKey(const Key('drillout-gas-spot-rate-field')),
+      find.byKey(const Key('drillout-gas-dropdown')),
       findsOneWidget,
     );
     expect(find.byKey(const Key('drillout-sand-dropdown')), findsOneWidget);
@@ -483,7 +482,7 @@ void main() {
     expect(preview, contains('Status: -'));
     expect(preview, contains('Plug #: -'));
     expect(preview, contains('Coil Depth: - ft'));
-    expect(preview, contains('Gas: - MCFD'));
+    expect(preview, contains('Gas: -'));
     expect(preview, contains('Sand: -'));
   });
 
@@ -526,14 +525,97 @@ void main() {
     expect(find.byKey(const Key('drillout-status-dropdown')), findsNothing);
     expect(find.byKey(const Key('drillout-plug-number-field')), findsNothing);
     expect(find.byKey(const Key('drillout-coil-depth-field')), findsNothing);
-    expect(find.byKey(const Key('drillout-gas-spot-rate-field')), findsNothing);
+    expect(find.byKey(const Key('drillout-gas-dropdown')), findsNothing);
     expect(find.byKey(const Key('drillout-sand-dropdown')), findsNothing);
 
     final preview = await _openPreviewAndRead(tester);
     await _expectCopyLabel(tester, 'Copy Shift Change');
     expect(preview, contains('5:00 AM Shift Change'));
+    expect(preview.contains('Gas:'), isFalse);
     expect(preview.contains('Status:'), isFalse);
     expect(preview.contains('Sand:'), isFalse);
     expect(preview, contains('Notes: -'));
+  });
+
+  testWidgets('Build 102 gas selector offers exact options',
+      (WidgetTester tester) async {
+    await _pumpScreen(tester);
+
+    await _tapVisible(tester, find.byKey(const Key('drillout-toggle-gas')));
+    await _tapVisible(tester, find.byKey(const Key('drillout-gas-dropdown')));
+
+    for (final option in const ['None', 'Light', 'Medium', 'Heavy']) {
+      expect(find.text(option), findsWidgets);
+    }
+    expect(find.text('Trace'), findsNothing);
+  });
+
+  testWidgets('Build 102 gas selection persists and survives mode switch',
+      (WidgetTester tester) async {
+    await _pumpScreen(tester);
+
+    await _tapVisible(tester, find.byKey(const Key('drillout-toggle-gas')));
+    await _tapVisible(tester, find.byKey(const Key('drillout-gas-dropdown')));
+    await tester.tap(find.text('Medium').last);
+    await tester.pumpAndSettle();
+
+    await _selectMode(tester, 'Update');
+    var preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('Gas: Medium'));
+
+    await _selectMode(tester, 'Shift Change');
+    preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('Gas: Medium'));
+
+    await _pumpScreen(tester);
+    preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('Gas: Medium'));
+  });
+
+  testWidgets('Build 102 gas output supports each categorical option',
+      (WidgetTester tester) async {
+    await _pumpScreen(tester);
+    await _tapVisible(tester, find.byKey(const Key('drillout-toggle-gas')));
+
+    for (final option in const ['None', 'Light', 'Medium', 'Heavy']) {
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('drillout-gas-dropdown')),
+        -240,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('drillout-gas-dropdown')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(option).last);
+      await tester.pumpAndSettle();
+      final preview = await _openPreviewAndRead(tester);
+      expect(preview, contains('Gas: $option'));
+      expect(preview.contains('MCFD'), isFalse);
+      expect(preview.contains('MMCFD'), isFalse);
+    }
+  });
+
+  testWidgets('Build 102 handles legacy numeric gas data safely',
+      (WidgetTester tester) async {
+    final prefs = await SharedPreferences.getInstance();
+    final activeJob = await JobStorageService().loadActiveJob();
+    final jobId = (activeJob?.id ?? '').trim();
+    final key = jobId.isEmpty
+        ? 'wellwerks_drillout_shift_change_v1'
+        : 'wellwerks_drillout_shift_change_v1:$jobId';
+    await prefs.setString(
+      key,
+      jsonEncode({
+        'showGasSpotRate': true,
+        'gasSpotRate': '425',
+      }),
+    );
+
+    await _pumpScreen(tester);
+
+    final preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('Gas: -'));
+    expect(preview.contains('Gas: 425'), isFalse);
+    expect(preview.contains('MCFD'), isFalse);
   });
 }
