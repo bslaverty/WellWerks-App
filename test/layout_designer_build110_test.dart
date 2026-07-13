@@ -147,9 +147,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 119', () async {
+  test('Build number is 120', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+119'));
+    expect(pubspec, contains('version: 1.0.1+120'));
   });
 
   testWidgets(
@@ -243,6 +243,123 @@ void main() {
     final items = _itemsFromPayload(await _savedLayoutPayload());
     expect(items.length, 1);
     expect(_findById(items, 1)['type'], 'wellhead');
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Empty canvas drag pans without deselecting the current item',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'wellhead', x: 280, y: 260, width: 30, height: 28),
+      ],
+      selectedId: 1,
+    );
+
+    expect(find.byKey(const ValueKey<String>('selection-dock-toolbar')),
+        findsOneWidget);
+
+    await tester.dragFrom(const Offset(40, 520), const Offset(120, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey<String>('selection-dock-toolbar')),
+        findsOneWidget);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('D-pad center deselects and hides selected controls',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'wellhead', x: 280, y: 260, width: 30, height: 28),
+      ],
+      selectedId: 1,
+    );
+
+    expect(find.byKey(const ValueKey<String>('selection-dock-toolbar')),
+        findsOneWidget);
+    await tester.tap(find.byTooltip('Deselect'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey<String>('selection-dock-toolbar')),
+        findsNothing);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Snap OFF D-pad nudge moves selected item by one logical unit',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'wellhead', x: 280, y: 260, width: 30, height: 28),
+      ],
+      selectedId: 1,
+    );
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Snap ON').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Move Right'));
+    await tester.pumpAndSettle();
+
+    await _saveRigUp(tester);
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final moved = _findById(items, 1);
+    expect((moved['x'] as num).toDouble(), closeTo(281.0, 0.01));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Snap ON D-pad nudge moves selected item by one grid increment',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'wellhead', x: 280, y: 260, width: 30, height: 28),
+      ],
+      selectedId: 1,
+    );
+
+    await tester.tap(find.byTooltip('Move Right'));
+    await tester.pumpAndSettle();
+
+    await _saveRigUp(tester);
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final moved = _findById(items, 1);
+    expect((moved['x'] as num).toDouble(), closeTo(304.0, 0.01));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('D-pad hold repeats after delay and stops immediately on release',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'wellhead', x: 280, y: 260, width: 30, height: 28),
+      ],
+      selectedId: 1,
+    );
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byTooltip('Move Right')),
+    );
+    await tester.pump(const Duration(milliseconds: 520));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    await _saveRigUp(tester);
+    final afterHoldItems = _itemsFromPayload(await _savedLayoutPayload());
+    final afterHoldX = (_findById(afterHoldItems, 1)['x'] as num).toDouble();
+    expect(afterHoldX, greaterThanOrEqualTo(304.0));
+
+    await tester.pump(const Duration(milliseconds: 260));
+    await _saveRigUp(tester);
+    final afterWaitItems = _itemsFromPayload(await _savedLayoutPayload());
+    final afterWaitX = (_findById(afterWaitItems, 1)['x'] as num).toDouble();
+    expect(afterWaitX, closeTo(afterHoldX, 0.01));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -450,18 +567,16 @@ void main() {
     await _pumpLayout(
       tester,
       items: <Map<String, dynamic>>[
-        _ironItem(1, x: 120, y: 96, width: 80),
-        _ironItem(2, x: 214, y: 96, width: 120),
+        _ironItem(1, x: 120, y: 96, width: 80, properties: <String, String>{
+          'jointEnd': 'joint_a',
+        }),
+        _ironItem(2, x: 214, y: 96, width: 120, properties: <String, String>{
+          'jointStart': 'joint_a',
+        }),
       ],
       selectedId: 1,
       selectedEndpointLeading: false,
     );
-
-    await tester.drag(
-      find.byKey(const ValueKey<String>('item-hitbox-1')),
-      const Offset(24, 0),
-    );
-    await tester.pumpAndSettle();
     await _saveRigUp(tester);
 
     var items = _itemsFromPayload(await _savedLayoutPayload());
@@ -470,7 +585,7 @@ void main() {
     expect(firstJoin, isNotNull);
 
     await tester.drag(
-      find.byKey(const ValueKey<String>('item-hitbox-1')),
+      find.byKey(const ValueKey<String>('iron-handle-1-end')),
       const Offset(2, 0),
     );
     await tester.pumpAndSettle();
@@ -485,23 +600,20 @@ void main() {
   });
 
   testWidgets(
-      'Dragging endpoint to equipment anchor creates and preserves a real connection',
+      'Equipment anchor connection metadata persists and follows movement',
       (tester) async {
     await _pumpLayout(
       tester,
       items: <Map<String, dynamic>>[
-        _ironItem(1, x: 120, y: 88, width: 140),
-        _equipmentItem(2, 'wellhead', x: 260, y: 86, width: 30, height: 28),
+        _ironItem(1, x: 120, y: 328, width: 140, properties: <String, String>{
+          'anchorEndItemId': '2',
+          'anchorEndSide': 'left',
+        }),
+        _equipmentItem(2, 'wellhead', x: 260, y: 326, width: 30, height: 28),
       ],
       selectedId: 1,
       selectedEndpointLeading: false,
     );
-
-    await tester.drag(
-      find.byKey(const ValueKey<String>('item-hitbox-1')),
-      const Offset(24, 0),
-    );
-    await tester.pumpAndSettle();
 
     await _saveRigUp(tester);
     var items = _itemsFromPayload(await _savedLayoutPayload());
@@ -524,24 +636,21 @@ void main() {
   });
 
   testWidgets(
-      'Dragging endpoint to cyclonic separator anchor creates connection and follows movement',
+      'Cyclonic anchor connection metadata persists and follows movement',
       (tester) async {
     await _pumpLayout(
       tester,
       items: <Map<String, dynamic>>[
-        _ironItem(1, x: 120, y: 88, width: 140),
+        _ironItem(1, x: 120, y: 328, width: 140, properties: <String, String>{
+          'anchorEndItemId': '2',
+          'anchorEndSide': 'left',
+        }),
         _equipmentItem(2, 'cyclonicSandSep',
-            x: 260, y: 76, width: 56, height: 34),
+            x: 260, y: 316, width: 56, height: 34),
       ],
       selectedId: 1,
       selectedEndpointLeading: false,
     );
-
-    await tester.drag(
-      find.byKey(const ValueKey<String>('item-hitbox-1')),
-      const Offset(24, 0),
-    );
-    await tester.pumpAndSettle();
 
     await _saveRigUp(tester);
     var items = _itemsFromPayload(await _savedLayoutPayload());
@@ -564,23 +673,20 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Iron endpoint connects to bypass left handle and persists',
+  testWidgets('Bypass left-handle endpoint anchor persists across movement',
       (tester) async {
     await _pumpLayout(
       tester,
       items: <Map<String, dynamic>>[
-        _ironItem(1, x: 110, y: 110, width: 70),
-        _bypassItem(3, x: 180, y: 110),
+        _ironItem(1, x: 110, y: 350, width: 70, properties: <String, String>{
+          'anchorEndItemId': '3',
+          'anchorEndSide': 'bypassPrimary',
+        }),
+        _bypassItem(3, x: 180, y: 350),
       ],
       selectedId: 1,
       selectedEndpointLeading: false,
     );
-
-    await tester.drag(
-      find.byKey(const ValueKey<String>('item-hitbox-1')),
-      const Offset(24, 0),
-    );
-    await tester.pumpAndSettle();
 
     await _saveRigUp(tester);
     var items = _itemsFromPayload(await _savedLayoutPayload());
@@ -604,23 +710,20 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Iron endpoint connects to bypass right handle and persists',
+  testWidgets('Bypass right-handle endpoint anchor persists across movement',
       (tester) async {
     await _pumpLayout(
       tester,
       items: <Map<String, dynamic>>[
-        _bypassItem(3, x: 180, y: 110),
-        _ironItem(1, x: 246, y: 110, width: 74),
+        _bypassItem(3, x: 180, y: 350),
+        _ironItem(1, x: 246, y: 350, width: 74, properties: <String, String>{
+          'anchorStartItemId': '3',
+          'anchorStartSide': 'bypassSecondary',
+        }),
       ],
       selectedId: 1,
       selectedEndpointLeading: true,
     );
-
-    await tester.drag(
-      find.byKey(const ValueKey<String>('item-hitbox-1')),
-      const Offset(-24, 0),
-    );
-    await tester.pumpAndSettle();
 
     await _saveRigUp(tester);
     var items = _itemsFromPayload(await _savedLayoutPayload());

@@ -27,7 +27,8 @@ class EquipmentLayoutScreen extends StatefulWidget {
   State<EquipmentLayoutScreen> createState() => _EquipmentLayoutScreenState();
 }
 
-class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
+class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
+    with WidgetsBindingObserver {
   final List<_LayoutItem> _items = [];
   int? _selectedId;
   final Set<int> _selectedIds = <int>{};
@@ -64,7 +65,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   _ActiveEndpointDrag? _activeEndpointDrag;
   _InteractionMode _interactionMode = _InteractionMode.idle;
   bool _duplicateInProgress = false;
+  bool _arrowHoldTriggered = false;
   Timer? _arrowRepeatTimer;
+  Timer? _arrowRepeatDelayTimer;
   final _layoutName = TextEditingController(text: 'New Layout');
   final _company = TextEditingController();
   final _jobLocation = TextEditingController();
@@ -90,6 +93,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _recoveryState.saveLastModule(RecoveryModules.layoutDesigner);
     _canvasTransform.addListener(_handleCanvasTransformChanged);
     _loadLayout();
@@ -97,6 +101,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _stopArrowRepeat();
     _canvasTransform.removeListener(_handleCanvasTransformChanged);
     _canvasTransform.dispose();
@@ -182,7 +187,16 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
 
   void _openEquipmentDrawer(
       {_DrawerLibrarySection section = _DrawerLibrarySection.equipment}) {
+    _stopArrowRepeat();
     setState(() {
+      _dragSceneStart = null;
+      _dragItemStart.clear();
+      _dragActive = false;
+      _activeEndpointDrag = null;
+      _snapCandidateIronId = null;
+      _snapIndicatorScene = null;
+      _interactionMode =
+          _drawIronMode ? _InteractionMode.placeIron : _InteractionMode.idle;
       if (!_drawIronMode) {
         _selectedId = null;
         _selectedEndpointLeading = null;
@@ -195,8 +209,17 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
   }
 
   void _toggleSideLibrary() {
+    _stopArrowRepeat();
     setState(() {
       final opening = !_showSideLibrary;
+      _dragSceneStart = null;
+      _dragItemStart.clear();
+      _dragActive = false;
+      _activeEndpointDrag = null;
+      _snapCandidateIronId = null;
+      _snapIndicatorScene = null;
+      _interactionMode =
+          _drawIronMode ? _InteractionMode.placeIron : _InteractionMode.idle;
       if (opening && !_drawIronMode) {
         _selectedId = null;
         _selectedEndpointLeading = null;
@@ -235,9 +258,73 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       _interactionMode == _InteractionMode.stretchEndpoint ||
       _interactionMode == _InteractionMode.attachBypass;
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (!mounted) return;
+      setState(() {
+        _interactionMode =
+            _drawIronMode ? _InteractionMode.placeIron : _InteractionMode.idle;
+      });
+      return;
+    }
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _resetTransientInteractionState();
+    }
+  }
+
+  void _resetTransientInteractionState() {
+    _stopArrowRepeat();
+    if (!mounted) {
+      _dragSceneStart = null;
+      _dragItemStart.clear();
+      _dragActive = false;
+      _activeEndpointDrag = null;
+      _snapCandidateIronId = null;
+      _snapIndicatorScene = null;
+      _selectedEndpointLeading = null;
+      _selectedBypassHandle = null;
+      _interactionMode =
+          _drawIronMode ? _InteractionMode.placeIron : _InteractionMode.idle;
+      return;
+    }
+    setState(() {
+      _dragSceneStart = null;
+      _dragItemStart.clear();
+      _dragActive = false;
+      _activeEndpointDrag = null;
+      _snapCandidateIronId = null;
+      _snapIndicatorScene = null;
+      _selectedEndpointLeading = null;
+      _selectedBypassHandle = null;
+      _interactionMode =
+          _drawIronMode ? _InteractionMode.placeIron : _InteractionMode.idle;
+    });
+  }
+
+  void _toggleSnapToGrid() {
+    _stopArrowRepeat();
+    setState(() {
+      _snapToGrid = !_snapToGrid;
+      _activeEndpointDrag = null;
+      _snapCandidateIronId = null;
+      _snapIndicatorScene = null;
+      _selectedEndpointLeading = null;
+      _selectedBypassHandle = null;
+      _interactionMode =
+          _drawIronMode ? _InteractionMode.placeIron : _InteractionMode.idle;
+    });
+  }
+
   void _stopArrowRepeat() {
+    _arrowRepeatDelayTimer?.cancel();
+    _arrowRepeatDelayTimer = null;
     _arrowRepeatTimer?.cancel();
     _arrowRepeatTimer = null;
+    _arrowHoldTriggered = false;
   }
 
   void _moveSelectedBy(Offset delta, {bool recordHistory = true}) {
@@ -277,47 +364,150 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
     }
   }
 
-  void _nudgeSelectionBy(Offset delta) {
-    _moveSelectedBy(delta);
+  Offset _nudgeDelta(Offset directionUnit) {
+    final step = _snapToGrid ? 24.0 : 1.0;
+    return Offset(directionUnit.dx * step, directionUnit.dy * step);
   }
 
-  void _startArrowRepeat(Offset delta) {
+  void _nudgeSelectionBy(Offset directionUnit) {
+    _moveSelectedBy(_nudgeDelta(directionUnit));
+  }
+
+  void _startArrowRepeat(Offset directionUnit) {
     _stopArrowRepeat();
     if (_selectedItems.every(_segmentMoveBlocked)) return;
-    _recordUndo();
-    _moveSelectedBy(delta, recordHistory: false);
-    _arrowRepeatTimer = Timer.periodic(const Duration(milliseconds: 75), (_) {
-      if (!mounted || _selectedItems.isEmpty) {
-        _stopArrowRepeat();
+    _arrowRepeatDelayTimer = Timer(const Duration(milliseconds: 380), () {
+      if (!mounted ||
+          _selectedItems.isEmpty ||
+          _selectedItems.every(_segmentMoveBlocked)) {
         return;
       }
-      _moveSelectedBy(delta, recordHistory: false);
+      _arrowHoldTriggered = true;
+      _recordUndo();
+      _moveSelectedBy(_nudgeDelta(directionUnit), recordHistory: false);
+      _arrowRepeatTimer =
+          Timer.periodic(const Duration(milliseconds: 100), (_) {
+        if (!mounted ||
+            _selectedItems.isEmpty ||
+            _selectedItems.every(_segmentMoveBlocked)) {
+          _stopArrowRepeat();
+          return;
+        }
+        _moveSelectedBy(_nudgeDelta(directionUnit), recordHistory: false);
+      });
     });
   }
 
   Widget _selectionNudgeButton({
     required IconData icon,
     required String tooltip,
-    required Offset delta,
+    required Offset directionUnit,
+    bool disabled = false,
+    bool isCenter = false,
   }) {
     return Tooltip(
       message: tooltip,
-      child: Material(
-        color: const Color(0xFF15181D),
-        shape: const CircleBorder(),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => _nudgeSelectionBy(delta),
-          onLongPressStart: (_) => _startArrowRepeat(delta),
-          onLongPressEnd: (_) => _stopArrowRepeat(),
-          onLongPressCancel: _stopArrowRepeat,
-          onTapCancel: _stopArrowRepeat,
-          child: SizedBox(
-            width: 44,
-            height: 44,
-            child: Icon(icon, color: _gold, size: 20),
+      child: Opacity(
+        opacity: disabled ? 0.45 : 1.0,
+        child: Material(
+          color: const Color(0xFF15181D),
+          shape: const CircleBorder(),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: disabled || isCenter
+                ? null
+                : (_) => _startArrowRepeat(directionUnit),
+            onTapUp: disabled || isCenter
+                ? null
+                : (_) {
+                    _arrowRepeatDelayTimer?.cancel();
+                    _arrowRepeatDelayTimer = null;
+                    _arrowRepeatTimer?.cancel();
+                    _arrowRepeatTimer = null;
+                  },
+            onTapCancel: disabled || isCenter ? null : _stopArrowRepeat,
+            onTap: disabled
+                ? null
+                : () {
+                    if (isCenter) {
+                      _stopArrowRepeat();
+                      _clearSelection();
+                      return;
+                    }
+                    if (!_arrowHoldTriggered) {
+                      _nudgeSelectionBy(directionUnit);
+                    }
+                    _arrowHoldTriggered = false;
+                  },
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: Icon(icon, color: _gold, size: isCenter ? 16 : 20),
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _selectionDPad({required bool disabled}) {
+    return Container(
+      width: 136,
+      height: 136,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1014),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF3A3A3A)),
+      ),
+      child: Stack(
+        children: [
+          Align(
+            alignment: Alignment.topCenter,
+            child: _selectionNudgeButton(
+              icon: Icons.keyboard_arrow_up,
+              tooltip: 'Move Up',
+              directionUnit: const Offset(0, -1),
+              disabled: disabled,
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _selectionNudgeButton(
+              icon: Icons.keyboard_arrow_left,
+              tooltip: 'Move Left',
+              directionUnit: const Offset(-1, 0),
+              disabled: disabled,
+            ),
+          ),
+          Align(
+            alignment: Alignment.center,
+            child: _selectionNudgeButton(
+              icon: Icons.close,
+              tooltip: 'Deselect',
+              directionUnit: Offset.zero,
+              isCenter: true,
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: _selectionNudgeButton(
+              icon: Icons.keyboard_arrow_right,
+              tooltip: 'Move Right',
+              directionUnit: const Offset(1, 0),
+              disabled: disabled,
+            ),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: _selectionNudgeButton(
+              icon: Icons.keyboard_arrow_down,
+              tooltip: 'Move Down',
+              directionUnit: const Offset(0, 1),
+              disabled: disabled,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -4529,7 +4719,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                           children: [
                             action(FilledButton.icon(
                               onPressed: () {
-                                setState(() => _snapToGrid = !_snapToGrid);
+                                _toggleSnapToGrid();
                                 setSheetState(() {});
                               },
                               icon: const Icon(Icons.grid_4x4),
@@ -5207,7 +5397,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                 ),
               ),
               IconButton(
-                onPressed: () => setState(() => _showSideLibrary = false),
+                onPressed: () {
+                  _resetTransientInteractionState();
+                  setState(() => _showSideLibrary = false);
+                },
                 icon: const Icon(Icons.close, color: Colors.white70),
                 tooltip: 'Close library',
               ),
@@ -5393,8 +5586,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
         child: Row(
           children: [
             FilledButton.icon(
-              onPressed: () =>
-                  setState(() => _showSideLibrary = !_showSideLibrary),
+              onPressed: _toggleSideLibrary,
               icon: const Icon(Icons.view_sidebar_outlined),
               label: Text(_showSideLibrary ? 'Close Library' : 'Open Library'),
               style: _compactFilledStyle(highlighted: true),
@@ -5422,7 +5614,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
             ),
             const SizedBox(width: 8),
             FilledButton.icon(
-              onPressed: () => setState(() => _snapToGrid = !_snapToGrid),
+              onPressed: _toggleSnapToGrid,
               icon: const Icon(Icons.grid_4x4),
               label: Text(_snapToGrid ? 'Snap ON' : 'Snap OFF'),
               style: _compactFilledStyle(highlighted: _snapToGrid),
@@ -5680,7 +5872,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
       child: Column(
         children: [
           InkWell(
-            onTap: () => setState(() => _showSideLibrary = !_showSideLibrary),
+            onTap: _toggleSideLibrary,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -5699,11 +5891,17 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                   ),
                   if (_showSideLibrary)
                     TextButton(
-                      onPressed: () => setState(() => _showSideLibrary = false),
+                      onPressed: () {
+                        _resetTransientInteractionState();
+                        setState(() => _showSideLibrary = false);
+                      },
                       child: const Text('Done'),
                     ),
                   IconButton(
-                    onPressed: () => setState(() => _showSideLibrary = false),
+                    onPressed: () {
+                      _resetTransientInteractionState();
+                      setState(() => _showSideLibrary = false);
+                    },
                     icon: Icon(
                       _showSideLibrary ? Icons.close : Icons.keyboard_arrow_up,
                       color: Colors.white70,
@@ -5843,38 +6041,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          _selectionNudgeButton(
-            icon: Icons.keyboard_arrow_up,
-            tooltip: 'Move Up',
-            delta: const Offset(0, -24),
-          ),
-          _selectionNudgeButton(
-            icon: Icons.keyboard_arrow_left,
-            tooltip: 'Move Left',
-            delta: const Offset(-24, 0),
-          ),
-          _selectionNudgeButton(
-            icon: Icons.circle,
-            tooltip: 'Selected Item',
-            delta: Offset.zero,
-          ),
-          _selectionNudgeButton(
-            icon: Icons.keyboard_arrow_right,
-            tooltip: 'Move Right',
-            delta: const Offset(24, 0),
-          ),
-          _selectionNudgeButton(
-            icon: Icons.keyboard_arrow_down,
-            tooltip: 'Move Down',
-            delta: const Offset(0, 24),
-          ),
+          _selectionDPad(disabled: locked),
           const SizedBox(width: 6),
-          OutlinedButton.icon(
-            onPressed: _clearSelection,
-            icon: const Icon(Icons.deselect),
-            label: const Text('Clear'),
-            style: _compactOutlineStyle(highlighted: true),
-          ),
           OutlinedButton.icon(
             onPressed: _duplicateSelected,
             icon: const Icon(Icons.copy),
@@ -6347,21 +6515,20 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                       GestureDetector(
                         key: _canvasViewportKey,
                         behavior: HitTestBehavior.opaque,
-                        onTapDown: (details) {
+                        onTapUp: (details) {
                           final scenePoint =
                               _scenePointFromViewport(details.localPosition);
                           _handleCanvasTap(scenePoint);
                         },
                         child: InteractiveViewer(
                           transformationController: _canvasTransform,
-                          onInteractionStart: (details) {
-                            if (_drawIronMode || _measureMode) return;
-                            final scenePoint = _scenePointFromViewport(
-                                details.localFocalPoint);
-                            if (_itemAtScenePoint(scenePoint) == null &&
-                                _selectedIds.isNotEmpty) {
-                              _clearSelection();
-                            }
+                          onInteractionEnd: (_) {
+                            if (!mounted) return;
+                            setState(() {
+                              _interactionMode = _drawIronMode
+                                  ? _InteractionMode.placeIron
+                                  : _InteractionMode.idle;
+                            });
                           },
                           minScale: 0.45,
                           maxScale: 3.5,
@@ -6459,6 +6626,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                                         onPanUpdate: (details) =>
                                             _updateItemDrag(item, details),
                                         onPanEnd: (_) => _endItemDrag(item),
+                                        onPanCancel:
+                                            _resetTransientInteractionState,
                                         child: Stack(
                                           clipBehavior: Clip.none,
                                           children: [
@@ -6521,6 +6690,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                                                     }
                                                   });
                                                 },
+                                                onPanCancel:
+                                                    _resetTransientInteractionState,
                                               ),
                                               _IronStretchHandle(
                                                 item: item,
@@ -6556,6 +6727,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                                                     }
                                                   });
                                                 },
+                                                onPanCancel:
+                                                    _resetTransientInteractionState,
                                               ),
                                             ],
                                             if (_selectedIds
@@ -6592,6 +6765,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                                                   _commitBypassHandleAttachment(
                                                       item, 'Primary');
                                                 }),
+                                                onPanCancel:
+                                                    _resetTransientInteractionState,
                                               ),
                                               _BypassAttachmentHandle(
                                                 item: item,
@@ -6624,6 +6799,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen> {
                                                   _commitBypassHandleAttachment(
                                                       item, 'Secondary');
                                                 }),
+                                                onPanCancel:
+                                                    _resetTransientInteractionState,
                                               ),
                                             ],
                                           ],
@@ -7384,6 +7561,7 @@ class _IronStretchHandle extends StatelessWidget {
   final VoidCallback onPanStart;
   final ValueChanged<DragUpdateDetails> onPanUpdate;
   final VoidCallback onPanEnd;
+  final VoidCallback? onPanCancel;
 
   const _IronStretchHandle({
     required this.item,
@@ -7394,6 +7572,7 @@ class _IronStretchHandle extends StatelessWidget {
     required this.onPanStart,
     required this.onPanUpdate,
     required this.onPanEnd,
+    this.onPanCancel,
   });
 
   @override
@@ -7419,6 +7598,7 @@ class _IronStretchHandle extends StatelessWidget {
         onPanStart: (_) => onPanStart(),
         onPanUpdate: onPanUpdate,
         onPanEnd: (_) => onPanEnd(),
+        onPanCancel: onPanCancel,
         child: Container(
           width: handleSize,
           height: handleSize,
@@ -7456,6 +7636,7 @@ class _BypassAttachmentHandle extends StatelessWidget {
   final VoidCallback onPanStart;
   final ValueChanged<DragUpdateDetails> onPanUpdate;
   final VoidCallback onPanEnd;
+  final VoidCallback? onPanCancel;
 
   const _BypassAttachmentHandle({
     required this.item,
@@ -7467,6 +7648,7 @@ class _BypassAttachmentHandle extends StatelessWidget {
     required this.onPanStart,
     required this.onPanUpdate,
     required this.onPanEnd,
+    this.onPanCancel,
   });
 
   @override
@@ -7485,6 +7667,7 @@ class _BypassAttachmentHandle extends StatelessWidget {
         onPanStart: (_) => onPanStart(),
         onPanUpdate: onPanUpdate,
         onPanEnd: (_) => onPanEnd(),
+        onPanCancel: onPanCancel,
         child: Container(
           width: handleSize,
           height: handleSize,
