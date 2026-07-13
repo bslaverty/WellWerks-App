@@ -10,6 +10,7 @@ import '../services/production_shift_service.dart';
 import '../services/rate_timer_notification_service.dart';
 import '../services/recovery_state_service.dart';
 import '../services/round_storage_service.dart';
+import '../utils/choke_parsing.dart';
 import '../utils/quick_round_reminder_utils.dart';
 import 'shift_report_screen.dart';
 import '../widgets/app_header.dart';
@@ -2140,10 +2141,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   ChokeSelection _selectionForController(_HourlyCheckControllers controller) {
-    final raw = controller.choke.text.trim();
-    final match = RegExp(r'(\d{1,2})').firstMatch(raw);
-    final size = int.tryParse(match?.group(1) ?? '');
-    if (size == null || size < 2 || size > 64 || raw.isEmpty) {
+    final size = parseChokeSize64(controller.choke.text);
+    if (size == null) {
       return const ChokeSelection(type: ChokeTypes.none);
     }
     final type =

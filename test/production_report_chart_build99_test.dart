@@ -54,6 +54,8 @@ Future<void> _seedShiftRows({
   required JobSetup activeJob,
   required List<ProductionReportRow> rows,
   String? shiftJobId,
+  Map<String, String>? wellSelectedChokes,
+  Map<String, String>? wellSelectedChokeTypes,
 }) async {
   final service = ProductionShiftService();
   final current = await service.loadActiveShift();
@@ -67,6 +69,9 @@ Future<void> _seedShiftRows({
       ),
       savedRows: rows,
       inventory: current.inventory.copyWith(productionRows: rows),
+      wellSelectedChokes: wellSelectedChokes ?? current.wellSelectedChokes,
+      wellSelectedChokeTypes:
+          wellSelectedChokeTypes ?? current.wellSelectedChokeTypes,
     ),
   );
 }
@@ -205,6 +210,12 @@ ProductionReportRow _row({
 
 LineChart _chartWidget(WidgetTester tester) {
   return tester.widget<LineChart>(find.byType(LineChart));
+}
+
+LineChartBarData _onlyVisibleSeries(WidgetTester tester) {
+  final bars = _chartWidget(tester).data.lineBarsData;
+  expect(bars.length, 1);
+  return bars.first;
 }
 
 Color _legendSeriesColor(WidgetTester tester, String id) {
@@ -433,6 +444,232 @@ void main() {
     expect((await _visibleSeriesChip(tester, 'choke')).selected, isFalse);
     await _tapVisible(tester, find.byKey(const Key('chart-series-choke')));
     expect((await _visibleSeriesChip(tester, 'choke')).selected, isTrue);
+  });
+
+  testWidgets('Build 103 choke converts 32/64, 36/64, and 64/64 correctly',
+      (WidgetTester tester) async {
+    final job = await _seedActiveJob();
+    await _seedShiftRows(
+      activeJob: job,
+      rows: [
+        _row(hourIndex: 0, time: '5 PM', choke: '32/64"'),
+        _row(hourIndex: 1, time: '6 PM', choke: '36/64"'),
+        _row(hourIndex: 2, time: '7 PM', choke: '64/64"'),
+      ],
+    );
+
+    await _pump(tester);
+    await _openChartTab(tester);
+    await _scrollToChartControls(tester);
+    await _tapVisible(tester, find.byKey(const Key('chart-clear-all')));
+    await _tapVisible(tester, find.byKey(const Key('chart-series-choke')));
+    await _scrollToChart(tester);
+
+    expect(find.textContaining('Choke (3)'), findsOneWidget);
+
+    final chokeSeries = _onlyVisibleSeries(tester);
+    expect(chokeSeries.spots.length, 3);
+    expect(chokeSeries.spots[0].y < chokeSeries.spots[1].y, isTrue);
+    expect(chokeSeries.spots[1].y < chokeSeries.spots[2].y, isTrue);
+  });
+
+  testWidgets('Build 103 choke converts simplified fractions and whole 1',
+      (WidgetTester tester) async {
+    final job = await _seedActiveJob();
+    await _seedShiftRows(
+      activeJob: job,
+      rows: [
+        _row(hourIndex: 0, time: '5 PM', choke: '1/2'),
+        _row(hourIndex: 1, time: '6 PM', choke: '3/4'),
+        _row(hourIndex: 2, time: '7 PM', choke: '1'),
+      ],
+    );
+
+    await _pump(tester);
+    await _openChartTab(tester);
+    await _scrollToChartControls(tester);
+    await _tapVisible(tester, find.byKey(const Key('chart-clear-all')));
+    await _tapVisible(tester, find.byKey(const Key('chart-series-choke')));
+    await _scrollToChart(tester);
+
+    expect(find.textContaining('Choke (3)'), findsOneWidget);
+    final chokeSeries = _onlyVisibleSeries(tester);
+    expect(chokeSeries.spots.length, 3);
+    expect(chokeSeries.spots[0].y < chokeSeries.spots[1].y, isTrue);
+    expect(chokeSeries.spots[1].y < chokeSeries.spots[2].y, isTrue);
+  });
+
+  testWidgets('Build 103 choke skips blank, None/Clear, and invalid values',
+      (WidgetTester tester) async {
+    final job = await _seedActiveJob();
+    await _seedShiftRows(
+      activeJob: job,
+      rows: [
+        _row(hourIndex: 0, time: '5 PM', choke: ''),
+        _row(hourIndex: 1, time: '6 PM', choke: 'None / Clear'),
+        _row(hourIndex: 2, time: '7 PM', choke: 'abc'),
+        _row(hourIndex: 3, time: '8 PM', choke: '32/64"'),
+      ],
+    );
+
+    await _pump(tester);
+    await _openChartTab(tester);
+    await _scrollToChartControls(tester);
+    await _tapVisible(tester, find.byKey(const Key('chart-clear-all')));
+    await _tapVisible(tester, find.byKey(const Key('chart-series-choke')));
+    await _scrollToChart(tester);
+
+    expect(find.textContaining('Choke (1)'), findsOneWidget);
+    expect(find.textContaining('Choke (4)'), findsNothing);
+
+    final chokeSeries = _onlyVisibleSeries(tester);
+    expect(chokeSeries.spots.length, 4);
+    final validSpots = chokeSeries.spots
+        .where((spot) => !spot.isNull() && spot.x.isFinite && spot.y.isFinite)
+        .toList(growable: false);
+    expect(validSpots.length, 1);
+  });
+
+  testWidgets('Build 103 choke tooltip preserves original stored text',
+      (WidgetTester tester) async {
+    final job = await _seedActiveJob();
+    await _seedShiftRows(
+      activeJob: job,
+      rows: [_row(hourIndex: 0, time: '8 AM', choke: '32/64"')],
+    );
+
+    await _pump(tester);
+    await _openChartTab(tester);
+    await _scrollToChartControls(tester);
+    await _tapVisible(tester, find.byKey(const Key('chart-clear-all')));
+    await _tapVisible(tester, find.byKey(const Key('chart-series-choke')));
+    await _scrollToChart(tester);
+
+    final chart = _chartWidget(tester);
+    final tooltipData = chart.data.lineTouchData.touchTooltipData;
+    expect(tooltipData, isNotNull);
+    final bar = chart.data.lineBarsData.single;
+    final items = tooltipData.getTooltipItems([
+      LineBarSpot(bar, 0, bar.spots.first),
+    ]);
+    final item = items.single;
+    expect(item, isNotNull);
+    expect(item!.text, contains('8 AM'));
+    expect(item.text, contains('Choke: 32/64"'));
+  });
+
+  testWidgets(
+      'Build 103 historical row choke is used over current selected choke',
+      (WidgetTester tester) async {
+    final job = await _seedActiveJob();
+    await _seedShiftRows(
+      activeJob: job,
+      rows: [_row(hourIndex: 0, time: '5 PM', choke: '32/64"')],
+      wellSelectedChokes: {'Horse 16-2H': '58/64"'},
+      wellSelectedChokeTypes: {'Horse 16-2H': 'ADJ'},
+    );
+
+    await _pump(tester);
+    await _openChartTab(tester);
+    await _scrollToChartControls(tester);
+    await _tapVisible(tester, find.byKey(const Key('chart-clear-all')));
+    await _tapVisible(tester, find.byKey(const Key('chart-series-choke')));
+    await _scrollToChart(tester);
+
+    final chart = _chartWidget(tester);
+    final tooltipData = chart.data.lineTouchData.touchTooltipData;
+    final bar = chart.data.lineBarsData.single;
+    final items = tooltipData.getTooltipItems([
+      LineBarSpot(bar, 0, bar.spots.first),
+    ]);
+    final item = items.single;
+    expect(item, isNotNull);
+    expect(item!.text, contains('Choke: 32/64"'));
+    expect(item.text.contains('58/64"'), isFalse);
+  });
+
+  testWidgets(
+      'Build 103 choke draws single point when one valid reading exists',
+      (WidgetTester tester) async {
+    final job = await _seedActiveJob();
+    await _seedShiftRows(
+      activeJob: job,
+      rows: [_row(hourIndex: 0, time: '5 PM', choke: '32/64"')],
+    );
+
+    await _pump(tester);
+    await _openChartTab(tester);
+    await _scrollToChartControls(tester);
+    await _tapVisible(tester, find.byKey(const Key('chart-clear-all')));
+    await _tapVisible(tester, find.byKey(const Key('chart-series-choke')));
+    await _scrollToChart(tester);
+    expect(
+        _onlyVisibleSeries(tester).spots.where((spot) => !spot.isNull()).length,
+        1);
+  });
+
+  testWidgets('Build 103 choke draws connected line for multiple readings',
+      (WidgetTester tester) async {
+    final job = await _seedActiveJob();
+    await _seedShiftRows(
+      activeJob: job,
+      rows: [
+        _row(hourIndex: 0, time: '5 PM', choke: '32/64"'),
+        _row(hourIndex: 1, time: '6 PM', choke: '36/64"'),
+      ],
+    );
+
+    await _pump(tester);
+    await _openChartTab(tester);
+    await _scrollToChartControls(tester);
+    await _tapVisible(tester, find.byKey(const Key('chart-clear-all')));
+    await _tapVisible(tester, find.byKey(const Key('chart-series-choke')));
+    await _scrollToChart(tester);
+    expect(find.textContaining('Choke (2)'), findsOneWidget);
+    expect(
+        _onlyVisibleSeries(tester).spots.where((spot) => !spot.isNull()).length,
+        2);
+  });
+
+  testWidgets('Build 103 right axis supports high choke values',
+      (WidgetTester tester) async {
+    final job = await _seedActiveJob();
+    await _seedShiftRows(
+      activeJob: job,
+      rows: [
+        _row(
+            hourIndex: 0,
+            time: '5 PM',
+            water: 8,
+            oil: 9,
+            sand: '2',
+            choke: '64/64"'),
+        _row(
+            hourIndex: 1,
+            time: '6 PM',
+            water: 10,
+            oil: 11,
+            sand: '3',
+            choke: '32/64"'),
+      ],
+    );
+
+    await _pump(tester);
+    await _openChartTab(tester);
+    await _scrollToChartControls(tester);
+    await _tapVisible(tester, find.byKey(const Key('chart-clear-all')));
+    await _tapVisible(tester, find.byKey(const Key('chart-series-waterRate')));
+    await _tapVisible(tester, find.byKey(const Key('chart-series-oilRate')));
+    await _tapVisible(tester, find.byKey(const Key('chart-series-sandRate')));
+    await _tapVisible(tester, find.byKey(const Key('chart-series-choke')));
+    await _scrollToChart(tester);
+
+    final chart = _chartWidget(tester);
+    expect(chart.data.maxY > chart.data.minY, isTrue);
+    expect(find.textContaining('Choke (2)'), findsOneWidget);
+    expect(find.textContaining('Water Rate (2)'), findsOneWidget);
+    expect(find.textContaining('Oil Rate (2)'), findsOneWidget);
+    expect(find.textContaining('Sand Rate (2)'), findsOneWidget);
   });
 
   testWidgets('Series visibility persists', (WidgetTester tester) async {

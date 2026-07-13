@@ -14,6 +14,7 @@ import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/recovery_state_service.dart';
 import '../services/report_profile_service.dart';
+import '../utils/choke_parsing.dart';
 import '../widgets/app_header.dart';
 
 class ShiftReportScreen extends StatefulWidget {
@@ -691,7 +692,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       case _ChartSeries.sandRate:
         return _tryParsePositiveOrZero(row.sandRate);
       case _ChartSeries.choke:
-        return _tryParsePositiveOrZero(row.choke);
+        return parseChokePlotValue(row.choke);
     }
   }
 
@@ -958,7 +959,12 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       for (var i = 0; i < points.length; i++) {
         final point = points[i];
         final value = _seriesNumericValue(series, point.row);
-        if (value == null) continue;
+        if (value == null) {
+          if (series == _ChartSeries.choke) {
+            spots.add(FlSpot.nullSpot);
+          }
+          continue;
+        }
         actualByX[i] = value;
         exactByX[i] = _seriesExactValue(series, point.row);
         final y = _axisGroup(series) == _AxisGroup.left
@@ -967,6 +973,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         spots.add(FlSpot(point.x, y));
       }
       seriesCounts[series] = spots.length;
+      seriesCounts[series] = actualByX.length;
 
       final color = _seriesColor(series);
       builtSeries.add(_BuiltChartSeries(
@@ -1585,36 +1592,65 @@ class _AxisTransform {
 
   static _AxisTransform build(
       List<double> leftValues, List<double> rightValues) {
-    final leftMin = leftValues.isEmpty
+    final rawLeftMin = leftValues.isEmpty
         ? (rightValues.isEmpty
             ? 0.0
             : rightValues.reduce((a, b) => a < b ? a : b))
         : leftValues.reduce((a, b) => a < b ? a : b);
-    final leftMax = leftValues.isEmpty
+    final rawLeftMax = leftValues.isEmpty
         ? (rightValues.isEmpty
             ? 1.0
             : rightValues.reduce((a, b) => a > b ? a : b))
         : leftValues.reduce((a, b) => a > b ? a : b);
-    final rightMin = rightValues.isEmpty
-        ? leftMin
+    final rawRightMin = rightValues.isEmpty
+        ? rawLeftMin
         : rightValues.reduce((a, b) => a < b ? a : b);
-    final rightMax = rightValues.isEmpty
-        ? leftMax
+    final rawRightMax = rightValues.isEmpty
+        ? rawLeftMax
         : rightValues.reduce((a, b) => a > b ? a : b);
 
-    final leftRange =
-        (leftMax - leftMin).abs() < 0.000001 ? 1.0 : leftMax - leftMin;
-    final plotMin = leftMin - (leftRange * 0.1);
-    final plotMax = leftMax + (leftRange * 0.1);
+    final paddedLeft = _paddedRange(
+      rawLeftMin,
+      rawLeftMax,
+      clampNonNegative: rawLeftMin >= 0,
+    );
+    final paddedRight = _paddedRange(
+      rawRightMin,
+      rawRightMax,
+      clampNonNegative: rawRightMin >= 0,
+    );
 
     return _AxisTransform(
-      leftMin: leftMin,
-      leftMax: leftMax,
-      rightMin: rightMin,
-      rightMax: rightMax,
-      plotMin: plotMin,
-      plotMax: plotMax,
+      leftMin: paddedLeft.$1,
+      leftMax: paddedLeft.$2,
+      rightMin: paddedRight.$1,
+      rightMax: paddedRight.$2,
+      plotMin: paddedLeft.$1,
+      plotMax: paddedLeft.$2,
     );
+  }
+
+  static (double, double) _paddedRange(
+    double rawMin,
+    double rawMax, {
+    required bool clampNonNegative,
+  }) {
+    final span = rawMax - rawMin;
+    final safeSpan = span.abs() < 0.000001
+        ? (rawMax.abs() < 1 ? 1.0 : rawMax.abs() * 0.2)
+        : span.abs();
+    final pad = safeSpan * 0.1;
+
+    var min = rawMin - pad;
+    var max = rawMax + pad;
+
+    if (clampNonNegative && min < 0) {
+      min = 0;
+    }
+    if (max <= min) {
+      max = min + 1;
+    }
+    return (min, max);
   }
 
   double rightToLeft(double rightValue) {
