@@ -160,9 +160,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 135', () async {
+  test('Build number is 136', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+135'));
+    expect(pubspec, contains('version: 1.0.1+136'));
   });
 
   testWidgets('Build 134 selected bypass keeps full artwork and no handle dots',
@@ -1064,7 +1064,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Build 135 canonical bypass port IDs persist across save',
+  testWidgets('Build 136 canonical bypass port IDs persist across save',
       (tester) async {
     await _pumpLayout(
       tester,

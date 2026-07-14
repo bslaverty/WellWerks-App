@@ -115,16 +115,16 @@ Future<Uint8List> _resizePngBytes(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('Build number is 135 in pubspec', () async {
+  test('Build number is 136 in pubspec', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+135'));
+    expect(pubspec, contains('version: 1.0.1+136'));
     expect(
-        pubspec, contains('image_path: "assets/icons/app_icon_build133.png"'));
+        pubspec, contains('image_path: "assets/icons/app_icon_build136.png"'));
   });
 
-  test('Configured Build 133 master icon exists and is exactly 1024x1024',
+  test('Configured Build 136 master icon exists and is exactly 1024x1024',
       () async {
-    final iconFile = File('assets/icons/app_icon_build133.png');
+    final iconFile = File('assets/icons/app_icon_build136.png');
     expect(iconFile.existsSync(), isTrue);
 
     final icon = await _decodePng(iconFile);
@@ -132,20 +132,20 @@ void main() {
     expect(icon.height, 1024);
   });
 
-  test('Build 133 master hash differs from Build 129 master hash', () async {
-    final build129 = File('assets/icons/app_icon_build129.png');
+  test('Build 136 master hash differs from Build 133 master hash', () async {
     final build133 = File('assets/icons/app_icon_build133.png');
-    expect(build129.existsSync(), isTrue);
+    final build136 = File('assets/icons/app_icon_build136.png');
     expect(build133.existsSync(), isTrue);
+    expect(build136.existsSync(), isTrue);
 
-    final hash129 = _fnv1a64Hex(await build129.readAsBytes());
     final hash133 = _fnv1a64Hex(await build133.readAsBytes());
-    expect(hash133, isNot(equals(hash129)));
+    final hash136 = _fnv1a64Hex(await build136.readAsBytes());
+    expect(hash136, isNot(equals(hash133)));
   });
 
-  test('Build 133 master icon keeps opaque edge coverage and neutral black',
+  test('Build 136 master icon keeps opaque edge coverage and neutral black',
       () async {
-    final icon = await _decodePng(File('assets/icons/app_icon_build133.png'));
+    final icon = await _decodePng(File('assets/icons/app_icon_build136.png'));
 
     final blackProbePoints = <List<double>>[
       <double>[0.25, 0.25],
@@ -196,31 +196,15 @@ void main() {
     }
   });
 
-  test('Build 133 center matches Build 124 and border is ~12% thinner',
+  test('Build 136 center matches Build 133 and border is ~10% thinner',
       () async {
-    final build124Resized = await _resizePngBytes(
-      File('assets/icons/app_icon_build124.png'),
-      targetWidth: 1024,
-      targetHeight: 1024,
-    );
-    final build124 = await _decodePngBytes(
-      build124Resized,
-      sourcePath: 'assets/icons/app_icon_build124.png resized to 1024',
-    );
-    final build131Resized = await _resizePngBytes(
-      File('assets/icons/app_icon_build131.png'),
-      targetWidth: 1024,
-      targetHeight: 1024,
-    );
-    final build131 = await _decodePngBytes(
-      build131Resized,
-      sourcePath: 'assets/icons/app_icon_build131.png resized to 1024',
-    );
     final build133 =
         await _decodePng(File('assets/icons/app_icon_build133.png'));
+    final build136 =
+        await _decodePng(File('assets/icons/app_icon_build136.png'));
 
-    final width = build133.width;
-    final height = build133.height;
+    final width = build136.width;
+    final height = build136.height;
     final x0 = (width * 0.15).floor();
     final x1 = (width * 0.85).ceil();
     final y0 = (height * 0.15).floor();
@@ -230,36 +214,36 @@ void main() {
     for (var y = 0; y < height; y++) {
       for (var x = 0; x < width; x++) {
         final inCenter = x >= x0 && x < x1 && y >= y0 && y < y1;
-        final px133 = build133.pixel(x, y);
+        final px136 = build136.pixel(x, y);
         if (inCenter) {
-          if (!_pixelsEqual(px133, build124.pixel(x, y))) {
+          if (!_pixelsEqual(px136, build133.pixel(x, y))) {
             centerDiff++;
           }
         }
       }
     }
 
-    final dark131 = _darkBounds(build131);
     final dark133 = _darkBounds(build133);
+    final dark136 = _darkBounds(build136);
 
-    final t131 = (dark131[0] +
-            dark131[1] +
-            (build131.width - 1 - dark131[2]) +
-            (build131.height - 1 - dark131[3])) /
-        4.0;
     final t133 = (dark133[0] +
             dark133[1] +
             (build133.width - 1 - dark133[2]) +
             (build133.height - 1 - dark133[3])) /
         4.0;
-    final reductionPct = ((t131 - t133) / t131) * 100.0;
+    final t136 = (dark136[0] +
+            dark136[1] +
+            (build136.width - 1 - dark136[2]) +
+            (build136.height - 1 - dark136[3])) /
+        4.0;
+    final reductionPct = ((t133 - t136) / t133) * 100.0;
     final centerDiffPct = (centerDiff * 100.0) / ((x1 - x0) * (y1 - y0));
 
-    expect(centerDiffPct, lessThan(9.0),
+    expect(centerDiffPct, equals(0.0),
         reason:
-            'Build 133 center region should remain visually aligned to Build 124 after 1024 normalization.');
-    expect(reductionPct, inInclusiveRange(10.0, 15.0),
-        reason: 'Build 133 border must be reduced by ~10-15% from Build 131.');
+            'Build 136 center region must remain pixel-identical to Build 133 in the central crop.');
+    expect(reductionPct, inInclusiveRange(8.0, 12.0),
+        reason: 'Build 136 border must be reduced by ~8-12% from Build 133.');
   });
 
   test(
