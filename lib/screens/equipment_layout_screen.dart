@@ -108,6 +108,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   static const double _dragLiftScreenOffsetY = 64.0;
   static const double _connectionSnapRadius = 24.0;
   static const String _labelsPrefKey = 'wellwerks_layout_show_labels_v1';
+  static const String _bypassPortLeftEnd = 'leftEnd';
+  static const String _bypassPortRightEnd = 'rightEnd';
+  static const String _bypassPortUpperValve = 'upperValve';
+  static const String _bypassPortLowerValve = 'lowerValve';
 
   @override
   void initState() {
@@ -362,7 +366,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   double _interactionPaddingForItem(_LayoutItem item) {
     if (_isStraightIronType(item.type)) return 24.0;
-    if (item.type == _EquipmentType.bypass) return 16.0;
+    if (item.type == _EquipmentType.bypass) return 24.0;
     return 12.0;
   }
 
@@ -380,10 +384,15 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   bool _shouldShowAnchorCandidate(_EquipmentAnchorCandidate anchor) {
     if (_showConnectionPoints) return true;
+    if (_drawIronMode) return true;
     final active = _activeEndpointDrag;
     if (active == null) return false;
-    final radius = _sceneRadiusFromScreen(_connectionSnapRadius * 1.4);
-    return (anchor.point - active.worldPosition).distance <= radius;
+    final target = active.target;
+    final equipment = target?.equipment;
+    if (equipment == null) {
+      return false;
+    }
+    return equipment.itemId == anchor.itemId && equipment.side == anchor.side;
   }
 
   void _toggleMoveControls() {
@@ -808,12 +817,39 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       'snapAxis',
       'bypassPrimaryIronId',
       'bypassPrimaryT',
+      'bypassPrimaryOrientation',
       'bypassSecondaryIronId',
       'bypassSecondaryT',
+      'bypassSecondaryOrientation',
     ]) {
       copy.remove(key);
     }
     return copy;
+  }
+
+  bool _isBypassPortId(String side) {
+    return side == _bypassPortLeftEnd ||
+        side == _bypassPortRightEnd ||
+        side == _bypassPortUpperValve ||
+        side == _bypassPortLowerValve;
+  }
+
+  String _canonicalBypassPort(String side) {
+    switch (side) {
+      case 'bypassPrimary':
+        return _bypassPortLeftEnd;
+      case 'bypassSecondary':
+        return _bypassPortRightEnd;
+      default:
+        return side;
+    }
+  }
+
+  String _normalizedAnchorSide(_LayoutItem item, String side) {
+    if (item.type != _EquipmentType.bypass) return side;
+    final canonical = _canonicalBypassPort(side);
+    if (_isBypassPortId(canonical)) return canonical;
+    return _bypassPortLeftEnd;
   }
 
   String _endpointJointKey(bool leading) => leading ? 'jointStart' : 'jointEnd';
@@ -827,6 +863,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   String _bypassIronKey(String slot) => 'bypass${slot}IronId';
 
   String _bypassTKey(String slot) => 'bypass${slot}T';
+
+  String _bypassOrientationKey(String slot) => 'bypass${slot}Orientation';
 
   Offset _storedIronEndpoint(_LayoutItem item, bool leading) {
     final horizontal = item.type == _EquipmentType.ironHorizontal;
@@ -853,7 +891,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     if (anchorItemId != null && anchorSide != null && anchorSide.isNotEmpty) {
       final anchorItem = _findItemById(anchorItemId);
       if (anchorItem != null) {
-        return _equipmentAnchorPoint(anchorItem, anchorSide);
+        return _equipmentAnchorPoint(
+          anchorItem,
+          _normalizedAnchorSide(anchorItem, anchorSide),
+        );
       }
     }
 
@@ -874,8 +915,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Offset _equipmentAnchorPoint(_LayoutItem item, String side) {
+    final normalizedSide = _normalizedAnchorSide(item, side);
     for (final anchor in _equipmentAnchorCandidates(item)) {
-      if (anchor.side == side) {
+      if (anchor.side == normalizedSide) {
         return anchor.point;
       }
     }
@@ -886,8 +928,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     switch (type) {
       case _EquipmentType.bypass:
         return const <_AnchorDefinition>[
-          _AnchorDefinition('bypassPrimary', 0.0, 0.5),
-          _AnchorDefinition('bypassSecondary', 1.0, 0.5),
+          _AnchorDefinition('leftEnd', 0.0, 0.5),
+          _AnchorDefinition('rightEnd', 1.0, 0.5),
+          _AnchorDefinition('upperValve', 0.5, 0.18),
+          _AnchorDefinition('lowerValve', 0.5, 0.82),
         ];
       case _EquipmentType.wellhead:
         return const <_AnchorDefinition>[
@@ -982,8 +1026,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       item.properties.remove(sideKey);
       return;
     }
+    final anchorItem = _findItemById(anchorItemId);
+    final normalizedSide =
+        anchorItem == null ? side : _normalizedAnchorSide(anchorItem, side);
     item.properties[itemKey] = anchorItemId.toString();
-    item.properties[sideKey] = side;
+    item.properties[sideKey] = normalizedSide;
   }
 
   void _clearEndpointAttachment(_LayoutItem item, bool leading) {
@@ -1223,13 +1270,22 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         ),
       );
     }
-    if (target.anchorId == 'bypassPrimary' ||
-        target.anchorId == 'bypassSecondary') {
+    final anchorId = target.anchorId;
+    final anchorItem = target.equipmentItemId == null
+        ? null
+        : _findItemById(target.equipmentItemId!);
+    final normalizedAnchorId = anchorId == null || anchorItem == null
+        ? anchorId
+        : _normalizedAnchorSide(anchorItem, anchorId);
+    if (anchorItem != null &&
+        anchorItem.type == _EquipmentType.bypass &&
+        normalizedAnchorId != null &&
+        _isBypassPortId(normalizedAnchorId)) {
       return _EndpointSnapTarget(
         point: target.point,
         bypass: _BypassHandleCandidate(
           itemId: target.equipmentItemId!,
-          side: target.anchorId!,
+          side: normalizedAnchorId,
           point: target.point,
           score: target.distance,
         ),
@@ -1239,7 +1295,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       point: target.point,
       equipment: _EquipmentAnchorCandidate(
         itemId: target.equipmentItemId!,
-        side: target.anchorId!,
+        side: normalizedAnchorId ?? target.anchorId!,
         point: target.point,
         score: target.distance,
       ),
@@ -1268,7 +1324,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     _BypassHandleCandidate? best;
     for (final item in _items) {
       if (item.type != _EquipmentType.bypass) continue;
-      for (final side in const <String>['bypassPrimary', 'bypassSecondary']) {
+      for (final side in const <String>[
+        _bypassPortLeftEnd,
+        _bypassPortRightEnd,
+        _bypassPortUpperValve,
+        _bypassPortLowerValve,
+      ]) {
         final point = _equipmentAnchorPoint(item, side);
         final distance = (point - target).distance;
         if (distance > handleRadius) continue;
@@ -1388,10 +1449,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     if (iron == null || t == null) {
       item.properties.remove(_bypassIronKey(slot));
       item.properties.remove(_bypassTKey(slot));
+      item.properties.remove(_bypassOrientationKey(slot));
       return;
     }
     item.properties[_bypassIronKey(slot)] = iron.id.toString();
     item.properties[_bypassTKey(slot)] = t.clamp(0.0, 1.0).toStringAsFixed(4);
+    item.properties[_bypassOrientationKey(slot)] =
+        iron.type == _EquipmentType.ironHorizontal ? 'horizontal' : 'vertical';
   }
 
   _SnapCandidate? _nearestBypassRail(
@@ -1688,28 +1752,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     _activeEndpointDrag = null;
     _snapIndicatorScene = null;
     _dragSceneStart = _scenePointFromGlobal(details.globalPosition);
-    if (anchor.id == _selectedId && anchor.type == _EquipmentType.bypass) {
-      final startPoint = _dragSceneStart!;
-      final handleHitRadius = _sceneRadiusFromScreen(20.0);
-      final primaryPoint = Offset(anchor.x, anchor.y + anchor.height / 2);
-      final secondaryPoint =
-          Offset(anchor.x + anchor.width, anchor.y + anchor.height / 2);
-      final primaryDistance = (startPoint - primaryPoint).distance;
-      final secondaryDistance = (startPoint - secondaryPoint).distance;
-      if (primaryDistance <= handleHitRadius) {
-        _selectedBypassHandle = 'Primary';
-        _selectedEndpointLeading = null;
-        _interactionMode = _InteractionMode.attachBypass;
-      } else if (secondaryDistance <= handleHitRadius) {
-        _selectedBypassHandle = 'Secondary';
-        _selectedEndpointLeading = null;
-        _interactionMode = _InteractionMode.attachBypass;
-      } else {
-        _selectedBypassHandle = null;
-      }
-    } else {
-      _selectedEndpointLeading = null;
-    }
+    _selectedEndpointLeading = null;
     _dragActive = false;
     _clearDragPreview();
     _dragItemStart
@@ -7408,11 +7451,15 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                               top: anchor.point.dy - 3,
                                               child: IgnorePointer(
                                                 child: Container(
-                                                  width: 6,
-                                                  height: 6,
+                                                  width: 10,
+                                                  height: 10,
                                                   decoration: BoxDecoration(
-                                                    color: _gold,
                                                     shape: BoxShape.circle,
+                                                    border: Border.all(
+                                                      color: _gold,
+                                                      width: 1.8,
+                                                    ),
+                                                    color: Colors.transparent,
                                                   ),
                                                 ),
                                               ),
@@ -7462,11 +7509,15 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                               top: anchor.point.dy - 3,
                                               child: IgnorePointer(
                                                 child: Container(
-                                                  width: 6,
-                                                  height: 6,
+                                                  width: 10,
+                                                  height: 10,
                                                   decoration: BoxDecoration(
-                                                    color: _gold,
                                                     shape: BoxShape.circle,
+                                                    border: Border.all(
+                                                      color: _gold,
+                                                      width: 1.8,
+                                                    ),
+                                                    color: Colors.transparent,
                                                   ),
                                                 ),
                                               ),
@@ -8103,7 +8154,7 @@ extension _EquipmentTypeInfo on _EquipmentType {
     if (this == _EquipmentType.compressor) return 36;
     if (this == _EquipmentType.ironHorizontal) return 150;
     if (this == _EquipmentType.ironVertical) return 28;
-    if (this == _EquipmentType.bypass) return 30;
+    if (this == _EquipmentType.bypass) return 27;
     if (name.startsWith('tee')) return 42;
     if (name.startsWith('elbow')) return 42;
     if (isIron) return 76;
@@ -8232,6 +8283,19 @@ class _LayoutItem {
         rawHeight != null &&
         type.usesCompactEquipmentFootprint &&
         type.matchesLegacyDimensions(width, height)) {
+      final centerX = x + width / 2;
+      final centerY = y + height / 2;
+      width = type.defaultWidth;
+      height = type.defaultHeight;
+      x = centerX - width / 2;
+      y = centerY - height / 2;
+    }
+
+    if (rawWidth != null &&
+        rawHeight != null &&
+        type == _EquipmentType.bypass &&
+        (rawWidth - 30.0).abs() < 0.2 &&
+        (rawHeight - 32.0).abs() < 0.2) {
       final centerX = x + width / 2;
       final centerY = y + height / 2;
       width = type.defaultWidth;
@@ -8796,13 +8860,13 @@ class _ShapePainter extends CustomPainter {
       return;
     }
     if (type == _EquipmentType.bypass) {
-      final leftX = size.width * .3;
-      final rightX = size.width * .7;
+      const leftX = 0.0;
+      final rightX = size.width;
+      final centerX = size.width * .5;
       final centerY = size.height * .5;
-      final branchLength = size.height * .18;
-      final stemLength = size.width * .11;
+      final upperY = size.height * .18;
+      final lowerY = size.height * .82;
       final valveRadius = ironSize == '4' ? 3.0 : (ironSize == '2' ? 2.2 : 2.6);
-      final branchDirection = size.height * .12;
 
       void drawValveAt(double x, double y, {bool horizontal = true}) {
         final valveFill = Paint()
@@ -8824,28 +8888,23 @@ class _ShapePainter extends CustomPainter {
         }
       }
 
-      void drawTeeAt(double x) {
-        final body = Path()
-          ..moveTo(x - stemLength, centerY)
-          ..lineTo(x + stemLength, centerY)
-          ..moveTo(x, centerY)
-          ..lineTo(x, centerY - branchDirection);
-        drawIron(body);
-
-        final branch = Path()
-          ..moveTo(x, centerY - branchDirection)
-          ..lineTo(x, centerY - branchLength);
-        drawIron(branch);
-        drawValveAt(x, centerY - branchLength, horizontal: false);
-      }
-
       final mainLine = Path()
-        ..moveTo(leftX + stemLength, centerY)
-        ..lineTo(rightX - stemLength, centerY);
+        ..moveTo(leftX, centerY)
+        ..lineTo(rightX, centerY);
       drawIron(mainLine);
-      drawTeeAt(leftX);
-      drawTeeAt(rightX);
-      drawValveAt(size.width * .5, centerY, horizontal: true);
+
+      final branch = Path()
+        ..moveTo(centerX, centerY)
+        ..lineTo(centerX, upperY)
+        ..moveTo(centerX, centerY)
+        ..lineTo(centerX, lowerY);
+      drawIron(branch);
+
+      drawValveAt(centerX, upperY, horizontal: false);
+      drawValveAt(centerX, lowerY, horizontal: false);
+
+      drawValveAt(leftX + valveRadius * 0.9, centerY);
+      drawValveAt(rightX - valveRadius * 0.9, centerY);
       return;
     }
 

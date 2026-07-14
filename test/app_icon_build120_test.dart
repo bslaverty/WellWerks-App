@@ -45,18 +45,49 @@ Future<_DecodedImage> _decodePng(File file) async {
   );
 }
 
+String _fnv1a64Hex(Uint8List bytes) {
+  const int offset = 0xcbf29ce484222325;
+  const int prime = 0x100000001b3;
+  var hash = offset;
+  for (final byte in bytes) {
+    hash ^= byte;
+    hash = (hash * prime) & 0xFFFFFFFFFFFFFFFF;
+  }
+  return hash.toRadixString(16).padLeft(16, '0').toUpperCase();
+}
+
+Future<Uint8List> _resizePngBytes(
+  File file, {
+  required int targetWidth,
+  required int targetHeight,
+}) async {
+  final bytes = await file.readAsBytes();
+  final codec = await ui.instantiateImageCodec(
+    bytes,
+    targetWidth: targetWidth,
+    targetHeight: targetHeight,
+  );
+  final frame = await codec.getNextFrame();
+  final data = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+  if (data == null) {
+    throw StateError('Could not resize PNG bytes for ${file.path}');
+  }
+  return data.buffer.asUint8List();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('Build number is 128 in pubspec', () async {
+  test('Build number is 129 in pubspec', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+128'));
+    expect(pubspec, contains('version: 1.0.1+129'));
     expect(
-        pubspec, contains('image_path: "assets/icons/app_icon_build128.png"'));
+        pubspec, contains('image_path: "assets/icons/app_icon_build129.png"'));
   });
 
-  test('Master app icon exists and is at least 1024x1024', () async {
-    final iconFile = File('assets/icons/app_icon_build128.png');
+  test('Configured Build 129 master icon exists and is at least 1024x1024',
+      () async {
+    final iconFile = File('assets/icons/app_icon_build129.png');
     expect(iconFile.existsSync(), isTrue);
 
     final icon = await _decodePng(iconFile);
@@ -64,9 +95,20 @@ void main() {
     expect(icon.height, greaterThanOrEqualTo(1024));
   });
 
-  test('Master app icon keeps deep black and full opaque edge coverage',
+  test('Build 129 master hash differs from Build 128 master hash', () async {
+    final build128 = File('assets/icons/app_icon_build128.png');
+    final build129 = File('assets/icons/app_icon_build129.png');
+    expect(build128.existsSync(), isTrue);
+    expect(build129.existsSync(), isTrue);
+
+    final hash128 = _fnv1a64Hex(await build128.readAsBytes());
+    final hash129 = _fnv1a64Hex(await build129.readAsBytes());
+    expect(hash129, isNot(equals(hash128)));
+  });
+
+  test('Build 129 master icon keeps opaque edge coverage and neutral black',
       () async {
-    final icon = await _decodePng(File('assets/icons/app_icon_build128.png'));
+    final icon = await _decodePng(File('assets/icons/app_icon_build129.png'));
 
     final blackProbePoints = <List<double>>[
       <double>[0.25, 0.25],
@@ -80,9 +122,9 @@ void main() {
         (icon.width * pt[0]).round(),
         (icon.height * pt[1]).round(),
       );
-      expect(px[0], inInclusiveRange(0, 10));
-      expect(px[1], inInclusiveRange(0, 10));
-      expect(px[2], inInclusiveRange(0, 10));
+      expect(px[0], inInclusiveRange(0, 6));
+      expect(px[1], inInclusiveRange(0, 6));
+      expect(px[2], inInclusiveRange(0, 6));
       expect(px[3], 255);
     }
 
@@ -99,12 +141,12 @@ void main() {
         (icon.height * pt[1]).round(),
       );
       expect(px[3], 255);
-      expect(px[0], inInclusiveRange(216, 226));
-      expect(px[1], inInclusiveRange(180, 190));
-      expect(px[2], inInclusiveRange(126, 136));
+      expect(px[0], inInclusiveRange(206, 220));
+      expect(px[1], inInclusiveRange(162, 176));
+      expect(px[2], inInclusiveRange(90, 106));
 
-      expect(px[0], greaterThanOrEqualTo(216));
-      expect(px[1], greaterThanOrEqualTo(180));
+      expect(px[0], greaterThanOrEqualTo(206));
+      expect(px[1], greaterThanOrEqualTo(162));
     }
 
     for (var x = 0; x < icon.width; x += 32) {
@@ -118,37 +160,36 @@ void main() {
   });
 
   test(
-      'Build 128 master icon keeps the approved edge while improving neutral black over Build 126',
+      'Build 129 black is deeper and gold is richer than Build 128 at sampled points',
       () async {
-    final build126 =
-        await _decodePng(File('assets/icons/app_icon_build126.png'));
     final build128 =
         await _decodePng(File('assets/icons/app_icon_build128.png'));
+    final build129 =
+        await _decodePng(File('assets/icons/app_icon_build129.png'));
 
-    const blackProbeX = 1109;
-    const blackProbeY = 145;
+    const blackProbeX = 620;
+    const blackProbeY = 150;
     final black128 = build128.pixel(blackProbeX, blackProbeY);
-    expect(black128[0], inInclusiveRange(0, 6));
-    expect(black128[1], inInclusiveRange(0, 6));
-    expect(black128[2], inInclusiveRange(0, 6));
+    final black129 = build129.pixel(blackProbeX, blackProbeY);
+    final black128Sum = black128[0] + black128[1] + black128[2];
+    final black129Sum = black129[0] + black129[1] + black129[2];
+    expect(black129Sum, lessThan(black128Sum));
+    expect(black129[0], inInclusiveRange(0, 3));
+    expect(black129[1], inInclusiveRange(0, 3));
+    expect(black129[2], inInclusiveRange(0, 3));
 
     const goldProbeX = 747;
     const goldProbeY = 200;
     final gold128 = build128.pixel(goldProbeX, goldProbeY);
-    expect(gold128[0], inInclusiveRange(216, 226));
-    expect(gold128[1], inInclusiveRange(180, 190));
-    expect(gold128[2], inInclusiveRange(126, 136));
-
-    final edge126 = build126.pixel(0, 0);
-    final edge128 = build128.pixel(0, 0);
-    expect(edge126[3], 255);
-    expect(edge128[0], inInclusiveRange(216, 226));
-    expect(edge128[1], inInclusiveRange(180, 190));
-    expect(edge128[2], inInclusiveRange(126, 136));
+    final gold129 = build129.pixel(goldProbeX, goldProbeY);
+    expect(gold129[0], inInclusiveRange(206, 220));
+    expect(gold129[1], inInclusiveRange(162, 176));
+    expect(gold129[2], inInclusiveRange(90, 106));
+    expect(gold129[2], lessThan(gold128[2] - 16));
   });
 
   test(
-      'iOS AppIcon set exists and Contents.json is valid with 1024 marketing icon',
+      'iOS AppIcon set exists, references files, and regenerated 180 hash differs from Build 128 output',
       () async {
     final contentsFile =
         File('ios/Runner/Assets.xcassets/AppIcon.appiconset/Contents.json');
@@ -176,5 +217,37 @@ void main() {
       'ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-60x60@3x.png',
     );
     expect(icon60.existsSync(), isTrue);
+
+    for (final entry in images) {
+      final fileName = entry['filename'];
+      if (fileName is! String || fileName.isEmpty) continue;
+      final file =
+          File('ios/Runner/Assets.xcassets/AppIcon.appiconset/$fileName');
+      expect(file.existsSync(), isTrue);
+    }
+
+    final icon60Hash = _fnv1a64Hex(await icon60.readAsBytes());
+    final build128Derived180 = await _resizePngBytes(
+      File('assets/icons/app_icon_build128.png'),
+      targetWidth: 180,
+      targetHeight: 180,
+    );
+    final build128Derived180Hash = _fnv1a64Hex(build128Derived180);
+    expect(icon60Hash, isNot(equals(build128Derived180Hash)));
+
+    final icon60Decoded = await _decodePng(icon60);
+    for (var x = 0; x < icon60Decoded.width; x += 8) {
+      expect(icon60Decoded.pixel(x, 0)[3], 255);
+      expect(icon60Decoded.pixel(x, icon60Decoded.height - 1)[3], 255);
+    }
+    for (var y = 0; y < icon60Decoded.height; y += 8) {
+      expect(icon60Decoded.pixel(0, y)[3], 255);
+      expect(icon60Decoded.pixel(icon60Decoded.width - 1, y)[3], 255);
+    }
+
+    final topCenter = icon60Decoded.pixel((icon60Decoded.width / 2).round(), 0);
+    expect(topCenter[0], greaterThan(150));
+    expect(topCenter[1], greaterThan(120));
+    expect(topCenter[2], greaterThan(70));
   });
 }
