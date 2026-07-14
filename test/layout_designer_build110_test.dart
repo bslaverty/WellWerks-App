@@ -160,9 +160,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 132', () async {
+  test('Build number is 133', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+132'));
+    expect(pubspec, contains('version: 1.0.1+133'));
   });
 
   testWidgets('Build 132 default bypass keeps usable attachment handles',
