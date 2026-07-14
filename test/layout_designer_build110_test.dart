@@ -160,12 +160,12 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 131', () async {
+  test('Build number is 132', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+131'));
+    expect(pubspec, contains('version: 1.0.1+132'));
   });
 
-  testWidgets('Build 131 default bypass keeps usable attachment handles',
+  testWidgets('Build 132 default bypass keeps usable attachment handles',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -198,7 +198,7 @@ void main() {
   });
 
   testWidgets(
-      'Legacy bypass dimensions migrate to Build 131 width with center preserved',
+      'Legacy bypass dimensions migrate to Build 132 width with center preserved',
       (tester) async {
     const legacyX = 180.0;
     const legacyY = 110.0;
@@ -923,7 +923,7 @@ void main() {
         (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
     expect(props['anchorEndItemId'], '3');
     expect(props['anchorEndSide'],
-        anyOf('leftEnd', 'rightEnd', 'upperValve', 'lowerValve'));
+        anyOf('mainTop', 'mainBottom', 'upperValve', 'lowerValve'));
 
     await tester.drag(
       find.byKey(const ValueKey<String>('item-hitbox-3')),
@@ -961,7 +961,7 @@ void main() {
     var props =
         (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
     expect(props['anchorStartItemId'], '3');
-    expect(props['anchorStartSide'], anyOf('leftEnd', 'rightEnd'));
+    expect(props['anchorStartSide'], anyOf('mainTop', 'mainBottom'));
 
     await tester.drag(
       find.byKey(const ValueKey<String>('item-hitbox-3')),
@@ -1064,7 +1064,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Build 131 canonical bypass port IDs persist across save',
+  testWidgets('Build 132 canonical bypass port IDs persist across save',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1100,8 +1100,8 @@ void main() {
     final p5 =
         (_findById(items, 5)['properties'] as Map).cast<String, dynamic>();
 
-    expect(p1['anchorEndSide'], anyOf('leftEnd', 'bypassPrimary'));
-    expect(p2['anchorEndSide'], anyOf('rightEnd', 'bypassSecondary'));
+    expect(p1['anchorEndSide'], anyOf('mainTop', 'bypassPrimary'));
+    expect(p2['anchorEndSide'], anyOf('mainBottom', 'bypassSecondary'));
     expect(p4['anchorStartSide'], 'upperValve');
     expect(p5['anchorStartSide'], 'lowerValve');
 

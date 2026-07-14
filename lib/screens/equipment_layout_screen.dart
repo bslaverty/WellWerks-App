@@ -108,8 +108,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   static const double _dragLiftScreenOffsetY = 64.0;
   static const double _connectionSnapRadius = 24.0;
   static const String _labelsPrefKey = 'wellwerks_layout_show_labels_v1';
-  static const String _bypassPortLeftEnd = 'leftEnd';
-  static const String _bypassPortRightEnd = 'rightEnd';
+  static const String _bypassPortMainTop = 'mainTop';
+  static const String _bypassPortMainBottom = 'mainBottom';
   static const String _bypassPortUpperValve = 'upperValve';
   static const String _bypassPortLowerValve = 'lowerValve';
 
@@ -813,8 +813,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   bool _isBypassPortId(String side) {
-    return side == _bypassPortLeftEnd ||
-        side == _bypassPortRightEnd ||
+    return side == _bypassPortMainTop ||
+        side == _bypassPortMainBottom ||
         side == _bypassPortUpperValve ||
         side == _bypassPortLowerValve;
   }
@@ -822,9 +822,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   String _canonicalBypassPort(String side) {
     switch (side) {
       case 'bypassPrimary':
-        return _bypassPortLeftEnd;
+      case 'leftEnd':
+        return _bypassPortMainTop;
       case 'bypassSecondary':
-        return _bypassPortRightEnd;
+      case 'rightEnd':
+        return _bypassPortMainBottom;
       default:
         return side;
     }
@@ -834,7 +836,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     if (item.type != _EquipmentType.bypass) return side;
     final canonical = _canonicalBypassPort(side);
     if (_isBypassPortId(canonical)) return canonical;
-    return _bypassPortLeftEnd;
+    return _bypassPortMainTop;
   }
 
   String _endpointJointKey(bool leading) => leading ? 'jointStart' : 'jointEnd';
@@ -913,10 +915,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     switch (type) {
       case _EquipmentType.bypass:
         return const <_AnchorDefinition>[
-          _AnchorDefinition('leftEnd', 0.14, 0.18),
-          _AnchorDefinition('rightEnd', 0.14, 0.82),
-          _AnchorDefinition('upperValve', 0.88, 0.36),
-          _AnchorDefinition('lowerValve', 0.88, 0.64),
+          _AnchorDefinition('mainTop', 0.28, 0.14),
+          _AnchorDefinition('mainBottom', 0.28, 0.86),
+          _AnchorDefinition('upperValve', 0.82, 0.34),
+          _AnchorDefinition('lowerValve', 0.82, 0.66),
         ];
       case _EquipmentType.wellhead:
         return const <_AnchorDefinition>[
@@ -1310,8 +1312,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     for (final item in _items) {
       if (item.type != _EquipmentType.bypass) continue;
       for (final side in const <String>[
-        _bypassPortLeftEnd,
-        _bypassPortRightEnd,
+        _bypassPortMainTop,
+        _bypassPortMainBottom,
         _bypassPortUpperValve,
         _bypassPortLowerValve,
       ]) {
@@ -8747,44 +8749,48 @@ class _ShapePainter extends CustomPainter {
       return;
     }
     if (type == _EquipmentType.bypass) {
-      // Restored from commit 0744599: compact vertical manifold with two right branches.
-      final y1 = size.height * .36;
-      final y2 = size.height * .64;
-      final mainX = size.width * .14;
-      final eqX = size.width * .88;
-      final p = Path()
-        ..moveTo(mainX, y1)
-        ..lineTo(eqX, y1)
-        ..moveTo(mainX, y2)
-        ..lineTo(eqX, y2)
-        ..moveTo(mainX, size.height * .18)
-        ..lineTo(mainX, size.height * .82)
-        ..moveTo(eqX, y1 - 10)
-        ..lineTo(eqX, y1 + 10)
-        ..moveTo(eqX, y2 - 10)
-        ..lineTo(eqX, y2 + 10);
-      drawIron(p);
+      final mainX = size.width * .28;
+      final topY = size.height * .14;
+      final bottomY = size.height * .86;
+      final upperY = size.height * .34;
+      final lowerY = size.height * .66;
+      final branchEndX = size.width * .82;
+      final valveX = (mainX + branchEndX) / 2;
+      final valveRadius = ironSize == '4' ? 3.3 : (ironSize == '2' ? 2.5 : 2.9);
 
-      final fitting = Paint()
-        ..color = const Color(0xFFCDA56A)
+      final manifold = Path()
+        ..moveTo(mainX, topY)
+        ..lineTo(mainX, bottomY)
+        ..moveTo(mainX, upperY)
+        ..lineTo(branchEndX, upperY)
+        ..moveTo(mainX, lowerY)
+        ..lineTo(branchEndX, lowerY);
+      drawIron(manifold);
+
+      final valveFill = Paint()
+        ..color = const Color(0xFF8D939C)
         ..style = PaintingStyle.fill;
-      final border = Paint()
-        ..color = Colors.black.withOpacity(.6)
+      final valveBorder = Paint()
+        ..color = Colors.black.withOpacity(.55)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2;
-      void block(double x, double y) {
-        final r = RRect.fromRectAndRadius(
-          Rect.fromCenter(center: Offset(x, y), width: 14, height: 14),
-          const Radius.circular(3),
+        ..strokeWidth = 1.4;
+      final valveHighlight = Paint()
+        ..color = const Color(0xFFC8CDD4)
+        ..style = PaintingStyle.fill;
+
+      void drawValve(double y) {
+        final center = Offset(valveX, y);
+        canvas.drawCircle(center, valveRadius, valveFill);
+        canvas.drawCircle(center, valveRadius, valveBorder);
+        canvas.drawCircle(
+          Offset(center.dx - valveRadius * .28, center.dy - valveRadius * .28),
+          valveRadius * .34,
+          valveHighlight,
         );
-        canvas.drawRRect(r, fitting);
-        canvas.drawRRect(r, border);
       }
 
-      block(mainX, y1);
-      block(mainX, y2);
-      block(eqX, y1);
-      block(eqX, y2);
+      drawValve(upperY);
+      drawValve(lowerY);
       return;
     }
 
