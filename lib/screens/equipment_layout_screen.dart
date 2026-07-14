@@ -1006,11 +1006,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     if (resolved != null) {
       return resolved;
     }
-    final anchors = _equipmentAnchorCandidates(item);
-    if (anchors.isNotEmpty) {
-      return anchors.first.point;
-    }
-    return Offset(item.x, item.y);
+    throw StateError(
+      'Unsupported anchor side "$side" for ${item.type.name} (${item.id}).',
+    );
   }
 
   Offset? _equipmentAnchorPointOrNull(_LayoutItem item, String side) {

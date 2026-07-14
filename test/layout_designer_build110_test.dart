@@ -168,9 +168,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 140', () async {
+  test('Build number is 141', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+140'));
+    expect(pubspec, contains('version: 1.0.1+141'));
   });
 
   testWidgets('Build 134 selected bypass keeps full artwork and no handle dots',

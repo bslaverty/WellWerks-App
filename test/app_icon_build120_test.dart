@@ -84,17 +84,21 @@ bool _hasGoldInRect(
   return false;
 }
 
-List<int> _goldBounds(_DecodedImage image) {
+List<double> _normalizedBoundsInRect(
+  _DecodedImage image, {
+  required int left,
+  required int top,
+  required int right,
+  required int bottom,
+}) {
   var minX = image.width;
   var minY = image.height;
   var maxX = -1;
   var maxY = -1;
 
-  for (var y = 0; y < image.height; y++) {
-    for (var x = 0; x < image.width; x++) {
-      final px = image.pixel(x, y);
-      final isGold = px[3] > 200 && px[0] >= 175 && px[1] >= 130 && px[2] >= 60;
-      if (isGold) {
+  for (var y = top; y <= bottom; y++) {
+    for (var x = left; x <= right; x++) {
+      if (_isGoldish(image.pixel(x, y))) {
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
@@ -104,19 +108,14 @@ List<int> _goldBounds(_DecodedImage image) {
   }
 
   if (maxX < 0 || maxY < 0) {
-    throw StateError('No dark center region found in icon.');
+    throw StateError('No gold bounds found in selected rect.');
   }
 
-  return <int>[minX, minY, maxX, maxY];
-}
-
-List<double> _normalizedBounds(_DecodedImage image) {
-  final b = _goldBounds(image);
   return <double>[
-    b[0] / image.width,
-    b[1] / image.height,
-    b[2] / image.width,
-    b[3] / image.height,
+    minX / image.width,
+    minY / image.height,
+    maxX / image.width,
+    maxY / image.height,
   ];
 }
 
@@ -180,16 +179,16 @@ Future<Uint8List> _resizePngBytes(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('Build number is 140 in pubspec', () async {
+  test('Build number is 141 in pubspec', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+140'));
+    expect(pubspec, contains('version: 1.0.1+141'));
     expect(
-        pubspec, contains('image_path: "assets/icons/app_icon_build140.png"'));
+        pubspec, contains('image_path: "assets/icons/app_icon_build141.png"'));
   });
 
-  test('Configured Build 140 master icon exists and is exactly 1024x1024',
+  test('Configured Build 141 master icon exists and is exactly 1024x1024',
       () async {
-    final iconFile = File('assets/icons/app_icon_build140.png');
+    final iconFile = File('assets/icons/app_icon_build141.png');
     expect(iconFile.existsSync(), isTrue);
 
     final icon = await _decodePng(iconFile);
@@ -197,37 +196,63 @@ void main() {
     expect(icon.height, 1024);
   });
 
-  test('Build 140 master hash differs from Build 139 master hash', () async {
-    final build139 = File('assets/icons/app_icon_build139.png');
+  test('Build 141 master hash differs from Build 140 master hash', () async {
     final build140 = File('assets/icons/app_icon_build140.png');
-    expect(build139.existsSync(), isTrue);
+    final build141 = File('assets/icons/app_icon_build141.png');
     expect(build140.existsSync(), isTrue);
+    expect(build141.existsSync(), isTrue);
 
-    final hash139 = _fnv1a64Hex(await build139.readAsBytes());
     final hash140 = _fnv1a64Hex(await build140.readAsBytes());
-    expect(hash140, isNot(equals(hash139)));
+    final hash141 = _fnv1a64Hex(await build141.readAsBytes());
+    expect(hash141, isNot(equals(hash140)));
   });
 
-  test('Build 140 master icon keeps flat-black background', () async {
+  test('Build 141 master icon keeps flat-black background', () async {
+    final build141 =
+        await _decodePng(File('assets/icons/app_icon_build141.png'));
+    _expectFlatBlackSamples(build141, _flatBlackProbePoints1024);
+  });
+
+  test('Build 141 WW mark is uniformly reduced by about seven percent',
+      () async {
     final build140 =
         await _decodePng(File('assets/icons/app_icon_build140.png'));
-    _expectFlatBlackSamples(build140, _flatBlackProbePoints1024);
+    final build141 =
+        await _decodePng(File('assets/icons/app_icon_build141.png'));
+    final before = _normalizedBoundsInRect(
+      build140,
+      left: 140,
+      top: 140,
+      right: 900,
+      bottom: 900,
+    );
+    final after = _normalizedBoundsInRect(
+      build141,
+      left: 140,
+      top: 140,
+      right: 900,
+      bottom: 900,
+    );
+
+    final widthBefore = before[2] - before[0];
+    final heightBefore = before[3] - before[1];
+    final widthAfter = after[2] - after[0];
+    final heightAfter = after[3] - after[1];
+
+    expect(widthAfter / widthBefore, closeTo(0.93, 0.02));
+    expect(heightAfter / heightBefore, closeTo(0.93, 0.02));
+
+    final centerXBefore = (before[0] + before[2]) / 2;
+    final centerYBefore = (before[1] + before[3]) / 2;
+    final centerXAfter = (after[0] + after[2]) / 2;
+    final centerYAfter = (after[1] + after[3]) / 2;
+    expect((centerXAfter - centerXBefore).abs(), lessThan(0.01));
+    expect((centerYAfter - centerYBefore).abs(), lessThan(0.01));
   });
 
-  test('Build 140 WW bounds are unchanged from Build 139 source', () async {
-    final source = await _decodePng(File('assets/icons/app_icon_build139.png'));
-    final master = await _decodePng(File('assets/icons/app_icon_build140.png'));
-    final sourceBounds = _normalizedBounds(source);
-    final masterBounds = _normalizedBounds(master);
-
-    for (var i = 0; i < 4; i++) {
-      expect((masterBounds[i] - sourceBounds[i]).abs(), lessThan(0.01));
-    }
-  });
-
-  test('Build 140 inset gold border is visible at master and app sizes',
+  test('Build 141 inset gold border is visible at master and app sizes',
       () async {
-    final master = await _decodePng(File('assets/icons/app_icon_build140.png'));
+    final master = await _decodePng(File('assets/icons/app_icon_build141.png'));
     expect(
       _hasGoldInRect(
         master,
