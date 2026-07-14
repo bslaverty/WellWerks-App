@@ -35,7 +35,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   bool _multiSelectMode = false;
   bool _drawIronMode = false;
   String _drawIronSize = '3';
-  Offset? _ironStartPoint;
   final List<String> _undoStack = <String>[];
   final List<String> _redoStack = <String>[];
   final List<String> _historyLog = <String>[];
@@ -87,6 +86,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   _ConnectionTarget? _drawIronStartTarget;
   _ConnectionTarget? _drawIronHoverTarget;
   Offset? _drawIronPointerScene;
+  _ConnectionTarget? _pendingContinueIronTarget;
+  String? _pendingContinueIronSize;
   final _jobStorage = JobStorageService();
   final _recoveryState = RecoveryStateService();
   JobSetup? _activeJob;
@@ -98,7 +99,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   static const double _toolbarSelectionGap = 16.0;
   static const double _toolbarBottomClearance = 84.0;
   static const double _equipmentAnchorSnapRadius = 24.0;
-  static const double _selectionStripHeight = 92.0;
+  static const double _selectionStripHeight = 118.0;
   static const double _mobileLibraryMinHeight = 56.0;
   static const double _mobileLibraryDefaultFraction = 0.38;
   static const double _mobileLibraryMaxFraction = 0.82;
@@ -244,18 +245,36 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     _persistShowLabelsPreference();
   }
 
-  void _enterDrawIronMode({bool minimizeLibrary = true}) {
+  void _startConnectIronMode(
+    String size, {
+    bool minimizeLibrary = true,
+    _ConnectionTarget? initialTarget,
+  }) {
+    _stopArrowRepeat();
     setState(() {
+      _drawIronSize = size;
       _drawIronMode = true;
       _interactionMode = _InteractionMode.placeIron;
-      _ironStartPoint = null;
-      _drawIronStartTarget = null;
+      _drawIronStartTarget = initialTarget;
       _drawIronHoverTarget = null;
-      _drawIronPointerScene = null;
+      _drawIronPointerScene = initialTarget?.point;
+      _pendingContinueIronTarget = null;
+      _pendingContinueIronSize = null;
       if (minimizeLibrary) {
         _showSideLibrary = false;
       }
     });
+  }
+
+  void _enterDrawIronMode({
+    bool minimizeLibrary = true,
+    _ConnectionTarget? initialTarget,
+  }) {
+    _startConnectIronMode(
+      _drawIronSize,
+      minimizeLibrary: minimizeLibrary,
+      initialTarget: initialTarget,
+    );
   }
 
   void _clearDrawIronSelection({bool exitMode = false}) {
@@ -263,18 +282,19 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _drawIronStartTarget = null;
       _drawIronHoverTarget = null;
       _drawIronPointerScene = null;
-      _ironStartPoint = null;
       if (exitMode) {
         _drawIronMode = false;
         _interactionMode = _InteractionMode.idle;
+        _pendingContinueIronTarget = null;
+        _pendingContinueIronSize = null;
       }
     });
   }
 
   String get _drawIronStatusText {
     if (!_drawIronMode) return '';
-    if (_drawIronStartTarget == null) return 'Select starting connection';
-    return 'Connect to equipment or iron';
+    if (_drawIronStartTarget == null) return 'Select starting point';
+    return 'Select destination';
   }
 
   void _openEquipmentDrawer(
@@ -345,7 +365,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   bool get _showAnchorsForConnection {
-    return _showConnectionPoints || _activeEndpointDrag != null;
+    return _showConnectionPoints ||
+        _activeEndpointDrag != null ||
+        _drawIronMode;
   }
 
   bool _shouldShowAnchorCandidate(_EquipmentAnchorCandidate anchor) {
@@ -504,7 +526,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Offset _nudgeDelta(Offset directionUnit) {
-    const step = 1.0;
+    final step = _snapToGrid ? 24.0 : 1.0;
     return Offset(directionUnit.dx * step, directionUnit.dy * step);
   }
 
@@ -590,68 +612,75 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Widget _selectionDPad({required bool disabled}) {
+    const buttonSpan = 28.0;
+    const gridSpan = 96.0;
     return Container(
-      width: 84,
-      height: 54,
-      padding: const EdgeInsets.all(4),
+      key: const ValueKey<String>('selection-dpad'),
+      width: 108,
+      height: 108,
+      padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
         color: const Color(0xFF0D1014),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFF3A3A3A)),
       ),
-      child: Stack(
-        children: [
-          Positioned(
-            top: 0,
-            left: 30,
-            child: _selectionNudgeButton(
-              icon: Icons.keyboard_arrow_up,
-              tooltip: 'Move Up',
-              directionUnit: const Offset(0, -1),
-              disabled: disabled,
+      child: SizedBox(
+        width: gridSpan,
+        height: gridSpan,
+        child: Stack(
+          children: [
+            Positioned(
+              top: 0,
+              left: (gridSpan - buttonSpan) / 2,
+              child: _selectionNudgeButton(
+                icon: Icons.keyboard_arrow_up,
+                tooltip: 'Move Up',
+                directionUnit: const Offset(0, -1),
+                disabled: disabled,
+              ),
             ),
-          ),
-          Positioned(
-            top: 17,
-            left: 8,
-            child: _selectionNudgeButton(
-              icon: Icons.keyboard_arrow_left,
-              tooltip: 'Move Left',
-              directionUnit: const Offset(-1, 0),
-              disabled: disabled,
+            Positioned(
+              top: (gridSpan - buttonSpan) / 2,
+              left: 0,
+              child: _selectionNudgeButton(
+                icon: Icons.keyboard_arrow_left,
+                tooltip: 'Move Left',
+                directionUnit: const Offset(-1, 0),
+                disabled: disabled,
+              ),
             ),
-          ),
-          Positioned(
-            top: 17,
-            left: 30,
-            child: _selectionNudgeButton(
-              icon: Icons.close,
-              tooltip: 'Deselect',
-              directionUnit: Offset.zero,
-              isCenter: true,
+            Positioned(
+              top: (gridSpan - buttonSpan) / 2,
+              left: (gridSpan - buttonSpan) / 2,
+              child: _selectionNudgeButton(
+                icon: Icons.close,
+                tooltip: 'Deselect',
+                directionUnit: Offset.zero,
+                isCenter: true,
+              ),
             ),
-          ),
-          Positioned(
-            top: 17,
-            left: 52,
-            child: _selectionNudgeButton(
-              icon: Icons.keyboard_arrow_right,
-              tooltip: 'Move Right',
-              directionUnit: const Offset(1, 0),
-              disabled: disabled,
+            Positioned(
+              top: (gridSpan - buttonSpan) / 2,
+              left: gridSpan - buttonSpan,
+              child: _selectionNudgeButton(
+                icon: Icons.keyboard_arrow_right,
+                tooltip: 'Move Right',
+                directionUnit: const Offset(1, 0),
+                disabled: disabled,
+              ),
             ),
-          ),
-          Positioned(
-            top: 34,
-            left: 30,
-            child: _selectionNudgeButton(
-              icon: Icons.keyboard_arrow_down,
-              tooltip: 'Move Down',
-              directionUnit: const Offset(0, 1),
-              disabled: disabled,
+            Positioned(
+              top: gridSpan - buttonSpan,
+              left: (gridSpan - buttonSpan) / 2,
+              child: _selectionNudgeButton(
+                icon: Icons.keyboard_arrow_down,
+                tooltip: 'Move Down',
+                directionUnit: const Offset(0, 1),
+                disabled: disabled,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -814,6 +843,28 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         return const <_AnchorDefinition>[
           _AnchorDefinition('bypassPrimary', 0.0, 0.5),
           _AnchorDefinition('bypassSecondary', 1.0, 0.5),
+        ];
+      case _EquipmentType.wellhead:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('left', 0.0, 0.5),
+          _AnchorDefinition('right', 1.0, 0.5),
+          _AnchorDefinition('bottom', 0.5, 1.0),
+        ];
+      case _EquipmentType.chokeManifold:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('top', 0.5, 0.0),
+          _AnchorDefinition('left', 0.0, 0.5),
+          _AnchorDefinition('right', 1.0, 0.5),
+          _AnchorDefinition('bottom', 0.5, 1.0),
+        ];
+      case _EquipmentType.esdValve:
+      case _EquipmentType.lineHeater:
+      case _EquipmentType.plugCatcher:
+      case _EquipmentType.flowbackTank:
+      case _EquipmentType.productionTank:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('left', 0.0, 0.5),
+          _AnchorDefinition('right', 1.0, 0.5),
         ];
       default:
         return const <_AnchorDefinition>[
@@ -2071,7 +2122,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _drawIronMode = value;
       _interactionMode =
           value ? _InteractionMode.placeIron : _InteractionMode.idle;
-      _ironStartPoint = null;
+      if (!value) {
+        _pendingContinueIronTarget = null;
+        _pendingContinueIronSize = null;
+      }
       if (value) {
         _multiSelectMode = false;
         _clearSelection();
@@ -2084,7 +2138,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     setState(() {
       _drawIronMode = false;
       _interactionMode = _InteractionMode.idle;
-      _ironStartPoint = null;
+      _pendingContinueIronTarget = null;
+      _pendingContinueIronSize = null;
     });
   }
 
@@ -2093,7 +2148,30 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     setState(() {
       _drawIronMode = false;
       _interactionMode = _InteractionMode.idle;
-      _ironStartPoint = null;
+      _pendingContinueIronTarget = null;
+      _pendingContinueIronSize = null;
+    });
+  }
+
+  void _continueIronRun() {
+    final target = _pendingContinueIronTarget;
+    if (target == null) return;
+    _startConnectIronMode(
+      _pendingContinueIronSize ?? _drawIronSize,
+      minimizeLibrary: false,
+      initialTarget: target,
+    );
+  }
+
+  void _finishContinueIronPrompt() {
+    setState(() {
+      _pendingContinueIronTarget = null;
+      _pendingContinueIronSize = null;
+      _drawIronMode = false;
+      _interactionMode = _InteractionMode.idle;
+      _drawIronStartTarget = null;
+      _drawIronHoverTarget = null;
+      _drawIronPointerScene = null;
     });
   }
 
@@ -2253,6 +2331,15 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           (_ironEndpoint(newIron, true) - start.point).distance;
       final startIsLeading = startDistanceToLeading <=
           (_ironEndpoint(newIron, false) - start.point).distance;
+      final continueTarget = endTarget ??
+          _ConnectionTarget(
+            kind: _ConnectionTargetKind.ironEndpoint,
+            point: _ironEndpoint(newIron, !startIsLeading),
+            distance: 0,
+            isExactHit: true,
+            ironItemId: id,
+            ironLeading: !startIsLeading,
+          );
       _applyConnectionTargetToIronEndpoint(newIron, startIsLeading, start);
       if (endTarget != null) {
         _applyConnectionTargetToIronEndpoint(
@@ -2263,9 +2350,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _selectedIds
         ..clear()
         ..add(id);
+      _drawIronMode = false;
+      _interactionMode = _InteractionMode.idle;
       _drawIronStartTarget = null;
       _drawIronHoverTarget = null;
       _drawIronPointerScene = null;
+      _pendingContinueIronTarget = continueTarget;
+      _pendingContinueIronSize = _drawIronSize;
       _snapIndicatorScene = null;
     });
     _appendHistoryEntry('Added iron');
@@ -2321,6 +2412,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _items.add(item);
       _commitInitialIronConnections(item);
       _selectedId = id;
+      _showSideLibrary = false;
       _selectedIds
         ..clear()
         ..add(id);
@@ -2329,9 +2421,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   void _selectOnly(int id) {
+    _stopArrowRepeat();
     setState(() {
       _selectedId = id;
-      _moveControlsActive = true;
       _selectedEndpointLeading = null;
       _selectedBypassHandle = null;
       _selectedIds
@@ -2341,6 +2433,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   void _toggleSelection(int id) {
+    _stopArrowRepeat();
     setState(() {
       _selectedEndpointLeading = null;
       _selectedBypassHandle = null;
@@ -2350,14 +2443,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         _selectedIds.add(id);
       }
       _selectedId = _selectedIds.isEmpty ? null : id;
-      _moveControlsActive = _selectedIds.isNotEmpty;
     });
   }
 
   void _clearSelection() {
+    _stopArrowRepeat();
     setState(() {
       _selectedId = null;
-      _moveControlsActive = false;
       _selectedEndpointLeading = null;
       _selectedBypassHandle = null;
       _selectedIds.clear();
@@ -5415,6 +5507,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         children: [
           _toolbar(isWide: isWide),
           _selectionQuickActionsBar(),
+          if (_drawIronMode || _pendingContinueIronTarget != null)
+            _ironDrawControls(),
           Expanded(
             child: Stack(
               children: [
@@ -5524,6 +5618,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         children: [
           for (final tab in tabs) ...[
             ChoiceChip(
+              key: ValueKey<String>('library-tab-${tab.value.name}'),
               selectedColor:
                   Theme.of(context).colorScheme.primary.withValues(alpha: 0.28),
               labelStyle: TextStyle(
@@ -5542,11 +5637,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               label: Text(tab.key),
               onSelected: (_) {
                 setState(() => _mobileDrawerSection = tab.value);
-                if (tab.value == _DrawerLibrarySection.iron) {
-                  _enterDrawIronMode(minimizeLibrary: false);
-                } else if (_drawIronMode) {
-                  _clearDrawIronSelection(exitMode: true);
-                }
               },
             ),
             const SizedBox(width: 8),
@@ -5672,16 +5762,18 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 SizedBox(
                   width: isMobile ? 162 : 138,
                   child: FilledButton.icon(
-                    onPressed: () => _enterDrawIronMode(minimizeLibrary: false),
+                    onPressed: () => _startConnectIronMode(_drawIronSize,
+                        minimizeLibrary: true),
                     icon: const Icon(Icons.edit_road),
-                    label: Text(_drawIronMode ? 'Draw Iron ON' : 'Draw Iron'),
+                    label: const Text('Connect Iron'),
                     style: _compactFilledStyle(highlighted: _drawIronMode),
                   ),
                 ),
                 SizedBox(
                   width: isMobile ? 162 : 138,
                   child: FilledButton(
-                    onPressed: () => setState(() => _drawIronSize = '2'),
+                    onPressed: () =>
+                        _startConnectIronMode('2', minimizeLibrary: true),
                     style:
                         _compactFilledStyle(highlighted: _drawIronSize == '2'),
                     child: const Text('2" Iron'),
@@ -5690,7 +5782,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 SizedBox(
                   width: isMobile ? 162 : 138,
                   child: FilledButton(
-                    onPressed: () => setState(() => _drawIronSize = '3'),
+                    onPressed: () =>
+                        _startConnectIronMode('3', minimizeLibrary: true),
                     style:
                         _compactFilledStyle(highlighted: _drawIronSize == '3'),
                     child: const Text('3" Iron'),
@@ -5699,7 +5792,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 SizedBox(
                   width: isMobile ? 162 : 138,
                   child: FilledButton(
-                    onPressed: () => setState(() => _drawIronSize = '4'),
+                    onPressed: () =>
+                        _startConnectIronMode('4', minimizeLibrary: true),
                     style:
                         _compactFilledStyle(highlighted: _drawIronSize == '4'),
                     child: const Text('4" Iron'),
@@ -5973,14 +6067,29 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
             Border(bottom: BorderSide(color: Theme.of(context).dividerColor)),
       ),
       child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
             FilledButton.icon(
               onPressed: _saveRigUp,
               icon: const Icon(Icons.save_alt),
               label: const Text('Save'),
               style: _compactFilledStyle(highlighted: true),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: _undoStack.isNotEmpty ? _undoLayoutChange : null,
+              icon: const Icon(Icons.undo),
+              label: const Text('Undo'),
+              style: _compactOutlineStyle(),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: _redoStack.isNotEmpty ? _redoLayoutChange : null,
+              icon: const Icon(Icons.redo),
+              label: const Text('Redo'),
+              style: _compactOutlineStyle(),
             ),
             const SizedBox(width: 8),
             FilledButton.icon(
@@ -6319,7 +6428,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Widget _ironDrawControls() {
-    final hasStart = _ironStartPoint != null;
+    final hasStart = _drawIronStartTarget != null;
+    final canContinue = _pendingContinueIronTarget != null;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
@@ -6337,7 +6447,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               Icon(Icons.edit_road, color: _gold),
               const SizedBox(width: 8),
               Text(
-                'DRAW IRON ACTIVE',
+                canContinue ? 'IRON SEGMENT COMPLETE' : 'CONNECT IRON ACTIVE',
                 style: TextStyle(
                   color: _gold,
                   fontWeight: FontWeight.w800,
@@ -6357,9 +6467,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           ),
           const SizedBox(height: 8),
           Text(
-            hasStart
-                ? 'Start point set. Tap next point to add straight iron, then keep tapping to extend.'
-                : 'Tap once to set a start point, then tap next point to create horizontal or vertical iron.',
+            canContinue
+                ? 'Continue Iron starts from the last endpoint. Done exits Connect Iron mode and hides anchors.'
+                : hasStart
+                    ? 'Select destination. Valid equipment anchors, bypass ports, and iron endpoints stay visible until the segment is created.'
+                    : 'Select starting point. Choose an iron size, then tap a valid anchor or existing iron endpoint.',
             style: const TextStyle(color: Colors.white70, fontSize: 12.5),
           ),
           const SizedBox(height: 10),
@@ -6383,15 +6495,28 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 child: const Text('4"'),
               ),
               FilledButton.icon(
-                onPressed: _finishIronDrawing,
-                icon: const Icon(Icons.check_circle_outline),
-                label: const Text('Finish / Done'),
+                key: ValueKey<String>(canContinue
+                    ? 'connect-iron-continue-button'
+                    : 'connect-iron-done-button'),
+                onPressed: canContinue ? _continueIronRun : _finishIronDrawing,
+                icon: Icon(
+                  canContinue
+                      ? Icons.trending_flat_rounded
+                      : Icons.check_circle_outline,
+                ),
+                label: Text(canContinue ? 'Continue Iron' : 'Done'),
                 style: _compactFilledStyle(highlighted: true),
               ),
               OutlinedButton.icon(
-                onPressed: _cancelIronDrawing,
-                icon: const Icon(Icons.cancel_outlined),
-                label: const Text('Cancel'),
+                key: ValueKey<String>(canContinue
+                    ? 'connect-iron-finish-button'
+                    : 'connect-iron-cancel-button'),
+                onPressed: canContinue
+                    ? _finishContinueIronPrompt
+                    : _cancelIronDrawing,
+                icon:
+                    Icon(canContinue ? Icons.done_all : Icons.cancel_outlined),
+                label: Text(canContinue ? 'Done' : 'Cancel'),
                 style: _compactOutlineStyle(highlighted: true),
               ),
             ],
@@ -6408,6 +6533,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final locked = selected?.locked ?? true;
     final canMove = hasSelection && !locked && !_hideFloatingToolbar;
     final canAct = hasSelection && !_hideFloatingToolbar;
+    final canUndo = _undoStack.isNotEmpty && !_hideFloatingToolbar;
+    final canRedo = _redoStack.isNotEmpty && !_hideFloatingToolbar;
+    final isStraightIron =
+        selected != null && _isStraightIronType(selected.type);
     final hasConnection = selected != null &&
         _isStraightIronType(selected.type) &&
         _selectedEndpointLeading != null;
@@ -6426,10 +6555,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       ),
       child: Row(
         children: [
-          if (_moveControlsActive) ...[
-            _selectionDPad(disabled: !canMove),
-            const SizedBox(width: 8),
-          ],
+          _selectionDPad(disabled: !canMove),
+          const SizedBox(width: 8),
           Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -6456,12 +6583,18 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                     ),
                   ),
                   const SizedBox(width: 6),
-                  FilledButton.icon(
-                    onPressed: canMove ? _toggleMoveControls : null,
-                    icon: const Icon(Icons.open_with),
-                    label: Text(_moveControlsActive ? 'Move ON' : 'Move'),
-                    style:
-                        _compactFilledStyle(highlighted: _moveControlsActive),
+                  OutlinedButton.icon(
+                    onPressed: canUndo ? _undoLayoutChange : null,
+                    icon: const Icon(Icons.undo),
+                    label: const Text('Undo'),
+                    style: _compactOutlineStyle(),
+                  ),
+                  const SizedBox(width: 6),
+                  OutlinedButton.icon(
+                    onPressed: canRedo ? _redoLayoutChange : null,
+                    icon: const Icon(Icons.redo),
+                    label: const Text('Redo'),
+                    style: _compactOutlineStyle(),
                   ),
                   const SizedBox(width: 6),
                   OutlinedButton.icon(
@@ -6504,6 +6637,44 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                       onPressed: canAct ? _disconnectSelectedConnection : null,
                       icon: const Icon(Icons.link_off),
                       label: const Text('Disconnect'),
+                      style: _compactOutlineStyle(),
+                    ),
+                  ],
+                  if (isStraightIron) ...[
+                    const SizedBox(width: 6),
+                    OutlinedButton.icon(
+                      onPressed: canAct
+                          ? () => setState(() {
+                                _selectedEndpointLeading = null;
+                                _selectedBypassHandle = null;
+                              })
+                          : null,
+                      icon: const Icon(Icons.open_with),
+                      label: const Text('Move Segment'),
+                      style: _compactOutlineStyle(),
+                    ),
+                    const SizedBox(width: 6),
+                    OutlinedButton.icon(
+                      onPressed: canAct
+                          ? () => setState(() {
+                                _selectedEndpointLeading = true;
+                                _selectedBypassHandle = null;
+                              })
+                          : null,
+                      icon: const Icon(Icons.first_page),
+                      label: const Text('Adjust Start'),
+                      style: _compactOutlineStyle(),
+                    ),
+                    const SizedBox(width: 6),
+                    OutlinedButton.icon(
+                      onPressed: canAct
+                          ? () => setState(() {
+                                _selectedEndpointLeading = false;
+                                _selectedBypassHandle = null;
+                              })
+                          : null,
+                      icon: const Icon(Icons.last_page),
+                      label: const Text('Adjust End'),
                       style: _compactOutlineStyle(),
                     ),
                   ],
@@ -7032,6 +7203,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                           if (_shouldShowAnchorCandidate(
                                               anchor))
                                             Positioned(
+                                              key: ValueKey<String>(
+                                                  'connect-anchor-${it.id}-${anchor.side}'),
                                               left: anchor.point.dx - 3,
                                               top: anchor.point.dy - 3,
                                               child: IgnorePointer(
@@ -7045,6 +7218,38 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                                 ),
                                               ),
                                             ),
+                                  if (_drawIronMode)
+                                    for (final it in _items)
+                                      if (_isStraightIronType(it.type))
+                                        for (final leading in const <bool>[
+                                          true,
+                                          false
+                                        ])
+                                          Positioned(
+                                            key: ValueKey<String>(
+                                                'connect-iron-endpoint-${it.id}-${leading ? 'start' : 'end'}'),
+                                            left:
+                                                _ironEndpoint(it, leading).dx -
+                                                    4,
+                                            top: _ironEndpoint(it, leading).dy -
+                                                4,
+                                            child: IgnorePointer(
+                                              child: Container(
+                                                width: 8,
+                                                height: 8,
+                                                decoration: BoxDecoration(
+                                                  color: _gold,
+                                                  shape: BoxShape.circle,
+                                                  boxShadow: const [
+                                                    BoxShadow(
+                                                      color: Color(0x66000000),
+                                                      blurRadius: 3,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
                                   if (_showAnchorsForConnection &&
                                       !_drawIronMode)
                                     for (final it in _items)

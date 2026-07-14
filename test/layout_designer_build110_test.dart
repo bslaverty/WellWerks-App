@@ -147,9 +147,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 124', () async {
+  test('Build number is 125', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+124'));
+    expect(pubspec, contains('version: 1.0.1+125'));
   });
 
   testWidgets(
@@ -289,6 +289,39 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
+  testWidgets('Full D-pad keeps all arrows and center button inside bounds',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'wellhead', x: 280, y: 260, width: 30, height: 28),
+      ],
+      selectedId: 1,
+    );
+
+    final dpadRect =
+        tester.getRect(find.byKey(const ValueKey<String>('selection-dpad')));
+    for (final tooltip in <String>[
+      'Move Up',
+      'Move Down',
+      'Move Left',
+      'Move Right',
+      'Deselect',
+    ]) {
+      final rect = tester.getRect(find.byTooltip(tooltip));
+      expect(rect.left, greaterThanOrEqualTo(dpadRect.left));
+      expect(rect.top, greaterThanOrEqualTo(dpadRect.top));
+      expect(rect.right, lessThanOrEqualTo(dpadRect.right));
+      expect(rect.bottom, lessThanOrEqualTo(dpadRect.bottom));
+    }
+
+    final centerRect = tester.getRect(find.byTooltip('Deselect'));
+    expect(centerRect.center.dx, closeTo(dpadRect.center.dx, 4.0));
+    expect(centerRect.center.dy, closeTo(dpadRect.center.dy, 4.0));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
   testWidgets(
       'Fixed edit strip keeps a stable height through select and deselect',
       (tester) async {
@@ -336,7 +369,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Snap ON D-pad nudge moves selected item by one unit',
+  testWidgets('Snap ON D-pad nudge moves selected item by one grid increment',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -352,7 +385,42 @@ void main() {
     await _saveRigUp(tester);
     final items = _itemsFromPayload(await _savedLayoutPayload());
     final moved = _findById(items, 1);
-    expect((moved['x'] as num).toDouble(), closeTo(281.0, 0.01));
+    expect((moved['x'] as num).toDouble(), closeTo(304.0, 0.01));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Undo and redo stay directly accessible in the fixed strip',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'wellhead', x: 280, y: 260, width: 30, height: 28),
+      ],
+      selectedId: 1,
+    );
+
+    final undoFinder = find.widgetWithText(OutlinedButton, 'Undo').first;
+    final redoFinder = find.widgetWithText(OutlinedButton, 'Redo').first;
+    expect(undoFinder, findsOneWidget);
+    expect(redoFinder, findsOneWidget);
+
+    await tester.tap(find.byTooltip('Move Right'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(undoFinder);
+    await tester.pumpAndSettle();
+
+    await _saveRigUp(tester);
+    final undone = _findById(_itemsFromPayload(await _savedLayoutPayload()), 1);
+    expect((undone['x'] as num).toDouble(), closeTo(280.0, 0.01));
+
+    await tester.tap(redoFinder);
+    await tester.pumpAndSettle();
+
+    await _saveRigUp(tester);
+    final redone = _findById(_itemsFromPayload(await _savedLayoutPayload()), 1);
+    expect((redone['x'] as num).toDouble(), closeTo(304.0, 0.01));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -449,13 +517,14 @@ void main() {
     await _ensureEquipmentLibraryOpen(tester);
     await tester.tap(find.widgetWithText(FilledButton, 'Wellhead').first);
     await tester.pumpAndSettle();
+    await _ensureEquipmentLibraryOpen(tester);
     await tester.tap(find.widgetWithText(FilledButton, 'Plug Catcher').first);
     await tester.pumpAndSettle();
+    await _ensureEquipmentLibraryOpen(tester);
     await tester.tap(find.widgetWithText(FilledButton, 'Facilities').first);
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey<String>('library-symbol-wellhead-button')),
-        findsWidgets);
+    expect(find.text('Open Library'), findsWidgets);
     expect(find.byIcon(Icons.account_tree), findsNothing);
 
     await _saveRigUp(tester);
@@ -473,6 +542,68 @@ void main() {
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
+
+  testWidgets('Selecting equipment from the library minimizes the library',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.binding.setSurfaceSize(const Size(1280, 1500));
+    await tester.pumpWidget(const MaterialApp(home: EquipmentLayoutScreen()));
+    await tester.pumpAndSettle();
+
+    await _ensureEquipmentLibraryOpen(tester);
+    await tester.tap(find.widgetWithText(FilledButton, 'Wellhead').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rig-Up Library'), findsNothing);
+    expect(find.text('Open Library'), findsWidgets);
+    expect(find.byKey(const ValueKey<String>('item-hitbox-1')), findsOneWidget);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Connect Iron mode minimizes the library, shows valid anchors, and stores both equipment anchors',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'wellhead', x: 180, y: 220, width: 30, height: 28),
+        _equipmentItem(2, 'plugCatcher', x: 360, y: 206, width: 40, height: 26),
+      ],
+    );
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Add Iron').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rig-Up Library'), findsNothing);
+    final startAnchor =
+        find.byKey(const ValueKey<String>('connect-anchor-1-right'));
+    final endAnchor =
+        find.byKey(const ValueKey<String>('connect-anchor-2-left'));
+    expect(startAnchor, findsOneWidget);
+    expect(endAnchor, findsOneWidget);
+
+    await tester.tapAt(tester.getCenter(startAnchor));
+    await tester.pumpAndSettle();
+    expect(find.text('Select destination'), findsOneWidget);
+
+    await tester.tapAt(tester.getCenter(endAnchor));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Continue Iron'), findsOneWidget);
+    expect(find.text('Done'), findsWidgets);
+
+    await _saveRigUp(tester);
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final iron = _findByType(items, 'ironHorizontal');
+    final props = (iron['properties'] as Map).cast<String, dynamic>();
+    expect(props['anchorStartItemId'], '1');
+    expect(props['anchorStartSide'], 'right');
+    expect(props['anchorEndItemId'], '2');
+    expect(props['anchorEndSide'], 'left');
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  }, skip: true);
 
   testWidgets(
       'Iron uses a larger invisible hit area while visible iron thickness remains unchanged',

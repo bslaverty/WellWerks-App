@@ -48,15 +48,15 @@ Future<_DecodedImage> _decodePng(File file) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('Build number is 124 in pubspec', () async {
+  test('Build number is 125 in pubspec', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+124'));
+    expect(pubspec, contains('version: 1.0.1+125'));
     expect(
-        pubspec, contains('image_path: "assets/icons/app_icon_build124.png"'));
+        pubspec, contains('image_path: "assets/icons/app_icon_build125.png"'));
   });
 
   test('Master app icon exists and is at least 1024x1024', () async {
-    final iconFile = File('assets/icons/app_icon_build124.png');
+    final iconFile = File('assets/icons/app_icon_build125.png');
     expect(iconFile.existsSync(), isTrue);
 
     final icon = await _decodePng(iconFile);
@@ -66,7 +66,7 @@ void main() {
 
   test('Master app icon keeps deep black and full opaque edge coverage',
       () async {
-    final icon = await _decodePng(File('assets/icons/app_icon_build124.png'));
+    final icon = await _decodePng(File('assets/icons/app_icon_build125.png'));
 
     final blackProbePoints = <List<double>>[
       <double>[0.25, 0.25],
@@ -116,6 +116,35 @@ void main() {
       expect(icon.pixel(0, y)[3], 255);
       expect(icon.pixel(icon.width - 1, y)[3], 255);
     }
+  });
+
+  test(
+      'Build 125 master icon keeps the approved edge while improving internal gold over Build 124',
+      () async {
+    final build124 =
+        await _decodePng(File('assets/icons/app_icon_build124.png'));
+    final build125 =
+        await _decodePng(File('assets/icons/app_icon_build125.png'));
+
+    const blackProbeX = 1109;
+    const blackProbeY = 145;
+    final black124 = build124.pixel(blackProbeX, blackProbeY);
+    final black125 = build125.pixel(blackProbeX, blackProbeY);
+    expect(black125[0], lessThan(black124[0]));
+    expect(black125[1], lessThan(black124[1]));
+    expect(black125[2], lessThan(black124[2]));
+
+    const goldProbeX = 747;
+    const goldProbeY = 200;
+    final gold124 = build124.pixel(goldProbeX, goldProbeY);
+    final gold125 = build125.pixel(goldProbeX, goldProbeY);
+    expect(gold125[0], greaterThan(gold124[0]));
+    expect(gold125[1], greaterThan(gold124[1]));
+    expect(gold125[2], lessThanOrEqualTo(gold124[2]));
+
+    final edge124 = build124.pixel(0, 0);
+    final edge125 = build125.pixel(0, 0);
+    expect(edge125, equals(edge124));
   });
 
   test(
