@@ -32,7 +32,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   final List<_LayoutItem> _items = [];
   int? _selectedId;
   final Set<int> _selectedIds = <int>{};
-  bool _multiSelectMode = false;
+  final bool _multiSelectMode = false;
   bool _drawIronMode = false;
   String _drawIronSize = '3';
   final List<String> _undoStack = <String>[];
@@ -40,7 +40,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   final List<String> _historyLog = <String>[];
   static const int _maxHistory = 40;
   int _nextId = 1;
-  bool _snapToGrid = true;
+  bool _snapToGrid = false;
   bool _measureMode = false;
   bool _showEquipment = true;
   bool _showIron = true;
@@ -78,6 +78,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   final _preparedBy = TextEditingController();
   final _notes = TextEditingController();
   bool _showSideLibrary = false;
+  bool _libraryKeepOpen = true;
   bool _moveControlsActive = false;
   double _mobileLibraryHeight = 0;
   int? _dragPreviewItemId;
@@ -526,7 +527,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Offset _nudgeDelta(Offset directionUnit) {
-    final step = _snapToGrid ? 24.0 : 1.0;
+    final step = _snapToGrid ? 2.0 : 1.0;
     return Offset(directionUnit.dx * step, directionUnit.dy * step);
   }
 
@@ -2119,17 +2120,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   void _toggleDrawIronMode(bool value) {
     setState(() {
-      _drawIronMode = value;
-      _interactionMode =
-          value ? _InteractionMode.placeIron : _InteractionMode.idle;
-      if (!value) {
-        _pendingContinueIronTarget = null;
-        _pendingContinueIronSize = null;
-      }
-      if (value) {
-        _multiSelectMode = false;
-        _clearSelection();
-      }
+      _drawIronMode = false;
+      _interactionMode = _InteractionMode.idle;
+      _drawIronStartTarget = null;
+      _drawIronHoverTarget = null;
+      _drawIronPointerScene = null;
+      _pendingContinueIronTarget = null;
+      _pendingContinueIronSize = null;
     });
   }
 
@@ -2391,6 +2388,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     _EquipmentType type, {
     Offset? preferredScenePoint,
     bool applySpread = true,
+    bool? keepLibraryOpen,
   }) {
     final isWide = MediaQuery.of(context).size.width >= 780;
     final center =
@@ -2412,12 +2410,50 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _items.add(item);
       _commitInitialIronConnections(item);
       _selectedId = id;
-      _showSideLibrary = false;
+      final stayOpen = keepLibraryOpen ?? _libraryKeepOpen;
+      _showSideLibrary = stayOpen;
       _selectedIds
         ..clear()
         ..add(id);
     });
     _appendHistoryEntry(type.isIron ? 'Added iron' : 'Added equipment');
+  }
+
+  void _addStraightIronFromLibrary({
+    required bool horizontal,
+    required String size,
+  }) {
+    final type = horizontal
+        ? _EquipmentType.ironHorizontal
+        : _EquipmentType.ironVertical;
+    final isWide = MediaQuery.of(context).size.width >= 780;
+    final center = _visibleCanvasPlacementCenter(isWide: isWide);
+    const length = 180.0;
+    final width =
+        horizontal ? length : _EquipmentType.ironVertical.defaultWidth;
+    final height =
+        horizontal ? _EquipmentType.ironHorizontal.defaultHeight : length;
+    _runHistoryChange(() {
+      final id = _nextId++;
+      final canvasSize = _virtualCanvasSize;
+      final item = _LayoutItem(
+        id: id,
+        type: type,
+        x: (center.dx - width / 2).clamp(0.0, canvasSize.width - width),
+        y: (center.dy - height / 2).clamp(0.0, canvasSize.height - height),
+        width: width,
+        height: height,
+        properties: <String, String>{'ironSize': size},
+      );
+      _items.add(item);
+      _commitInitialIronConnections(item);
+      _selectedId = id;
+      _selectedIds
+        ..clear()
+        ..add(id);
+      _showSideLibrary = _libraryKeepOpen;
+    });
+    _appendHistoryEntry('Added iron');
   }
 
   void _selectOnly(int id) {
@@ -2607,6 +2643,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         'notes': _notes.text.trim(),
         'nextId': _nextId,
         'snapToGrid': _snapToGrid,
+        'libraryKeepOpen': _libraryKeepOpen,
         'items': _items.map((item) => item.toJson()).toList(),
         'metadata': {
           'version': 1,
@@ -2633,7 +2670,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         ..clear()
         ..addAll(items);
       _nextId = data['nextId'] as int? ?? ((_items.length) + 1);
-      _snapToGrid = data['snapToGrid'] as bool? ?? true;
+      _snapToGrid = data['snapToGrid'] as bool? ?? false;
+      _libraryKeepOpen = data['libraryKeepOpen'] as bool? ?? true;
       _layoutName.text = data['name'] as String? ?? 'Saved Layout';
       _company.text = data['company'] as String? ?? '';
       _jobLocation.text = ((data['jobLocation'] as String?) ??
@@ -3147,8 +3185,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     return FilledButton.styleFrom(
       backgroundColor: highlighted ? _gold : _bg,
       foregroundColor: highlighted ? Colors.black : Colors.white,
-      minimumSize: const Size(148, 46),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      minimumSize: const Size(0, 42),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       textStyle: const TextStyle(fontWeight: FontWeight.w700),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     );
@@ -3161,8 +3199,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         color: highlighted ? _gold : Theme.of(context).dividerColor,
         width: highlighted ? 1.4 : 1,
       ),
-      minimumSize: const Size(148, 46),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      minimumSize: const Size(0, 42),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       textStyle: const TextStyle(fontWeight: FontWeight.w600),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     );
@@ -5204,8 +5242,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                               },
                               icon: const Icon(Icons.grid_4x4),
                               label: Text(_snapToGrid
-                                  ? 'Grid Snap ON'
-                                  : 'Grid Snap OFF'),
+                                  ? 'Align to Grid ON'
+                                  : 'Align to Grid OFF'),
                               style:
                                   _compactFilledStyle(highlighted: _snapToGrid),
                             )),
@@ -5236,18 +5274,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                               icon: const Icon(Icons.history),
                               label: const Text('History'),
                               style: _compactOutlineStyle(),
-                            )),
-                            action(FilledButton.icon(
-                              onPressed: () {
-                                _toggleDrawIronMode(!_drawIronMode);
-                                setSheetState(() {});
-                              },
-                              icon: const Icon(Icons.edit_road),
-                              label: Text(_drawIronMode
-                                  ? 'Draw Iron On'
-                                  : 'Draw Iron Off'),
-                              style: _compactFilledStyle(
-                                  highlighted: _drawIronMode),
                             )),
                           ],
                         ),
@@ -5507,8 +5533,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         children: [
           _toolbar(isWide: isWide),
           _selectionQuickActionsBar(),
-          if (_drawIronMode || _pendingContinueIronTarget != null)
-            _ironDrawControls(),
           Expanded(
             child: Stack(
               children: [
@@ -5649,13 +5673,18 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   Widget _equipmentButtonForLibrary(_EquipmentType type,
       {required bool outlined, required bool isMobile}) {
     final isStraightIron = _isStraightIronType(type);
+    final screenWidth = MediaQuery.of(context).size.width;
+    final narrowMobile = isMobile && screenWidth < 420;
+    final buttonWidth = narrowMobile
+        ? (screenWidth - 56).clamp(220.0, 360.0)
+        : (isMobile ? 162.0 : 138.0);
     final button = SizedBox(
-      width: isMobile ? 162 : 138,
+      width: buttonWidth,
       child: outlined
           ? OutlinedButton.icon(
               onPressed: () {
                 if (isStraightIron) {
-                  _enterDrawIronMode();
+                  _addItem(type);
                 } else {
                   _addItem(type);
                 }
@@ -5667,13 +5696,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 symbolKey:
                     ValueKey<String>('library-symbol-${type.name}-button'),
               ),
-              label: Text(type.label, maxLines: 2),
+              label:
+                  Text(type.label, maxLines: 2, overflow: TextOverflow.visible),
               style: _compactOutlineStyle(highlighted: true),
             )
           : FilledButton.icon(
               onPressed: () {
                 if (isStraightIron) {
-                  _enterDrawIronMode();
+                  _addItem(type);
                 } else {
                   _addItem(type);
                 }
@@ -5685,7 +5715,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 symbolKey:
                     ValueKey<String>('library-symbol-${type.name}-button'),
               ),
-              label: Text(type.label, maxLines: 2),
+              label:
+                  Text(type.label, maxLines: 2, overflow: TextOverflow.visible),
               style: _compactFilledStyle(highlighted: true),
             ),
     );
@@ -5740,7 +5771,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         title = 'Equipment';
         break;
       case _DrawerLibrarySection.iron:
-        types = _straightIronTypes;
+        types = const <_EquipmentType>[];
         outlined = true;
         title = 'Straight Iron';
         return Column(
@@ -5762,46 +5793,70 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 SizedBox(
                   width: isMobile ? 162 : 138,
                   child: FilledButton.icon(
-                    onPressed: () => _startConnectIronMode(_drawIronSize,
-                        minimizeLibrary: true),
-                    icon: const Icon(Icons.edit_road),
-                    label: const Text('Connect Iron'),
-                    style: _compactFilledStyle(highlighted: _drawIronMode),
+                    onPressed: () => _addStraightIronFromLibrary(
+                      horizontal: true,
+                      size: '2',
+                    ),
+                    icon: const Icon(Icons.swap_horiz),
+                    label: const Text('2" Horizontal Iron'),
+                    style: _compactFilledStyle(highlighted: true),
                   ),
                 ),
                 SizedBox(
                   width: isMobile ? 162 : 138,
                   child: FilledButton(
-                    onPressed: () =>
-                        _startConnectIronMode('2', minimizeLibrary: true),
-                    style:
-                        _compactFilledStyle(highlighted: _drawIronSize == '2'),
-                    child: const Text('2" Iron'),
+                    onPressed: () => _addStraightIronFromLibrary(
+                      horizontal: false,
+                      size: '2',
+                    ),
+                    style: _compactFilledStyle(highlighted: true),
+                    child: const Text('2" Vertical Iron'),
                   ),
                 ),
                 SizedBox(
                   width: isMobile ? 162 : 138,
                   child: FilledButton(
-                    onPressed: () =>
-                        _startConnectIronMode('3', minimizeLibrary: true),
-                    style:
-                        _compactFilledStyle(highlighted: _drawIronSize == '3'),
-                    child: const Text('3" Iron'),
+                    onPressed: () => _addStraightIronFromLibrary(
+                      horizontal: true,
+                      size: '3',
+                    ),
+                    style: _compactFilledStyle(highlighted: true),
+                    child: const Text('3" Horizontal Iron'),
                   ),
                 ),
                 SizedBox(
                   width: isMobile ? 162 : 138,
                   child: FilledButton(
-                    onPressed: () =>
-                        _startConnectIronMode('4', minimizeLibrary: true),
-                    style:
-                        _compactFilledStyle(highlighted: _drawIronSize == '4'),
-                    child: const Text('4" Iron'),
+                    onPressed: () => _addStraightIronFromLibrary(
+                      horizontal: false,
+                      size: '3',
+                    ),
+                    style: _compactFilledStyle(highlighted: true),
+                    child: const Text('3" Vertical Iron'),
                   ),
                 ),
-                for (final type in types)
-                  _equipmentButtonForLibrary(type,
-                      outlined: outlined, isMobile: isMobile),
+                SizedBox(
+                  width: isMobile ? 162 : 138,
+                  child: FilledButton(
+                    onPressed: () => _addStraightIronFromLibrary(
+                      horizontal: true,
+                      size: '4',
+                    ),
+                    style: _compactFilledStyle(highlighted: true),
+                    child: const Text('4" Horizontal Iron'),
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? 162 : 138,
+                  child: FilledButton(
+                    onPressed: () => _addStraightIronFromLibrary(
+                      horizontal: false,
+                      size: '4',
+                    ),
+                    style: _compactFilledStyle(highlighted: true),
+                    child: const Text('4" Vertical Iron'),
+                  ),
+                ),
               ],
             ),
           ],
@@ -5882,6 +5937,21 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               ),
             ],
           ),
+          Row(
+            children: [
+              const Text(
+                'Keep Open',
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              Switch.adaptive(
+                value: _libraryKeepOpen,
+                activeColor: _gold,
+                onChanged: (value) {
+                  setState(() => _libraryKeepOpen = value);
+                },
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           const Text(
             'Tap to place multiple pieces quickly. Panel stays open while you build.',
@@ -5941,7 +6011,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
             child: OutlinedButton(
               onPressed: () {
                 if (_isStraightIronType(type)) {
-                  _enterDrawIronMode();
+                  _addItem(type);
                 } else {
                   _addItem(type);
                 }
@@ -6056,6 +6126,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final labelsLabel = _showLabels
         ? 'Show Equipment Labels: On'
         : 'Show Equipment Labels: Off';
+    final gridLabel = _snapToGrid ? 'Align to Grid: On' : 'Align to Grid: Off';
     final anchorLabel = _showConnectionPoints
         ? 'Show Connection Points: On'
         : 'Show Connection Points: Off';
@@ -6066,40 +6137,37 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         border:
             Border(bottom: BorderSide(color: Theme.of(context).dividerColor)),
       ),
-      child: SingleChildScrollView(
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            FilledButton.icon(
+      child: Row(
+        children: [
+          Expanded(
+            child: FilledButton.icon(
               onPressed: _saveRigUp,
               icon: const Icon(Icons.save_alt),
               label: const Text('Save'),
               style: _compactFilledStyle(highlighted: true),
             ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
               onPressed: _undoStack.isNotEmpty ? _undoLayoutChange : null,
               icon: const Icon(Icons.undo),
               label: const Text('Undo'),
               style: _compactOutlineStyle(),
             ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
               onPressed: _redoStack.isNotEmpty ? _redoLayoutChange : null,
               icon: const Icon(Icons.redo),
               label: const Text('Redo'),
               style: _compactOutlineStyle(),
             ),
-            const SizedBox(width: 8),
-            FilledButton.icon(
-              onPressed: _toggleSnapToGrid,
-              icon: const Icon(Icons.grid_4x4),
-              label: Text(_snapToGrid ? 'Snap ON' : 'Snap OFF'),
-              style: _compactFilledStyle(highlighted: _snapToGrid),
-            ),
-            const SizedBox(width: 8),
-            PopupMenuButton<String>(
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: PopupMenuButton<String>(
               tooltip: 'More actions',
               onSelected: (value) {
                 switch (value) {
@@ -6108,6 +6176,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                     break;
                   case 'redo':
                     _redoLayoutChange();
+                    break;
+                  case 'alignGrid':
+                    _toggleSnapToGrid();
                     break;
                   case 'labels':
                     _toggleShowEquipmentLabels();
@@ -6157,6 +6228,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                   value: 'redo',
                   enabled: _redoStack.isNotEmpty,
                   child: const Text('Redo'),
+                ),
+                PopupMenuItem<String>(
+                  value: 'alignGrid',
+                  child: Text(gridLabel),
                 ),
                 PopupMenuItem<String>(
                   value: 'labels',
@@ -6217,23 +6292,26 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Theme.of(context).dividerColor),
                 ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.more_horiz, color: Colors.white),
-                    SizedBox(width: 6),
-                    Text(
-                      'More',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
+                child: const Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.more_horiz, color: Colors.white),
+                      SizedBox(width: 6),
+                      Text(
+                        'More',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -6379,6 +6457,23 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                         ),
                       ),
                     ),
+                    if (_showSideLibrary)
+                      Row(
+                        children: [
+                          const Text(
+                            'Keep Open',
+                            style:
+                                TextStyle(color: Colors.white70, fontSize: 12),
+                          ),
+                          Switch.adaptive(
+                            value: _libraryKeepOpen,
+                            activeColor: _gold,
+                            onChanged: (value) {
+                              setState(() => _libraryKeepOpen = value);
+                            },
+                          ),
+                        ],
+                      ),
                     if (_showSideLibrary)
                       TextButton(
                         onPressed: () => setState(() {
@@ -6529,18 +6624,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   Widget _selectionQuickActionsBar() {
     final hasSelection = _hasSelectedItem;
     final selected = _selectedItem;
-    final stripDisabled = !hasSelection || _hideFloatingToolbar;
     final locked = selected?.locked ?? true;
     final canMove = hasSelection && !locked && !_hideFloatingToolbar;
     final canAct = hasSelection && !_hideFloatingToolbar;
-    final canUndo = _undoStack.isNotEmpty && !_hideFloatingToolbar;
-    final canRedo = _redoStack.isNotEmpty && !_hideFloatingToolbar;
-    final isStraightIron =
-        selected != null && _isStraightIronType(selected.type);
-    final hasConnection = selected != null &&
-        _isStraightIronType(selected.type) &&
-        _selectedEndpointLeading != null;
-    final selectedName = selected?.displayLabel ?? 'No selection';
 
     return Container(
       key: const ValueKey<String>('selection-dock-toolbar'),
@@ -6557,143 +6643,52 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         children: [
           _selectionDPad(disabled: !canMove),
           const SizedBox(width: 8),
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  Container(
-                    constraints: const BoxConstraints(maxWidth: 180),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1D23),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFF3A3A3A)),
-                    ),
-                    child: Text(
-                      selectedName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: hasSelection ? _gold : Colors.white60,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  OutlinedButton.icon(
-                    onPressed: canUndo ? _undoLayoutChange : null,
-                    icon: const Icon(Icons.undo),
-                    label: const Text('Undo'),
-                    style: _compactOutlineStyle(),
-                  ),
-                  const SizedBox(width: 6),
-                  OutlinedButton.icon(
-                    onPressed: canRedo ? _redoLayoutChange : null,
-                    icon: const Icon(Icons.redo),
-                    label: const Text('Redo'),
-                    style: _compactOutlineStyle(),
-                  ),
-                  const SizedBox(width: 6),
-                  OutlinedButton.icon(
-                    onPressed: hasSelection ? _clearSelection : null,
-                    icon: const Icon(Icons.done_all),
-                    label: const Text('Done'),
-                    style: _compactOutlineStyle(),
-                  ),
-                  const SizedBox(width: 6),
-                  OutlinedButton.icon(
-                    onPressed: canAct ? _duplicateSelected : null,
-                    icon: const Icon(Icons.copy),
-                    label: const Text('Duplicate'),
-                    style: _compactOutlineStyle(),
-                  ),
-                  const SizedBox(width: 6),
-                  OutlinedButton.icon(
-                    onPressed: canAct ? _rotateSelected : null,
-                    icon: const Icon(Icons.rotate_right),
-                    label: const Text('Rotate'),
-                    style: _compactOutlineStyle(),
-                  ),
-                  const SizedBox(width: 6),
-                  OutlinedButton.icon(
-                    onPressed: canAct ? _toggleSelectedLock : null,
-                    icon: Icon(locked ? Icons.lock_open : Icons.lock),
-                    label: Text(locked ? 'Unlock' : 'Lock'),
-                    style: _compactOutlineStyle(),
-                  ),
-                  const SizedBox(width: 6),
-                  OutlinedButton.icon(
-                    onPressed: canAct ? _deleteSelected : null,
-                    icon: const Icon(Icons.delete),
-                    label: const Text('Delete'),
-                    style: _compactOutlineStyle(highlighted: true),
-                  ),
-                  if (hasConnection) ...[
-                    const SizedBox(width: 6),
-                    OutlinedButton.icon(
-                      onPressed: canAct ? _disconnectSelectedConnection : null,
-                      icon: const Icon(Icons.link_off),
-                      label: const Text('Disconnect'),
-                      style: _compactOutlineStyle(),
-                    ),
-                  ],
-                  if (isStraightIron) ...[
-                    const SizedBox(width: 6),
-                    OutlinedButton.icon(
-                      onPressed: canAct
-                          ? () => setState(() {
-                                _selectedEndpointLeading = null;
-                                _selectedBypassHandle = null;
-                              })
-                          : null,
-                      icon: const Icon(Icons.open_with),
-                      label: const Text('Move Segment'),
-                      style: _compactOutlineStyle(),
-                    ),
-                    const SizedBox(width: 6),
-                    OutlinedButton.icon(
-                      onPressed: canAct
-                          ? () => setState(() {
-                                _selectedEndpointLeading = true;
-                                _selectedBypassHandle = null;
-                              })
-                          : null,
-                      icon: const Icon(Icons.first_page),
-                      label: const Text('Adjust Start'),
-                      style: _compactOutlineStyle(),
-                    ),
-                    const SizedBox(width: 6),
-                    OutlinedButton.icon(
-                      onPressed: canAct
-                          ? () => setState(() {
-                                _selectedEndpointLeading = false;
-                                _selectedBypassHandle = null;
-                              })
-                          : null,
-                      icon: const Icon(Icons.last_page),
-                      label: const Text('Adjust End'),
-                      style: _compactOutlineStyle(),
-                    ),
-                  ],
-                  if (!hasSelection) ...[
-                    const SizedBox(width: 6),
-                    const Text(
-                      'Select an item to edit',
-                      style: TextStyle(color: Colors.white60),
-                    ),
-                  ],
-                ],
+          if (!hasSelection)
+            const Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'No item selected',
+                  style: TextStyle(color: Colors.white60),
+                ),
               ),
-            ),
-          ),
-          if (stripDisabled)
-            const Padding(
-              padding: EdgeInsets.only(left: 6),
-              child: Icon(Icons.touch_app_outlined,
-                  color: Colors.white38, size: 16),
+            )
+          else
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: canAct ? _rotateSelected : null,
+                      icon: const Icon(Icons.rotate_right),
+                      label: const Text('Rotate'),
+                      style: _compactOutlineStyle(),
+                    ),
+                    const SizedBox(width: 6),
+                    OutlinedButton.icon(
+                      onPressed: canAct ? _duplicateSelected : null,
+                      icon: const Icon(Icons.copy),
+                      label: const Text('Duplicate'),
+                      style: _compactOutlineStyle(),
+                    ),
+                    const SizedBox(width: 6),
+                    OutlinedButton.icon(
+                      onPressed: canAct ? _toggleSelectedLock : null,
+                      icon: Icon(locked ? Icons.lock_open : Icons.lock),
+                      label: Text(locked ? 'Unlock' : 'Lock'),
+                      style: _compactOutlineStyle(),
+                    ),
+                    const SizedBox(width: 6),
+                    OutlinedButton.icon(
+                      onPressed: canAct ? _deleteSelected : null,
+                      icon: const Icon(Icons.delete),
+                      label: const Text('Delete'),
+                      style: _compactOutlineStyle(highlighted: true),
+                    ),
+                  ],
+                ),
+              ),
             ),
         ],
       ),
@@ -7165,12 +7160,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                 _scenePointFromViewport(details.localPosition);
                             _handleCanvasTap(scenePoint);
                           },
-                          onPanStart:
-                              _drawIronMode ? _handleDrawIronPanStart : null,
-                          onPanUpdate:
-                              _drawIronMode ? _handleDrawIronPanUpdate : null,
-                          onPanEnd:
-                              _drawIronMode ? _handleDrawIronPanEnd : null,
                           child: InteractiveViewer(
                             transformationController: _canvasTransform,
                             onInteractionEnd: (_) {
@@ -7367,7 +7356,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                       child: Padding(
                                         padding: EdgeInsets.all(24),
                                         child: Text(
-                                          'Add equipment or turn on Draw Iron. Pinch to zoom and drag to pan this larger rig-up workspace.',
+                                          'Add equipment from the library. Pinch to zoom and drag to pan this workspace.',
                                           textAlign: TextAlign.center,
                                           style: TextStyle(
                                               color: Colors.white54,

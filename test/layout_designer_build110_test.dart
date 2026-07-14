@@ -122,13 +122,14 @@ Future<void> _pumpLayout(
   List<Map<String, dynamic>> items = const <Map<String, dynamic>>[],
   int nextId = 10,
   int? selectedId,
+  bool snapToGrid = false,
   bool? selectedEndpointLeading,
   String? selectedBypassHandle,
 }) async {
   final payload = <String, dynamic>{
     'name': 'Test Layout',
     'nextId': nextId,
-    'snapToGrid': true,
+    'snapToGrid': snapToGrid,
     'items': items,
     if (selectedId != null) 'selectedId': selectedId,
     if (selectedId != null) 'selectedIds': <int>[selectedId],
@@ -147,9 +148,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 125', () async {
+  test('Build number is 126', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+125'));
+    expect(pubspec, contains('version: 1.0.1+126'));
   });
 
   testWidgets(
@@ -356,8 +357,6 @@ void main() {
       selectedId: 1,
     );
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Snap ON').first);
-    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Move Right'));
     await tester.pumpAndSettle();
 
@@ -369,7 +368,8 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Snap ON D-pad nudge moves selected item by one grid increment',
+  testWidgets(
+      'Align to Grid ON D-pad nudge uses the grid-aligned step increment',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -379,13 +379,18 @@ void main() {
       selectedId: 1,
     );
 
+    await tester.tap(find.text('More').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Align to Grid: Off').last);
+    await tester.pumpAndSettle();
+
     await tester.tap(find.byTooltip('Move Right'));
     await tester.pumpAndSettle();
 
     await _saveRigUp(tester);
     final items = _itemsFromPayload(await _savedLayoutPayload());
     final moved = _findById(items, 1);
-    expect((moved['x'] as num).toDouble(), closeTo(304.0, 0.01));
+    expect((moved['x'] as num).toDouble(), closeTo(282.0, 0.01));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -420,7 +425,7 @@ void main() {
 
     await _saveRigUp(tester);
     final redone = _findById(_itemsFromPayload(await _savedLayoutPayload()), 1);
-    expect((redone['x'] as num).toDouble(), closeTo(304.0, 0.01));
+    expect((redone['x'] as num).toDouble(), closeTo(281.0, 0.01));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -524,7 +529,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Facilities').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('Open Library'), findsWidgets);
+    expect(find.text('Rig-Up Library'), findsOneWidget);
     expect(find.byIcon(Icons.account_tree), findsNothing);
 
     await _saveRigUp(tester);
@@ -543,7 +548,8 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Selecting equipment from the library minimizes the library',
+  testWidgets(
+      'Selecting equipment from the library keeps the library open by default',
       (tester) async {
     SharedPreferences.setMockInitialValues({});
     await tester.binding.setSurfaceSize(const Size(1280, 1500));
@@ -554,8 +560,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Wellhead').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('Rig-Up Library'), findsNothing);
-    expect(find.text('Open Library'), findsWidgets);
+    expect(find.text('Rig-Up Library'), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('item-hitbox-1')), findsOneWidget);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
