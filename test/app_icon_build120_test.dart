@@ -82,16 +82,16 @@ Future<Uint8List> _resizePngBytes(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('Build number is 130 in pubspec', () async {
+  test('Build number is 131 in pubspec', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+130'));
+    expect(pubspec, contains('version: 1.0.1+131'));
     expect(
-        pubspec, contains('image_path: "assets/icons/app_icon_build130.png"'));
+        pubspec, contains('image_path: "assets/icons/app_icon_build131.png"'));
   });
 
-  test('Configured Build 130 master icon exists and is at least 1024x1024',
+  test('Configured Build 131 master icon exists and is at least 1024x1024',
       () async {
-    final iconFile = File('assets/icons/app_icon_build130.png');
+    final iconFile = File('assets/icons/app_icon_build131.png');
     expect(iconFile.existsSync(), isTrue);
 
     final icon = await _decodePng(iconFile);
@@ -99,20 +99,20 @@ void main() {
     expect(icon.height, greaterThanOrEqualTo(1024));
   });
 
-  test('Build 130 master hash differs from Build 129 master hash', () async {
+  test('Build 131 master hash differs from Build 129 master hash', () async {
     final build129 = File('assets/icons/app_icon_build129.png');
-    final build130 = File('assets/icons/app_icon_build130.png');
+    final build131 = File('assets/icons/app_icon_build131.png');
     expect(build129.existsSync(), isTrue);
-    expect(build130.existsSync(), isTrue);
+    expect(build131.existsSync(), isTrue);
 
     final hash129 = _fnv1a64Hex(await build129.readAsBytes());
-    final hash130 = _fnv1a64Hex(await build130.readAsBytes());
-    expect(hash130, isNot(equals(hash129)));
+    final hash131 = _fnv1a64Hex(await build131.readAsBytes());
+    expect(hash131, isNot(equals(hash129)));
   });
 
-  test('Build 130 master icon keeps opaque edge coverage and neutral black',
+  test('Build 131 master icon keeps opaque edge coverage and neutral black',
       () async {
-    final icon = await _decodePng(File('assets/icons/app_icon_build130.png'));
+    final icon = await _decodePng(File('assets/icons/app_icon_build131.png'));
 
     final blackProbePoints = <List<double>>[
       <double>[0.25, 0.25],
@@ -163,17 +163,17 @@ void main() {
     }
   });
 
-  test('Build 130 center uses Build 124 while border preserves Build 129 ring',
+  test('Build 131 center uses Build 124 while border preserves Build 130 ring',
       () async {
     final build124 =
         await _decodePng(File('assets/icons/app_icon_build124.png'));
-    final build129 =
-        await _decodePng(File('assets/icons/app_icon_build129.png'));
     final build130 =
         await _decodePng(File('assets/icons/app_icon_build130.png'));
+    final build131 =
+        await _decodePng(File('assets/icons/app_icon_build131.png'));
 
-    final width = build130.width;
-    final height = build130.height;
+    final width = build131.width;
+    final height = build131.height;
     final x0 = (width * 0.15).floor();
     final x1 = (width * 0.85).ceil();
     final y0 = (height * 0.15).floor();
@@ -184,13 +184,13 @@ void main() {
     for (var y = 0; y < height; y++) {
       for (var x = 0; x < width; x++) {
         final inCenter = x >= x0 && x < x1 && y >= y0 && y < y1;
-        final px130 = build130.pixel(x, y);
+        final px131 = build131.pixel(x, y);
         if (inCenter) {
-          if (!_pixelsEqual(px130, build124.pixel(x, y))) {
+          if (!_pixelsEqual(px131, build124.pixel(x, y))) {
             centerDiff++;
           }
         } else {
-          if (!_pixelsEqual(px130, build129.pixel(x, y))) {
+          if (!_pixelsEqual(px131, build130.pixel(x, y))) {
             borderDiff++;
           }
         }
@@ -198,9 +198,9 @@ void main() {
     }
 
     expect(centerDiff, 0,
-        reason: 'Build 130 center region must match Build 124 exactly.');
+        reason: 'Build 131 center region must match Build 124 exactly.');
     expect(borderDiff, 0,
-        reason: 'Build 130 border region must match Build 129 exactly.');
+        reason: 'Build 131 border region must match Build 130 exactly.');
   });
 
   test(

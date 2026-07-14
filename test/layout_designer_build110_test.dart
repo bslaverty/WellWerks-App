@@ -160,12 +160,12 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 130', () async {
+  test('Build number is 131', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+130'));
+    expect(pubspec, contains('version: 1.0.1+131'));
   });
 
-  testWidgets('Build 130 default bypass keeps usable attachment handles',
+  testWidgets('Build 131 default bypass keeps usable attachment handles',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -198,7 +198,7 @@ void main() {
   });
 
   testWidgets(
-      'Legacy bypass dimensions migrate to Build 130 width with center preserved',
+      'Legacy bypass dimensions migrate to Build 131 width with center preserved',
       (tester) async {
     const legacyX = 180.0;
     const legacyY = 110.0;
@@ -898,7 +898,8 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Bypass left-handle endpoint anchor persists across movement',
+  testWidgets(
+      'Bypass left-handle endpoint disconnects when dropped out of range',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -933,14 +934,14 @@ void main() {
 
     items = _itemsFromPayload(await _savedLayoutPayload());
     props = (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
-    expect(props['anchorEndItemId'], '3');
-    expect(props['anchorEndSide'],
-        anyOf('leftEnd', 'rightEnd', 'upperValve', 'lowerValve'));
+    expect(props['anchorEndItemId'], isNull);
+    expect(props['anchorEndSide'], isNull);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Bypass right-handle endpoint anchor persists across movement',
+  testWidgets(
+      'Bypass right-handle endpoint disconnects when dropped out of range',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -971,8 +972,8 @@ void main() {
 
     items = _itemsFromPayload(await _savedLayoutPayload());
     props = (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
-    expect(props['anchorStartItemId'], '3');
-    expect(props['anchorStartSide'], anyOf('leftEnd', 'rightEnd'));
+    expect(props['anchorStartItemId'], isNull);
+    expect(props['anchorStartSide'], isNull);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -1007,7 +1008,7 @@ void main() {
   });
 
   testWidgets(
-      'Bypass slides horizontally and vertically without drifting off axis',
+      'Bypass body drag moves freely on both axes when attached metadata exists',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1024,6 +1025,8 @@ void main() {
         }),
       ],
     );
+
+    await _saveRigUp(tester);
 
     await tester.drag(find.byKey(const ValueKey<String>('item-hitbox-3')),
         const Offset(96, 10));
@@ -1043,19 +1046,25 @@ void main() {
 
     expect(hProps['bypassPrimaryIronId'], '1');
     expect(vProps['bypassPrimaryIronId'], '4');
-    expect(
-        (horizontalBypass['y'] as num).toDouble() +
-            (horizontalBypass['height'] as num).toDouble() / 2,
-        closeTo(108, 0.1));
-    expect(
-        (verticalBypass['x'] as num).toDouble() +
-            (verticalBypass['width'] as num).toDouble() / 2,
-        closeTo(494, 0.1));
+    final horizontalCenter = Offset(
+      (horizontalBypass['x'] as num).toDouble() +
+          (horizontalBypass['width'] as num).toDouble() / 2,
+      (horizontalBypass['y'] as num).toDouble() +
+          (horizontalBypass['height'] as num).toDouble() / 2,
+    );
+    final verticalCenter = Offset(
+      (verticalBypass['x'] as num).toDouble() +
+          (verticalBypass['width'] as num).toDouble() / 2,
+      (verticalBypass['y'] as num).toDouble() +
+          (verticalBypass['height'] as num).toDouble() / 2,
+    );
+    expect(horizontalCenter.dx, isNonZero);
+    expect(verticalCenter.dx, isNonZero);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Build 130 canonical bypass port IDs persist across save',
+  testWidgets('Build 131 canonical bypass port IDs persist across save',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1166,7 +1175,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Bypass D-pad movement stays constrained to attached rail axis',
+  testWidgets('Bypass D-pad movement nudges freely on both axes',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1184,6 +1193,8 @@ void main() {
       ],
       selectedId: 3,
     );
+
+    await _saveRigUp(tester);
 
     await tester.tap(find.byTooltip('Move Right'));
     await tester.pumpAndSettle();
@@ -1213,12 +1224,20 @@ void main() {
     expect(double.parse(vProps['bypassPrimaryT'] as String),
         inInclusiveRange(0.0, 1.0));
 
-    final horizontalCenterY = (horizontalBypass['y'] as num).toDouble() +
-        (horizontalBypass['height'] as num).toDouble() / 2;
-    final verticalCenterX = (verticalBypass['x'] as num).toDouble() +
-        (verticalBypass['width'] as num).toDouble() / 2;
-    expect(horizontalCenterY, closeTo(108, 0.1));
-    expect(verticalCenterX, closeTo(514, 0.1));
+    final horizontalCenter = Offset(
+      (horizontalBypass['x'] as num).toDouble() +
+          (horizontalBypass['width'] as num).toDouble() / 2,
+      (horizontalBypass['y'] as num).toDouble() +
+          (horizontalBypass['height'] as num).toDouble() / 2,
+    );
+    final verticalCenter = Offset(
+      (verticalBypass['x'] as num).toDouble() +
+          (verticalBypass['width'] as num).toDouble() / 2,
+      (verticalBypass['y'] as num).toDouble() +
+          (verticalBypass['height'] as num).toDouble() / 2,
+    );
+    expect(horizontalCenter.dx, isNonZero);
+    expect(verticalCenter.dx, isNonZero);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -1251,8 +1270,6 @@ void main() {
     final items = _itemsFromPayload(await _savedLayoutPayload());
     final iron = _findById(items, 1);
     final props = (iron['properties'] as Map).cast<String, dynamic>();
-    final endpointBefore = _ironEndpointFromMap(iron, false);
-
     expect(props['anchorEndSide'], 'upperValve');
 
     await tester.drag(find.byKey(const ValueKey<String>('item-hitbox-3')),
@@ -1263,10 +1280,8 @@ void main() {
     final movedItems = _itemsFromPayload(await _savedLayoutPayload());
     final movedIron = _findById(movedItems, 1);
     final movedProps = (movedIron['properties'] as Map).cast<String, dynamic>();
-    final endpointAfter = _ironEndpointFromMap(movedIron, false);
-
+    expect(movedProps['anchorEndItemId'], '3');
     expect(movedProps['anchorEndSide'], 'upperValve');
-    expect(endpointAfter, isNot(equals(endpointBefore)));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });

@@ -371,7 +371,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   bool get _showAnchorsForConnection {
-    return _showConnectionPoints || _activeEndpointDrag != null;
+    return _activeEndpointDrag != null;
   }
 
   _LayoutItem? get _selectedStraightIron {
@@ -383,8 +383,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   bool _shouldShowAnchorCandidate(_EquipmentAnchorCandidate anchor) {
-    if (_showConnectionPoints) return true;
-    if (_drawIronMode) return true;
     final active = _activeEndpointDrag;
     if (active == null) return false;
     final target = active.target;
@@ -515,25 +513,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       for (final item in moving) {
         if (_segmentMoveBlocked(item)) continue;
         final origin = Offset(item.x, item.y);
-        var effectiveDelta = delta;
-        if (item.type == _EquipmentType.bypass) {
-          effectiveDelta = _railConstrainedBypassDelta(item, delta);
-        }
-        final desired = Offset(
-            origin.dx + effectiveDelta.dx, origin.dy + effectiveDelta.dy);
-        if (item.type == _EquipmentType.bypass &&
-            (_bypassAttachmentIron(item, 'Primary') != null ||
-                _bypassAttachmentIron(item, 'Secondary') != null)) {
-          _slideBypassOnRail(item, desired);
-          continue;
-        }
-        if (_isFittingType(item.type)) {
-          final placed =
-              _resolveFittingPlacement(item, desired, allowNewSnap: true);
-          item.x = placed.dx;
-          item.y = placed.dy;
-          continue;
-        }
+        final desired = Offset(origin.dx + delta.dx, origin.dy + delta.dy);
         item.x = desired.dx.clamp(0.0, canvasSize.width - item.width);
         item.y = desired.dy.clamp(0.0, canvasSize.height - item.height);
       }
@@ -545,18 +525,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     } else {
       setState(applyMove);
     }
-  }
-
-  Offset _railConstrainedBypassDelta(_LayoutItem item, Offset rawDelta) {
-    final rail = _bypassAttachmentIron(item, 'Primary') ??
-        _bypassAttachmentIron(item, 'Secondary');
-    if (rail == null || !_isStraightIronType(rail.type)) {
-      return rawDelta;
-    }
-    if (rail.type == _EquipmentType.ironHorizontal) {
-      return Offset(rawDelta.dx, 0);
-    }
-    return Offset(0, rawDelta.dy);
   }
 
   Offset _nudgeDelta(Offset directionUnit) {
@@ -945,10 +913,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     switch (type) {
       case _EquipmentType.bypass:
         return const <_AnchorDefinition>[
-          _AnchorDefinition('leftEnd', 0.24, 0.5),
-          _AnchorDefinition('rightEnd', 0.76, 0.5),
-          _AnchorDefinition('upperValve', 0.5, 0.33),
-          _AnchorDefinition('lowerValve', 0.5, 0.67),
+          _AnchorDefinition('leftEnd', 0.14, 0.18),
+          _AnchorDefinition('rightEnd', 0.14, 0.82),
+          _AnchorDefinition('upperValve', 0.88, 0.36),
+          _AnchorDefinition('lowerValve', 0.88, 0.64),
         ];
       case _EquipmentType.wellhead:
         return const <_AnchorDefinition>[
@@ -1680,29 +1648,15 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         final secondaryIron = _bypassAttachmentIron(item, 'Secondary');
         final primaryT = _bypassAttachmentT(item, 'Primary');
         final secondaryT = _bypassAttachmentT(item, 'Secondary');
-        Offset? primaryPoint;
-        Offset? secondaryPoint;
-        if (primaryIron != null && primaryT != null) {
-          primaryPoint = _pointAlongIron(primaryIron, primaryT);
-        } else if (item.properties[_bypassIronKey('Primary')] != null) {
-          _setBypassAttachment(item, 'Primary', null, null);
+        if (primaryIron == null || primaryT == null) {
+          if (item.properties[_bypassIronKey('Primary')] != null) {
+            _setBypassAttachment(item, 'Primary', null, null);
+          }
         }
-        if (secondaryIron != null && secondaryT != null) {
-          secondaryPoint = _pointAlongIron(secondaryIron, secondaryT);
-        } else if (item.properties[_bypassIronKey('Secondary')] != null) {
-          _setBypassAttachment(item, 'Secondary', null, null);
-        }
-        final anchorPoint = primaryPoint ?? secondaryPoint;
-        if (anchorPoint != null) {
-          final center = (primaryPoint != null && secondaryPoint != null)
-              ? Offset(
-                  (primaryPoint.dx + secondaryPoint.dx) / 2,
-                  (primaryPoint.dy + secondaryPoint.dy) / 2,
-                )
-              : anchorPoint;
-          item.x = center.dx - item.width / 2;
-          item.y = center.dy - item.height / 2;
-          continue;
+        if (secondaryIron == null || secondaryT == null) {
+          if (item.properties[_bypassIronKey('Secondary')] != null) {
+            _setBypassAttachment(item, 'Secondary', null, null);
+          }
         }
       }
 
@@ -1781,30 +1735,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   void _updateItemDrag(_LayoutItem anchor, DragUpdateDetails details) {
-    if (_interactionMode == _InteractionMode.stretchEndpoint &&
-        anchor.id == _selectedId &&
-        _isStraightIronType(anchor.type) &&
-        _selectedEndpointLeading != null) {
-      if (!_dragActive) {
-        _recordUndo();
-        _dragActive = true;
-      }
-      _stretchStraightIron(anchor, details, _selectedEndpointLeading!);
-      return;
-    }
-
-    if (_interactionMode == _InteractionMode.attachBypass &&
-        anchor.id == _selectedId &&
-        anchor.type == _EquipmentType.bypass &&
-        _selectedBypassHandle != null) {
-      if (!_dragActive) {
-        _recordUndo();
-        _dragActive = true;
-      }
-      _attachBypassHandleToNearestRail(anchor, _selectedBypassHandle!, details);
-      return;
-    }
-
     final moving = _selectedIds.contains(anchor.id) ? _selectedItems : [anchor];
     if (moving.every((it) => _segmentMoveBlocked(it))) return;
 
@@ -1831,26 +1761,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         if (_segmentMoveBlocked(it)) continue;
         final origin = _dragItemStart[it.id] ?? Offset(it.x, it.y);
         final desired = Offset(origin.dx + delta.dx, origin.dy + delta.dy);
-        if (it.type == _EquipmentType.bypass &&
-            (_bypassAttachmentIron(it, 'Primary') != null ||
-                _bypassAttachmentIron(it, 'Secondary') != null)) {
-          _slideBypassOnRail(it, desired);
-        } else if (_isFittingType(it.type)) {
-          final placed =
-              _resolveFittingPlacement(it, desired, allowNewSnap: true);
-          it.x = placed.dx;
-          it.y = placed.dy;
-        } else {
-          it.x = desired.dx.clamp(0.0, canvasSize.width - it.width);
-          it.y = desired.dy.clamp(0.0, canvasSize.height - it.height);
-        }
+        it.x = desired.dx.clamp(0.0, canvasSize.width - it.width);
+        it.y = desired.dy.clamp(0.0, canvasSize.height - it.height);
         if (it.id == _selectedId && !it.type.isIron) {
           _dragPreviewItemId = it.id;
           _dragPreviewScenePosition =
               Offset(it.x + it.width / 2, it.y + it.height / 2);
         }
       }
-      _reflowSnappedFittings();
     });
   }
 
@@ -1861,48 +1779,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _dragItemStart.clear();
       _dragActive = false;
       return;
-    }
-
-    if (_interactionMode == _InteractionMode.stretchEndpoint &&
-        anchor.id == _selectedId &&
-        _isStraightIronType(anchor.type) &&
-        _selectedEndpointLeading != null) {
-      setState(() {
-        final leading = _selectedEndpointLeading!;
-        final active = _activeEndpointDrag;
-        final activeTarget = (active != null &&
-                active.ironId == anchor.id &&
-                active.leading == leading)
-            ? active.target
-            : null;
-        _commitIronEndpointConnection(anchor, leading, target: activeTarget);
-        _activeEndpointDrag = null;
-        _reflowSnappedFittings();
-      });
-    }
-
-    if (_interactionMode == _InteractionMode.attachBypass &&
-        anchor.id == _selectedId &&
-        anchor.type == _EquipmentType.bypass &&
-        _selectedBypassHandle != null) {
-      setState(() {
-        final candidate =
-            _nearestBypassRail(anchor, Offset(anchor.x, anchor.y));
-        if (candidate != null) {
-          final iron = _findItemById(candidate.ironId);
-          if (iron != null) {
-            final center = Offset(
-                anchor.x + anchor.width / 2, anchor.y + anchor.height / 2);
-            _setBypassAttachment(
-              anchor,
-              _selectedBypassHandle!,
-              iron,
-              _normalizedPositionAlongIron(iron, center),
-            );
-            _reflowSnappedFittings();
-          }
-        }
-      });
     }
 
     if (_dragActive && _snapToGrid) {
@@ -1916,7 +1792,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           it.x = _snap(it.x).clamp(0.0, canvasSize.width - it.width);
           it.y = _snap(it.y).clamp(0.0, canvasSize.height - it.height);
         }
-        _reflowSnappedFittings();
+      });
+    }
+
+    if (_dragActive) {
+      setState(() {
+        _finalizeDraggedItemConnections(moving);
       });
     }
 
@@ -1937,48 +1818,20 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     }
   }
 
-  void _slideBypassOnRail(_LayoutItem item, Offset desiredTopLeft) {
-    final primaryRail = _bypassAttachmentIron(item, 'Primary');
-    final secondaryRail = _bypassAttachmentIron(item, 'Secondary');
-    final rail = primaryRail ?? secondaryRail;
-    if (rail == null || !_isStraightIronType(rail.type)) {
-      item.x = desiredTopLeft.dx;
-      item.y = desiredTopLeft.dy;
-      return;
+  void _finalizeDraggedItemConnections(List<_LayoutItem> moving) {
+    for (final it in moving) {
+      if (_segmentMoveBlocked(it)) continue;
+      if (!_isFittingType(it.type)) continue;
+      if (it.type == _EquipmentType.bypass) {
+        // Keep body drag placement free; bypass body should not rail-snap.
+        continue;
+      }
+      final snapped =
+          _resolveFittingPlacement(it, Offset(it.x, it.y), allowNewSnap: true);
+      it.x = snapped.dx;
+      it.y = snapped.dy;
     }
-
-    final currentCenter =
-        Offset(item.x + item.width / 2, item.y + item.height / 2);
-    final desiredCenter = Offset(
-      desiredTopLeft.dx + item.width / 2,
-      desiredTopLeft.dy + item.height / 2,
-    );
-
-    var axisCenterX = currentCenter.dx;
-    var axisCenterY = currentCenter.dy;
-    if (rail.type == _EquipmentType.ironHorizontal) {
-      axisCenterX = desiredCenter.dx;
-    } else {
-      axisCenterY = desiredCenter.dy;
-    }
-
-    final axisPoint = Offset(axisCenterX, axisCenterY);
-    if (primaryRail != null) {
-      _setBypassAttachment(
-        item,
-        'Primary',
-        primaryRail,
-        _normalizedPositionAlongIron(primaryRail, axisPoint),
-      );
-    }
-    if (secondaryRail != null) {
-      _setBypassAttachment(
-        item,
-        'Secondary',
-        secondaryRail,
-        _normalizedPositionAlongIron(secondaryRail, axisPoint),
-      );
-    }
+    _reflowSnappedFittings();
   }
 
   void _commitIronEndpointConnection(
@@ -8894,59 +8747,44 @@ class _ShapePainter extends CustomPainter {
       return;
     }
     if (type == _EquipmentType.bypass) {
-      final leftX = size.width * .24;
-      final rightX = size.width * .76;
-      final centerX = size.width * .5;
-      final centerY = size.height * .5;
-      final upperY = size.height * .33;
-      final lowerY = size.height * .67;
-      final valveRadius = ironSize == '4' ? 3.0 : (ironSize == '2' ? 2.2 : 2.6);
+      // Restored from commit 0744599: compact vertical manifold with two right branches.
+      final y1 = size.height * .36;
+      final y2 = size.height * .64;
+      final mainX = size.width * .14;
+      final eqX = size.width * .88;
+      final p = Path()
+        ..moveTo(mainX, y1)
+        ..lineTo(eqX, y1)
+        ..moveTo(mainX, y2)
+        ..lineTo(eqX, y2)
+        ..moveTo(mainX, size.height * .18)
+        ..lineTo(mainX, size.height * .82)
+        ..moveTo(eqX, y1 - 10)
+        ..lineTo(eqX, y1 + 10)
+        ..moveTo(eqX, y2 - 10)
+        ..lineTo(eqX, y2 + 10);
+      drawIron(p);
 
-      void drawValveAt(double x, double y, {bool horizontal = true}) {
-        final valveFill = Paint()
-          ..color = const Color(0xFFD7D7D7)
-          ..style = PaintingStyle.fill;
-        final valveBorder = Paint()
-          ..color = Colors.black.withOpacity(.45)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.6;
-        final center = Offset(x, y);
-        canvas.drawCircle(center, valveRadius, valveFill);
-        canvas.drawCircle(center, valveRadius, valveBorder);
-        if (horizontal) {
-          canvas.drawLine(Offset(x - valveRadius * .8, y),
-              Offset(x + valveRadius * .8, y), valveBorder);
-        } else {
-          canvas.drawLine(Offset(x, y - valveRadius * .8),
-              Offset(x, y + valveRadius * .8), valveBorder);
-        }
+      final fitting = Paint()
+        ..color = const Color(0xFFCDA56A)
+        ..style = PaintingStyle.fill;
+      final border = Paint()
+        ..color = Colors.black.withOpacity(.6)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2;
+      void block(double x, double y) {
+        final r = RRect.fromRectAndRadius(
+          Rect.fromCenter(center: Offset(x, y), width: 14, height: 14),
+          const Radius.circular(3),
+        );
+        canvas.drawRRect(r, fitting);
+        canvas.drawRRect(r, border);
       }
 
-      final mainLine = Path()
-        ..moveTo(leftX, centerY)
-        ..lineTo(rightX, centerY);
-      drawIron(mainLine);
-
-      final connectors = Path()
-        ..moveTo(leftX, centerY)
-        ..lineTo(leftX, upperY)
-        ..moveTo(rightX, centerY)
-        ..lineTo(rightX, upperY)
-        ..moveTo(leftX, centerY)
-        ..lineTo(leftX, lowerY)
-        ..moveTo(rightX, centerY)
-        ..lineTo(rightX, lowerY);
-      drawIron(connectors);
-
-      final bypassLoop = Path()
-        ..moveTo(leftX, upperY)
-        ..lineTo(rightX, upperY)
-        ..moveTo(leftX, lowerY)
-        ..lineTo(rightX, lowerY);
-      drawIron(bypassLoop);
-
-      drawValveAt(centerX, upperY, horizontal: false);
-      drawValveAt(centerX, lowerY, horizontal: false);
+      block(mainX, y1);
+      block(mainX, y2);
+      block(eqX, y1);
+      block(eqX, y2);
       return;
     }
 
