@@ -48,15 +48,15 @@ Future<_DecodedImage> _decodePng(File file) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('Build number is 123 in pubspec', () async {
+  test('Build number is 124 in pubspec', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+123'));
+    expect(pubspec, contains('version: 1.0.1+124'));
     expect(
-        pubspec, contains('image_path: "assets/icons/app_icon_build123.png"'));
+        pubspec, contains('image_path: "assets/icons/app_icon_build124.png"'));
   });
 
   test('Master app icon exists and is at least 1024x1024', () async {
-    final iconFile = File('assets/icons/app_icon_build123.png');
+    final iconFile = File('assets/icons/app_icon_build124.png');
     expect(iconFile.existsSync(), isTrue);
 
     final icon = await _decodePng(iconFile);
@@ -66,7 +66,7 @@ void main() {
 
   test('Master app icon keeps deep black and full opaque edge coverage',
       () async {
-    final icon = await _decodePng(File('assets/icons/app_icon_build123.png'));
+    final icon = await _decodePng(File('assets/icons/app_icon_build124.png'));
 
     final blackProbePoints = <List<double>>[
       <double>[0.25, 0.25],
