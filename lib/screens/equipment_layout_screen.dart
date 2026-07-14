@@ -824,9 +824,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   bool _isInlineFittingType(_EquipmentType type) {
-    return type == _EquipmentType.bypass ||
-        type.name.startsWith('elbow') ||
-        type.name.startsWith('tee');
+    return type == _EquipmentType.bypass || type.name.startsWith('tee');
+  }
+
+  bool _isElbowFittingType(_EquipmentType type) {
+    return type.name.startsWith('elbow');
   }
 
   _LayoutItem? _findItemById(int id) {
@@ -3429,6 +3431,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         ..clear()
         ..addAll(items);
       for (final item in _items) {
+        if (_isElbowFittingType(item.type)) {
+          _clearInlineParentAttachment(item);
+        }
         if (_isInlineFittingType(item.type)) {
           final parentIron = _inlineParentIron(item);
           final parentT = _inlineParentT(item);

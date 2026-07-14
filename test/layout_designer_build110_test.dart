@@ -161,26 +161,6 @@ Offset _fittingAnchorFromMap(Map<String, dynamic> item, String side) {
   return Offset(x + rotated.dx, y + rotated.dy);
 }
 
-({Offset start, Offset end}) _elbowLegFromMap(
-  Map<String, dynamic> elbow,
-  String legId,
-) {
-  final x = (elbow['x'] as num).toDouble();
-  final y = (elbow['y'] as num).toDouble();
-  final width = (elbow['width'] as num).toDouble();
-  final height = (elbow['height'] as num).toDouble();
-  final turns = (elbow['rotationTurns'] as num?)?.toInt() ?? 0;
-  final corner = _rotateLocal(
-    Offset(width * 0.5, height * 0.5),
-    Size(width, height),
-    turns,
-  );
-  final cornerWorld = Offset(x + corner.dx, y + corner.dy);
-  final side = legId == 'inletLeg' ? 'inlet' : 'outlet';
-  final endWorld = _fittingAnchorFromMap(elbow, side);
-  return (start: cornerWorld, end: endWorld);
-}
-
 Map<String, dynamic> _ironItem(
   int id, {
   required double x,
@@ -277,9 +257,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 142', () async {
+  test('Build number is 143', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+142'));
+    expect(pubspec, contains('version: 1.0.1+143'));
   });
 
   testWidgets('Build 134 selected bypass keeps full artwork and no handle dots',
@@ -1745,8 +1725,73 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets(
-      '90 stores attached leg id and keeps that leg on parent centerline',
+  testWidgets('Tee slides on parent iron and keeps endpoint connector IDs',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 480, y: 100, width: 620, vertical: true),
+        <String, dynamic>{
+          'id': 2,
+          'type': 'teeRight',
+          'x': 300.0,
+          'y': 320.0,
+          'width': 34.0,
+          'height': 34.0,
+          'properties': <String, String>{
+            'ironSize': '3',
+            'inlineParentIronId': '1',
+            'inlineParentT': '0.5000',
+            'inlineAttachedSegmentId': 'run',
+          },
+          'rotationTurns': 0,
+          'locked': false,
+        },
+        <String, dynamic>{
+          ..._ironItem(3, x: 220, y: 260, width: 100),
+          'properties': <String, String>{
+            'ironSize': '3',
+            'anchorEndItemId': '2',
+            'anchorEndSide': 'runStart',
+          },
+        },
+        <String, dynamic>{
+          ..._ironItem(4, x: 420, y: 220, width: 100, vertical: true),
+          'properties': <String, String>{
+            'ironSize': '3',
+            'anchorStartItemId': '2',
+            'anchorStartSide': 'branch',
+          },
+        },
+      ],
+      selectedId: 2,
+    );
+
+    await tester.tap(find.byTooltip('Move Down').first);
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final tee = _findById(items, 2);
+    final teeProps = (tee['properties'] as Map).cast<String, dynamic>();
+    expect(teeProps['inlineParentIronId'], '1');
+    expect(double.parse(teeProps['inlineParentT'] as String),
+        isNot(closeTo(0.5, 0.001)));
+    expect(teeProps['inlineAttachedSegmentId'], 'run');
+
+    final iron3Props =
+        (_findById(items, 3)['properties'] as Map).cast<String, dynamic>();
+    final iron4Props =
+        (_findById(items, 4)['properties'] as Map).cast<String, dynamic>();
+    expect(iron3Props['anchorEndItemId'], '2');
+    expect(iron3Props['anchorEndSide'], 'runStart');
+    expect(iron4Props['anchorStartItemId'], '2');
+    expect(iron4Props['anchorStartSide'], 'branch');
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('90 does not persist inline spine attachment metadata',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1775,22 +1820,11 @@ void main() {
     await _saveRigUp(tester);
 
     final items = _itemsFromPayload(await _savedLayoutPayload());
-    final iron = _findById(items, 1);
     final elbow = _findById(items, 2);
     final props = (elbow['properties'] as Map).cast<String, dynamic>();
-    final legId = props['inlineAttachedSegmentId'] as String?;
-    expect(legId, anyOf('inletLeg', 'outletLeg'));
-
-    final parentX = _ironEndpointFromMap(iron, true).dx;
-    final leg = _elbowLegFromMap(elbow, legId!);
-    expect(leg.start.dx, closeTo(parentX, 1.2));
-    expect(leg.end.dx, closeTo(parentX, 1.2));
-
-    final elbowCenter = Offset(
-      (elbow['x'] as num).toDouble() + (elbow['width'] as num).toDouble() / 2,
-      (elbow['y'] as num).toDouble() + (elbow['height'] as num).toDouble() / 2,
-    );
-    expect((leg.end - elbowCenter).distance, greaterThan(2.0));
+    expect(props['inlineParentIronId'], isNull);
+    expect(props['inlineParentT'], isNull);
+    expect(props['inlineAttachedSegmentId'], isNull);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -1914,7 +1948,6 @@ void main() {
     await _saveRigUp(tester);
 
     final items = _itemsFromPayload(await _savedLayoutPayload());
-    final elbow = _findById(items, 2);
     final ironInlet = _findById(items, 3);
     final ironOutlet = _findById(items, 4);
 
@@ -1927,7 +1960,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('90 fitting attaches to long iron without auto-rotation',
+  testWidgets('90 fitting does not auto-attach to long iron spine',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1958,9 +1991,8 @@ void main() {
     final items = _itemsFromPayload(await _savedLayoutPayload());
     final elbow = _findById(items, 2);
     final props = (elbow['properties'] as Map).cast<String, dynamic>();
-    expect(props['inlineParentIronId'], '1');
-    expect(double.parse(props['inlineParentT'] as String),
-        inInclusiveRange(0.0, 1.0));
+    expect(props['inlineParentIronId'], isNull);
+    expect(props['inlineParentT'], isNull);
     expect(elbow['rotationTurns'], 2);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -2022,7 +2054,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('90 stores full-run parent position near beginning and end',
+  testWidgets('90 clears legacy inline parent metadata on save/reload',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -2070,11 +2102,12 @@ void main() {
     final startProps =
         (elbowStart['properties'] as Map).cast<String, dynamic>();
     final endProps = (elbowEnd['properties'] as Map).cast<String, dynamic>();
-    expect(startProps['inlineParentIronId'], '1');
-    expect(endProps['inlineParentIronId'], '1');
-    expect(double.parse(startProps['inlineParentT'] as String), lessThan(0.12));
-    expect(
-        double.parse(endProps['inlineParentT'] as String), greaterThan(0.88));
+    expect(startProps['inlineParentIronId'], isNull);
+    expect(endProps['inlineParentIronId'], isNull);
+    expect(startProps['inlineParentT'], isNull);
+    expect(endProps['inlineParentT'], isNull);
+    expect(startProps['inlineAttachedSegmentId'], isNull);
+    expect(endProps['inlineAttachedSegmentId'], isNull);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
