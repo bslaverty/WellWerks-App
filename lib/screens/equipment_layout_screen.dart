@@ -95,7 +95,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   Color get _gold => Theme.of(context).colorScheme.primary;
   Color get _bg => Theme.of(context).colorScheme.surface;
-  static const double _endpointInteractionScreenRadius = 30.0;
+  static const double _endpointHandleVisibleSize = 22.0;
+  static const double _endpointHandleTouchSize = 44.0;
   static const double _toolbarViewportPadding = 8.0;
   static const double _toolbarSelectionGap = 16.0;
   static const double _toolbarBottomClearance = 84.0;
@@ -366,9 +367,15 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   bool get _showAnchorsForConnection {
-    return _showConnectionPoints ||
-        _activeEndpointDrag != null ||
-        _drawIronMode;
+    return _showConnectionPoints || _activeEndpointDrag != null;
+  }
+
+  _LayoutItem? get _selectedStraightIron {
+    final selected = _selectedItem;
+    if (selected == null || !_isStraightIronType(selected.type)) {
+      return null;
+    }
+    return selected;
   }
 
   bool _shouldShowAnchorCandidate(_EquipmentAnchorCandidate anchor) {
@@ -746,6 +753,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   void _runHistoryChange(VoidCallback change) {
     _recordUndo();
     setState(change);
+  }
+
+  Future<void> _persistWorkingLayoutSnapshot() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        'wellwerks_layout_designer_v2', jsonEncode(_payload()));
   }
 
   void _appendHistoryEntry(String entry) {
@@ -1644,37 +1657,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     _activeEndpointDrag = null;
     _snapIndicatorScene = null;
     _dragSceneStart = _scenePointFromGlobal(details.globalPosition);
-    if (anchor.id == _selectedId && _isStraightIronType(anchor.type)) {
-      final startPoint = _dragSceneStart!;
-      final endpointHitRadius =
-          _sceneRadiusFromScreen(_endpointInteractionScreenRadius);
-      final startDistance = (startPoint - _ironEndpoint(anchor, true)).distance;
-      final endDistance = (startPoint - _ironEndpoint(anchor, false)).distance;
-      if (startDistance <= endpointHitRadius) {
-        _selectedEndpointLeading = true;
-        _selectedBypassHandle = null;
-        _interactionMode = _InteractionMode.stretchEndpoint;
-        _activeEndpointDrag = _ActiveEndpointDrag(
-          ironId: anchor.id,
-          leading: true,
-          worldPosition: _ironEndpoint(anchor, true),
-          target: null,
-        );
-      } else if (endDistance <= endpointHitRadius) {
-        _selectedEndpointLeading = false;
-        _selectedBypassHandle = null;
-        _interactionMode = _InteractionMode.stretchEndpoint;
-        _activeEndpointDrag = _ActiveEndpointDrag(
-          ironId: anchor.id,
-          leading: false,
-          worldPosition: _ironEndpoint(anchor, false),
-          target: null,
-        );
-      } else {
-        _selectedEndpointLeading = null;
-      }
-    } else if (anchor.id == _selectedId &&
-        anchor.type == _EquipmentType.bypass) {
+    if (anchor.id == _selectedId && anchor.type == _EquipmentType.bypass) {
       final startPoint = _dragSceneStart!;
       final handleHitRadius = _sceneRadiusFromScreen(20.0);
       final primaryPoint = Offset(anchor.x, anchor.y + anchor.height / 2);
@@ -1693,6 +1676,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       } else {
         _selectedBypassHandle = null;
       }
+    } else {
+      _selectedEndpointLeading = null;
     }
     _dragActive = false;
     _clearDragPreview();
@@ -2042,14 +2027,23 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   void _stretchStraightIron(
       _LayoutItem item, DragUpdateDetails details, bool leading) {
+    _stretchStraightIronByScreenDelta(item, details.delta, leading);
+  }
+
+  void _stretchStraightIronByScreenDelta(
+    _LayoutItem item,
+    Offset screenDelta,
+    bool leading,
+  ) {
     if (item.locked ||
         !(item.type == _EquipmentType.ironHorizontal ||
             item.type == _EquipmentType.ironVertical)) return;
     setState(() {
       _selectedEndpointLeading = leading;
       _selectedBypassHandle = null;
+      _interactionMode = _InteractionMode.stretchEndpoint;
       final current = _ironEndpoint(item, leading);
-      final sceneDelta = _sceneDeltaFromScreen(details.delta);
+      final sceneDelta = _sceneDeltaFromScreen(screenDelta);
       final desired = item.type == _EquipmentType.ironHorizontal
           ? Offset(current.dx + sceneDelta.dx, current.dy)
           : Offset(current.dx, current.dy + sceneDelta.dy);
@@ -2077,6 +2071,43 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _snapIndicatorScene = target?.point;
       _reflowSnappedFittings();
     });
+  }
+
+  void _startEndpointHandleDrag(_LayoutItem item, bool leading) {
+    if (item.locked || !_isStraightIronType(item.type)) return;
+    _recordUndo();
+    setState(() {
+      _selectedEndpointLeading = leading;
+      _selectedBypassHandle = null;
+      _interactionMode = _InteractionMode.stretchEndpoint;
+      _activeEndpointDrag = _ActiveEndpointDrag(
+        ironId: item.id,
+        leading: leading,
+        worldPosition: _ironEndpoint(item, leading),
+        target: null,
+      );
+    });
+  }
+
+  void _updateEndpointHandleDrag(_LayoutItem item, bool leading, Offset delta) {
+    _stretchStraightIronByScreenDelta(item, delta, leading);
+  }
+
+  void _endEndpointHandleDrag(_LayoutItem item, bool leading) {
+    setState(() {
+      final active = _activeEndpointDrag;
+      final activeTarget = (active != null &&
+              active.ironId == item.id &&
+              active.leading == leading)
+          ? active.target
+          : null;
+      _commitIronEndpointConnection(item, leading, target: activeTarget);
+      _activeEndpointDrag = null;
+      _interactionMode = _InteractionMode.idle;
+      _reflowSnappedFittings();
+      _snapIndicatorScene = null;
+    });
+    _persistWorkingLayoutSnapshot();
   }
 
   void _disconnectSelectedConnection() {
@@ -6659,6 +6690,29 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
+                    Container(
+                      constraints: const BoxConstraints(maxWidth: 170),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A1D23),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFF3A3A3A)),
+                      ),
+                      child: Text(
+                        selected?.displayLabel ??
+                            selected?.type.label ??
+                            'Item',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: _gold,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
                     OutlinedButton.icon(
                       onPressed: canAct ? _rotateSelected : null,
                       icon: const Icon(Icons.rotate_right),
@@ -7096,6 +7150,73 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     );
   }
 
+  List<Widget> _endpointOverlayHandles(Size viewportSize) {
+    final item = _selectedStraightIron;
+    if (item == null || item.locked) return const <Widget>[];
+
+    Widget buildHandle({required bool leading}) {
+      final scenePoint = _ironEndpoint(item, leading);
+      final viewportPoint = _viewportPointFromScene(scenePoint);
+      const touchHalf = _endpointHandleTouchSize / 2;
+      final left = (viewportPoint.dx - touchHalf)
+          .clamp(-touchHalf, viewportSize.width - touchHalf)
+          .toDouble();
+      final top = (viewportPoint.dy - touchHalf)
+          .clamp(-touchHalf, viewportSize.height - touchHalf)
+          .toDouble();
+      final selected = _selectedEndpointLeading == leading;
+
+      return Positioned(
+        left: left,
+        top: top,
+        child: GestureDetector(
+          key: ValueKey<String>(
+              'iron-handle-${item.id}-${leading ? 'start' : 'end'}'),
+          behavior: HitTestBehavior.opaque,
+          dragStartBehavior: DragStartBehavior.down,
+          onTap: () => setState(() {
+            _selectedEndpointLeading = leading;
+            _selectedBypassHandle = null;
+          }),
+          onPanStart: (_) => _startEndpointHandleDrag(item, leading),
+          onPanUpdate: (details) =>
+              _updateEndpointHandleDrag(item, leading, details.delta),
+          onPanEnd: (_) => _endEndpointHandleDrag(item, leading),
+          onPanCancel: _resetTransientInteractionState,
+          child: SizedBox(
+            width: _endpointHandleTouchSize,
+            height: _endpointHandleTouchSize,
+            child: Center(
+              child: Container(
+                width: _endpointHandleVisibleSize,
+                height: _endpointHandleVisibleSize,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? const Color(0xFFFFC857)
+                      : const Color(0xFFE3BE6B),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.black, width: 1.6),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return <Widget>[
+      buildHandle(leading: true),
+      buildHandle(leading: false),
+    ];
+  }
+
   Widget _canvas() {
     return Column(
       children: [
@@ -7418,93 +7539,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                               ),
                                               if (_selectedIds
                                                       .contains(item.id) &&
-                                                  (item.type ==
-                                                          _EquipmentType
-                                                              .ironHorizontal ||
-                                                      item.type ==
-                                                          _EquipmentType
-                                                              .ironVertical)) ...[
-                                                _IronStretchHandle(
-                                                  item: item,
-                                                  leading: true,
-                                                  interactionPadding:
-                                                      interactionPadding,
-                                                  selected:
-                                                      _selectedEndpointLeading ==
-                                                          true,
-                                                  onTap: () => setState(() {
-                                                    _selectedEndpointLeading =
-                                                        true;
-                                                    _selectedBypassHandle =
-                                                        null;
-                                                  }),
-                                                  onPanStart: () {
-                                                    _recordUndo();
-                                                    _selectedEndpointLeading =
-                                                        true;
-                                                    _selectedBypassHandle =
-                                                        null;
-                                                  },
-                                                  onPanUpdate: (details) =>
-                                                      _stretchStraightIron(
-                                                    item,
-                                                    details,
-                                                    true,
-                                                  ),
-                                                  onPanEnd: () {
-                                                    setState(() {
-                                                      _commitIronEndpointConnection(
-                                                          item, true);
-                                                      if (_snapToGrid) {
-                                                        _reflowSnappedFittings();
-                                                      }
-                                                    });
-                                                  },
-                                                  onPanCancel:
-                                                      _resetTransientInteractionState,
-                                                ),
-                                                _IronStretchHandle(
-                                                  item: item,
-                                                  leading: false,
-                                                  interactionPadding:
-                                                      interactionPadding,
-                                                  selected:
-                                                      _selectedEndpointLeading ==
-                                                          false,
-                                                  onTap: () => setState(() {
-                                                    _selectedEndpointLeading =
-                                                        false;
-                                                    _selectedBypassHandle =
-                                                        null;
-                                                  }),
-                                                  onPanStart: () {
-                                                    _recordUndo();
-                                                    _selectedEndpointLeading =
-                                                        false;
-                                                    _selectedBypassHandle =
-                                                        null;
-                                                  },
-                                                  onPanUpdate: (details) =>
-                                                      _stretchStraightIron(
-                                                    item,
-                                                    details,
-                                                    false,
-                                                  ),
-                                                  onPanEnd: () {
-                                                    setState(() {
-                                                      _commitIronEndpointConnection(
-                                                          item, false);
-                                                      if (_snapToGrid) {
-                                                        _reflowSnappedFittings();
-                                                      }
-                                                    });
-                                                  },
-                                                  onPanCancel:
-                                                      _resetTransientInteractionState,
-                                                ),
-                                              ],
-                                              if (_selectedIds
-                                                      .contains(item.id) &&
                                                   item.type ==
                                                       _EquipmentType
                                                           .bypass) ...[
@@ -7587,6 +7621,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                           ),
                         ),
                       ),
+                      if (_selectedStraightIron != null)
+                        ..._endpointOverlayHandles(viewportSize),
                       if (_dragPreviewItemId != null &&
                           _dragPreviewScenePosition != null)
                         () {
@@ -7974,7 +8010,7 @@ extension _EquipmentTypeInfo on _EquipmentType {
     if (this == _EquipmentType.compressor) return 36;
     if (this == _EquipmentType.ironHorizontal) return 150;
     if (this == _EquipmentType.ironVertical) return 28;
-    if (this == _EquipmentType.bypass) return 46;
+    if (this == _EquipmentType.bypass) return 34;
     if (name.startsWith('tee')) return 42;
     if (name.startsWith('elbow')) return 42;
     if (isIron) return 76;
@@ -8116,6 +8152,19 @@ class _LayoutItem {
         type == _EquipmentType.bypass &&
         (rawWidth - 66.0).abs() < 0.2 &&
         (rawHeight - 34.0).abs() < 0.2) {
+      final centerX = x + width / 2;
+      final centerY = y + height / 2;
+      width = type.defaultWidth;
+      height = type.defaultHeight;
+      x = centerX - width / 2;
+      y = centerY - height / 2;
+    }
+
+    if (rawWidth != null &&
+        rawHeight != null &&
+        type == _EquipmentType.bypass &&
+        (rawWidth - 46.0).abs() < 0.2 &&
+        (rawHeight - 32.0).abs() < 0.2) {
       final centerX = x + width / 2;
       final centerY = y + height / 2;
       width = type.defaultWidth;
@@ -8443,80 +8492,6 @@ class _LayoutTile extends StatelessWidget {
   }
 }
 
-class _IronStretchHandle extends StatelessWidget {
-  final _LayoutItem item;
-  final bool leading;
-  final double interactionPadding;
-  final bool selected;
-  final VoidCallback onTap;
-  final VoidCallback onPanStart;
-  final ValueChanged<DragUpdateDetails> onPanUpdate;
-  final VoidCallback onPanEnd;
-  final VoidCallback? onPanCancel;
-
-  const _IronStretchHandle({
-    required this.item,
-    required this.leading,
-    required this.interactionPadding,
-    required this.selected,
-    required this.onTap,
-    required this.onPanStart,
-    required this.onPanUpdate,
-    required this.onPanEnd,
-    this.onPanCancel,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isHorizontal = item.type == _EquipmentType.ironHorizontal;
-    const handleSize = 36.0;
-    final left = isHorizontal
-        ? (leading ? -handleSize / 2 : item.width - handleSize / 2)
-        : (item.width / 2) - handleSize / 2;
-    final top = isHorizontal
-        ? (item.height / 2) - handleSize / 2
-        : (leading ? -handleSize / 2 : item.height - handleSize / 2);
-
-    return Positioned(
-      left: left + interactionPadding,
-      top: top + interactionPadding,
-      child: GestureDetector(
-        key: ValueKey<String>(
-            'iron-handle-${item.id}-${leading ? 'start' : 'end'}'),
-        behavior: HitTestBehavior.opaque,
-        dragStartBehavior: DragStartBehavior.down,
-        onTap: onTap,
-        onPanStart: (_) => onPanStart(),
-        onPanUpdate: onPanUpdate,
-        onPanEnd: (_) => onPanEnd(),
-        onPanCancel: onPanCancel,
-        child: Container(
-          width: handleSize,
-          height: handleSize,
-          padding: const EdgeInsets.all(9),
-          decoration: BoxDecoration(
-            color: Colors.transparent,
-            shape: BoxShape.circle,
-          ),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color:
-                  selected ? const Color(0xFFFFC857) : const Color(0xFFE3BE6B),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.black, width: 1.6),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(.35), blurRadius: 4)
-              ],
-            ),
-            child: Icon(isHorizontal ? Icons.drag_handle : Icons.unfold_more,
-                size: 11, color: Colors.black),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _BypassAttachmentHandle extends StatelessWidget {
   final _LayoutItem item;
   final String slot;
@@ -8544,9 +8519,12 @@ class _BypassAttachmentHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const handleSize = 34.0;
-    final left = trailing ? item.width - handleSize / 2 : -handleSize / 2;
-    final top = item.height / 2 - handleSize / 2;
+    const handleTouchSize = 38.0;
+    const handleVisibleSize = 18.0;
+    const edgeInset = 10.0;
+    final left =
+        trailing ? item.width - handleTouchSize + edgeInset : -edgeInset;
+    final top = item.height / 2 - handleTouchSize / 2;
     return Positioned(
       left: left + interactionPadding,
       top: top + interactionPadding,
@@ -8559,20 +8537,20 @@ class _BypassAttachmentHandle extends StatelessWidget {
         onPanUpdate: onPanUpdate,
         onPanEnd: (_) => onPanEnd(),
         onPanCancel: onPanCancel,
-        child: Container(
-          width: handleSize,
-          height: handleSize,
-          padding: const EdgeInsets.all(9),
-          decoration: const BoxDecoration(
-            color: Colors.transparent,
-            shape: BoxShape.circle,
-          ),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color:
-                  selected ? const Color(0xFFFFC857) : const Color(0xFFE3BE6B),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.black, width: 1.4),
+        child: SizedBox(
+          width: handleTouchSize,
+          height: handleTouchSize,
+          child: Center(
+            child: Container(
+              width: handleVisibleSize,
+              height: handleVisibleSize,
+              decoration: BoxDecoration(
+                color: selected
+                    ? const Color(0xFFFFC857)
+                    : const Color(0xFFE3BE6B),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.black, width: 1.4),
+              ),
             ),
           ),
         ),
@@ -8702,11 +8680,11 @@ class _ShapePainter extends CustomPainter {
       return;
     }
     if (type == _EquipmentType.bypass) {
-      final leftX = size.width * .24;
-      final rightX = size.width * .76;
+      final leftX = size.width * .3;
+      final rightX = size.width * .7;
       final centerY = size.height * .5;
       final branchLength = size.height * .18;
-      final stemLength = size.width * .12;
+      final stemLength = size.width * .11;
       final valveRadius = ironSize == '4' ? 3.0 : (ironSize == '2' ? 2.2 : 2.6);
       final branchDirection = size.height * .12;
 
