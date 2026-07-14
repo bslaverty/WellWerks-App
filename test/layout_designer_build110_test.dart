@@ -64,32 +64,6 @@ Offset _ironEndpointFromMap(Map<String, dynamic> iron, bool leading) {
   return Offset(x + width / 2, leading ? y : y + height);
 }
 
-Offset _bypassPortPoint(Map<String, dynamic> bypass, String port) {
-  final x = (bypass['x'] as num).toDouble();
-  final y = (bypass['y'] as num).toDouble();
-  final width = (bypass['width'] as num).toDouble();
-  final height = (bypass['height'] as num).toDouble();
-  final turns = (bypass['rotationTurns'] as int? ?? 0) % 4;
-  final uv = switch (port) {
-    'leftEnd' => const Offset(0.0, 0.5),
-    'rightEnd' => const Offset(1.0, 0.5),
-    'upperValve' => const Offset(0.5, 0.18),
-    'lowerValve' => const Offset(0.5, 0.82),
-    _ => const Offset(0.5, 0.5),
-  };
-  final local = Offset(width * uv.dx, height * uv.dy);
-  final center = Offset(width / 2, height / 2);
-  final delta = local - center;
-  final rotated = switch (turns) {
-    1 => Offset(-delta.dy, delta.dx),
-    2 => Offset(-delta.dx, -delta.dy),
-    3 => Offset(delta.dy, -delta.dx),
-    _ => delta,
-  };
-  final world = center + rotated;
-  return Offset(x + world.dx, y + world.dy);
-}
-
 Map<String, dynamic> _ironItem(
   int id, {
   required double x,
@@ -186,13 +160,12 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 129', () async {
+  test('Build number is 130', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+129'));
+    expect(pubspec, contains('version: 1.0.1+130'));
   });
 
-  testWidgets(
-      'Build 129 default bypass is compact and keeps usable attachment handles',
+  testWidgets('Build 130 default bypass keeps usable attachment handles',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -218,14 +191,14 @@ void main() {
     await _saveRigUp(tester);
     final items = _itemsFromPayload(await _savedLayoutPayload());
     final bypass = _findByType(items, 'bypass');
-    expect((bypass['width'] as num).toDouble(), closeTo(27, 0.01));
+    expect((bypass['width'] as num).toDouble(), closeTo(30, 0.01));
     expect((bypass['height'] as num).toDouble(), closeTo(32, 0.01));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
   testWidgets(
-      'Legacy bypass dimensions migrate to Build 129 compact width with center preserved',
+      'Legacy bypass dimensions migrate to Build 130 width with center preserved',
       (tester) async {
     const legacyX = 180.0;
     const legacyY = 110.0;
@@ -250,7 +223,7 @@ void main() {
     final x = (bypass['x'] as num).toDouble();
     final y = (bypass['y'] as num).toDouble();
 
-    expect(width, closeTo(27, 0.01));
+    expect(width, closeTo(30, 0.01));
     expect(height, closeTo(32, 0.01));
     expect(x + width / 2, closeTo(legacyCenterX, 0.01));
     expect(y + height / 2, closeTo(legacyCenterY, 0.01));
@@ -934,7 +907,10 @@ void main() {
           'anchorEndItemId': '3',
           'anchorEndSide': 'leftEnd',
         }),
-        _bypassItem(3, x: 180, y: 350),
+        _bypassItem(3, x: 180, y: 350, properties: <String, String>{
+          'bypassPrimaryIronId': '1',
+          'bypassPrimaryT': '1.0000',
+        }),
       ],
       selectedId: 1,
       selectedEndpointLeading: false,
@@ -945,7 +921,8 @@ void main() {
     var props =
         (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
     expect(props['anchorEndItemId'], '3');
-    expect(props['anchorEndSide'], anyOf('leftEnd', 'rightEnd'));
+    expect(props['anchorEndSide'],
+        anyOf('leftEnd', 'rightEnd', 'upperValve', 'lowerValve'));
 
     await tester.drag(
       find.byKey(const ValueKey<String>('item-hitbox-3')),
@@ -957,7 +934,8 @@ void main() {
     items = _itemsFromPayload(await _savedLayoutPayload());
     props = (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
     expect(props['anchorEndItemId'], '3');
-    expect(props['anchorEndSide'], anyOf('leftEnd', 'rightEnd'));
+    expect(props['anchorEndSide'],
+        anyOf('leftEnd', 'rightEnd', 'upperValve', 'lowerValve'));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -1077,7 +1055,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Build 129 canonical bypass port IDs persist across save',
+  testWidgets('Build 130 canonical bypass port IDs persist across save',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1259,7 +1237,7 @@ void main() {
           'type': 'bypass',
           'x': 320.0,
           'y': 170.0,
-          'width': 27.0,
+          'width': 30.0,
           'height': 32.0,
           'properties': <String, String>{'ironSize': '3'},
           'rotationTurns': 1,

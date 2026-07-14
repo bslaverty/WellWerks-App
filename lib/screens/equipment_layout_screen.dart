@@ -515,7 +515,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       for (final item in moving) {
         if (_segmentMoveBlocked(item)) continue;
         final origin = Offset(item.x, item.y);
-        final desired = Offset(origin.dx + delta.dx, origin.dy + delta.dy);
+        var effectiveDelta = delta;
+        if (item.type == _EquipmentType.bypass) {
+          effectiveDelta = _railConstrainedBypassDelta(item, delta);
+        }
+        final desired = Offset(
+            origin.dx + effectiveDelta.dx, origin.dy + effectiveDelta.dy);
         if (item.type == _EquipmentType.bypass &&
             (_bypassAttachmentIron(item, 'Primary') != null ||
                 _bypassAttachmentIron(item, 'Secondary') != null)) {
@@ -540,6 +545,18 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     } else {
       setState(applyMove);
     }
+  }
+
+  Offset _railConstrainedBypassDelta(_LayoutItem item, Offset rawDelta) {
+    final rail = _bypassAttachmentIron(item, 'Primary') ??
+        _bypassAttachmentIron(item, 'Secondary');
+    if (rail == null || !_isStraightIronType(rail.type)) {
+      return rawDelta;
+    }
+    if (rail.type == _EquipmentType.ironHorizontal) {
+      return Offset(rawDelta.dx, 0);
+    }
+    return Offset(0, rawDelta.dy);
   }
 
   Offset _nudgeDelta(Offset directionUnit) {
@@ -928,10 +945,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     switch (type) {
       case _EquipmentType.bypass:
         return const <_AnchorDefinition>[
-          _AnchorDefinition('leftEnd', 0.0, 0.5),
-          _AnchorDefinition('rightEnd', 1.0, 0.5),
-          _AnchorDefinition('upperValve', 0.5, 0.18),
-          _AnchorDefinition('lowerValve', 0.5, 0.82),
+          _AnchorDefinition('leftEnd', 0.24, 0.5),
+          _AnchorDefinition('rightEnd', 0.76, 0.5),
+          _AnchorDefinition('upperValve', 0.5, 0.33),
+          _AnchorDefinition('lowerValve', 0.5, 0.67),
         ];
       case _EquipmentType.wellhead:
         return const <_AnchorDefinition>[
@@ -1921,29 +1938,46 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   void _slideBypassOnRail(_LayoutItem item, Offset desiredTopLeft) {
-    final rail = _bypassAttachmentIron(item, 'Primary') ??
-        _bypassAttachmentIron(item, 'Secondary');
+    final primaryRail = _bypassAttachmentIron(item, 'Primary');
+    final secondaryRail = _bypassAttachmentIron(item, 'Secondary');
+    final rail = primaryRail ?? secondaryRail;
     if (rail == null || !_isStraightIronType(rail.type)) {
       item.x = desiredTopLeft.dx;
       item.y = desiredTopLeft.dy;
       return;
     }
 
+    final currentCenter =
+        Offset(item.x + item.width / 2, item.y + item.height / 2);
     final desiredCenter = Offset(
       desiredTopLeft.dx + item.width / 2,
       desiredTopLeft.dy + item.height / 2,
     );
-    final t = _normalizedPositionAlongIron(rail, desiredCenter);
-    if (_bypassAttachmentIron(item, 'Primary') != null) {
-      _setBypassAttachment(item, 'Primary', rail, t);
+
+    var axisCenterX = currentCenter.dx;
+    var axisCenterY = currentCenter.dy;
+    if (rail.type == _EquipmentType.ironHorizontal) {
+      axisCenterX = desiredCenter.dx;
+    } else {
+      axisCenterY = desiredCenter.dy;
     }
-    if (_bypassAttachmentIron(item, 'Secondary') != null) {
+
+    final axisPoint = Offset(axisCenterX, axisCenterY);
+    if (primaryRail != null) {
       _setBypassAttachment(
-          item,
-          'Secondary',
-          _bypassAttachmentIron(item, 'Secondary'),
-          _normalizedPositionAlongIron(
-              _bypassAttachmentIron(item, 'Secondary')!, desiredCenter));
+        item,
+        'Primary',
+        primaryRail,
+        _normalizedPositionAlongIron(primaryRail, axisPoint),
+      );
+    }
+    if (secondaryRail != null) {
+      _setBypassAttachment(
+        item,
+        'Secondary',
+        secondaryRail,
+        _normalizedPositionAlongIron(secondaryRail, axisPoint),
+      );
     }
   }
 
@@ -8154,7 +8188,7 @@ extension _EquipmentTypeInfo on _EquipmentType {
     if (this == _EquipmentType.compressor) return 36;
     if (this == _EquipmentType.ironHorizontal) return 150;
     if (this == _EquipmentType.ironVertical) return 28;
-    if (this == _EquipmentType.bypass) return 27;
+    if (this == _EquipmentType.bypass) return 30;
     if (name.startsWith('tee')) return 42;
     if (name.startsWith('elbow')) return 42;
     if (isIron) return 76;
@@ -8860,12 +8894,12 @@ class _ShapePainter extends CustomPainter {
       return;
     }
     if (type == _EquipmentType.bypass) {
-      const leftX = 0.0;
-      final rightX = size.width;
+      final leftX = size.width * .24;
+      final rightX = size.width * .76;
       final centerX = size.width * .5;
       final centerY = size.height * .5;
-      final upperY = size.height * .18;
-      final lowerY = size.height * .82;
+      final upperY = size.height * .33;
+      final lowerY = size.height * .67;
       final valveRadius = ironSize == '4' ? 3.0 : (ironSize == '2' ? 2.2 : 2.6);
 
       void drawValveAt(double x, double y, {bool horizontal = true}) {
@@ -8893,18 +8927,26 @@ class _ShapePainter extends CustomPainter {
         ..lineTo(rightX, centerY);
       drawIron(mainLine);
 
-      final branch = Path()
-        ..moveTo(centerX, centerY)
-        ..lineTo(centerX, upperY)
-        ..moveTo(centerX, centerY)
-        ..lineTo(centerX, lowerY);
-      drawIron(branch);
+      final connectors = Path()
+        ..moveTo(leftX, centerY)
+        ..lineTo(leftX, upperY)
+        ..moveTo(rightX, centerY)
+        ..lineTo(rightX, upperY)
+        ..moveTo(leftX, centerY)
+        ..lineTo(leftX, lowerY)
+        ..moveTo(rightX, centerY)
+        ..lineTo(rightX, lowerY);
+      drawIron(connectors);
+
+      final bypassLoop = Path()
+        ..moveTo(leftX, upperY)
+        ..lineTo(rightX, upperY)
+        ..moveTo(leftX, lowerY)
+        ..lineTo(rightX, lowerY);
+      drawIron(bypassLoop);
 
       drawValveAt(centerX, upperY, horizontal: false);
       drawValveAt(centerX, lowerY, horizontal: false);
-
-      drawValveAt(leftX + valveRadius * 0.9, centerY);
-      drawValveAt(rightX - valveRadius * 0.9, centerY);
       return;
     }
 

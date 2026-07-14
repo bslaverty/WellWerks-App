@@ -56,6 +56,10 @@ String _fnv1a64Hex(Uint8List bytes) {
   return hash.toRadixString(16).padLeft(16, '0').toUpperCase();
 }
 
+bool _pixelsEqual(List<int> a, List<int> b) {
+  return a[0] == b[0] && a[1] == b[1] && a[2] == b[2] && a[3] == b[3];
+}
+
 Future<Uint8List> _resizePngBytes(
   File file, {
   required int targetWidth,
@@ -78,16 +82,16 @@ Future<Uint8List> _resizePngBytes(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('Build number is 129 in pubspec', () async {
+  test('Build number is 130 in pubspec', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+129'));
+    expect(pubspec, contains('version: 1.0.1+130'));
     expect(
-        pubspec, contains('image_path: "assets/icons/app_icon_build129.png"'));
+        pubspec, contains('image_path: "assets/icons/app_icon_build130.png"'));
   });
 
-  test('Configured Build 129 master icon exists and is at least 1024x1024',
+  test('Configured Build 130 master icon exists and is at least 1024x1024',
       () async {
-    final iconFile = File('assets/icons/app_icon_build129.png');
+    final iconFile = File('assets/icons/app_icon_build130.png');
     expect(iconFile.existsSync(), isTrue);
 
     final icon = await _decodePng(iconFile);
@@ -95,20 +99,20 @@ void main() {
     expect(icon.height, greaterThanOrEqualTo(1024));
   });
 
-  test('Build 129 master hash differs from Build 128 master hash', () async {
-    final build128 = File('assets/icons/app_icon_build128.png');
+  test('Build 130 master hash differs from Build 129 master hash', () async {
     final build129 = File('assets/icons/app_icon_build129.png');
-    expect(build128.existsSync(), isTrue);
+    final build130 = File('assets/icons/app_icon_build130.png');
     expect(build129.existsSync(), isTrue);
+    expect(build130.existsSync(), isTrue);
 
-    final hash128 = _fnv1a64Hex(await build128.readAsBytes());
     final hash129 = _fnv1a64Hex(await build129.readAsBytes());
-    expect(hash129, isNot(equals(hash128)));
+    final hash130 = _fnv1a64Hex(await build130.readAsBytes());
+    expect(hash130, isNot(equals(hash129)));
   });
 
-  test('Build 129 master icon keeps opaque edge coverage and neutral black',
+  test('Build 130 master icon keeps opaque edge coverage and neutral black',
       () async {
-    final icon = await _decodePng(File('assets/icons/app_icon_build129.png'));
+    final icon = await _decodePng(File('assets/icons/app_icon_build130.png'));
 
     final blackProbePoints = <List<double>>[
       <double>[0.25, 0.25],
@@ -159,33 +163,44 @@ void main() {
     }
   });
 
-  test(
-      'Build 129 black is deeper and gold is richer than Build 128 at sampled points',
+  test('Build 130 center uses Build 124 while border preserves Build 129 ring',
       () async {
-    final build128 =
-        await _decodePng(File('assets/icons/app_icon_build128.png'));
+    final build124 =
+        await _decodePng(File('assets/icons/app_icon_build124.png'));
     final build129 =
         await _decodePng(File('assets/icons/app_icon_build129.png'));
+    final build130 =
+        await _decodePng(File('assets/icons/app_icon_build130.png'));
 
-    const blackProbeX = 620;
-    const blackProbeY = 150;
-    final black128 = build128.pixel(blackProbeX, blackProbeY);
-    final black129 = build129.pixel(blackProbeX, blackProbeY);
-    final black128Sum = black128[0] + black128[1] + black128[2];
-    final black129Sum = black129[0] + black129[1] + black129[2];
-    expect(black129Sum, lessThan(black128Sum));
-    expect(black129[0], inInclusiveRange(0, 3));
-    expect(black129[1], inInclusiveRange(0, 3));
-    expect(black129[2], inInclusiveRange(0, 3));
+    final width = build130.width;
+    final height = build130.height;
+    final x0 = (width * 0.15).floor();
+    final x1 = (width * 0.85).ceil();
+    final y0 = (height * 0.15).floor();
+    final y1 = (height * 0.85).ceil();
 
-    const goldProbeX = 747;
-    const goldProbeY = 200;
-    final gold128 = build128.pixel(goldProbeX, goldProbeY);
-    final gold129 = build129.pixel(goldProbeX, goldProbeY);
-    expect(gold129[0], inInclusiveRange(206, 220));
-    expect(gold129[1], inInclusiveRange(162, 176));
-    expect(gold129[2], inInclusiveRange(90, 106));
-    expect(gold129[2], lessThan(gold128[2] - 16));
+    var centerDiff = 0;
+    var borderDiff = 0;
+    for (var y = 0; y < height; y++) {
+      for (var x = 0; x < width; x++) {
+        final inCenter = x >= x0 && x < x1 && y >= y0 && y < y1;
+        final px130 = build130.pixel(x, y);
+        if (inCenter) {
+          if (!_pixelsEqual(px130, build124.pixel(x, y))) {
+            centerDiff++;
+          }
+        } else {
+          if (!_pixelsEqual(px130, build129.pixel(x, y))) {
+            borderDiff++;
+          }
+        }
+      }
+    }
+
+    expect(centerDiff, 0,
+        reason: 'Build 130 center region must match Build 124 exactly.');
+    expect(borderDiff, 0,
+        reason: 'Build 130 border region must match Build 129 exactly.');
   });
 
   test(
