@@ -1874,6 +1874,59 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
+  testWidgets(
+      '90 inlet and outlet ports keep stable IDs and exact endpoint alignment',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 2,
+          'type': 'elbowUpRight',
+          'x': 300.0,
+          'y': 320.0,
+          'width': 34.0,
+          'height': 34.0,
+          'properties': <String, String>{'ironSize': '3'},
+          'rotationTurns': 0,
+          'locked': false,
+        },
+        <String, dynamic>{
+          ..._ironItem(3, x: 260, y: 330, width: 100),
+          'properties': <String, String>{
+            'ironSize': '3',
+            'anchorEndItemId': '2',
+            'anchorEndSide': 'inlet',
+          },
+        },
+        <String, dynamic>{
+          ..._ironItem(4, x: 330, y: 290, width: 100, vertical: true),
+          'properties': <String, String>{
+            'ironSize': '3',
+            'anchorStartItemId': '2',
+            'anchorStartSide': 'outlet',
+          },
+        },
+      ],
+    );
+
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final elbow = _findById(items, 2);
+    final ironInlet = _findById(items, 3);
+    final ironOutlet = _findById(items, 4);
+
+    final inletProps = (ironInlet['properties'] as Map).cast<String, dynamic>();
+    final outletProps =
+        (ironOutlet['properties'] as Map).cast<String, dynamic>();
+    expect(inletProps['anchorEndSide'], 'inlet');
+    expect(outletProps['anchorStartSide'], 'outlet');
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
   testWidgets('90 fitting attaches to long iron without auto-rotation',
       (tester) async {
     await _pumpLayout(
