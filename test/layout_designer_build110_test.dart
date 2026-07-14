@@ -168,9 +168,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 139', () async {
+  test('Build number is 140', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+139'));
+    expect(pubspec, contains('version: 1.0.1+140'));
   });
 
   testWidgets('Build 134 selected bypass keeps full artwork and no handle dots',
@@ -1671,6 +1671,119 @@ void main() {
     expect(double.parse(props['inlineParentT'] as String),
         inInclusiveRange(0.0, 1.0));
     expect(elbow['rotationTurns'], 2);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Tee stores full-run parent position near beginning and end',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 120, y: 260, width: 620),
+        <String, dynamic>{
+          'id': 2,
+          'type': 'teeUp',
+          'x': 360.0,
+          'y': 140.0,
+          'width': 34.0,
+          'height': 34.0,
+          'properties': <String, String>{
+            'ironSize': '3',
+            'inlineParentIronId': '1',
+            'inlineParentT': '0.0600',
+          },
+          'rotationTurns': 0,
+          'locked': false,
+        },
+        <String, dynamic>{
+          'id': 3,
+          'type': 'teeUp',
+          'x': 580.0,
+          'y': 140.0,
+          'width': 34.0,
+          'height': 34.0,
+          'properties': <String, String>{
+            'ironSize': '3',
+            'inlineParentIronId': '1',
+            'inlineParentT': '0.9400',
+          },
+          'rotationTurns': 0,
+          'locked': false,
+        },
+      ],
+    );
+
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final teeStart = _findById(items, 2);
+    final teeEnd = _findById(items, 3);
+    final startProps = (teeStart['properties'] as Map).cast<String, dynamic>();
+    final endProps = (teeEnd['properties'] as Map).cast<String, dynamic>();
+    expect(startProps['inlineParentIronId'], '1');
+    expect(endProps['inlineParentIronId'], '1');
+    expect(double.parse(startProps['inlineParentT'] as String), lessThan(0.12));
+    expect(
+        double.parse(endProps['inlineParentT'] as String), greaterThan(0.88));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('90 stores full-run parent position near beginning and end',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 480, y: 100, width: 620, vertical: true),
+        <String, dynamic>{
+          'id': 2,
+          'type': 'elbowUpRight',
+          'x': 300.0,
+          'y': 200.0,
+          'width': 34.0,
+          'height': 34.0,
+          'properties': <String, String>{
+            'ironSize': '3',
+            'inlineParentIronId': '1',
+            'inlineParentT': '0.0600',
+          },
+          'rotationTurns': 1,
+          'locked': false,
+        },
+        <String, dynamic>{
+          'id': 3,
+          'type': 'elbowUpRight',
+          'x': 300.0,
+          'y': 560.0,
+          'width': 34.0,
+          'height': 34.0,
+          'properties': <String, String>{
+            'ironSize': '3',
+            'inlineParentIronId': '1',
+            'inlineParentT': '0.9400',
+          },
+          'rotationTurns': 2,
+          'locked': false,
+        },
+      ],
+    );
+
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final elbowStart = _findById(items, 2);
+    final elbowEnd = _findById(items, 3);
+    final startProps =
+        (elbowStart['properties'] as Map).cast<String, dynamic>();
+    final endProps = (elbowEnd['properties'] as Map).cast<String, dynamic>();
+    expect(startProps['inlineParentIronId'], '1');
+    expect(endProps['inlineParentIronId'], '1');
+    expect(double.parse(startProps['inlineParentT'] as String), lessThan(0.12));
+    expect(
+        double.parse(endProps['inlineParentT'] as String), greaterThan(0.88));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });

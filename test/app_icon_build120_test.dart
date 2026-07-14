@@ -63,6 +63,27 @@ String _fnv1a64Hex(Uint8List bytes) {
   return hash.toRadixString(16).padLeft(16, '0').toUpperCase();
 }
 
+bool _isGoldish(List<int> px) {
+  return px[3] > 200 && px[0] >= 145 && px[1] >= 105 && px[2] >= 60;
+}
+
+bool _hasGoldInRect(
+  _DecodedImage image, {
+  required int left,
+  required int top,
+  required int right,
+  required int bottom,
+}) {
+  for (var y = top; y <= bottom; y++) {
+    for (var x = left; x <= right; x++) {
+      if (_isGoldish(image.pixel(x, y))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 List<int> _goldBounds(_DecodedImage image) {
   var minX = image.width;
   var minY = image.height;
@@ -159,16 +180,16 @@ Future<Uint8List> _resizePngBytes(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('Build number is 139 in pubspec', () async {
+  test('Build number is 140 in pubspec', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+139'));
+    expect(pubspec, contains('version: 1.0.1+140'));
     expect(
-        pubspec, contains('image_path: "assets/icons/app_icon_build139.png"'));
+        pubspec, contains('image_path: "assets/icons/app_icon_build140.png"'));
   });
 
-  test('Configured Build 139 master icon exists and is exactly 1024x1024',
+  test('Configured Build 140 master icon exists and is exactly 1024x1024',
       () async {
-    final iconFile = File('assets/icons/app_icon_build139.png');
+    final iconFile = File('assets/icons/app_icon_build140.png');
     expect(iconFile.existsSync(), isTrue);
 
     final icon = await _decodePng(iconFile);
@@ -176,38 +197,94 @@ void main() {
     expect(icon.height, 1024);
   });
 
-  test('Build 139 master hash differs from Build 137 master hash', () async {
-    final build137 = File('assets/icons/app_icon_build137.png');
+  test('Build 140 master hash differs from Build 139 master hash', () async {
     final build139 = File('assets/icons/app_icon_build139.png');
-    expect(build137.existsSync(), isTrue);
+    final build140 = File('assets/icons/app_icon_build140.png');
     expect(build139.existsSync(), isTrue);
+    expect(build140.existsSync(), isTrue);
 
-    final hash137 = _fnv1a64Hex(await build137.readAsBytes());
     final hash139 = _fnv1a64Hex(await build139.readAsBytes());
-    expect(hash139, isNot(equals(hash137)));
+    final hash140 = _fnv1a64Hex(await build140.readAsBytes());
+    expect(hash140, isNot(equals(hash139)));
   });
 
-  test('Build 139 master icon keeps flat-black background', () async {
-    final build139 =
-        await _decodePng(File('assets/icons/app_icon_build139.png'));
-    _expectFlatBlackSamples(build139, _flatBlackProbePoints1024);
+  test('Build 140 master icon keeps flat-black background', () async {
+    final build140 =
+        await _decodePng(File('assets/icons/app_icon_build140.png'));
+    _expectFlatBlackSamples(build140, _flatBlackProbePoints1024);
   });
 
-  test('Build 139 WW bounds are consistent with cropped source reference',
-      () async {
-    final cropped = await _decodePng(
-        File('assets/icons/app_icon_build139_crop_source.png'));
-    final master = await _decodePng(File('assets/icons/app_icon_build139.png'));
-    final cropBounds = _normalizedBounds(cropped);
+  test('Build 140 WW bounds are unchanged from Build 139 source', () async {
+    final source = await _decodePng(File('assets/icons/app_icon_build139.png'));
+    final master = await _decodePng(File('assets/icons/app_icon_build140.png'));
+    final sourceBounds = _normalizedBounds(source);
     final masterBounds = _normalizedBounds(master);
 
     for (var i = 0; i < 4; i++) {
-      expect((masterBounds[i] - cropBounds[i]).abs(), lessThan(0.03));
+      expect((masterBounds[i] - sourceBounds[i]).abs(), lessThan(0.01));
     }
   });
 
+  test('Build 140 inset gold border is visible at master and app sizes',
+      () async {
+    final master = await _decodePng(File('assets/icons/app_icon_build140.png'));
+    expect(
+      _hasGoldInRect(
+        master,
+        left: 120,
+        top: 4,
+        right: 904,
+        bottom: 24,
+      ),
+      isTrue,
+    );
+    expect(
+      _hasGoldInRect(
+        master,
+        left: 4,
+        top: 120,
+        right: 24,
+        bottom: 904,
+      ),
+      isTrue,
+    );
+
+    final icon180 = await _decodePng(
+      File(
+          'ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-60x60@3x.png'),
+    );
+    expect(
+      _hasGoldInRect(
+        icon180,
+        left: 18,
+        top: 0,
+        right: 162,
+        bottom: 6,
+      ),
+      isTrue,
+    );
+
+    final icon60Bytes = await _resizePngBytes(
+      File(
+          'ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-60x60@3x.png'),
+      targetWidth: 60,
+      targetHeight: 60,
+    );
+    final icon60 = await _decodePngBytes(icon60Bytes);
+    expect(
+      _hasGoldInRect(
+        icon60,
+        left: 7,
+        top: 0,
+        right: 53,
+        bottom: 2,
+      ),
+      isTrue,
+    );
+  });
+
   test(
-      'iOS AppIcon set exists, references files, and regenerated 180 hash differs from Build 137 output',
+      'iOS AppIcon set exists, references files, and regenerated 180 hash differs from Build 139 output',
       () async {
     final contentsFile =
         File('ios/Runner/Assets.xcassets/AppIcon.appiconset/Contents.json');
@@ -249,13 +326,13 @@ void main() {
     expect(icon60Decoded.height, 180);
 
     final icon60Hash = _fnv1a64Hex(await icon60.readAsBytes());
-    final build137Derived180 = await _resizePngBytes(
-      File('assets/icons/app_icon_build137.png'),
+    final build139Derived180 = await _resizePngBytes(
+      File('assets/icons/app_icon_build139.png'),
       targetWidth: 180,
       targetHeight: 180,
     );
-    final build137Derived180Hash = _fnv1a64Hex(build137Derived180);
-    expect(icon60Hash, isNot(equals(build137Derived180Hash)));
+    final build139Derived180Hash = _fnv1a64Hex(build139Derived180);
+    expect(icon60Hash, isNot(equals(build139Derived180Hash)));
 
     _expectFlatBlackSamples(icon60Decoded, _flatBlackProbePoints180);
   });

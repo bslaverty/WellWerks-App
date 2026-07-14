@@ -1003,8 +1003,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   Offset _equipmentAnchorPoint(_LayoutItem item, String side) {
     final resolved = _equipmentAnchorPointOrNull(item, side);
-    return resolved ??
-        Offset(item.x + item.width / 2, item.y + item.height / 2);
+    if (resolved != null) {
+      return resolved;
+    }
+    final anchors = _equipmentAnchorCandidates(item);
+    if (anchors.isNotEmpty) {
+      return anchors.first.point;
+    }
+    return Offset(item.x, item.y);
   }
 
   Offset? _equipmentAnchorPointOrNull(_LayoutItem item, String side) {
