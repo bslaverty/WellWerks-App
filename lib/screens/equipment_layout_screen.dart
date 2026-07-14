@@ -111,7 +111,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   static const double _dragLiftScreenOffsetY = 64.0;
   static const double _connectionSnapRadius = 24.0;
   static const double _bypassAttachRadiusScreen = 38.0;
-  static const double _bypassOverlapToleranceScreen = 16.0;
+  static const double _inlineSpineAttachToleranceScreen = 14.0;
   static const double _bypassDetachThresholdScreen = 52.0;
   static const double _ironBypassHoldRadiusScreen = 16.0;
   static const double _ironBypassDetachThresholdScreen = 34.0;
@@ -533,16 +533,20 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               continue;
             }
             final center = _pointOnIronCenterline(parentIron, parentT);
+            final parentStart = _resolveIronEndpoint(parentIron, true);
+            final parentEnd = _resolveIronEndpoint(parentIron, false);
             final projected = horizontal
                 ? Offset(
-                    (center.dx + alongDelta)
-                        .clamp(parentIron.x, parentIron.x + parentIron.width),
-                    parentIron.y + parentIron.height / 2,
+                    (center.dx + alongDelta).clamp(
+                        math.min(parentStart.dx, parentEnd.dx),
+                        math.max(parentStart.dx, parentEnd.dx)),
+                    parentStart.dy,
                   )
                 : Offset(
-                    parentIron.x + parentIron.width / 2,
-                    (center.dy + alongDelta)
-                        .clamp(parentIron.y, parentIron.y + parentIron.height),
+                    parentStart.dx,
+                    (center.dy + alongDelta).clamp(
+                        math.min(parentStart.dy, parentEnd.dy),
+                        math.max(parentStart.dy, parentEnd.dy)),
                   );
             final t = _normalizedPositionAlongIron(parentIron, projected);
             _setInlineParentAttachment(item, parentIron, t);
@@ -1270,19 +1274,24 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   Offset _pointAlongIron(_LayoutItem iron, double t) {
     final clampedT = t.clamp(0.0, 1.0);
-    if (iron.type == _EquipmentType.ironHorizontal) {
-      return Offset(iron.x + iron.width * clampedT, iron.y + iron.height / 2);
-    }
-    return Offset(iron.x + iron.width / 2, iron.y + iron.height * clampedT);
+    final start = _resolveIronEndpoint(iron, true);
+    final end = _resolveIronEndpoint(iron, false);
+    return Offset(
+      start.dx + (end.dx - start.dx) * clampedT,
+      start.dy + (end.dy - start.dy) * clampedT,
+    );
   }
 
   double _normalizedPositionAlongIron(_LayoutItem iron, Offset point) {
-    if (iron.type == _EquipmentType.ironHorizontal) {
-      if (iron.width <= 0) return 0.0;
-      return ((point.dx - iron.x) / iron.width).clamp(0.0, 1.0);
-    }
-    if (iron.height <= 0) return 0.0;
-    return ((point.dy - iron.y) / iron.height).clamp(0.0, 1.0);
+    final start = _resolveIronEndpoint(iron, true);
+    final end = _resolveIronEndpoint(iron, false);
+    final delta = end - start;
+    final lengthSquared = delta.dx * delta.dx + delta.dy * delta.dy;
+    if (lengthSquared <= 1e-6) return 0.0;
+    final t =
+        ((point.dx - start.dx) * delta.dx + (point.dy - start.dy) * delta.dy) /
+            lengthSquared;
+    return t.clamp(0.0, 1.0).toDouble();
   }
 
   _EndpointCandidate? _nearestEndpointCandidate(
@@ -1658,6 +1667,86 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     return Offset(a.dx + ab.dx * clampedT, a.dy + ab.dy * clampedT);
   }
 
+  double _distancePointToSegment(Offset p, Offset a, Offset b) {
+    final nearest = _nearestPointOnSegment(p, a, b);
+    return (p - nearest).distance;
+  }
+
+  double _distanceBetweenSegments(Offset a1, Offset a2, Offset b1, Offset b2) {
+    if (_segmentsIntersect(a1, a2, b1, b2)) return 0.0;
+    return math.min(
+      math.min(
+        _distancePointToSegment(a1, b1, b2),
+        _distancePointToSegment(a2, b1, b2),
+      ),
+      math.min(
+        _distancePointToSegment(b1, a1, a2),
+        _distancePointToSegment(b2, a1, a2),
+      ),
+    );
+  }
+
+  Offset _attachmentSpineLocalPoint(_LayoutItem item, String side) {
+    final anchors = _anchorDefinitionsForType(item.type);
+    for (final anchor in anchors) {
+      if (anchor.id == side) {
+        return Offset(anchor.u * item.width, anchor.v * item.height);
+      }
+    }
+    return Offset(item.width / 2, item.height / 2);
+  }
+
+  _AttachmentSpine _attachmentSpineLocal(_LayoutItem item) {
+    switch (item.type) {
+      case _EquipmentType.bypass:
+        return _AttachmentSpine(
+          startLocal: _attachmentSpineLocalPoint(item, 'mainTop'),
+          endLocal: _attachmentSpineLocalPoint(item, 'mainBottom'),
+        );
+      case _EquipmentType.teeUp:
+      case _EquipmentType.teeRight:
+      case _EquipmentType.teeDown:
+      case _EquipmentType.teeLeft:
+        return _AttachmentSpine(
+          startLocal: _attachmentSpineLocalPoint(item, 'runStart'),
+          endLocal: _attachmentSpineLocalPoint(item, 'runEnd'),
+        );
+      case _EquipmentType.elbowUpRight:
+      case _EquipmentType.elbowRightDown:
+      case _EquipmentType.elbowDownLeft:
+      case _EquipmentType.elbowLeftUp:
+        return _AttachmentSpine(
+          startLocal: _attachmentSpineLocalPoint(item, 'inlet'),
+          endLocal: _attachmentSpineLocalPoint(item, 'outlet'),
+        );
+      default:
+        return _AttachmentSpine(
+          startLocal: Offset(item.width / 2, 0),
+          endLocal: Offset(item.width / 2, item.height),
+        );
+    }
+  }
+
+  _AttachmentSpine _attachmentSpineWorld(
+    _LayoutItem item, {
+    Offset? topLeft,
+  }) {
+    final origin = topLeft ?? Offset(item.x, item.y);
+    final local = _attachmentSpineLocal(item);
+    return _AttachmentSpine(
+      startLocal: origin + local.startLocal,
+      endLocal: origin + local.endLocal,
+    );
+  }
+
+  Offset _attachmentSpineCenterWorld(_LayoutItem item, {Offset? topLeft}) {
+    final spine = _attachmentSpineWorld(item, topLeft: topLeft);
+    return Offset(
+      (spine.startLocal.dx + spine.endLocal.dx) / 2,
+      (spine.startLocal.dy + spine.endLocal.dy) / 2,
+    );
+  }
+
   double _cross2d(Offset a, Offset b, Offset c) {
     return (b.dx - a.dx) * (c.dy - a.dy) - (b.dy - a.dy) * (c.dx - a.dx);
   }
@@ -1687,18 +1776,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     return false;
   }
 
-  bool _segmentIntersectsRect(Offset a, Offset b, Rect rect) {
-    if (rect.contains(a) || rect.contains(b)) return true;
-    final topLeft = rect.topLeft;
-    final topRight = rect.topRight;
-    final bottomLeft = rect.bottomLeft;
-    final bottomRight = rect.bottomRight;
-    return _segmentsIntersect(a, b, topLeft, topRight) ||
-        _segmentsIntersect(a, b, topRight, bottomRight) ||
-        _segmentsIntersect(a, b, bottomRight, bottomLeft) ||
-        _segmentsIntersect(a, b, bottomLeft, topLeft);
-  }
-
   _SnapCandidate? _nearestBypassRail(
     _LayoutItem item,
     Offset desiredTopLeft, {
@@ -1707,14 +1784,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }) {
     final maxDistanceValue =
         maxDistance ?? _sceneRadiusFromScreen(_bypassAttachRadiusScreen);
-    final overlapTolerance =
-        _sceneRadiusFromScreen(_bypassOverlapToleranceScreen);
-    final expandedBypassBounds = Rect.fromLTWH(
-            desiredTopLeft.dx, desiredTopLeft.dy, item.width, item.height)
-        .inflate(overlapTolerance);
-    final center = Offset(
-      desiredTopLeft.dx + item.width / 2,
-      desiredTopLeft.dy + item.height / 2,
+    final spine = _attachmentSpineWorld(item, topLeft: desiredTopLeft);
+    final spineCenter = Offset(
+      (spine.startLocal.dx + spine.endLocal.dx) / 2,
+      (spine.startLocal.dy + spine.endLocal.dy) / 2,
     );
     _SnapCandidate? best;
     for (final iron in _items) {
@@ -1723,21 +1796,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       final start = _resolveIronEndpoint(iron, true);
       final end = _resolveIronEndpoint(iron, false);
       final horizontal = iron.type == _EquipmentType.ironHorizontal;
-      final railBandOverlap = horizontal
-          ? expandedBypassBounds.top <= start.dy &&
-              expandedBypassBounds.bottom >= start.dy &&
-              expandedBypassBounds.right >= math.min(start.dx, end.dx) &&
-              expandedBypassBounds.left <= math.max(start.dx, end.dx)
-          : expandedBypassBounds.left <= start.dx &&
-              expandedBypassBounds.right >= start.dx &&
-              expandedBypassBounds.bottom >= math.min(start.dy, end.dy) &&
-              expandedBypassBounds.top <= math.max(start.dy, end.dy);
-      final projected = _nearestPointOnSegment(center, start, end);
-      final distance = (projected - center).distance;
-      final intersects = railBandOverlap ||
-          _segmentIntersectsRect(start, end, expandedBypassBounds);
-      if (!intersects && distance > maxDistanceValue) continue;
-      final score = intersects ? distance : distance + overlapTolerance;
+      final projected = _nearestPointOnSegment(spineCenter, start, end);
+      final distance = _distanceBetweenSegments(
+          spine.startLocal, spine.endLocal, start, end);
+      if (distance > maxDistanceValue) continue;
+      final score = distance;
       if (best == null || score < best.score) {
         best = _SnapCandidate(
           ironId: iron.id,
@@ -1992,17 +2055,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Offset _pointOnIronCenterline(_LayoutItem iron, double t) {
-    final clampedT = t.clamp(0.0, 1.0);
-    if (iron.type == _EquipmentType.ironHorizontal) {
-      return Offset(
-        iron.x + (iron.width * clampedT),
-        iron.y + iron.height / 2,
-      );
-    }
-    return Offset(
-      iron.x + iron.width / 2,
-      iron.y + (iron.height * clampedT),
-    );
+    return _pointAlongIron(iron, t);
   }
 
   _LayoutItem? _inlineParentIron(_LayoutItem item) {
@@ -2079,8 +2132,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   void _alignInlineToParent(_LayoutItem item, _LayoutItem iron, double t) {
     final center = _pointOnIronCenterline(iron, t);
-    item.x = center.dx - item.width / 2;
-    item.y = center.dy - item.height / 2;
+    final spineCenter = _attachmentSpineCenterWorld(item);
+    final delta = center - spineCenter;
+    item.x += delta.dx;
+    item.y += delta.dy;
   }
 
   void _alignBypassToParent(_LayoutItem item, _LayoutItem iron, double t) {
@@ -2127,16 +2182,20 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final startT = context.startT ??
         _normalizedPositionAlongIron(parentIron, context.startCenter);
     final startCenter = _pointOnIronCenterline(parentIron, startT);
+    final parentStart = _resolveIronEndpoint(parentIron, true);
+    final parentEnd = _resolveIronEndpoint(parentIron, false);
     final projected = horizontal
         ? Offset(
-            (startCenter.dx + alongDelta)
-                .clamp(parentIron.x, parentIron.x + parentIron.width),
-            parentIron.y + parentIron.height / 2,
+            (startCenter.dx + alongDelta).clamp(
+                math.min(parentStart.dx, parentEnd.dx),
+                math.max(parentStart.dx, parentEnd.dx)),
+            parentStart.dy,
           )
         : Offset(
-            parentIron.x + parentIron.width / 2,
-            (startCenter.dy + alongDelta)
-                .clamp(parentIron.y, parentIron.y + parentIron.height),
+            parentStart.dx,
+            (startCenter.dy + alongDelta).clamp(
+                math.min(parentStart.dy, parentEnd.dy),
+                math.max(parentStart.dy, parentEnd.dy)),
           );
     final t = _normalizedPositionAlongIron(parentIron, projected);
     _setInlineParentAttachment(item, parentIron, t);
@@ -2155,11 +2214,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   void _attachInlineToNearestRailOnDrop(_LayoutItem item) {
-    final center = Offset(item.x + item.width / 2, item.y + item.height / 2);
+    final center = _attachmentSpineCenterWorld(item);
     final candidate = _nearestBypassRail(
       item,
       Offset(item.x, item.y),
-      maxDistance: _sceneRadiusFromScreen(_bypassAttachRadiusScreen),
+      maxDistance: _sceneRadiusFromScreen(_inlineSpineAttachToleranceScreen),
     );
     if (candidate == null) return;
     final iron = _findItemById(candidate.ironId);
@@ -2198,7 +2257,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       final attached = parentIron != null && parentT != null;
       _bypassDragContexts[it.id] = _BypassDragContext(
         startTopLeft: Offset(it.x, it.y),
-        startCenter: Offset(it.x + it.width / 2, it.y + it.height / 2),
+        startCenter: _attachmentSpineCenterWorld(it),
         wasAttached: attached,
         parentIronId: parentIron?.id,
         startT: parentT,
@@ -2362,7 +2421,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _reflowSnappedFittings();
       return;
     }
-    final center = Offset(item.x + item.width / 2, item.y + item.height / 2);
+    final center = _attachmentSpineCenterWorld(item);
     _setBypassAttachment(
       item,
       slot,
@@ -2638,8 +2697,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       }
       final iron = _findItemById(candidate.ironId);
       if (iron == null) return;
-      final center =
-          Offset(desired.dx + item.width / 2, desired.dy + item.height / 2);
+      final center = _attachmentSpineCenterWorld(item, topLeft: desired);
       _setBypassAttachment(
           item, slot, iron, _normalizedPositionAlongIron(iron, center));
       _snapIndicatorScene = candidate.indicator;
@@ -8244,6 +8302,16 @@ class _AnchorDefinition {
   final double v;
 
   const _AnchorDefinition(this.id, this.u, this.v);
+}
+
+class _AttachmentSpine {
+  final Offset startLocal;
+  final Offset endLocal;
+
+  const _AttachmentSpine({
+    required this.startLocal,
+    required this.endLocal,
+  });
 }
 
 enum _ConnectionTargetKind {

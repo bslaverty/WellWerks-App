@@ -64,6 +64,14 @@ Offset _ironEndpointFromMap(Map<String, dynamic> iron, bool leading) {
   return Offset(x + width / 2, leading ? y : y + height);
 }
 
+Offset _bypassSpineCenterFromMap(Map<String, dynamic> bypass) {
+  final x = (bypass['x'] as num).toDouble();
+  final y = (bypass['y'] as num).toDouble();
+  final width = (bypass['width'] as num).toDouble();
+  final height = (bypass['height'] as num).toDouble();
+  return Offset(x + (width * 0.28), y + (height * 0.5));
+}
+
 Map<String, dynamic> _ironItem(
   int id, {
   required double x,
@@ -160,9 +168,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 138', () async {
+  test('Build number is 139', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+138'));
+    expect(pubspec, contains('version: 1.0.1+139'));
   });
 
   testWidgets('Build 134 selected bypass keeps full artwork and no handle dots',
@@ -1046,20 +1054,10 @@ void main() {
     expect(vProps['bypassParentIronId'], '4');
     expect(hProps['bypassPrimaryIronId'], '1');
     expect(vProps['bypassPrimaryIronId'], '4');
-    final horizontalCenter = Offset(
-      (horizontalBypass['x'] as num).toDouble() +
-          (horizontalBypass['width'] as num).toDouble() / 2,
-      (horizontalBypass['y'] as num).toDouble() +
-          (horizontalBypass['height'] as num).toDouble() / 2,
-    );
-    final verticalCenter = Offset(
-      (verticalBypass['x'] as num).toDouble() +
-          (verticalBypass['width'] as num).toDouble() / 2,
-      (verticalBypass['y'] as num).toDouble() +
-          (verticalBypass['height'] as num).toDouble() / 2,
-    );
-    expect(horizontalCenter.dy, closeTo(108.0, 2.0));
-    expect(verticalCenter.dx, closeTo(494.0, 2.0));
+    final horizontalSpineCenter = _bypassSpineCenterFromMap(horizontalBypass);
+    final verticalSpineCenter = _bypassSpineCenterFromMap(verticalBypass);
+    expect(horizontalSpineCenter.dy, closeTo(108.0, 2.0));
+    expect(verticalSpineCenter.dx, closeTo(494.0, 2.0));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -1303,20 +1301,10 @@ void main() {
     expect(double.parse(vProps['bypassPrimaryT'] as String),
         inInclusiveRange(0.0, 1.0));
 
-    final horizontalCenter = Offset(
-      (horizontalBypass['x'] as num).toDouble() +
-          (horizontalBypass['width'] as num).toDouble() / 2,
-      (horizontalBypass['y'] as num).toDouble() +
-          (horizontalBypass['height'] as num).toDouble() / 2,
-    );
-    final verticalCenter = Offset(
-      (verticalBypass['x'] as num).toDouble() +
-          (verticalBypass['width'] as num).toDouble() / 2,
-      (verticalBypass['y'] as num).toDouble() +
-          (verticalBypass['height'] as num).toDouble() / 2,
-    );
-    expect(horizontalCenter.dy, closeTo(108.0, 2.0));
-    expect(verticalCenter.dx, closeTo(514.0, 3.0));
+    final horizontalSpineCenter = _bypassSpineCenterFromMap(horizontalBypass);
+    final verticalSpineCenter = _bypassSpineCenterFromMap(verticalBypass);
+    expect(horizontalSpineCenter.dy, closeTo(108.0, 2.0));
+    expect(verticalSpineCenter.dx, closeTo(514.0, 3.0));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -1440,8 +1428,7 @@ void main() {
     final items = _itemsFromPayload(await _savedLayoutPayload());
     final bypass = _findById(items, 2);
     final props = (bypass['properties'] as Map).cast<String, dynamic>();
-    final centerY = (bypass['y'] as num).toDouble() +
-        (bypass['height'] as num).toDouble() / 2;
+    final centerY = _bypassSpineCenterFromMap(bypass).dy;
     final initialDistance = (136.0 - 252.0).abs();
     final movedDistance = (centerY - 252.0).abs();
 
@@ -1479,8 +1466,7 @@ void main() {
     final items = _itemsFromPayload(await _savedLayoutPayload());
     final bypass = _findById(items, 2);
     final props = (bypass['properties'] as Map).cast<String, dynamic>();
-    final centerX = (bypass['x'] as num).toDouble() +
-        (bypass['width'] as num).toDouble() / 2;
+    final centerX = _bypassSpineCenterFromMap(bypass).dx;
     final initialDistance = (315.0 - 494.0).abs();
     final movedDistance = (centerX - 494.0).abs();
 
@@ -1489,6 +1475,202 @@ void main() {
       expect(double.parse(parentT), inInclusiveRange(0.0, 1.0));
     }
     expect(movedDistance, lessThan(initialDistance));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Bypass spine attaches near beginning of long iron',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 120, y: 260, width: 600),
+        <String, dynamic>{
+          'id': 2,
+          'type': 'bypass',
+          'x': 118.0,
+          'y': 140.0,
+          'width': 30.0,
+          'height': 32.0,
+          'properties': <String, String>{
+            'ironSize': '3',
+            'bypassPrimaryIronId': '1',
+            'bypassPrimaryT': '0.0500',
+          },
+          'rotationTurns': 0,
+          'locked': false,
+        },
+      ],
+      selectedId: 2,
+    );
+
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final bypass = _findById(items, 2);
+    final props = (bypass['properties'] as Map).cast<String, dynamic>();
+    final t = double.parse(
+        (props['bypassParentT'] ?? props['bypassPrimaryT']) as String);
+    expect(props['bypassParentIronId'] ?? props['bypassPrimaryIronId'], '1');
+    expect(t, lessThan(0.12));
+    expect(_bypassSpineCenterFromMap(bypass).dy, closeTo(272.0, 2.0));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Bypass spine attaches near end of long iron without rotation',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 120, y: 260, width: 600),
+        <String, dynamic>{
+          'id': 2,
+          'type': 'bypass',
+          'x': 690.0,
+          'y': 140.0,
+          'width': 30.0,
+          'height': 32.0,
+          'properties': <String, String>{
+            'ironSize': '3',
+            'bypassPrimaryIronId': '1',
+            'bypassPrimaryT': '0.9500',
+          },
+          'rotationTurns': 1,
+          'locked': false,
+        },
+      ],
+      selectedId: 2,
+    );
+
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final bypass = _findById(items, 2);
+    final props = (bypass['properties'] as Map).cast<String, dynamic>();
+    final t = double.parse(
+        (props['bypassParentT'] ?? props['bypassPrimaryT']) as String);
+    expect(props['bypassParentIronId'] ?? props['bypassPrimaryIronId'], '1');
+    expect(t, greaterThan(0.88));
+    expect(bypass['rotationTurns'], 1);
+    expect(_bypassSpineCenterFromMap(bypass).dy, closeTo(272.0, 2.0));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Valve-overlap alone does not attach bypass body to parent iron',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 210.6, y: 120, width: 280, vertical: true),
+        <String, dynamic>{
+          'id': 2,
+          'type': 'bypass',
+          'x': 200.0,
+          'y': 220.0,
+          'width': 30.0,
+          'height': 32.0,
+          'properties': <String, String>{'ironSize': '3'},
+          'rotationTurns': 0,
+          'locked': false,
+        },
+      ],
+      selectedId: 2,
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('item-hitbox-2')),
+      const Offset(2, 0),
+    );
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final bypass = _findById(items, 2);
+    final props = (bypass['properties'] as Map).cast<String, dynamic>();
+    expect(props['bypassParentIronId'], isNull);
+    expect(props['inlineParentIronId'], isNull);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Tee attaches to long iron without auto-rotation',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 120, y: 260, width: 620),
+        <String, dynamic>{
+          'id': 2,
+          'type': 'teeUp',
+          'x': 360.0,
+          'y': 140.0,
+          'width': 34.0,
+          'height': 34.0,
+          'properties': <String, String>{
+            'ironSize': '3',
+            'inlineParentIronId': '1',
+            'inlineParentT': '0.5000',
+          },
+          'rotationTurns': 1,
+          'locked': false,
+        },
+      ],
+      selectedId: 2,
+    );
+
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final tee = _findById(items, 2);
+    final props = (tee['properties'] as Map).cast<String, dynamic>();
+    expect(props['inlineParentIronId'], '1');
+    expect(double.parse(props['inlineParentT'] as String),
+        inInclusiveRange(0.0, 1.0));
+    expect(tee['rotationTurns'], 1);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('90 fitting attaches to long iron without auto-rotation',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 480, y: 100, width: 620, vertical: true),
+        <String, dynamic>{
+          'id': 2,
+          'type': 'elbowUpRight',
+          'x': 300.0,
+          'y': 320.0,
+          'width': 34.0,
+          'height': 34.0,
+          'properties': <String, String>{
+            'ironSize': '3',
+            'inlineParentIronId': '1',
+            'inlineParentT': '0.5000',
+          },
+          'rotationTurns': 2,
+          'locked': false,
+        },
+      ],
+      selectedId: 2,
+    );
+
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final elbow = _findById(items, 2);
+    final props = (elbow['properties'] as Map).cast<String, dynamic>();
+    expect(props['inlineParentIronId'], '1');
+    expect(double.parse(props['inlineParentT'] as String),
+        inInclusiveRange(0.0, 1.0));
+    expect(elbow['rotationTurns'], 2);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
