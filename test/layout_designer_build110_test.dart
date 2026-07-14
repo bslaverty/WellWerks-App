@@ -259,7 +259,7 @@ Future<void> _pumpLayout(
 void main() {
   test('Build number is 143', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+143'));
+    expect(pubspec, contains('version: 1.0.1+144'));
   });
 
   testWidgets('Build 134 selected bypass keeps full artwork and no handle dots',
@@ -775,8 +775,8 @@ void main() {
 
     final startRect = tester.getRect(start);
     final endRect = tester.getRect(end);
-    expect(startRect.width, closeTo(44.0, 0.1));
-    expect(startRect.height, closeTo(44.0, 0.1));
+    expect(startRect.width, closeTo(56.0, 0.1));
+    expect(startRect.height, closeTo(56.0, 0.1));
     expect((endRect.center.dy - startRect.center.dy).abs(),
         lessThanOrEqualTo(1.5));
     expect(
@@ -1791,8 +1791,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('90 does not persist inline spine attachment metadata',
-      (tester) async {
+  testWidgets('90 preserves inline spine attachment metadata', (tester) async {
     await _pumpLayout(
       tester,
       items: <Map<String, dynamic>>[
@@ -1822,9 +1821,10 @@ void main() {
     final items = _itemsFromPayload(await _savedLayoutPayload());
     final elbow = _findById(items, 2);
     final props = (elbow['properties'] as Map).cast<String, dynamic>();
-    expect(props['inlineParentIronId'], isNull);
-    expect(props['inlineParentT'], isNull);
-    expect(props['inlineAttachedSegmentId'], isNull);
+    expect(props['inlineParentIronId'], '1');
+    expect(props['inlineParentT'], isNotNull);
+    expect(props['inlineAttachedSegmentId'],
+        anyOf('verticalLeg', 'horizontalLeg'));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -1960,7 +1960,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('90 fitting does not auto-attach to long iron spine',
+  testWidgets('90 fitting preserves long iron spine attachment',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1991,8 +1991,10 @@ void main() {
     final items = _itemsFromPayload(await _savedLayoutPayload());
     final elbow = _findById(items, 2);
     final props = (elbow['properties'] as Map).cast<String, dynamic>();
-    expect(props['inlineParentIronId'], isNull);
-    expect(props['inlineParentT'], isNull);
+    expect(props['inlineParentIronId'], '1');
+    expect(props['inlineParentT'], isNotNull);
+    expect(props['inlineAttachedSegmentId'],
+        anyOf('verticalLeg', 'horizontalLeg'));
     expect(elbow['rotationTurns'], 2);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -2054,7 +2056,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('90 clears legacy inline parent metadata on save/reload',
+  testWidgets('90 retains inline parent metadata on save/reload',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -2102,12 +2104,14 @@ void main() {
     final startProps =
         (elbowStart['properties'] as Map).cast<String, dynamic>();
     final endProps = (elbowEnd['properties'] as Map).cast<String, dynamic>();
-    expect(startProps['inlineParentIronId'], isNull);
-    expect(endProps['inlineParentIronId'], isNull);
-    expect(startProps['inlineParentT'], isNull);
-    expect(endProps['inlineParentT'], isNull);
-    expect(startProps['inlineAttachedSegmentId'], isNull);
-    expect(endProps['inlineAttachedSegmentId'], isNull);
+    expect(startProps['inlineParentIronId'], '1');
+    expect(endProps['inlineParentIronId'], '1');
+    expect(startProps['inlineParentT'], isNotNull);
+    expect(endProps['inlineParentT'], isNotNull);
+    expect(startProps['inlineAttachedSegmentId'],
+        anyOf('verticalLeg', 'horizontalLeg'));
+    expect(endProps['inlineAttachedSegmentId'],
+        anyOf('verticalLeg', 'horizontalLeg'));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });

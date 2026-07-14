@@ -99,7 +99,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   Color get _gold => Theme.of(context).colorScheme.primary;
   Color get _bg => Theme.of(context).colorScheme.surface;
   static const double _endpointHandleVisibleSize = 22.0;
-  static const double _endpointHandleTouchSize = 44.0;
+  static const double _endpointHandleTouchSize = 56.0;
   static const double _toolbarViewportPadding = 8.0;
   static const double _toolbarSelectionGap = 16.0;
   static const double _toolbarBottomClearance = 84.0;
@@ -111,10 +111,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   static const double _dragLiftScreenOffsetY = 64.0;
   static const double _connectionSnapRadius = 24.0;
   static const double _bypassAttachRadiusScreen = 38.0;
-  static const double _inlineSpineAttachToleranceScreen = 14.0;
+  static const double _inlineSpineAttachToleranceScreen = 22.0;
   static const double _bypassDetachThresholdScreen = 52.0;
-  static const double _ironBypassHoldRadiusScreen = 16.0;
-  static const double _ironBypassDetachThresholdScreen = 34.0;
+  static const double _ironBypassHoldRadiusScreen = 10.0;
+  static const double _ironBypassDetachThresholdScreen = 24.0;
   static const String _labelsPrefKey = 'wellwerks_layout_show_labels_v1';
   static const String _bypassPortMainTop = 'mainTop';
   static const String _bypassPortMainBottom = 'mainBottom';
@@ -824,11 +824,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   bool _isInlineFittingType(_EquipmentType type) {
-    return type == _EquipmentType.bypass || type.name.startsWith('tee');
-  }
-
-  bool _isElbowFittingType(_EquipmentType type) {
-    return type.name.startsWith('elbow');
+    return type == _EquipmentType.bypass ||
+        type.name.startsWith('elbow') ||
+        type.name.startsWith('tee');
   }
 
   _LayoutItem? _findItemById(int id) {
@@ -1739,16 +1737,20 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       case _EquipmentType.elbowDownLeft:
       case _EquipmentType.elbowLeftUp:
         final corner = Offset(item.width * 0.5, item.height * 0.5);
+        final inlet = _attachmentSpineLocalPoint(item, 'inlet');
+        final outlet = _attachmentSpineLocalPoint(item, 'outlet');
+        final inletIsVertical =
+            (inlet.dy - corner.dy).abs() >= (inlet.dx - corner.dx).abs();
         return <_InlineSegment>[
           _InlineSegment(
-            id: 'inletLeg',
+            id: inletIsVertical ? 'verticalLeg' : 'horizontalLeg',
             start: corner,
-            end: _attachmentSpineLocalPoint(item, 'inlet'),
+            end: inlet,
           ),
           _InlineSegment(
-            id: 'outletLeg',
+            id: inletIsVertical ? 'horizontalLeg' : 'verticalLeg',
             start: corner,
-            end: _attachmentSpineLocalPoint(item, 'outlet'),
+            end: outlet,
           ),
         ];
       default:
@@ -2406,6 +2408,28 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   void _beginItemDrag(_LayoutItem anchor, DragStartDetails details) {
+    if (_isStraightIronType(anchor.type) && !anchor.locked) {
+      final sceneStart = _scenePointFromGlobal(details.globalPosition);
+      final hitRadius = _sceneRadiusFromScreen(_endpointHandleTouchSize / 2);
+      final startPoint = _resolveIronEndpoint(anchor, true);
+      final endPoint = _resolveIronEndpoint(anchor, false);
+      final startDistance = (sceneStart - startPoint).distance;
+      final endDistance = (sceneStart - endPoint).distance;
+      bool? endpointLeading;
+      if (startDistance <= hitRadius && startDistance <= endDistance) {
+        endpointLeading = true;
+      } else if (endDistance <= hitRadius) {
+        endpointLeading = false;
+      }
+      if (endpointLeading != null) {
+        _startEndpointHandleDrag(anchor, endpointLeading);
+        _dragSceneStart = sceneStart;
+        _dragItemStart.clear();
+        _dragActive = false;
+        return;
+      }
+    }
+
     final moving = _selectedIds.contains(anchor.id) ? _selectedItems : [anchor];
     if (moving.every((it) => it.locked)) {
       _interactionMode =
@@ -2443,6 +2467,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   void _updateItemDrag(_LayoutItem anchor, DragUpdateDetails details) {
+    if (_interactionMode == _InteractionMode.stretchEndpoint &&
+        _isStraightIronType(anchor.type) &&
+        _selectedEndpointLeading != null) {
+      _updateEndpointHandleDrag(anchor, _selectedEndpointLeading!, details.delta);
+      return;
+    }
+
     final moving = _selectedIds.contains(anchor.id) ? _selectedItems : [anchor];
     if (moving.every((it) => _segmentMoveBlocked(it))) return;
 
@@ -2490,6 +2521,16 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   void _endItemDrag(_LayoutItem anchor) {
+    if (_interactionMode == _InteractionMode.stretchEndpoint &&
+        _isStraightIronType(anchor.type) &&
+        _selectedEndpointLeading != null) {
+      _endEndpointHandleDrag(anchor, _selectedEndpointLeading!);
+      _dragSceneStart = null;
+      _dragItemStart.clear();
+      _dragActive = false;
+      return;
+    }
+
     final moving = _selectedIds.contains(anchor.id) ? _selectedItems : [anchor];
     if (moving.every((it) => _segmentMoveBlocked(it))) {
       _dragSceneStart = null;
@@ -3431,9 +3472,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         ..clear()
         ..addAll(items);
       for (final item in _items) {
-        if (_isElbowFittingType(item.type)) {
-          _clearInlineParentAttachment(item);
-        }
         if (_isInlineFittingType(item.type)) {
           final parentIron = _inlineParentIron(item);
           final parentT = _inlineParentT(item);
