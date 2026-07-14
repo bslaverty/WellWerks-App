@@ -362,7 +362,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   double _interactionPaddingForItem(_LayoutItem item) {
     if (_isStraightIronType(item.type)) return 24.0;
-    if (item.type == _EquipmentType.bypass) return 20.0;
+    if (item.type == _EquipmentType.bypass) return 16.0;
     return 12.0;
   }
 
@@ -828,7 +828,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   String _bypassTKey(String slot) => 'bypass${slot}T';
 
-  Offset _ironEndpoint(_LayoutItem item, bool leading) {
+  Offset _storedIronEndpoint(_LayoutItem item, bool leading) {
     final horizontal = item.type == _EquipmentType.ironHorizontal;
     if (horizontal) {
       return Offset(
@@ -840,6 +840,37 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       item.x + item.width / 2,
       leading ? item.y : item.y + item.height,
     );
+  }
+
+  Offset _ironEndpoint(_LayoutItem item, bool leading) {
+    return _storedIronEndpoint(item, leading);
+  }
+
+  Offset _resolveIronEndpoint(_LayoutItem item, bool leading) {
+    final anchorItemId =
+        int.tryParse(item.properties[_endpointAnchorItemKey(leading)] ?? '');
+    final anchorSide = item.properties[_endpointAnchorSideKey(leading)];
+    if (anchorItemId != null && anchorSide != null && anchorSide.isNotEmpty) {
+      final anchorItem = _findItemById(anchorItemId);
+      if (anchorItem != null) {
+        return _equipmentAnchorPoint(anchorItem, anchorSide);
+      }
+    }
+
+    final jointId = _jointId(item, leading);
+    if (jointId != null && jointId.isNotEmpty) {
+      for (final other in _items) {
+        if (other.id == item.id || !_isStraightIronType(other.type)) continue;
+        if (_jointId(other, true) == jointId) {
+          return _storedIronEndpoint(other, true);
+        }
+        if (_jointId(other, false) == jointId) {
+          return _storedIronEndpoint(other, false);
+        }
+      }
+    }
+
+    return _storedIronEndpoint(item, leading);
   }
 
   Offset _equipmentAnchorPoint(_LayoutItem item, String side) {
@@ -1049,7 +1080,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     for (final other in _items) {
       if (other.id == item.id || !_isStraightIronType(other.type)) continue;
       for (final otherLeading in const <bool>[true, false]) {
-        final point = _ironEndpoint(other, otherLeading);
+        final point = _resolveIronEndpoint(other, otherLeading);
         final distance = (point - target).distance;
         if (distance > endpointRadius) {
           continue;
@@ -1133,7 +1164,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
             leading == movingIronLeading) {
           continue;
         }
-        final point = _ironEndpoint(other, leading);
+        final point = _resolveIronEndpoint(other, leading);
         final distance = (point - target).distance;
         if (distance > radius) continue;
         if (distance < bestDistance) {
@@ -5665,6 +5696,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           '90s', _DrawerLibrarySection.nineties),
       MapEntry<String, _DrawerLibrarySection>(
           'Bypass', _DrawerLibrarySection.bypass),
+      MapEntry<String, _DrawerLibrarySection>(
+          'Labels', _DrawerLibrarySection.labels),
     ];
 
     return SingleChildScrollView(
@@ -5907,6 +5940,32 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         outlined = true;
         title = 'Bypass';
         break;
+      case _DrawerLibrarySection.labels:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Labels',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: isMobile ? MediaQuery.of(context).size.width - 56 : 138,
+              child: FilledButton.icon(
+                onPressed: _toggleShowEquipmentLabels,
+                icon: const Icon(Icons.label_outline),
+                label: Text(_showLabels
+                    ? 'Equipment Labels On'
+                    : 'Equipment Labels Off'),
+                style: _compactFilledStyle(highlighted: _showLabels),
+              ),
+            ),
+          ],
+        );
     }
 
     return Column(
@@ -7155,7 +7214,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     if (item == null || item.locked) return const <Widget>[];
 
     Widget buildHandle({required bool leading}) {
-      final scenePoint = _ironEndpoint(item, leading);
+      final scenePoint = _resolveIronEndpoint(item, leading);
       final viewportPoint = _viewportPointFromScene(scenePoint);
       const touchHalf = _endpointHandleTouchSize / 2;
       final left = (viewportPoint.dx - touchHalf)
@@ -7215,6 +7274,36 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       buildHandle(leading: true),
       buildHandle(leading: false),
     ];
+  }
+
+  List<Widget> _resolvedStraightIronWidgets() {
+    final widgets = <Widget>[];
+    for (final item in _items) {
+      if (!_itemIsVisible(item) || !_isStraightIronType(item.type)) continue;
+      final start = _resolveIronEndpoint(item, true);
+      final end = _resolveIronEndpoint(item, false);
+      final strokeWidth =
+          item.ironSize == '2' ? 1.4 : (item.ironSize == '4' ? 2.0 : 1.7);
+      final bounds = Rect.fromPoints(start, end).inflate(4.0);
+      widgets.add(
+        Positioned(
+          left: bounds.left,
+          top: bounds.top,
+          width: bounds.width,
+          height: bounds.height,
+          child: IgnorePointer(
+            child: CustomPaint(
+              painter: _ResolvedStraightIronPainter(
+                start: start - bounds.topLeft,
+                end: end - bounds.topLeft,
+                strokeWidth: strokeWidth,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return widgets;
   }
 
   Widget _canvas() {
@@ -7485,6 +7574,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                         ),
                                       ),
                                     ),
+                                  ..._resolvedStraightIronWidgets(),
                                   for (final item in _items)
                                     () {
                                       final interactionPadding =
@@ -7535,6 +7625,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                                   snapHighlight:
                                                       _snapCandidateIronId ==
                                                           item.id,
+                                                  renderStraightIronInternally:
+                                                      !_isStraightIronType(
+                                                          item.type),
                                                 ),
                                               ),
                                               if (_selectedIds
@@ -7696,7 +7789,7 @@ enum _LayoutAlign { left, right, top, bottom, horizontalCenter, verticalCenter }
 
 enum _LayoutDistribution { horizontal, vertical }
 
-enum _DrawerLibrarySection { equipment, iron, tees, nineties, bypass }
+enum _DrawerLibrarySection { equipment, iron, tees, nineties, bypass, labels }
 
 class _AnchorDefinition {
   final String id;
@@ -8010,7 +8103,7 @@ extension _EquipmentTypeInfo on _EquipmentType {
     if (this == _EquipmentType.compressor) return 36;
     if (this == _EquipmentType.ironHorizontal) return 150;
     if (this == _EquipmentType.ironVertical) return 28;
-    if (this == _EquipmentType.bypass) return 34;
+    if (this == _EquipmentType.bypass) return 30;
     if (name.startsWith('tee')) return 42;
     if (name.startsWith('elbow')) return 42;
     if (isIron) return 76;
@@ -8164,6 +8257,19 @@ class _LayoutItem {
         rawHeight != null &&
         type == _EquipmentType.bypass &&
         (rawWidth - 46.0).abs() < 0.2 &&
+        (rawHeight - 32.0).abs() < 0.2) {
+      final centerX = x + width / 2;
+      final centerY = y + height / 2;
+      width = type.defaultWidth;
+      height = type.defaultHeight;
+      x = centerX - width / 2;
+      y = centerY - height / 2;
+    }
+
+    if (rawWidth != null &&
+        rawHeight != null &&
+        type == _EquipmentType.bypass &&
+        (rawWidth - 34.0).abs() < 0.2 &&
         (rawHeight - 32.0).abs() < 0.2) {
       final centerX = x + width / 2;
       final centerY = y + height / 2;
@@ -8329,12 +8435,14 @@ class _LayoutTile extends StatelessWidget {
   final bool selected;
   final bool showLabel;
   final bool snapHighlight;
+  final bool renderStraightIronInternally;
 
   const _LayoutTile(
       {required this.item,
       required this.selected,
       this.showLabel = true,
-      this.snapHighlight = false});
+      this.snapHighlight = false,
+      this.renderStraightIronInternally = true});
 
   double get _labelBottomOffset {
     if (item.type == _EquipmentType.facilities) return -15;
@@ -8394,7 +8502,9 @@ class _LayoutTile extends StatelessWidget {
           Positioned.fill(
             child: CustomPaint(
               painter: _ShapePainter(item.type,
-                  turns: item.rotationTurns, ironSize: item.ironSize),
+                  turns: item.rotationTurns,
+                  ironSize: item.ironSize,
+                  renderStraightIronInternally: renderStraightIronInternally),
               child: isIron
                   ? const SizedBox.expand()
                   : LayoutBuilder(
@@ -8563,8 +8673,12 @@ class _ShapePainter extends CustomPainter {
   final _EquipmentType type;
   final int turns;
   final String ironSize;
+  final bool renderStraightIronInternally;
 
-  _ShapePainter(this.type, {this.turns = 0, this.ironSize = '3'});
+  _ShapePainter(this.type,
+      {this.turns = 0,
+      this.ironSize = '3',
+      this.renderStraightIronInternally = true});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -8598,16 +8712,18 @@ class _ShapePainter extends CustomPainter {
     }
 
     if (type == _EquipmentType.ironHorizontal) {
+      if (!renderStraightIronInternally) return;
       final p = Path()
-        ..moveTo(size.width * .08, size.height * .5)
-        ..lineTo(size.width * .92, size.height * .5);
+        ..moveTo(0, size.height * .5)
+        ..lineTo(size.width, size.height * .5);
       drawIron(p);
       return;
     }
     if (type == _EquipmentType.ironVertical) {
+      if (!renderStraightIronInternally) return;
       final p = Path()
-        ..moveTo(size.width * .5, size.height * .08)
-        ..lineTo(size.width * .5, size.height * .92);
+        ..moveTo(size.width * .5, 0)
+        ..lineTo(size.width * .5, size.height);
       drawIron(p);
       return;
     }
@@ -8807,7 +8923,45 @@ class _ShapePainter extends CustomPainter {
   bool shouldRepaint(covariant _ShapePainter oldDelegate) =>
       oldDelegate.type != type ||
       oldDelegate.turns != turns ||
-      oldDelegate.ironSize != ironSize;
+      oldDelegate.ironSize != ironSize ||
+      oldDelegate.renderStraightIronInternally != renderStraightIronInternally;
+}
+
+class _ResolvedStraightIronPainter extends CustomPainter {
+  final Offset start;
+  final Offset end;
+  final double strokeWidth;
+
+  const _ResolvedStraightIronPainter({
+    required this.start,
+    required this.end,
+    required this.strokeWidth,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final shadow = Paint()
+      ..color = Colors.black.withValues(alpha: 0.55)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth + 1.0
+      ..strokeCap = StrokeCap.square
+      ..strokeJoin = StrokeJoin.miter;
+    final iron = Paint()
+      ..color = const Color(0xFFD7D7D7)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.square
+      ..strokeJoin = StrokeJoin.miter;
+    canvas.drawLine(start, end, shadow);
+    canvas.drawLine(start, end, iron);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ResolvedStraightIronPainter oldDelegate) {
+    return oldDelegate.start != start ||
+        oldDelegate.end != end ||
+        oldDelegate.strokeWidth != strokeWidth;
+  }
 }
 
 List<pw.Widget> _pdfLayoutWidgets({

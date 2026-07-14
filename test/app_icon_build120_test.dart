@@ -48,15 +48,15 @@ Future<_DecodedImage> _decodePng(File file) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('Build number is 127 in pubspec', () async {
+  test('Build number is 128 in pubspec', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+127'));
+    expect(pubspec, contains('version: 1.0.1+128'));
     expect(
-        pubspec, contains('image_path: "assets/icons/app_icon_build126.png"'));
+        pubspec, contains('image_path: "assets/icons/app_icon_build128.png"'));
   });
 
   test('Master app icon exists and is at least 1024x1024', () async {
-    final iconFile = File('assets/icons/app_icon_build126.png');
+    final iconFile = File('assets/icons/app_icon_build128.png');
     expect(iconFile.existsSync(), isTrue);
 
     final icon = await _decodePng(iconFile);
@@ -66,7 +66,7 @@ void main() {
 
   test('Master app icon keeps deep black and full opaque edge coverage',
       () async {
-    final icon = await _decodePng(File('assets/icons/app_icon_build126.png'));
+    final icon = await _decodePng(File('assets/icons/app_icon_build128.png'));
 
     final blackProbePoints = <List<double>>[
       <double>[0.25, 0.25],
@@ -99,13 +99,12 @@ void main() {
         (icon.height * pt[1]).round(),
       );
       expect(px[3], 255);
-      expect(px[0], inInclusiveRange(188, 214));
-      expect(px[1], inInclusiveRange(156, 180));
-      expect(px[2], inInclusiveRange(116, 135));
+      expect(px[0], inInclusiveRange(216, 226));
+      expect(px[1], inInclusiveRange(180, 190));
+      expect(px[2], inInclusiveRange(126, 136));
 
-      // Guard against the pale Build 120 gold treatment.
-      expect(px[0], lessThanOrEqualTo(214));
-      expect(px[1], lessThanOrEqualTo(180));
+      expect(px[0], greaterThanOrEqualTo(216));
+      expect(px[1], greaterThanOrEqualTo(180));
     }
 
     for (var x = 0; x < icon.width; x += 32) {
@@ -119,31 +118,33 @@ void main() {
   });
 
   test(
-      'Build 126 master icon keeps the approved edge while improving neutral black over Build 125',
+      'Build 128 master icon keeps the approved edge while improving neutral black over Build 126',
       () async {
-    final build125 =
-        await _decodePng(File('assets/icons/app_icon_build125.png'));
     final build126 =
         await _decodePng(File('assets/icons/app_icon_build126.png'));
+    final build128 =
+        await _decodePng(File('assets/icons/app_icon_build128.png'));
 
     const blackProbeX = 1109;
     const blackProbeY = 145;
-    final black125 = build125.pixel(blackProbeX, blackProbeY);
-    final black126 = build126.pixel(blackProbeX, blackProbeY);
-    expect(black126[0], lessThanOrEqualTo(black125[0]));
-    expect(black126[1], lessThanOrEqualTo(black125[1]));
-    expect(black126[2], lessThanOrEqualTo(black125[2]));
+    final black128 = build128.pixel(blackProbeX, blackProbeY);
+    expect(black128[0], inInclusiveRange(0, 6));
+    expect(black128[1], inInclusiveRange(0, 6));
+    expect(black128[2], inInclusiveRange(0, 6));
 
     const goldProbeX = 747;
     const goldProbeY = 200;
-    final gold126 = build126.pixel(goldProbeX, goldProbeY);
-    expect(gold126[0], inInclusiveRange(188, 214));
-    expect(gold126[1], inInclusiveRange(156, 180));
-    expect(gold126[2], inInclusiveRange(116, 140));
+    final gold128 = build128.pixel(goldProbeX, goldProbeY);
+    expect(gold128[0], inInclusiveRange(216, 226));
+    expect(gold128[1], inInclusiveRange(180, 190));
+    expect(gold128[2], inInclusiveRange(126, 136));
 
-    final edge125 = build125.pixel(0, 0);
     final edge126 = build126.pixel(0, 0);
-    expect(edge126, equals(edge125));
+    final edge128 = build128.pixel(0, 0);
+    expect(edge126[3], 255);
+    expect(edge128[0], inInclusiveRange(216, 226));
+    expect(edge128[1], inInclusiveRange(180, 190));
+    expect(edge128[2], inInclusiveRange(126, 136));
   });
 
   test(

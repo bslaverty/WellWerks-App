@@ -148,9 +148,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 127', () async {
+  test('Build number is 128', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+127'));
+    expect(pubspec, contains('version: 1.0.1+128'));
   });
 
   testWidgets(
@@ -180,7 +180,7 @@ void main() {
     await _saveRigUp(tester);
     final items = _itemsFromPayload(await _savedLayoutPayload());
     final bypass = _findByType(items, 'bypass');
-    expect((bypass['width'] as num).toDouble(), closeTo(34, 0.01));
+    expect((bypass['width'] as num).toDouble(), closeTo(30, 0.01));
     expect((bypass['height'] as num).toDouble(), closeTo(32, 0.01));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -212,7 +212,7 @@ void main() {
     final x = (bypass['x'] as num).toDouble();
     final y = (bypass['y'] as num).toDouble();
 
-    expect(width, closeTo(34, 0.01));
+    expect(width, closeTo(30, 0.01));
     expect(height, closeTo(32, 0.01));
     expect(x + width / 2, closeTo(legacyCenterX, 0.01));
     expect(y + height / 2, closeTo(legacyCenterY, 0.01));
