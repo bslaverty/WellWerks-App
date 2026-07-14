@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -112,11 +113,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   static const double _bypassAttachRadiusScreen = 38.0;
   static const double _bypassOverlapToleranceScreen = 16.0;
   static const double _bypassDetachThresholdScreen = 52.0;
+  static const double _ironBypassHoldRadiusScreen = 16.0;
+  static const double _ironBypassDetachThresholdScreen = 34.0;
   static const String _labelsPrefKey = 'wellwerks_layout_show_labels_v1';
   static const String _bypassPortMainTop = 'mainTop';
   static const String _bypassPortMainBottom = 'mainBottom';
-  static const String _bypassPortUpperValve = 'upperValve';
-  static const String _bypassPortLowerValve = 'lowerValve';
+  static const String _bypassPortUpperValveOutlet = 'upperValveOutlet';
+  static const String _bypassPortLowerValveOutlet = 'lowerValveOutlet';
 
   @override
   void initState() {
@@ -852,29 +855,39 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   bool _isBypassPortId(String side) {
-    return side == _bypassPortMainTop ||
-        side == _bypassPortMainBottom ||
-        side == _bypassPortUpperValve ||
-        side == _bypassPortLowerValve;
+    return _canonicalBypassPort(side) != null;
   }
 
-  String _canonicalBypassPort(String side) {
+  String? _canonicalBypassPort(String side) {
     switch (side) {
       case 'bypassPrimary':
       case 'leftEnd':
+      case _bypassPortMainTop:
         return _bypassPortMainTop;
       case 'bypassSecondary':
       case 'rightEnd':
+      case _bypassPortMainBottom:
         return _bypassPortMainBottom;
+      case 'upperValve':
+      case _bypassPortUpperValveOutlet:
+        return _bypassPortUpperValveOutlet;
+      case 'lowerValve':
+      case _bypassPortLowerValveOutlet:
+        return _bypassPortLowerValveOutlet;
       default:
-        return side;
+        return null;
     }
+  }
+
+  String? _normalizedBypassPortId(String? side) {
+    if (side == null || side.isEmpty) return null;
+    return _canonicalBypassPort(side);
   }
 
   String _normalizedAnchorSide(_LayoutItem item, String side) {
     if (item.type != _EquipmentType.bypass) return side;
-    final canonical = _canonicalBypassPort(side);
-    if (_isBypassPortId(canonical)) return canonical;
+    final canonical = _normalizedBypassPortId(side);
+    if (canonical != null) return canonical;
     return _bypassPortMainTop;
   }
 
@@ -923,6 +936,19 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     if (anchorItemId != null && anchorSide != null && anchorSide.isNotEmpty) {
       final anchorItem = _findItemById(anchorItemId);
       if (anchorItem != null) {
+        if (anchorItem.type == _EquipmentType.bypass) {
+          final bypassPort = _normalizedBypassPortId(anchorSide);
+          if (bypassPort == null) {
+            if (kDebugMode) {
+              debugPrint(
+                'Unsupported bypass port "$anchorSide" on bypass '
+                '${anchorItem.id}; treating iron endpoint as disconnected.',
+              );
+            }
+            return _storedIronEndpoint(item, leading);
+          }
+          return _equipmentAnchorPoint(anchorItem, bypassPort);
+        }
         return _equipmentAnchorPoint(
           anchorItem,
           _normalizedAnchorSide(anchorItem, anchorSide),
@@ -962,8 +988,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         return const <_AnchorDefinition>[
           _AnchorDefinition('mainTop', 0.28, 0.14),
           _AnchorDefinition('mainBottom', 0.28, 0.86),
-          _AnchorDefinition('upperValve', 0.82, 0.34),
-          _AnchorDefinition('lowerValve', 0.82, 0.66),
+          _AnchorDefinition('upperValveOutlet', 0.82, 0.34),
+          _AnchorDefinition('lowerValveOutlet', 0.82, 0.66),
         ];
       case _EquipmentType.wellhead:
         return const <_AnchorDefinition>[
@@ -1059,10 +1085,26 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       return;
     }
     final anchorItem = _findItemById(anchorItemId);
-    final normalizedSide =
-        anchorItem == null ? side : _normalizedAnchorSide(anchorItem, side);
+    final normalizedSide = anchorItem == null
+        ? side
+        : anchorItem.type == _EquipmentType.bypass
+            ? _normalizedBypassPortId(side)
+            : _normalizedAnchorSide(anchorItem, side);
+    if (anchorItem != null &&
+        anchorItem.type == _EquipmentType.bypass &&
+        normalizedSide == null) {
+      if (kDebugMode) {
+        debugPrint(
+          'Unsupported bypass port "$side" for bypass ${anchorItem.id}; '
+          'clearing attachment.',
+        );
+      }
+      item.properties.remove(itemKey);
+      item.properties.remove(sideKey);
+      return;
+    }
     item.properties[itemKey] = anchorItemId.toString();
-    item.properties[sideKey] = normalizedSide;
+    item.properties[sideKey] = normalizedSide ?? side;
   }
 
   void _clearEndpointAttachment(_LayoutItem item, bool leading) {
@@ -1306,13 +1348,21 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final anchorItem = target.equipmentItemId == null
         ? null
         : _findItemById(target.equipmentItemId!);
-    final normalizedAnchorId = anchorId == null || anchorItem == null
+    final normalizedAnchorId = anchorItem == null || anchorId == null
         ? anchorId
-        : _normalizedAnchorSide(anchorItem, anchorId);
-    if (anchorItem != null &&
-        anchorItem.type == _EquipmentType.bypass &&
-        normalizedAnchorId != null &&
-        _isBypassPortId(normalizedAnchorId)) {
+        : anchorItem.type == _EquipmentType.bypass
+            ? _normalizedBypassPortId(anchorId)
+            : _normalizedAnchorSide(anchorItem, anchorId);
+    if (anchorItem != null && anchorItem.type == _EquipmentType.bypass) {
+      if (normalizedAnchorId == null) {
+        if (kDebugMode) {
+          debugPrint(
+            'Unsupported bypass port "$anchorId" on bypass ${anchorItem.id}; '
+            'treating as disconnected.',
+          );
+        }
+        return _EndpointSnapTarget(point: target.point);
+      }
       return _EndpointSnapTarget(
         point: target.point,
         bypass: _BypassHandleCandidate(
@@ -1352,15 +1402,15 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   _BypassHandleCandidate? _nearestBypassHandleCandidate(Offset target) {
-    final handleRadius = _sceneRadiusFromScreen(34);
+    final handleRadius = _sceneRadiusFromScreen(_ironBypassHoldRadiusScreen);
     _BypassHandleCandidate? best;
     for (final item in _items) {
       if (item.type != _EquipmentType.bypass) continue;
       for (final side in const <String>[
         _bypassPortMainTop,
         _bypassPortMainBottom,
-        _bypassPortUpperValve,
-        _bypassPortLowerValve,
+        _bypassPortUpperValveOutlet,
+        _bypassPortLowerValveOutlet,
       ]) {
         final point = _equipmentAnchorPoint(item, side);
         final distance = (point - target).distance;
@@ -2319,22 +2369,68 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _interactionMode = _InteractionMode.stretchEndpoint;
       final current = _ironEndpoint(item, leading);
       final sceneDelta = _sceneDeltaFromScreen(screenDelta);
-      final desired = item.type == _EquipmentType.ironHorizontal
-          ? Offset(current.dx + sceneDelta.dx, current.dy)
-          : Offset(current.dx, current.dy + sceneDelta.dy);
-      _clearEndpointAttachment(item, leading);
-      _setIronEndpointPosition(item, leading, desired);
-
-      final snappedPoint = _ironEndpoint(item, leading);
-      final candidate = _nearestEndpointSnapTarget(item, leading, snappedPoint);
       final prior = (_activeEndpointDrag != null &&
               _activeEndpointDrag!.ironId == item.id &&
               _activeEndpointDrag!.leading == leading)
-          ? _activeEndpointDrag!.target
+          ? _activeEndpointDrag!
           : null;
+      final desired = (prior?.worldPosition ?? current) + sceneDelta;
+      final anchorItemId =
+          int.tryParse(item.properties[_endpointAnchorItemKey(leading)] ?? '');
+      final anchorSide = item.properties[_endpointAnchorSideKey(leading)];
+      final isAttached =
+          anchorItemId != null && anchorSide != null && anchorSide.isNotEmpty;
+      final holdRadius = _sceneRadiusFromScreen(_ironBypassHoldRadiusScreen);
+      final detachThreshold =
+          _sceneRadiusFromScreen(_ironBypassDetachThresholdScreen);
+
+      if (isAttached && (prior?.detached ?? false) == false) {
+        final anchorPoint = current;
+        final distanceFromAnchor = (desired - anchorPoint).distance;
+        _activeEndpointDrag = _ActiveEndpointDrag(
+          ironId: item.id,
+          leading: leading,
+          worldPosition: desired,
+          target: null,
+          detached: false,
+        );
+        if (distanceFromAnchor <= holdRadius) {
+          _snapIndicatorScene = null;
+          return;
+        }
+        if (distanceFromAnchor < detachThreshold) {
+          _snapIndicatorScene = null;
+          return;
+        }
+
+        _clearEndpointAttachment(item, leading);
+        _setIronEndpointPosition(item, leading, desired);
+        final snappedPoint = _ironEndpoint(item, leading);
+        final candidate =
+            _nearestEndpointSnapTarget(item, leading, snappedPoint);
+        final target = _stabilizeEndpointSnapTarget(
+          sourcePoint: snappedPoint,
+          previous: prior?.target,
+          candidate: candidate,
+        );
+        _activeEndpointDrag = _ActiveEndpointDrag(
+          ironId: item.id,
+          leading: leading,
+          worldPosition: snappedPoint,
+          target: target,
+          detached: true,
+        );
+        _snapIndicatorScene = target?.point;
+        _reflowSnappedFittings();
+        return;
+      }
+
+      _setIronEndpointPosition(item, leading, desired);
+      final snappedPoint = _ironEndpoint(item, leading);
+      final candidate = _nearestEndpointSnapTarget(item, leading, snappedPoint);
       final target = _stabilizeEndpointSnapTarget(
         sourcePoint: snappedPoint,
-        previous: prior,
+        previous: prior?.target,
         candidate: candidate,
       );
       _activeEndpointDrag = _ActiveEndpointDrag(
@@ -2342,6 +2438,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         leading: leading,
         worldPosition: snappedPoint,
         target: target,
+        detached: true,
       );
       _snapIndicatorScene = target?.point;
       _reflowSnappedFittings();
@@ -2360,6 +2457,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         leading: leading,
         worldPosition: _ironEndpoint(item, leading),
         target: null,
+        detached: false,
       );
     });
   }
@@ -2373,10 +2471,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       final active = _activeEndpointDrag;
       final activeTarget = (active != null &&
               active.ironId == item.id &&
-              active.leading == leading)
+              active.leading == leading &&
+              active.detached)
           ? active.target
           : null;
-      _commitIronEndpointConnection(item, leading, target: activeTarget);
+      if (activeTarget != null) {
+        _commitIronEndpointConnection(item, leading, target: activeTarget);
+      }
       _activeEndpointDrag = null;
       _interactionMode = _InteractionMode.idle;
       _reflowSnappedFittings();
@@ -2975,6 +3076,27 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _items
         ..clear()
         ..addAll(items);
+      for (final item in _items) {
+        for (final leading in <bool>[true, false]) {
+          final anchorItemId = int.tryParse(
+              item.properties[_endpointAnchorItemKey(leading)] ?? '');
+          final anchorSide = item.properties[_endpointAnchorSideKey(leading)];
+          if (anchorItemId == null ||
+              anchorSide == null ||
+              anchorSide.isEmpty) {
+            continue;
+          }
+          final anchorItem = _findItemById(anchorItemId);
+          if (anchorItem?.type != _EquipmentType.bypass) continue;
+          final canonical = _normalizedBypassPortId(anchorSide);
+          if (canonical == null) {
+            item.properties.remove(_endpointAnchorItemKey(leading));
+            item.properties.remove(_endpointAnchorSideKey(leading));
+          } else {
+            item.properties[_endpointAnchorSideKey(leading)] = canonical;
+          }
+        }
+      }
       _nextId = data['nextId'] as int? ?? ((_items.length) + 1);
       _snapToGrid = data['snapToGrid'] as bool? ?? false;
       _libraryKeepOpen = data['libraryKeepOpen'] as bool? ?? true;
@@ -8121,12 +8243,14 @@ class _ActiveEndpointDrag {
   final bool leading;
   final Offset worldPosition;
   final _EndpointSnapTarget? target;
+  final bool detached;
 
   const _ActiveEndpointDrag({
     required this.ironId,
     required this.leading,
     required this.worldPosition,
     required this.target,
+    required this.detached,
   });
 }
 

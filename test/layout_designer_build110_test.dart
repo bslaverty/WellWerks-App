@@ -160,9 +160,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 136', () async {
+  test('Build number is 137', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+136'));
+    expect(pubspec, contains('version: 1.0.1+137'));
   });
 
   testWidgets('Build 134 selected bypass keeps full artwork and no handle dots',
@@ -923,7 +923,7 @@ void main() {
         (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
     expect(props['anchorEndItemId'], '3');
     expect(props['anchorEndSide'],
-        anyOf('mainTop', 'mainBottom', 'upperValve', 'lowerValve'));
+        anyOf('mainTop', 'mainBottom', 'upperValveOutlet', 'lowerValveOutlet'));
 
     final bypassCenterBefore =
         tester.getCenter(find.byKey(const ValueKey<String>('item-hitbox-3')));
@@ -935,7 +935,7 @@ void main() {
     props = (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
     expect(props['anchorEndItemId'], '3');
     expect(props['anchorEndSide'],
-        anyOf('mainTop', 'mainBottom', 'upperValve', 'lowerValve'));
+        anyOf('mainTop', 'mainBottom', 'upperValveOutlet', 'lowerValveOutlet'));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -1064,7 +1064,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Build 136 canonical bypass port IDs persist across save',
+  testWidgets('Build 137 canonical bypass port IDs persist across save',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1079,11 +1079,11 @@ void main() {
         }),
         _ironItem(4, x: 300, y: 160, width: 100, properties: <String, String>{
           'anchorStartItemId': '3',
-          'anchorStartSide': 'upperValve',
+          'anchorStartSide': 'upperValveOutlet',
         }),
         _ironItem(5, x: 300, y: 230, width: 100, properties: <String, String>{
           'anchorStartItemId': '3',
-          'anchorStartSide': 'lowerValve',
+          'anchorStartSide': 'lowerValveOutlet',
         }),
         _bypassItem(3, x: 245, y: 188),
       ],
@@ -1100,10 +1100,10 @@ void main() {
     final p5 =
         (_findById(items, 5)['properties'] as Map).cast<String, dynamic>();
 
-    expect(p1['anchorEndSide'], anyOf('mainTop', 'bypassPrimary'));
-    expect(p2['anchorEndSide'], anyOf('mainBottom', 'bypassSecondary'));
-    expect(p4['anchorStartSide'], 'upperValve');
-    expect(p5['anchorStartSide'], 'lowerValve');
+    expect(p1['anchorEndSide'], 'mainTop');
+    expect(p2['anchorEndSide'], 'mainBottom');
+    expect(p4['anchorStartSide'], 'upperValveOutlet');
+    expect(p5['anchorStartSide'], 'lowerValveOutlet');
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -1116,11 +1116,11 @@ void main() {
       items: <Map<String, dynamic>>[
         _ironItem(1, x: 130, y: 150, width: 120, properties: <String, String>{
           'anchorEndItemId': '3',
-          'anchorEndSide': 'upperValve',
+          'anchorEndSide': 'upperValveOutlet',
         }),
         _ironItem(2, x: 130, y: 228, width: 120, properties: <String, String>{
           'anchorEndItemId': '3',
-          'anchorEndSide': 'lowerValve',
+          'anchorEndSide': 'lowerValveOutlet',
         }),
         _bypassItem(3, x: 250, y: 182, properties: <String, String>{
           'bypassPrimaryIronId': '4',
@@ -1143,9 +1143,9 @@ void main() {
     final lowerProps = (ironLower['properties'] as Map).cast<String, dynamic>();
 
     expect(upperProps['anchorEndItemId'], '3');
-    expect(upperProps['anchorEndSide'], 'upperValve');
+    expect(upperProps['anchorEndSide'], 'upperValveOutlet');
     expect(lowerProps['anchorEndItemId'], '3');
-    expect(lowerProps['anchorEndSide'], 'lowerValve');
+    expect(lowerProps['anchorEndSide'], 'lowerValveOutlet');
 
     await _pumpLayout(
       tester,
@@ -1171,6 +1171,86 @@ void main() {
     expect(lowerEndAfter, equals(lowerEnd));
     expect((upperEndAfter - bypassCenter).distance, lessThan(60));
     expect((lowerEndAfter - bypassCenter).distance, lessThan(60));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Unsupported bypass port resolves as disconnected endpoint',
+      (tester) async {
+    final iron =
+        _ironItem(1, x: 120, y: 96, width: 120, properties: <String, String>{
+      'anchorEndItemId': '3',
+      'anchorEndSide': 'center',
+    });
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        iron,
+        _bypassItem(3, x: 260, y: 92),
+      ],
+      selectedId: 1,
+      selectedEndpointLeading: false,
+    );
+
+    final handle = find.byKey(const ValueKey<String>('iron-handle-1-end'));
+    expect(handle, findsOneWidget);
+    final handleCenter = tester.getCenter(handle);
+    final itemRect =
+        tester.getRect(find.byKey(const ValueKey<String>('item-hitbox-1')));
+    final expectedEndpoint = Offset(itemRect.right - 24.0, itemRect.center.dy);
+    expect(handleCenter.dx, closeTo(expectedEndpoint.dx, 1.0));
+    expect(handleCenter.dy, closeTo(expectedEndpoint.dy, 1.0));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Connected bypass endpoint holds, disconnects, and reconnects on release',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 120, y: 96, width: 120, properties: <String, String>{
+          'anchorEndItemId': '3',
+          'anchorEndSide': 'upperValveOutlet',
+        }),
+        _bypassItem(3, x: 260, y: 92),
+      ],
+      selectedId: 1,
+      selectedEndpointLeading: false,
+    );
+
+    final handle = find.byKey(const ValueKey<String>('iron-handle-1-end'));
+    final start = tester.getCenter(handle);
+    await tester.dragFrom(start, const Offset(8, 0));
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    var items = _itemsFromPayload(await _savedLayoutPayload());
+    var props =
+        (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
+    expect(props['anchorEndItemId'], '3');
+    expect(props['anchorEndSide'], 'upperValveOutlet');
+
+    final pulledStart = tester.getCenter(handle);
+    await tester.dragFrom(pulledStart, const Offset(96, 0));
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    items = _itemsFromPayload(await _savedLayoutPayload());
+    props = (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
+    expect(props['anchorEndItemId'], isNull);
+    expect(props['anchorEndSide'], isNull);
+
+    final freeStart = tester.getCenter(handle);
+    await tester.dragFrom(freeStart, const Offset(-96, 0));
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    items = _itemsFromPayload(await _savedLayoutPayload());
+    props = (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
+    expect(props['anchorEndItemId'], '3');
+    expect(props['anchorEndSide'], 'upperValveOutlet');
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -1248,7 +1328,7 @@ void main() {
       items: <Map<String, dynamic>>[
         _ironItem(1, x: 200, y: 180, width: 120, properties: <String, String>{
           'anchorEndItemId': '3',
-          'anchorEndSide': 'upperValve',
+          'anchorEndSide': 'upperValveOutlet',
         }),
         <String, dynamic>{
           'id': 3,
@@ -1269,7 +1349,7 @@ void main() {
     final items = _itemsFromPayload(await _savedLayoutPayload());
     final iron = _findById(items, 1);
     final props = (iron['properties'] as Map).cast<String, dynamic>();
-    expect(props['anchorEndSide'], 'upperValve');
+    expect(props['anchorEndSide'], 'upperValveOutlet');
 
     await tester.drag(find.byKey(const ValueKey<String>('item-hitbox-3')),
         const Offset(48, 0));
@@ -1280,7 +1360,7 @@ void main() {
     final movedIron = _findById(movedItems, 1);
     final movedProps = (movedIron['properties'] as Map).cast<String, dynamic>();
     expect(movedProps['anchorEndItemId'], '3');
-    expect(movedProps['anchorEndSide'], 'upperValve');
+    expect(movedProps['anchorEndSide'], 'upperValveOutlet');
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
