@@ -110,6 +110,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   static const double _dragLiftScreenOffsetY = 64.0;
   static const double _connectionSnapRadius = 24.0;
   static const double _bypassAttachRadiusScreen = 38.0;
+  static const double _bypassOverlapToleranceScreen = 16.0;
   static const double _bypassDetachThresholdScreen = 52.0;
   static const String _labelsPrefKey = 'wellwerks_layout_show_labels_v1';
   static const String _bypassPortMainTop = 'mainTop';
@@ -1489,6 +1490,71 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         iron.type == _EquipmentType.ironHorizontal ? 'horizontal' : 'vertical';
   }
 
+  Offset _ironCenterlineStart(_LayoutItem iron) {
+    if (iron.type == _EquipmentType.ironHorizontal) {
+      return Offset(iron.x, iron.y + iron.height / 2);
+    }
+    return Offset(iron.x + iron.width / 2, iron.y);
+  }
+
+  Offset _ironCenterlineEnd(_LayoutItem iron) {
+    if (iron.type == _EquipmentType.ironHorizontal) {
+      return Offset(iron.x + iron.width, iron.y + iron.height / 2);
+    }
+    return Offset(iron.x + iron.width / 2, iron.y + iron.height);
+  }
+
+  Offset _nearestPointOnSegment(Offset p, Offset a, Offset b) {
+    final ab = b - a;
+    final denom = ab.dx * ab.dx + ab.dy * ab.dy;
+    if (denom <= 1e-6) return a;
+    final ap = p - a;
+    final t = ((ap.dx * ab.dx) + (ap.dy * ab.dy)) / denom;
+    final clampedT = t.clamp(0.0, 1.0).toDouble();
+    return Offset(a.dx + ab.dx * clampedT, a.dy + ab.dy * clampedT);
+  }
+
+  double _cross2d(Offset a, Offset b, Offset c) {
+    return (b.dx - a.dx) * (c.dy - a.dy) - (b.dy - a.dy) * (c.dx - a.dx);
+  }
+
+  bool _segmentsIntersect(Offset a1, Offset a2, Offset b1, Offset b2) {
+    final d1 = _cross2d(a1, a2, b1);
+    final d2 = _cross2d(a1, a2, b2);
+    final d3 = _cross2d(b1, b2, a1);
+    final d4 = _cross2d(b1, b2, a2);
+
+    if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+        ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
+      return true;
+    }
+
+    bool onSegment(Offset p, Offset q, Offset r) {
+      return q.dx <= math.max(p.dx, r.dx) + 1e-6 &&
+          q.dx + 1e-6 >= math.min(p.dx, r.dx) &&
+          q.dy <= math.max(p.dy, r.dy) + 1e-6 &&
+          q.dy + 1e-6 >= math.min(p.dy, r.dy);
+    }
+
+    if (d1.abs() < 1e-6 && onSegment(a1, b1, a2)) return true;
+    if (d2.abs() < 1e-6 && onSegment(a1, b2, a2)) return true;
+    if (d3.abs() < 1e-6 && onSegment(b1, a1, b2)) return true;
+    if (d4.abs() < 1e-6 && onSegment(b1, a2, b2)) return true;
+    return false;
+  }
+
+  bool _segmentIntersectsRect(Offset a, Offset b, Rect rect) {
+    if (rect.contains(a) || rect.contains(b)) return true;
+    final topLeft = rect.topLeft;
+    final topRight = rect.topRight;
+    final bottomLeft = rect.bottomLeft;
+    final bottomRight = rect.bottomRight;
+    return _segmentsIntersect(a, b, topLeft, topRight) ||
+        _segmentsIntersect(a, b, topRight, bottomRight) ||
+        _segmentsIntersect(a, b, bottomRight, bottomLeft) ||
+        _segmentsIntersect(a, b, bottomLeft, topLeft);
+  }
+
   _SnapCandidate? _nearestBypassRail(
     _LayoutItem item,
     Offset desiredTopLeft, {
@@ -1497,6 +1563,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }) {
     final maxDistanceValue =
         maxDistance ?? _sceneRadiusFromScreen(_bypassAttachRadiusScreen);
+    final overlapTolerance =
+        _sceneRadiusFromScreen(_bypassOverlapToleranceScreen);
+    final expandedBypassBounds = Rect.fromLTWH(
+            desiredTopLeft.dx, desiredTopLeft.dy, item.width, item.height)
+        .inflate(overlapTolerance);
     final center = Offset(
       desiredTopLeft.dx + item.width / 2,
       desiredTopLeft.dy + item.height / 2,
@@ -1505,20 +1576,30 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     for (final iron in _items) {
       if (!_isStraightIronType(iron.type)) continue;
       if (excludedIronId != null && iron.id == excludedIronId) continue;
+      final start = _ironCenterlineStart(iron);
+      final end = _ironCenterlineEnd(iron);
       final horizontal = iron.type == _EquipmentType.ironHorizontal;
-      final projected = horizontal
-          ? Offset(center.dx.clamp(iron.x, iron.x + iron.width),
-              iron.y + iron.height / 2)
-          : Offset(iron.x + iron.width / 2,
-              center.dy.clamp(iron.y, iron.y + iron.height));
+      final railBandOverlap = horizontal
+          ? expandedBypassBounds.top <= start.dy &&
+              expandedBypassBounds.bottom >= start.dy &&
+              expandedBypassBounds.right >= math.min(start.dx, end.dx) &&
+              expandedBypassBounds.left <= math.max(start.dx, end.dx)
+          : expandedBypassBounds.left <= start.dx &&
+              expandedBypassBounds.right >= start.dx &&
+              expandedBypassBounds.bottom >= math.min(start.dy, end.dy) &&
+              expandedBypassBounds.top <= math.max(start.dy, end.dy);
+      final projected = _nearestPointOnSegment(center, start, end);
       final distance = (projected - center).distance;
-      if (distance > maxDistanceValue) continue;
-      if (best == null || distance < best.score) {
+      final intersects = railBandOverlap ||
+          _segmentIntersectsRect(start, end, expandedBypassBounds);
+      if (!intersects && distance > maxDistanceValue) continue;
+      final score = intersects ? distance : distance + overlapTolerance;
+      if (best == null || score < best.score) {
         best = _SnapCandidate(
           ironId: iron.id,
           horizontal: horizontal,
           indicator: projected,
-          score: distance,
+          score: score,
         );
       }
     }
