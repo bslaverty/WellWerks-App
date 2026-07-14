@@ -523,9 +523,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       for (final item in moving) {
         if (_segmentMoveBlocked(item)) continue;
         final origin = Offset(item.x, item.y);
-        if (item.type == _EquipmentType.bypass) {
-          final parentIron = _bypassParentIron(item);
-          final parentT = _bypassParentT(item);
+        if (_isInlineFittingType(item.type)) {
+          final parentIron = _inlineParentIron(item);
+          final parentT = _inlineParentT(item);
           if (parentIron != null && parentT != null) {
             final horizontal = parentIron.type == _EquipmentType.ironHorizontal;
             final alongDelta = horizontal ? delta.dx : delta.dy;
@@ -545,8 +545,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                         .clamp(parentIron.y, parentIron.y + parentIron.height),
                   );
             final t = _normalizedPositionAlongIron(parentIron, projected);
-            _setBypassParentAttachment(item, parentIron, t);
-            _alignBypassToParent(item, parentIron, t);
+            _setInlineParentAttachment(item, parentIron, t);
+            _alignInlineToParent(item, parentIron, t);
             _setBypassTopLeft(item, Offset(item.x, item.y), canvasSize);
             continue;
           }
@@ -819,6 +819,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         type.name.startsWith('tee');
   }
 
+  bool _isInlineFittingType(_EquipmentType type) {
+    return type == _EquipmentType.bypass ||
+        type.name.startsWith('elbow') ||
+        type.name.startsWith('tee');
+  }
+
   _LayoutItem? _findItemById(int id) {
     for (final item in _items) {
       if (item.id == id) return item;
@@ -848,6 +854,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       'bypassSecondaryIronId',
       'bypassSecondaryT',
       'bypassSecondaryOrientation',
+      'inlineParentIronId',
+      'inlineParentT',
+      'inlineParentOrientation',
+      'inlineAttached',
     ]) {
       copy.remove(key);
     }
@@ -911,6 +921,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   String get _bypassParentOrientationKey => 'bypassParentOrientation';
 
+  String get _inlineParentIronKey => 'inlineParentIronId';
+
+  String get _inlineParentTKey => 'inlineParentT';
+
+  String get _inlineParentOrientationKey => 'inlineParentOrientation';
+
   Offset _storedIronEndpoint(_LayoutItem item, bool leading) {
     final horizontal = item.type == _EquipmentType.ironHorizontal;
     if (horizontal) {
@@ -949,10 +965,19 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           }
           return _equipmentAnchorPoint(anchorItem, bypassPort);
         }
-        return _equipmentAnchorPoint(
-          anchorItem,
-          _normalizedAnchorSide(anchorItem, anchorSide),
-        );
+        final normalizedSide = _normalizedAnchorSide(anchorItem, anchorSide);
+        final resolved =
+            _equipmentAnchorPointOrNull(anchorItem, normalizedSide);
+        if (resolved != null) {
+          return resolved;
+        }
+        if (kDebugMode) {
+          debugPrint(
+            'Unsupported anchor side "$anchorSide" on ${anchorItem.type.name} '
+            '(${anchorItem.id}); treating iron endpoint as disconnected.',
+          );
+        }
+        return _storedIronEndpoint(item, leading);
       }
     }
 
@@ -973,13 +998,19 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Offset _equipmentAnchorPoint(_LayoutItem item, String side) {
+    final resolved = _equipmentAnchorPointOrNull(item, side);
+    return resolved ??
+        Offset(item.x + item.width / 2, item.y + item.height / 2);
+  }
+
+  Offset? _equipmentAnchorPointOrNull(_LayoutItem item, String side) {
     final normalizedSide = _normalizedAnchorSide(item, side);
     for (final anchor in _equipmentAnchorCandidates(item)) {
       if (anchor.side == normalizedSide) {
         return anchor.point;
       }
     }
-    return Offset(item.x + item.width / 2, item.y + item.height / 2);
+    return null;
   }
 
   List<_AnchorDefinition> _anchorDefinitionsForType(_EquipmentType type) {
@@ -993,32 +1024,82 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         ];
       case _EquipmentType.wellhead:
         return const <_AnchorDefinition>[
-          _AnchorDefinition('left', 0.0, 0.5),
-          _AnchorDefinition('right', 1.0, 0.5),
-          _AnchorDefinition('bottom', 0.5, 1.0),
+          _AnchorDefinition('inlet', 0.0, 0.5),
+          _AnchorDefinition('outlet', 1.0, 0.5),
         ];
       case _EquipmentType.chokeManifold:
         return const <_AnchorDefinition>[
-          _AnchorDefinition('top', 0.5, 0.0),
-          _AnchorDefinition('left', 0.0, 0.5),
-          _AnchorDefinition('right', 1.0, 0.5),
-          _AnchorDefinition('bottom', 0.5, 1.0),
+          _AnchorDefinition('inlet', 0.0, 0.5),
+          _AnchorDefinition('outlet', 1.0, 0.5),
+          _AnchorDefinition('upperBypass', 0.5, 0.2),
+          _AnchorDefinition('lowerBypass', 0.5, 0.8),
         ];
       case _EquipmentType.esdValve:
       case _EquipmentType.lineHeater:
       case _EquipmentType.plugCatcher:
+      case _EquipmentType.cyclonicSandSep:
+      case _EquipmentType.sphericalSandSep:
+      case _EquipmentType.testSeparator:
+      case _EquipmentType.flare:
+      case _EquipmentType.compressor:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('inlet', 0.0, 0.5),
+          _AnchorDefinition('outlet', 1.0, 0.5),
+        ];
       case _EquipmentType.flowbackTank:
       case _EquipmentType.productionTank:
+      case _EquipmentType.facilities:
         return const <_AnchorDefinition>[
-          _AnchorDefinition('left', 0.0, 0.5),
-          _AnchorDefinition('right', 1.0, 0.5),
+          _AnchorDefinition('inlet', 0.0, 0.5),
+        ];
+      case _EquipmentType.teeUp:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('runStart', 0.08, 0.5),
+          _AnchorDefinition('runEnd', 0.92, 0.5),
+          _AnchorDefinition('branch', 0.5, 0.08),
+        ];
+      case _EquipmentType.teeRight:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('runStart', 0.5, 0.08),
+          _AnchorDefinition('runEnd', 0.5, 0.92),
+          _AnchorDefinition('branch', 0.92, 0.5),
+        ];
+      case _EquipmentType.teeDown:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('runStart', 0.08, 0.5),
+          _AnchorDefinition('runEnd', 0.92, 0.5),
+          _AnchorDefinition('branch', 0.5, 0.92),
+        ];
+      case _EquipmentType.teeLeft:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('runStart', 0.5, 0.08),
+          _AnchorDefinition('runEnd', 0.5, 0.92),
+          _AnchorDefinition('branch', 0.08, 0.5),
+        ];
+      case _EquipmentType.elbowUpRight:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('inlet', 0.5, 0.92),
+          _AnchorDefinition('outlet', 0.92, 0.5),
+        ];
+      case _EquipmentType.elbowRightDown:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('inlet', 0.08, 0.5),
+          _AnchorDefinition('outlet', 0.5, 0.92),
+        ];
+      case _EquipmentType.elbowDownLeft:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('inlet', 0.5, 0.08),
+          _AnchorDefinition('outlet', 0.08, 0.5),
+        ];
+      case _EquipmentType.elbowLeftUp:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('inlet', 0.92, 0.5),
+          _AnchorDefinition('outlet', 0.5, 0.08),
         ];
       default:
         return const <_AnchorDefinition>[
-          _AnchorDefinition('top', 0.5, 0.0),
-          _AnchorDefinition('left', 0.0, 0.5),
-          _AnchorDefinition('right', 1.0, 0.5),
-          _AnchorDefinition('bottom', 0.5, 1.0),
+          _AnchorDefinition('inlet', 0.0, 0.5),
+          _AnchorDefinition('outlet', 1.0, 0.5),
         ];
     }
   }
@@ -1097,6 +1178,19 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         debugPrint(
           'Unsupported bypass port "$side" for bypass ${anchorItem.id}; '
           'clearing attachment.',
+        );
+      }
+      item.properties.remove(itemKey);
+      item.properties.remove(sideKey);
+      return;
+    }
+    if (anchorItem != null &&
+        normalizedSide != null &&
+        _equipmentAnchorPointOrNull(anchorItem, normalizedSide) == null) {
+      if (kDebugMode) {
+        debugPrint(
+          'Unsupported anchor side "$side" for ${anchorItem.type.name} '
+          '${anchorItem.id}; clearing attachment.',
         );
       }
       item.properties.remove(itemKey);
@@ -1626,8 +1720,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     for (final iron in _items) {
       if (!_isStraightIronType(iron.type)) continue;
       if (excludedIronId != null && iron.id == excludedIronId) continue;
-      final start = _ironCenterlineStart(iron);
-      final end = _ironCenterlineEnd(iron);
+      final start = _resolveIronEndpoint(iron, true);
+      final end = _resolveIronEndpoint(iron, false);
       final horizontal = iron.type == _EquipmentType.ironHorizontal;
       final railBandOverlap = horizontal
           ? expandedBypassBounds.top <= start.dy &&
@@ -1809,10 +1903,16 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           if (anchorItem != null &&
               anchorSide != null &&
               anchorSide.isNotEmpty) {
+            final resolved =
+                _equipmentAnchorPointOrNull(anchorItem, anchorSide);
+            if (resolved == null) {
+              _setEndpointAnchor(item, leading, anchorItemId: null, side: null);
+              continue;
+            }
             _setIronEndpointPosition(
               item,
               leading,
-              _equipmentAnchorPoint(anchorItem, anchorSide),
+              resolved,
             );
           } else if (anchorItemId != null) {
             _setEndpointAnchor(item, leading, anchorItemId: null, side: null);
@@ -1820,17 +1920,18 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         }
       }
 
-      if (!_isFittingType(item.type)) continue;
+      if (!_isInlineFittingType(item.type)) continue;
+
+      final parentIron = _inlineParentIron(item);
+      final parentT = _inlineParentT(item);
+      if (parentIron == null || parentT == null) {
+        _clearInlineParentAttachment(item);
+        continue;
+      }
+      _setInlineParentAttachment(item, parentIron, parentT);
+      _alignInlineToParent(item, parentIron, parentT);
 
       if (item.type == _EquipmentType.bypass) {
-        final parentIron = _bypassParentIron(item);
-        final parentT = _bypassParentT(item);
-        if (parentIron == null || parentT == null) {
-          _clearBypassParentAttachment(item);
-          continue;
-        }
-        _setBypassParentAttachment(item, parentIron, parentT);
-        _alignBypassToParent(item, parentIron, parentT);
         final primaryIron = _bypassAttachmentIron(item, 'Primary');
         final secondaryIron = _bypassAttachmentIron(item, 'Secondary');
         final primaryT = _bypassAttachmentT(item, 'Primary');
@@ -1846,20 +1947,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           }
         }
       }
-
-      final ironId = int.tryParse(item.properties['snapIronId'] ?? '');
-      if (ironId == null) continue;
-      final iron = _findItemById(ironId);
-      if (iron == null || !_isStraightIronType(iron.type)) {
-        item.properties.remove('snapIronId');
-        item.properties.remove('snapAxis');
-        continue;
-      }
-
-      final aligned = _applySnapToSpecificIron(item, iron,
-          desiredTopLeft: Offset(item.x, item.y));
-      item.x = aligned.dx;
-      item.y = aligned.dy;
     }
 
     for (final jointId in jointIds) {
@@ -1918,8 +2005,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     );
   }
 
-  _LayoutItem? _bypassParentIron(_LayoutItem item) {
-    final parentIronId = int.tryParse(item.properties[_bypassParentIronKey] ??
+  _LayoutItem? _inlineParentIron(_LayoutItem item) {
+    final parentIronId = int.tryParse(item.properties[_inlineParentIronKey] ??
+        item.properties[_bypassParentIronKey] ??
         item.properties['snapIronId'] ??
         item.properties[_bypassIronKey('Primary')] ??
         '');
@@ -1929,8 +2017,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     return iron;
   }
 
-  double? _bypassParentT(_LayoutItem item) {
-    final value = item.properties[_bypassParentTKey] ??
+  double? _inlineParentT(_LayoutItem item) {
+    final value = item.properties[_inlineParentTKey] ??
+        item.properties[_bypassParentTKey] ??
         item.properties['snapT'] ??
         item.properties[_bypassTKey('Primary')] ??
         '';
@@ -1938,40 +2027,67 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     return parsed?.clamp(0.0, 1.0);
   }
 
-  void _clearBypassParentAttachment(_LayoutItem item) {
+  _LayoutItem? _bypassParentIron(_LayoutItem item) => _inlineParentIron(item);
+
+  double? _bypassParentT(_LayoutItem item) => _inlineParentT(item);
+
+  void _clearInlineParentAttachment(_LayoutItem item) {
+    item.properties.remove(_inlineParentIronKey);
+    item.properties.remove(_inlineParentTKey);
+    item.properties.remove(_inlineParentOrientationKey);
     item.properties.remove(_bypassParentIronKey);
     item.properties.remove(_bypassParentTKey);
     item.properties.remove(_bypassParentOrientationKey);
     item.properties.remove('snapIronId');
     item.properties.remove('snapT');
     item.properties.remove('snapAxis');
-    _setBypassAttachment(item, 'Primary', null, null);
-    _setBypassAttachment(item, 'Secondary', null, null);
+    if (item.type == _EquipmentType.bypass) {
+      _setBypassAttachment(item, 'Primary', null, null);
+      _setBypassAttachment(item, 'Secondary', null, null);
+    }
   }
 
-  void _setBypassParentAttachment(
+  void _clearBypassParentAttachment(_LayoutItem item) {
+    _clearInlineParentAttachment(item);
+  }
+
+  void _setInlineParentAttachment(
       _LayoutItem item, _LayoutItem iron, double normalizedT) {
     final t = normalizedT.clamp(0.0, 1.0).toDouble();
+    item.properties[_inlineParentIronKey] = iron.id.toString();
+    item.properties[_inlineParentTKey] = t.toStringAsFixed(4);
+    final horizontal = iron.type == _EquipmentType.ironHorizontal;
+    item.properties[_inlineParentOrientationKey] =
+        horizontal ? 'horizontal' : 'vertical';
     item.properties[_bypassParentIronKey] = iron.id.toString();
     item.properties[_bypassParentTKey] = t.toStringAsFixed(4);
-    final horizontal = iron.type == _EquipmentType.ironHorizontal;
     item.properties[_bypassParentOrientationKey] =
         horizontal ? 'horizontal' : 'vertical';
     item.properties['snapIronId'] = iron.id.toString();
     item.properties['snapT'] = t.toStringAsFixed(4);
     item.properties['snapAxis'] = horizontal ? 'horizontal' : 'vertical';
-    _setBypassAttachment(item, 'Primary', iron, t);
-    _setBypassAttachment(item, 'Secondary', null, null);
-    item.rotationTurns = horizontal ? 1 : 0;
+    if (item.type == _EquipmentType.bypass) {
+      _setBypassAttachment(item, 'Primary', iron, t);
+      _setBypassAttachment(item, 'Secondary', null, null);
+    }
   }
 
-  void _alignBypassToParent(_LayoutItem item, _LayoutItem iron, double t) {
+  void _setBypassParentAttachment(
+      _LayoutItem item, _LayoutItem iron, double normalizedT) {
+    _setInlineParentAttachment(item, iron, normalizedT);
+  }
+
+  void _alignInlineToParent(_LayoutItem item, _LayoutItem iron, double t) {
     final center = _pointOnIronCenterline(iron, t);
     item.x = center.dx - item.width / 2;
     item.y = center.dy - item.height / 2;
   }
 
-  bool _applyBypassAttachedDrag(
+  void _alignBypassToParent(_LayoutItem item, _LayoutItem iron, double t) {
+    _alignInlineToParent(item, iron, t);
+  }
+
+  bool _applyInlineAttachedDrag(
     _LayoutItem item,
     _BypassDragContext context,
     Offset delta,
@@ -1991,7 +2107,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         : _findItemById(context.parentIronId!);
     if (parentIron == null || !_isStraightIronType(parentIron.type)) {
       context.detached = true;
-      _clearBypassParentAttachment(item);
+      _clearInlineParentAttachment(item);
       _setBypassTopLeft(item, desiredTopLeft, canvasSize);
       return true;
     }
@@ -2003,7 +2119,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         _sceneRadiusFromScreen(_bypassDetachThresholdScreen);
     if (perpendicular > detachThreshold) {
       context.detached = true;
-      _clearBypassParentAttachment(item);
+      _clearInlineParentAttachment(item);
       _setBypassTopLeft(item, desiredTopLeft, canvasSize);
       return true;
     }
@@ -2023,13 +2139,22 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 .clamp(parentIron.y, parentIron.y + parentIron.height),
           );
     final t = _normalizedPositionAlongIron(parentIron, projected);
-    _setBypassParentAttachment(item, parentIron, t);
-    _alignBypassToParent(item, parentIron, t);
+    _setInlineParentAttachment(item, parentIron, t);
+    _alignInlineToParent(item, parentIron, t);
     _setBypassTopLeft(item, Offset(item.x, item.y), canvasSize);
     return false;
   }
 
-  void _attachBypassToNearestRailOnDrop(_LayoutItem item) {
+  bool _applyBypassAttachedDrag(
+    _LayoutItem item,
+    _BypassDragContext context,
+    Offset delta,
+    Size canvasSize,
+  ) {
+    return _applyInlineAttachedDrag(item, context, delta, canvasSize);
+  }
+
+  void _attachInlineToNearestRailOnDrop(_LayoutItem item) {
     final center = Offset(item.x + item.width / 2, item.y + item.height / 2);
     final candidate = _nearestBypassRail(
       item,
@@ -2040,8 +2165,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final iron = _findItemById(candidate.ironId);
     if (iron == null || !_isStraightIronType(iron.type)) return;
     final t = _normalizedPositionAlongIron(iron, center);
-    _setBypassParentAttachment(item, iron, t);
-    _alignBypassToParent(item, iron, t);
+    _setInlineParentAttachment(item, iron, t);
+    _alignInlineToParent(item, iron, t);
+  }
+
+  void _attachBypassToNearestRailOnDrop(_LayoutItem item) {
+    _attachInlineToNearestRailOnDrop(item);
   }
 
   void _beginItemDrag(_LayoutItem anchor, DragStartDetails details) {
@@ -2063,9 +2192,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       ..clear()
       ..addEntries(moving.map((it) => MapEntry(it.id, Offset(it.x, it.y))));
     for (final it in moving) {
-      if (it.type != _EquipmentType.bypass) continue;
-      final parentIron = _bypassParentIron(it);
-      final parentT = _bypassParentT(it);
+      if (!_isInlineFittingType(it.type)) continue;
+      final parentIron = _inlineParentIron(it);
+      final parentT = _inlineParentT(it);
       final attached = parentIron != null && parentT != null;
       _bypassDragContexts[it.id] = _BypassDragContext(
         startTopLeft: Offset(it.x, it.y),
@@ -2107,10 +2236,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         if (_segmentMoveBlocked(it)) continue;
         final origin = _dragItemStart[it.id] ?? Offset(it.x, it.y);
         final desired = Offset(origin.dx + delta.dx, origin.dy + delta.dy);
-        if (it.type == _EquipmentType.bypass) {
+        if (_isInlineFittingType(it.type)) {
           final context = _bypassDragContexts[it.id];
           if (context != null) {
-            _applyBypassAttachedDrag(it, context, delta, canvasSize);
+            _applyInlineAttachedDrag(it, context, delta, canvasSize);
           } else {
             _setBypassTopLeft(it, desired, canvasSize);
           }
@@ -2141,7 +2270,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         final canvasSize = _virtualCanvasSize;
         for (final it in moving) {
           if (_segmentMoveBlocked(it)) continue;
-          if (_isFittingType(it.type) && it.properties['snapIronId'] != null) {
+          if (_isInlineFittingType(it.type) && _inlineParentIron(it) != null) {
             continue;
           }
           it.x = _snap(it.x).clamp(0.0, canvasSize.width - it.width);
@@ -2177,23 +2306,16 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   void _finalizeDraggedItemConnections(List<_LayoutItem> moving) {
     for (final it in moving) {
       if (_segmentMoveBlocked(it)) continue;
-      if (!_isFittingType(it.type)) continue;
-      if (it.type == _EquipmentType.bypass) {
-        final parentIron = _bypassParentIron(it);
-        final parentT = _bypassParentT(it);
-        if (parentIron != null && parentT != null) {
-          _setBypassParentAttachment(it, parentIron, parentT);
-          _alignBypassToParent(it, parentIron, parentT);
-        } else {
-          _clearBypassParentAttachment(it);
-          _attachBypassToNearestRailOnDrop(it);
-        }
-        continue;
+      if (!_isInlineFittingType(it.type)) continue;
+      final parentIron = _inlineParentIron(it);
+      final parentT = _inlineParentT(it);
+      if (parentIron != null && parentT != null) {
+        _setInlineParentAttachment(it, parentIron, parentT);
+        _alignInlineToParent(it, parentIron, parentT);
+      } else {
+        _clearInlineParentAttachment(it);
+        _attachInlineToNearestRailOnDrop(it);
       }
-      final snapped =
-          _resolveFittingPlacement(it, Offset(it.x, it.y), allowNewSnap: true);
-      it.x = snapped.dx;
-      it.y = snapped.dy;
     }
     _reflowSnappedFittings();
   }
@@ -3077,6 +3199,15 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         ..clear()
         ..addAll(items);
       for (final item in _items) {
+        if (_isInlineFittingType(item.type)) {
+          final parentIron = _inlineParentIron(item);
+          final parentT = _inlineParentT(item);
+          if (parentIron == null || parentT == null) {
+            _clearInlineParentAttachment(item);
+          } else {
+            _setInlineParentAttachment(item, parentIron, parentT);
+          }
+        }
         for (final leading in <bool>[true, false]) {
           final anchorItemId = int.tryParse(
               item.properties[_endpointAnchorItemKey(leading)] ?? '');
@@ -3087,13 +3218,28 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
             continue;
           }
           final anchorItem = _findItemById(anchorItemId);
-          if (anchorItem?.type != _EquipmentType.bypass) continue;
-          final canonical = _normalizedBypassPortId(anchorSide);
-          if (canonical == null) {
+          if (anchorItem == null) {
             item.properties.remove(_endpointAnchorItemKey(leading));
             item.properties.remove(_endpointAnchorSideKey(leading));
+            continue;
+          }
+          if (anchorItem.type == _EquipmentType.bypass) {
+            final canonical = _normalizedBypassPortId(anchorSide);
+            if (canonical == null ||
+                _equipmentAnchorPointOrNull(anchorItem, canonical) == null) {
+              item.properties.remove(_endpointAnchorItemKey(leading));
+              item.properties.remove(_endpointAnchorSideKey(leading));
+            } else {
+              item.properties[_endpointAnchorSideKey(leading)] = canonical;
+            }
           } else {
-            item.properties[_endpointAnchorSideKey(leading)] = canonical;
+            final canonical = _normalizedAnchorSide(anchorItem, anchorSide);
+            if (_equipmentAnchorPointOrNull(anchorItem, canonical) == null) {
+              item.properties.remove(_endpointAnchorItemKey(leading));
+              item.properties.remove(_endpointAnchorSideKey(leading));
+            } else {
+              item.properties[_endpointAnchorSideKey(leading)] = canonical;
+            }
           }
         }
       }

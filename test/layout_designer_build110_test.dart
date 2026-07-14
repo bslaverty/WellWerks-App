@@ -160,9 +160,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 137', () async {
+  test('Build number is 138', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+137'));
+    expect(pubspec, contains('version: 1.0.1+138'));
   });
 
   testWidgets('Build 134 selected bypass keeps full artwork and no handle dots',
@@ -845,7 +845,7 @@ void main() {
     var props =
         (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
     expect(props['anchorEndItemId'], '2');
-    expect(props['anchorEndSide'], anyOf('left', 'right'));
+    expect(props['anchorEndSide'], anyOf('left', 'right', 'inlet', 'outlet'));
 
     await tester.drag(find.byKey(const ValueKey<String>('item-hitbox-2')),
         const Offset(48, 0));
@@ -855,7 +855,7 @@ void main() {
     items = _itemsFromPayload(await _savedLayoutPayload());
     props = (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
     expect(props['anchorEndItemId'], '2');
-    expect(props['anchorEndSide'], anyOf('left', 'right'));
+    expect(props['anchorEndSide'], anyOf('left', 'right', 'inlet', 'outlet'));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
