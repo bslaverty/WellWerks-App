@@ -861,6 +861,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       'inlineParentIronId',
       'inlineParentT',
       'inlineParentOrientation',
+      'inlineAttachedSegmentId',
       'inlineAttached',
     ]) {
       copy.remove(key);
@@ -930,6 +931,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   String get _inlineParentTKey => 'inlineParentT';
 
   String get _inlineParentOrientationKey => 'inlineParentOrientation';
+
+  String get _inlineAttachedSegmentKey => 'inlineAttachedSegmentId';
+
+  String? _inlineAttachedSegmentId(_LayoutItem item) {
+    final id = item.properties[_inlineAttachedSegmentKey];
+    if (id == null || id.isEmpty) return null;
+    return id;
+  }
 
   Offset _storedIronEndpoint(_LayoutItem item, bool leading) {
     final horizontal = item.type == _EquipmentType.ironHorizontal;
@@ -1697,7 +1706,133 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         return Offset(anchor.u * item.width, anchor.v * item.height);
       }
     }
-    return Offset(item.width / 2, item.height / 2);
+    throw StateError(
+      'Unsupported inline attachment side "$side" for ${item.type.name}.',
+    );
+  }
+
+  List<_InlineSegment> _inlineAttachmentSegmentsLocal(_LayoutItem item) {
+    switch (item.type) {
+      case _EquipmentType.bypass:
+        return <_InlineSegment>[
+          _InlineSegment(
+            id: 'mainSpine',
+            start: _attachmentSpineLocalPoint(item, 'mainTop'),
+            end: _attachmentSpineLocalPoint(item, 'mainBottom'),
+          ),
+        ];
+      case _EquipmentType.teeUp:
+      case _EquipmentType.teeRight:
+      case _EquipmentType.teeDown:
+      case _EquipmentType.teeLeft:
+        return <_InlineSegment>[
+          _InlineSegment(
+            id: 'run',
+            start: _attachmentSpineLocalPoint(item, 'runStart'),
+            end: _attachmentSpineLocalPoint(item, 'runEnd'),
+          ),
+        ];
+      case _EquipmentType.elbowUpRight:
+      case _EquipmentType.elbowRightDown:
+      case _EquipmentType.elbowDownLeft:
+      case _EquipmentType.elbowLeftUp:
+        final corner = Offset(item.width * 0.5, item.height * 0.5);
+        return <_InlineSegment>[
+          _InlineSegment(
+            id: 'inletLeg',
+            start: corner,
+            end: _attachmentSpineLocalPoint(item, 'inlet'),
+          ),
+          _InlineSegment(
+            id: 'outletLeg',
+            start: corner,
+            end: _attachmentSpineLocalPoint(item, 'outlet'),
+          ),
+        ];
+      default:
+        return <_InlineSegment>[
+          _InlineSegment(
+            id: 'defaultSpine',
+            start: Offset(item.width / 2, 0),
+            end: Offset(item.width / 2, item.height),
+          ),
+        ];
+    }
+  }
+
+  List<_InlineSegment> _inlineAttachmentSegmentsWorld(
+    _LayoutItem item, {
+    Offset? topLeft,
+  }) {
+    final origin = topLeft ?? Offset(item.x, item.y);
+    return _inlineAttachmentSegmentsLocal(item)
+        .map(
+          (segment) => _InlineSegment(
+            id: segment.id,
+            start: origin + segment.start,
+            end: origin + segment.end,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  bool _segmentCompatibleWithIron(_InlineSegment segment, _LayoutItem iron) {
+    final horizontal = iron.type == _EquipmentType.ironHorizontal;
+    final dx = (segment.end.dx - segment.start.dx).abs();
+    final dy = (segment.end.dy - segment.start.dy).abs();
+    if (horizontal) {
+      return dy <= dx;
+    }
+    return dx <= dy;
+  }
+
+  Offset _segmentCenter(_InlineSegment segment) {
+    return Offset(
+      (segment.start.dx + segment.end.dx) / 2,
+      (segment.start.dy + segment.end.dy) / 2,
+    );
+  }
+
+  _InlineSegment _activeInlineAttachmentSegmentWorld(
+    _LayoutItem item, {
+    Offset? topLeft,
+    _LayoutItem? parentIron,
+  }) {
+    final segments = _inlineAttachmentSegmentsWorld(item, topLeft: topLeft);
+    final attachedSegmentId = _inlineAttachedSegmentId(item);
+    if (attachedSegmentId != null) {
+      for (final segment in segments) {
+        if (segment.id == attachedSegmentId) {
+          if (parentIron == null ||
+              _segmentCompatibleWithIron(segment, parentIron)) {
+            return segment;
+          }
+          break;
+        }
+      }
+    }
+    if (parentIron == null || !_isStraightIronType(parentIron.type)) {
+      return segments.first;
+    }
+
+    final parentStart = _resolveIronEndpoint(parentIron, true);
+    final parentEnd = _resolveIronEndpoint(parentIron, false);
+    _InlineSegment? best;
+    var bestDistance = double.infinity;
+    for (final segment in segments) {
+      if (!_segmentCompatibleWithIron(segment, parentIron)) continue;
+      final distance = _distanceBetweenSegments(
+        segment.start,
+        segment.end,
+        parentStart,
+        parentEnd,
+      );
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = segment;
+      }
+    }
+    return best ?? segments.first;
   }
 
   _AttachmentSpine _attachmentSpineLocal(_LayoutItem item) {
@@ -1734,17 +1869,26 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   _AttachmentSpine _attachmentSpineWorld(
     _LayoutItem item, {
     Offset? topLeft,
+    _LayoutItem? parentIron,
   }) {
-    final origin = topLeft ?? Offset(item.x, item.y);
-    final local = _attachmentSpineLocal(item);
+    final active = _activeInlineAttachmentSegmentWorld(
+      item,
+      topLeft: topLeft,
+      parentIron: parentIron,
+    );
     return _AttachmentSpine(
-      startLocal: origin + local.startLocal,
-      endLocal: origin + local.endLocal,
+      startLocal: active.start,
+      endLocal: active.end,
     );
   }
 
-  Offset _attachmentSpineCenterWorld(_LayoutItem item, {Offset? topLeft}) {
-    final spine = _attachmentSpineWorld(item, topLeft: topLeft);
+  Offset _attachmentSpineCenterWorld(
+    _LayoutItem item, {
+    Offset? topLeft,
+    _LayoutItem? parentIron,
+  }) {
+    final spine =
+        _attachmentSpineWorld(item, topLeft: topLeft, parentIron: parentIron);
     return Offset(
       (spine.startLocal.dx + spine.endLocal.dx) / 2,
       (spine.startLocal.dy + spine.endLocal.dy) / 2,
@@ -1788,11 +1932,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }) {
     final maxDistanceValue =
         maxDistance ?? _sceneRadiusFromScreen(_bypassAttachRadiusScreen);
-    final spine = _attachmentSpineWorld(item, topLeft: desiredTopLeft);
-    final spineCenter = Offset(
-      (spine.startLocal.dx + spine.endLocal.dx) / 2,
-      (spine.startLocal.dy + spine.endLocal.dy) / 2,
-    );
+    final segments =
+        _inlineAttachmentSegmentsWorld(item, topLeft: desiredTopLeft);
     _SnapCandidate? best;
     for (final iron in _items) {
       if (!_isStraightIronType(iron.type)) continue;
@@ -1800,18 +1941,23 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       final start = _resolveIronEndpoint(iron, true);
       final end = _resolveIronEndpoint(iron, false);
       final horizontal = iron.type == _EquipmentType.ironHorizontal;
-      final projected = _nearestPointOnSegment(spineCenter, start, end);
-      final distance = _distanceBetweenSegments(
-          spine.startLocal, spine.endLocal, start, end);
-      if (distance > maxDistanceValue) continue;
-      final score = distance;
-      if (best == null || score < best.score) {
-        best = _SnapCandidate(
-          ironId: iron.id,
-          horizontal: horizontal,
-          indicator: projected,
-          score: score,
-        );
+      for (final segment in segments) {
+        if (!_segmentCompatibleWithIron(segment, iron)) continue;
+        final center = _segmentCenter(segment);
+        final projected = _nearestPointOnSegment(center, start, end);
+        final distance =
+            _distanceBetweenSegments(segment.start, segment.end, start, end);
+        if (distance > maxDistanceValue) continue;
+        final score = distance;
+        if (best == null || score < best.score) {
+          best = _SnapCandidate(
+            ironId: iron.id,
+            horizontal: horizontal,
+            indicator: projected,
+            score: score,
+            segmentId: segment.id,
+          );
+        }
       }
     }
     return best;
@@ -2092,6 +2238,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     item.properties.remove(_inlineParentIronKey);
     item.properties.remove(_inlineParentTKey);
     item.properties.remove(_inlineParentOrientationKey);
+    item.properties.remove(_inlineAttachedSegmentKey);
     item.properties.remove(_bypassParentIronKey);
     item.properties.remove(_bypassParentTKey);
     item.properties.remove(_bypassParentOrientationKey);
@@ -2109,7 +2256,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   void _setInlineParentAttachment(
-      _LayoutItem item, _LayoutItem iron, double normalizedT) {
+    _LayoutItem item,
+    _LayoutItem iron,
+    double normalizedT, {
+    String? segmentId,
+  }) {
     final t = normalizedT.clamp(0.0, 1.0).toDouble();
     item.properties[_inlineParentIronKey] = iron.id.toString();
     item.properties[_inlineParentTKey] = t.toStringAsFixed(4);
@@ -2123,6 +2274,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     item.properties['snapIronId'] = iron.id.toString();
     item.properties['snapT'] = t.toStringAsFixed(4);
     item.properties['snapAxis'] = horizontal ? 'horizontal' : 'vertical';
+    final chosenSegment = segmentId ??
+        _activeInlineAttachmentSegmentWorld(
+          item,
+          parentIron: iron,
+        ).id;
+    item.properties[_inlineAttachedSegmentKey] = chosenSegment;
     if (item.type == _EquipmentType.bypass) {
       _setBypassAttachment(item, 'Primary', iron, t);
       _setBypassAttachment(item, 'Secondary', null, null);
@@ -2136,8 +2293,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   void _alignInlineToParent(_LayoutItem item, _LayoutItem iron, double t) {
     final center = _pointOnIronCenterline(iron, t);
-    final spineCenter = _attachmentSpineCenterWorld(item);
-    final delta = center - spineCenter;
+    final activeSegment =
+        _activeInlineAttachmentSegmentWorld(item, parentIron: iron);
+    final delta = center - _segmentCenter(activeSegment);
     item.x += delta.dx;
     item.y += delta.dy;
   }
@@ -2202,7 +2360,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 math.max(parentStart.dy, parentEnd.dy)),
           );
     final t = _normalizedPositionAlongIron(parentIron, projected);
-    _setInlineParentAttachment(item, parentIron, t);
+    _setInlineParentAttachment(
+      item,
+      parentIron,
+      t,
+      segmentId: context.attachedSegmentId,
+    );
     _alignInlineToParent(item, parentIron, t);
     _setBypassTopLeft(item, Offset(item.x, item.y), canvasSize);
     return false;
@@ -2218,7 +2381,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   void _attachInlineToNearestRailOnDrop(_LayoutItem item) {
-    final center = _attachmentSpineCenterWorld(item);
     final candidate = _nearestBypassRail(
       item,
       Offset(item.x, item.y),
@@ -2227,8 +2389,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     if (candidate == null) return;
     final iron = _findItemById(candidate.ironId);
     if (iron == null || !_isStraightIronType(iron.type)) return;
+    final segment = _activeInlineAttachmentSegmentWorld(
+      item,
+      parentIron: iron,
+    );
+    final center = _segmentCenter(segment);
     final t = _normalizedPositionAlongIron(iron, center);
-    _setInlineParentAttachment(item, iron, t);
+    _setInlineParentAttachment(item, iron, t, segmentId: candidate.segmentId);
     _alignInlineToParent(item, iron, t);
   }
 
@@ -2261,10 +2428,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       final attached = parentIron != null && parentT != null;
       _bypassDragContexts[it.id] = _BypassDragContext(
         startTopLeft: Offset(it.x, it.y),
-        startCenter: _attachmentSpineCenterWorld(it),
+        startCenter: _attachmentSpineCenterWorld(it, parentIron: parentIron),
         wasAttached: attached,
         parentIronId: parentIron?.id,
         startT: parentT,
+        attachedSegmentId: _inlineAttachedSegmentId(it),
       );
     }
     if (mounted) {
@@ -3267,7 +3435,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           if (parentIron == null || parentT == null) {
             _clearInlineParentAttachment(item);
           } else {
-            _setInlineParentAttachment(item, parentIron, parentT);
+            _setInlineParentAttachment(
+              item,
+              parentIron,
+              parentT,
+              segmentId: _inlineAttachedSegmentId(item),
+            );
           }
         }
         for (final leading in <bool>[true, false]) {
@@ -8318,6 +8491,18 @@ class _AttachmentSpine {
   });
 }
 
+class _InlineSegment {
+  final String id;
+  final Offset start;
+  final Offset end;
+
+  const _InlineSegment({
+    required this.id,
+    required this.start,
+    required this.end,
+  });
+}
+
 enum _ConnectionTargetKind {
   equipmentAnchor,
   ironEndpoint,
@@ -8391,12 +8576,14 @@ class _SnapCandidate {
   final bool horizontal;
   final Offset indicator;
   final double score;
+  final String? segmentId;
 
   const _SnapCandidate({
     required this.ironId,
     required this.horizontal,
     required this.indicator,
     required this.score,
+    this.segmentId,
   });
 }
 
@@ -8478,6 +8665,7 @@ class _BypassDragContext {
   final bool wasAttached;
   final int? parentIronId;
   final double? startT;
+  final String? attachedSegmentId;
   bool detached = false;
 
   _BypassDragContext({
@@ -8486,6 +8674,7 @@ class _BypassDragContext {
     required this.wasAttached,
     required this.parentIronId,
     required this.startT,
+    required this.attachedSegmentId,
   });
 }
 
