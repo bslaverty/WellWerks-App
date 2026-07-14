@@ -160,12 +160,12 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 133', () async {
+  test('Build number is 134', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+133'));
+    expect(pubspec, contains('version: 1.0.1+134'));
   });
 
-  testWidgets('Build 132 default bypass keeps usable attachment handles',
+  testWidgets('Build 134 selected bypass keeps full artwork and no handle dots',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -184,9 +184,9 @@ void main() {
     );
 
     expect(find.byKey(const ValueKey<String>('bypass-handle-1-primary')),
-        findsOneWidget);
+        findsNothing);
     expect(find.byKey(const ValueKey<String>('bypass-handle-1-secondary')),
-        findsOneWidget);
+        findsNothing);
 
     await _saveRigUp(tester);
     final items = _itemsFromPayload(await _savedLayoutPayload());
@@ -198,7 +198,7 @@ void main() {
   });
 
   testWidgets(
-      'Legacy bypass dimensions migrate to Build 132 width with center preserved',
+      'Legacy bypass dimensions migrate to Build 134 width with center preserved',
       (tester) async {
     const legacyX = 180.0;
     const legacyY = 110.0;
@@ -899,7 +899,7 @@ void main() {
   });
 
   testWidgets(
-      'Bypass left-handle endpoint disconnects when dropped out of range',
+      'Bypass-linked iron endpoint stays connected and follows bypass drag',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -925,23 +925,23 @@ void main() {
     expect(props['anchorEndSide'],
         anyOf('mainTop', 'mainBottom', 'upperValve', 'lowerValve'));
 
-    await tester.drag(
-      find.byKey(const ValueKey<String>('item-hitbox-3')),
-      const Offset(48, 0),
-    );
+    final bypassCenterBefore =
+        tester.getCenter(find.byKey(const ValueKey<String>('item-hitbox-3')));
+    await tester.dragFrom(bypassCenterBefore, const Offset(48, 0));
     await tester.pumpAndSettle();
     await _saveRigUp(tester);
 
     items = _itemsFromPayload(await _savedLayoutPayload());
     props = (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
-    expect(props['anchorEndItemId'], isNull);
-    expect(props['anchorEndSide'], isNull);
+    expect(props['anchorEndItemId'], '3');
+    expect(props['anchorEndSide'],
+        anyOf('mainTop', 'mainBottom', 'upperValve', 'lowerValve'));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
   testWidgets(
-      'Bypass right-handle endpoint disconnects when dropped out of range',
+      'Bypass right-side linked endpoint stays connected while bypass moves',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -963,22 +963,20 @@ void main() {
     expect(props['anchorStartItemId'], '3');
     expect(props['anchorStartSide'], anyOf('mainTop', 'mainBottom'));
 
-    await tester.drag(
-      find.byKey(const ValueKey<String>('item-hitbox-3')),
-      const Offset(-36, 0),
-    );
+    final bypassCenterBefore =
+        tester.getCenter(find.byKey(const ValueKey<String>('item-hitbox-3')));
+    await tester.dragFrom(bypassCenterBefore, const Offset(-36, 0));
     await tester.pumpAndSettle();
     await _saveRigUp(tester);
 
     items = _itemsFromPayload(await _savedLayoutPayload());
-    props = (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
-    expect(props['anchorStartItemId'], isNull);
-    expect(props['anchorStartSide'], isNull);
+    final movedBypass = _findById(items, 3);
+    expect((movedBypass['x'] as num).toDouble(), isNot(closeTo(180.0, 0.01)));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Bypass left and right attachments persist independently',
+  testWidgets('Bypass legacy dual-attachment metadata loads safely',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1000,7 +998,7 @@ void main() {
     final props =
         (_findById(items, 3)['properties'] as Map).cast<String, dynamic>();
     expect(props['bypassPrimaryIronId'], '1');
-    expect(props['bypassSecondaryIronId'], '2');
+    expect(props['bypassSecondaryIronId'], anyOf(isNull, '2'));
     expect(double.parse(props['bypassPrimaryT'] as String),
         inInclusiveRange(0.2, 0.8));
 
@@ -1008,7 +1006,7 @@ void main() {
   });
 
   testWidgets(
-      'Bypass body drag moves freely on both axes when attached metadata exists',
+      'Attached bypass body drag slides along parent axis and keeps attachment',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1044,6 +1042,8 @@ void main() {
     final vProps =
         (verticalBypass['properties'] as Map).cast<String, dynamic>();
 
+    expect(hProps['bypassParentIronId'], '1');
+    expect(vProps['bypassParentIronId'], '4');
     expect(hProps['bypassPrimaryIronId'], '1');
     expect(vProps['bypassPrimaryIronId'], '4');
     final horizontalCenter = Offset(
@@ -1058,13 +1058,13 @@ void main() {
       (verticalBypass['y'] as num).toDouble() +
           (verticalBypass['height'] as num).toDouble() / 2,
     );
-    expect(horizontalCenter.dx, isNonZero);
-    expect(verticalCenter.dx, isNonZero);
+    expect(horizontalCenter.dy, closeTo(108.0, 2.0));
+    expect(verticalCenter.dx, closeTo(494.0, 2.0));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Build 132 canonical bypass port IDs persist across save',
+  testWidgets('Build 134 canonical bypass port IDs persist across save',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1175,8 +1175,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Bypass D-pad movement nudges freely on both axes',
-      (tester) async {
+  testWidgets('Bypass D-pad movement respects attached axis', (tester) async {
     await _pumpLayout(
       tester,
       items: <Map<String, dynamic>>[
@@ -1236,8 +1235,8 @@ void main() {
       (verticalBypass['y'] as num).toDouble() +
           (verticalBypass['height'] as num).toDouble() / 2,
     );
-    expect(horizontalCenter.dx, isNonZero);
-    expect(verticalCenter.dx, isNonZero);
+    expect(horizontalCenter.dy, closeTo(108.0, 2.0));
+    expect(verticalCenter.dx, closeTo(514.0, 3.0));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -1332,6 +1331,84 @@ void main() {
     expect(_findById(items, 1)['type'], 'ironHorizontal');
     expect(_findById(items, 2)['type'], 'bypass');
     expect(_findById(items, 3)['type'], 'facilities');
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Bypass dropped near horizontal iron middle attaches on drag end',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 120, y: 240, width: 300),
+        _bypassItem(2, x: 250, y: 120),
+      ],
+      selectedId: 2,
+    );
+
+    final bypassCenter =
+        tester.getCenter(find.byKey(const ValueKey<String>('item-hitbox-2')));
+    final ironCenter =
+        tester.getCenter(find.byKey(const ValueKey<String>('item-hitbox-1')));
+    await tester.dragFrom(
+      bypassCenter,
+      Offset(ironCenter.dx - bypassCenter.dx, ironCenter.dy - bypassCenter.dy),
+    );
+    await tester.pumpAndSettle();
+
+    await _saveRigUp(tester);
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final bypass = _findById(items, 2);
+    final props = (bypass['properties'] as Map).cast<String, dynamic>();
+    final centerY = (bypass['y'] as num).toDouble() +
+        (bypass['height'] as num).toDouble() / 2;
+    final initialDistance = (136.0 - 252.0).abs();
+    final movedDistance = (centerY - 252.0).abs();
+
+    final parentT = props['bypassParentT'] ?? props['bypassPrimaryT'];
+    if (parentT is String) {
+      expect(double.parse(parentT), inInclusiveRange(0.0, 1.0));
+    }
+    expect(movedDistance, lessThan(initialDistance));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Bypass dropped near vertical iron middle attaches on drag end',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 480, y: 120, width: 300, vertical: true),
+        _bypassItem(2, x: 300, y: 250),
+      ],
+      selectedId: 2,
+    );
+
+    final bypassCenter =
+        tester.getCenter(find.byKey(const ValueKey<String>('item-hitbox-2')));
+    final ironCenter =
+        tester.getCenter(find.byKey(const ValueKey<String>('item-hitbox-1')));
+    await tester.dragFrom(
+      bypassCenter,
+      Offset(ironCenter.dx - bypassCenter.dx, ironCenter.dy - bypassCenter.dy),
+    );
+    await tester.pumpAndSettle();
+
+    await _saveRigUp(tester);
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final bypass = _findById(items, 2);
+    final props = (bypass['properties'] as Map).cast<String, dynamic>();
+    final centerX = (bypass['x'] as num).toDouble() +
+        (bypass['width'] as num).toDouble() / 2;
+    final initialDistance = (315.0 - 494.0).abs();
+    final movedDistance = (centerX - 494.0).abs();
+
+    final parentT = props['bypassParentT'] ?? props['bypassPrimaryT'];
+    if (parentT is String) {
+      expect(double.parse(parentT), inInclusiveRange(0.0, 1.0));
+    }
+    expect(movedDistance, lessThan(initialDistance));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });

@@ -60,6 +60,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   int? _snapCandidateIronId;
   Offset? _snapIndicatorScene;
   final Map<int, Offset> _dragItemStart = <int, Offset>{};
+  final Map<int, _BypassDragContext> _bypassDragContexts =
+      <int, _BypassDragContext>{};
   bool? _selectedEndpointLeading;
   String? _selectedBypassHandle;
   _ActiveEndpointDrag? _activeEndpointDrag;
@@ -107,6 +109,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   static const double _mobileLibraryMaxFraction = 0.82;
   static const double _dragLiftScreenOffsetY = 64.0;
   static const double _connectionSnapRadius = 24.0;
+  static const double _bypassAttachRadiusScreen = 38.0;
+  static const double _bypassDetachThresholdScreen = 52.0;
   static const String _labelsPrefKey = 'wellwerks_layout_show_labels_v1';
   static const String _bypassPortMainTop = 'mainTop';
   static const String _bypassPortMainBottom = 'mainBottom';
@@ -309,6 +313,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     setState(() {
       _dragSceneStart = null;
       _dragItemStart.clear();
+      _bypassDragContexts.clear();
       _dragActive = false;
       _activeEndpointDrag = null;
       _snapCandidateIronId = null;
@@ -340,6 +345,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       final opening = !_showSideLibrary;
       _dragSceneStart = null;
       _dragItemStart.clear();
+      _bypassDragContexts.clear();
       _dragActive = false;
       _activeEndpointDrag = null;
       _snapCandidateIronId = null;
@@ -513,6 +519,34 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       for (final item in moving) {
         if (_segmentMoveBlocked(item)) continue;
         final origin = Offset(item.x, item.y);
+        if (item.type == _EquipmentType.bypass) {
+          final parentIron = _bypassParentIron(item);
+          final parentT = _bypassParentT(item);
+          if (parentIron != null && parentT != null) {
+            final horizontal = parentIron.type == _EquipmentType.ironHorizontal;
+            final alongDelta = horizontal ? delta.dx : delta.dy;
+            if (alongDelta.abs() < 0.0001) {
+              continue;
+            }
+            final center = _pointOnIronCenterline(parentIron, parentT);
+            final projected = horizontal
+                ? Offset(
+                    (center.dx + alongDelta)
+                        .clamp(parentIron.x, parentIron.x + parentIron.width),
+                    parentIron.y + parentIron.height / 2,
+                  )
+                : Offset(
+                    parentIron.x + parentIron.width / 2,
+                    (center.dy + alongDelta)
+                        .clamp(parentIron.y, parentIron.y + parentIron.height),
+                  );
+            final t = _normalizedPositionAlongIron(parentIron, projected);
+            _setBypassParentAttachment(item, parentIron, t);
+            _alignBypassToParent(item, parentIron, t);
+            _setBypassTopLeft(item, Offset(item.x, item.y), canvasSize);
+            continue;
+          }
+        }
         final desired = Offset(origin.dx + delta.dx, origin.dy + delta.dy);
         item.x = desired.dx.clamp(0.0, canvasSize.width - item.width);
         item.y = desired.dy.clamp(0.0, canvasSize.height - item.height);
@@ -799,7 +833,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       'anchorStartSide',
       'anchorEndSide',
       'snapIronId',
+      'snapT',
       'snapAxis',
+      'bypassParentIronId',
+      'bypassParentT',
+      'bypassParentOrientation',
       'bypassPrimaryIronId',
       'bypassPrimaryT',
       'bypassPrimaryOrientation',
@@ -852,6 +890,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   String _bypassTKey(String slot) => 'bypass${slot}T';
 
   String _bypassOrientationKey(String slot) => 'bypass${slot}Orientation';
+
+  String get _bypassParentIronKey => 'bypassParentIronId';
+
+  String get _bypassParentTKey => 'bypassParentT';
+
+  String get _bypassParentOrientationKey => 'bypassParentOrientation';
 
   Offset _storedIronEndpoint(_LayoutItem item, bool leading) {
     final horizontal = item.type == _EquipmentType.ironHorizontal;
@@ -1449,8 +1493,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     _LayoutItem item,
     Offset desiredTopLeft, {
     int? excludedIronId,
-    double maxDistance = _equipmentAnchorSnapRadius,
+    double? maxDistance,
   }) {
+    final maxDistanceValue =
+        maxDistance ?? _sceneRadiusFromScreen(_bypassAttachRadiusScreen);
     final center = Offset(
       desiredTopLeft.dx + item.width / 2,
       desiredTopLeft.dy + item.height / 2,
@@ -1466,7 +1512,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           : Offset(iron.x + iron.width / 2,
               center.dy.clamp(iron.y, iron.y + iron.height));
       final distance = (projected - center).distance;
-      if (distance > maxDistance) continue;
+      if (distance > maxDistanceValue) continue;
       if (best == null || distance < best.score) {
         best = _SnapCandidate(
           ironId: iron.id,
@@ -1646,6 +1692,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       if (!_isFittingType(item.type)) continue;
 
       if (item.type == _EquipmentType.bypass) {
+        final parentIron = _bypassParentIron(item);
+        final parentT = _bypassParentT(item);
+        if (parentIron == null || parentT == null) {
+          _clearBypassParentAttachment(item);
+          continue;
+        }
+        _setBypassParentAttachment(item, parentIron, parentT);
+        _alignBypassToParent(item, parentIron, parentT);
         final primaryIron = _bypassAttachmentIron(item, 'Primary');
         final secondaryIron = _bypassAttachmentIron(item, 'Secondary');
         final primaryT = _bypassAttachmentT(item, 'Primary');
@@ -1714,6 +1768,151 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     });
   }
 
+  void _setBypassTopLeft(_LayoutItem item, Offset desiredTopLeft, Size canvas) {
+    item.x = desiredTopLeft.dx.clamp(0.0, canvas.width - item.width);
+    item.y = desiredTopLeft.dy.clamp(0.0, canvas.height - item.height);
+  }
+
+  Offset _pointOnIronCenterline(_LayoutItem iron, double t) {
+    final clampedT = t.clamp(0.0, 1.0);
+    if (iron.type == _EquipmentType.ironHorizontal) {
+      return Offset(
+        iron.x + (iron.width * clampedT),
+        iron.y + iron.height / 2,
+      );
+    }
+    return Offset(
+      iron.x + iron.width / 2,
+      iron.y + (iron.height * clampedT),
+    );
+  }
+
+  _LayoutItem? _bypassParentIron(_LayoutItem item) {
+    final parentIronId = int.tryParse(item.properties[_bypassParentIronKey] ??
+        item.properties['snapIronId'] ??
+        item.properties[_bypassIronKey('Primary')] ??
+        '');
+    if (parentIronId == null) return null;
+    final iron = _findItemById(parentIronId);
+    if (iron == null || !_isStraightIronType(iron.type)) return null;
+    return iron;
+  }
+
+  double? _bypassParentT(_LayoutItem item) {
+    final value = item.properties[_bypassParentTKey] ??
+        item.properties['snapT'] ??
+        item.properties[_bypassTKey('Primary')] ??
+        '';
+    final parsed = double.tryParse(value);
+    return parsed?.clamp(0.0, 1.0);
+  }
+
+  void _clearBypassParentAttachment(_LayoutItem item) {
+    item.properties.remove(_bypassParentIronKey);
+    item.properties.remove(_bypassParentTKey);
+    item.properties.remove(_bypassParentOrientationKey);
+    item.properties.remove('snapIronId');
+    item.properties.remove('snapT');
+    item.properties.remove('snapAxis');
+    _setBypassAttachment(item, 'Primary', null, null);
+    _setBypassAttachment(item, 'Secondary', null, null);
+  }
+
+  void _setBypassParentAttachment(
+      _LayoutItem item, _LayoutItem iron, double normalizedT) {
+    final t = normalizedT.clamp(0.0, 1.0).toDouble();
+    item.properties[_bypassParentIronKey] = iron.id.toString();
+    item.properties[_bypassParentTKey] = t.toStringAsFixed(4);
+    final horizontal = iron.type == _EquipmentType.ironHorizontal;
+    item.properties[_bypassParentOrientationKey] =
+        horizontal ? 'horizontal' : 'vertical';
+    item.properties['snapIronId'] = iron.id.toString();
+    item.properties['snapT'] = t.toStringAsFixed(4);
+    item.properties['snapAxis'] = horizontal ? 'horizontal' : 'vertical';
+    _setBypassAttachment(item, 'Primary', iron, t);
+    _setBypassAttachment(item, 'Secondary', null, null);
+    item.rotationTurns = horizontal ? 1 : 0;
+  }
+
+  void _alignBypassToParent(_LayoutItem item, _LayoutItem iron, double t) {
+    final center = _pointOnIronCenterline(iron, t);
+    item.x = center.dx - item.width / 2;
+    item.y = center.dy - item.height / 2;
+  }
+
+  bool _applyBypassAttachedDrag(
+    _LayoutItem item,
+    _BypassDragContext context,
+    Offset delta,
+    Size canvasSize,
+  ) {
+    final desiredTopLeft = Offset(
+      context.startTopLeft.dx + delta.dx,
+      context.startTopLeft.dy + delta.dy,
+    );
+    if (!context.wasAttached || context.detached) {
+      _setBypassTopLeft(item, desiredTopLeft, canvasSize);
+      return false;
+    }
+
+    final parentIron = context.parentIronId == null
+        ? null
+        : _findItemById(context.parentIronId!);
+    if (parentIron == null || !_isStraightIronType(parentIron.type)) {
+      context.detached = true;
+      _clearBypassParentAttachment(item);
+      _setBypassTopLeft(item, desiredTopLeft, canvasSize);
+      return true;
+    }
+
+    final horizontal = parentIron.type == _EquipmentType.ironHorizontal;
+    final alongDelta = horizontal ? delta.dx : delta.dy;
+    final perpendicular = horizontal ? delta.dy.abs() : delta.dx.abs();
+    final detachThreshold =
+        _sceneRadiusFromScreen(_bypassDetachThresholdScreen);
+    if (perpendicular > detachThreshold) {
+      context.detached = true;
+      _clearBypassParentAttachment(item);
+      _setBypassTopLeft(item, desiredTopLeft, canvasSize);
+      return true;
+    }
+
+    final startT = context.startT ??
+        _normalizedPositionAlongIron(parentIron, context.startCenter);
+    final startCenter = _pointOnIronCenterline(parentIron, startT);
+    final projected = horizontal
+        ? Offset(
+            (startCenter.dx + alongDelta)
+                .clamp(parentIron.x, parentIron.x + parentIron.width),
+            parentIron.y + parentIron.height / 2,
+          )
+        : Offset(
+            parentIron.x + parentIron.width / 2,
+            (startCenter.dy + alongDelta)
+                .clamp(parentIron.y, parentIron.y + parentIron.height),
+          );
+    final t = _normalizedPositionAlongIron(parentIron, projected);
+    _setBypassParentAttachment(item, parentIron, t);
+    _alignBypassToParent(item, parentIron, t);
+    _setBypassTopLeft(item, Offset(item.x, item.y), canvasSize);
+    return false;
+  }
+
+  void _attachBypassToNearestRailOnDrop(_LayoutItem item) {
+    final center = Offset(item.x + item.width / 2, item.y + item.height / 2);
+    final candidate = _nearestBypassRail(
+      item,
+      Offset(item.x, item.y),
+      maxDistance: _sceneRadiusFromScreen(_bypassAttachRadiusScreen),
+    );
+    if (candidate == null) return;
+    final iron = _findItemById(candidate.ironId);
+    if (iron == null || !_isStraightIronType(iron.type)) return;
+    final t = _normalizedPositionAlongIron(iron, center);
+    _setBypassParentAttachment(item, iron, t);
+    _alignBypassToParent(item, iron, t);
+  }
+
   void _beginItemDrag(_LayoutItem anchor, DragStartDetails details) {
     final moving = _selectedIds.contains(anchor.id) ? _selectedItems : [anchor];
     if (moving.every((it) => it.locked)) {
@@ -1728,9 +1927,23 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     _selectedEndpointLeading = null;
     _dragActive = false;
     _clearDragPreview();
+    _bypassDragContexts.clear();
     _dragItemStart
       ..clear()
       ..addEntries(moving.map((it) => MapEntry(it.id, Offset(it.x, it.y))));
+    for (final it in moving) {
+      if (it.type != _EquipmentType.bypass) continue;
+      final parentIron = _bypassParentIron(it);
+      final parentT = _bypassParentT(it);
+      final attached = parentIron != null && parentT != null;
+      _bypassDragContexts[it.id] = _BypassDragContext(
+        startTopLeft: Offset(it.x, it.y),
+        startCenter: Offset(it.x + it.width / 2, it.y + it.height / 2),
+        wasAttached: attached,
+        parentIronId: parentIron?.id,
+        startT: parentT,
+      );
+    }
     if (mounted) {
       setState(() {});
     }
@@ -1763,8 +1976,17 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         if (_segmentMoveBlocked(it)) continue;
         final origin = _dragItemStart[it.id] ?? Offset(it.x, it.y);
         final desired = Offset(origin.dx + delta.dx, origin.dy + delta.dy);
-        it.x = desired.dx.clamp(0.0, canvasSize.width - it.width);
-        it.y = desired.dy.clamp(0.0, canvasSize.height - it.height);
+        if (it.type == _EquipmentType.bypass) {
+          final context = _bypassDragContexts[it.id];
+          if (context != null) {
+            _applyBypassAttachedDrag(it, context, delta, canvasSize);
+          } else {
+            _setBypassTopLeft(it, desired, canvasSize);
+          }
+        } else {
+          it.x = desired.dx.clamp(0.0, canvasSize.width - it.width);
+          it.y = desired.dy.clamp(0.0, canvasSize.height - it.height);
+        }
         if (it.id == _selectedId && !it.type.isIron) {
           _dragPreviewItemId = it.id;
           _dragPreviewScenePosition =
@@ -1806,6 +2028,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     setState(() {
       _dragSceneStart = null;
       _dragItemStart.clear();
+      _bypassDragContexts.clear();
       _dragActive = false;
       _activeEndpointDrag = null;
       _clearDragPreview();
@@ -1825,7 +2048,15 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       if (_segmentMoveBlocked(it)) continue;
       if (!_isFittingType(it.type)) continue;
       if (it.type == _EquipmentType.bypass) {
-        // Keep body drag placement free; bypass body should not rail-snap.
+        final parentIron = _bypassParentIron(it);
+        final parentT = _bypassParentT(it);
+        if (parentIron != null && parentT != null) {
+          _setBypassParentAttachment(it, parentIron, parentT);
+          _alignBypassToParent(it, parentIron, parentT);
+        } else {
+          _clearBypassParentAttachment(it);
+          _attachBypassToNearestRailOnDrop(it);
+        }
         continue;
       }
       final snapped =
@@ -7570,79 +7801,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                                           item.type),
                                                 ),
                                               ),
-                                              if (_selectedIds
-                                                      .contains(item.id) &&
-                                                  item.type ==
-                                                      _EquipmentType
-                                                          .bypass) ...[
-                                                _BypassAttachmentHandle(
-                                                  item: item,
-                                                  slot: 'Primary',
-                                                  interactionPadding:
-                                                      interactionPadding,
-                                                  selected:
-                                                      _selectedBypassHandle ==
-                                                          'Primary',
-                                                  onTap: () => setState(() {
-                                                    _selectedBypassHandle =
-                                                        'Primary';
-                                                    _selectedEndpointLeading =
-                                                        null;
-                                                  }),
-                                                  onPanStart: () {
-                                                    _recordUndo();
-                                                    _selectedBypassHandle =
-                                                        'Primary';
-                                                    _selectedEndpointLeading =
-                                                        null;
-                                                  },
-                                                  onPanUpdate: (details) =>
-                                                      _attachBypassHandleToNearestRail(
-                                                          item,
-                                                          'Primary',
-                                                          details),
-                                                  onPanEnd: () => setState(() {
-                                                    _commitBypassHandleAttachment(
-                                                        item, 'Primary');
-                                                  }),
-                                                  onPanCancel:
-                                                      _resetTransientInteractionState,
-                                                ),
-                                                _BypassAttachmentHandle(
-                                                  item: item,
-                                                  slot: 'Secondary',
-                                                  interactionPadding:
-                                                      interactionPadding,
-                                                  selected:
-                                                      _selectedBypassHandle ==
-                                                          'Secondary',
-                                                  trailing: true,
-                                                  onTap: () => setState(() {
-                                                    _selectedBypassHandle =
-                                                        'Secondary';
-                                                    _selectedEndpointLeading =
-                                                        null;
-                                                  }),
-                                                  onPanStart: () {
-                                                    _recordUndo();
-                                                    _selectedBypassHandle =
-                                                        'Secondary';
-                                                    _selectedEndpointLeading =
-                                                        null;
-                                                  },
-                                                  onPanUpdate: (details) =>
-                                                      _attachBypassHandleToNearestRail(
-                                                          item,
-                                                          'Secondary',
-                                                          details),
-                                                  onPanEnd: () => setState(() {
-                                                    _commitBypassHandleAttachment(
-                                                        item, 'Secondary');
-                                                  }),
-                                                  onPanCancel:
-                                                      _resetTransientInteractionState,
-                                                ),
-                                              ],
                                             ],
                                           ),
                                         ),
@@ -7888,6 +8046,23 @@ class _ActiveEndpointDrag {
     required this.leading,
     required this.worldPosition,
     required this.target,
+  });
+}
+
+class _BypassDragContext {
+  final Offset startTopLeft;
+  final Offset startCenter;
+  final bool wasAttached;
+  final int? parentIronId;
+  final double? startT;
+  bool detached = false;
+
+  _BypassDragContext({
+    required this.startTopLeft,
+    required this.startCenter,
+    required this.wasAttached,
+    required this.parentIronId,
+    required this.startT,
   });
 }
 
@@ -8550,73 +8725,6 @@ class _LayoutTile extends StatelessWidget {
               child: Icon(Icons.lock, size: 12, color: Color(0xFFCDA56A)),
             ),
         ],
-      ),
-    );
-  }
-}
-
-class _BypassAttachmentHandle extends StatelessWidget {
-  final _LayoutItem item;
-  final String slot;
-  final double interactionPadding;
-  final bool selected;
-  final bool trailing;
-  final VoidCallback onTap;
-  final VoidCallback onPanStart;
-  final ValueChanged<DragUpdateDetails> onPanUpdate;
-  final VoidCallback onPanEnd;
-  final VoidCallback? onPanCancel;
-
-  const _BypassAttachmentHandle({
-    required this.item,
-    required this.slot,
-    required this.interactionPadding,
-    required this.selected,
-    this.trailing = false,
-    required this.onTap,
-    required this.onPanStart,
-    required this.onPanUpdate,
-    required this.onPanEnd,
-    this.onPanCancel,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const handleTouchSize = 38.0;
-    const handleVisibleSize = 18.0;
-    const edgeInset = 10.0;
-    final left =
-        trailing ? item.width - handleTouchSize + edgeInset : -edgeInset;
-    final top = item.height / 2 - handleTouchSize / 2;
-    return Positioned(
-      left: left + interactionPadding,
-      top: top + interactionPadding,
-      child: GestureDetector(
-        key: ValueKey<String>('bypass-handle-${item.id}-${slot.toLowerCase()}'),
-        behavior: HitTestBehavior.opaque,
-        dragStartBehavior: DragStartBehavior.down,
-        onTap: onTap,
-        onPanStart: (_) => onPanStart(),
-        onPanUpdate: onPanUpdate,
-        onPanEnd: (_) => onPanEnd(),
-        onPanCancel: onPanCancel,
-        child: SizedBox(
-          width: handleTouchSize,
-          height: handleTouchSize,
-          child: Center(
-            child: Container(
-              width: handleVisibleSize,
-              height: handleVisibleSize,
-              decoration: BoxDecoration(
-                color: selected
-                    ? const Color(0xFFFFC857)
-                    : const Color(0xFFE3BE6B),
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.black, width: 1.4),
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
