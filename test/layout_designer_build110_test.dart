@@ -748,34 +748,19 @@ void main() {
       tester,
       items: <Map<String, dynamic>>[
         _equipmentItem(1, 'wellhead', x: 180, y: 220, width: 30, height: 28),
-        _equipmentItem(2, 'plugCatcher', x: 360, y: 206, width: 40, height: 26),
+        _equipmentItem(2, 'plugCatcher', x: 360, y: 221, width: 40, height: 26),
       ],
+      selectedId: 1,
     );
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Add Iron').last);
+    await tester
+        .tap(find.widgetWithText(FilledButton, 'Connect With Iron').last);
     await tester.pumpAndSettle();
-
-    expect(find.text('Rig-Up Library'), findsNothing);
-    final startAnchor =
-        find.byKey(const ValueKey<String>('connect-anchor-1-right'));
-    final endAnchor =
-        find.byKey(const ValueKey<String>('connect-anchor-2-left'));
-    expect(startAnchor, findsOneWidget);
-    expect(endAnchor, findsOneWidget);
-
-    await tester.tapAt(tester.getCenter(startAnchor));
-    await tester.pumpAndSettle();
-    expect(find.text('Select destination'), findsOneWidget);
-
-    await tester.tapAt(tester.getCenter(endAnchor));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Continue Iron'), findsOneWidget);
-    expect(find.text('Done'), findsWidgets);
 
     await _saveRigUp(tester);
     final items = _itemsFromPayload(await _savedLayoutPayload());
-    final iron = _findByType(items, 'ironHorizontal');
+    final iron =
+        items.firstWhere((item) => (item['type'] as String).startsWith('iron'));
     final props = (iron['properties'] as Map).cast<String, dynamic>();
     expect(props['anchorStartItemId'], '1');
     expect(props['anchorStartSide'], 'right');
@@ -783,7 +768,35 @@ void main() {
     expect(props['anchorEndSide'], 'left');
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
-  }, skip: true);
+  });
+
+  testWidgets('Add Iron from a selected port creates a short anchored lead',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'wellhead', x: 180, y: 220, width: 30, height: 28),
+      ],
+      selectedId: 1,
+    );
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Add Iron').last);
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final iron = _findByType(items, 'ironHorizontal');
+    final props = (iron['properties'] as Map).cast<String, dynamic>();
+    expect(props['anchorStartItemId'], '1');
+    expect(props['anchorStartSide'], 'right');
+    final wellhead = _findById(items, 1);
+    expect(
+      _ironEndpointFromMap(iron, true),
+      _targetPointFromMap(wellhead, 'right'),
+    );
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
 
   testWidgets(
       'Iron uses a larger invisible hit area while visible iron thickness remains unchanged',

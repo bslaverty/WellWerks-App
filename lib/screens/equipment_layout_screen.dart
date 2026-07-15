@@ -70,6 +70,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   bool? _selectedEndpointLeading;
   String? _selectedBypassHandle;
   String? _selectedBypassLeadId;
+  _ConnectionTarget? _selectedPortTarget;
+  _ConnectionTarget? _pendingConnectIronSourceTarget;
   _ActiveEndpointDrag? _activeEndpointDrag;
   _ActiveBypassLeadDrag? _activeBypassLeadDrag;
   _FittingPreviewState? _activeFittingPreview;
@@ -128,6 +130,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   static const double _endpointResizeHitRadiusScreen = 16.0;
   static const double _itemSelectionCorridorScreen = 16.0;
   static const double _freeIronMinLength = 14.0;
+  static const double _portLeadDefaultLength = 28.0;
   static const double _bypassLeadDefaultLength = 28.0;
   static const double _bypassAttachRadiusScreen = 38.0;
   static const double _inlineSpineReleaseRadiusScreen = 18.0;
@@ -437,7 +440,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       if (_isFittingEndpointConnectableType(it.type)) {
         _fittingDragBlockedTargetKeys[it.id] =
             _currentFittingConnectionKeys(it);
-        _detachConnectionsForFreeFittingDrag(it);
+        final attachedParent = _inlineParentIron(it);
+        final attachedT = _inlineParentT(it);
+        final keepAttached = _usesInlineParentDragConstraint(it.type) &&
+            attachedParent != null &&
+            attachedT != null;
+        if (!keepAttached) {
+          _detachConnectionsForFreeFittingDrag(it);
+        }
       }
       if (!_isInlineFittingType(it.type)) continue;
       final parentIron = _inlineParentIron(it);
@@ -660,6 +670,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     return _activeEndpointDrag != null;
   }
 
+  bool get _hasSelectedPort => _selectedPortTarget != null;
+
+  bool get _hasPendingConnectIronSource =>
+      _pendingConnectIronSourceTarget != null;
+
   _LayoutItem? get _selectedStraightIron {
     final selected = _selectedItem;
     if (selected == null || !_isStraightIronType(selected.type)) {
@@ -682,6 +697,109 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   void _toggleMoveControls() {
     if (!_hasSelectedItem) return;
     setState(() => _moveControlsActive = !_moveControlsActive);
+  }
+
+  void _clearPortSelection({bool clearPendingSource = true}) {
+    setState(() {
+      _selectedPortTarget = null;
+      if (clearPendingSource) {
+        _pendingConnectIronSourceTarget = null;
+      }
+    });
+  }
+
+  void _selectConnectionPort(_ConnectionTarget target) {
+    if (target.kind == _ConnectionTargetKind.equipmentAnchor) {
+      final item = target.equipmentItemId == null
+          ? null
+          : _findItemById(target.equipmentItemId!);
+      if (item == null) return;
+      if (!_isEquipmentAnchorAvailable(item, target.anchorId ?? '')) return;
+    } else {
+      final item =
+          target.ironItemId == null ? null : _findItemById(target.ironItemId!);
+      if (item == null || !_isStraightIronType(item.type)) return;
+      if (_endpointAnchorTarget(item, target.ironLeading == true) != null)
+        return;
+    }
+    setState(() {
+      _selectedPortTarget = target;
+      _selectedId = target.kind == _ConnectionTargetKind.equipmentAnchor
+          ? target.equipmentItemId
+          : target.ironItemId;
+      _selectedIds..clear();
+      if (_selectedId != null) {
+        _selectedIds.add(_selectedId!);
+      }
+      _selectedEndpointLeading =
+          target.kind == _ConnectionTargetKind.ironEndpoint
+              ? target.ironLeading
+              : null;
+      _selectedBypassHandle = null;
+      _selectedBypassLeadId = null;
+    });
+  }
+
+  List<_ConnectionTarget> _availablePortsForItem(_LayoutItem item) {
+    final ports = <_ConnectionTarget>[];
+    if (_isStraightIronType(item.type)) {
+      for (final leading in const <bool>[true, false]) {
+        if (_endpointAnchorTarget(item, leading) != null) continue;
+        ports.add(
+          _ConnectionTarget(
+            kind: _ConnectionTargetKind.ironEndpoint,
+            point: _resolveIronEndpoint(item, leading),
+            distance: 0,
+            isExactHit: true,
+            ironItemId: item.id,
+            ironLeading: leading,
+          ),
+        );
+      }
+      return ports;
+    }
+
+    for (final anchor in _equipmentAnchorCandidates(item)) {
+      if (!_isEquipmentAnchorAvailable(item, anchor.side)) continue;
+      ports.add(
+        _ConnectionTarget(
+          kind: _ConnectionTargetKind.equipmentAnchor,
+          point: anchor.point,
+          distance: 0,
+          isExactHit: true,
+          equipmentItemId: item.id,
+          anchorId: anchor.side,
+        ),
+      );
+    }
+    return ports;
+  }
+
+  _ConnectionTarget? _defaultPortForItem(_LayoutItem item) {
+    final ports = _availablePortsForItem(item);
+    if (ports.isEmpty) return null;
+    for (final port in ports) {
+      if (port.kind == _ConnectionTargetKind.equipmentAnchor &&
+          port.anchorId == 'right') {
+        return port;
+      }
+    }
+    return ports.first;
+  }
+
+  _ConnectionTarget? _selectedPortForSelectedItem() {
+    final selected = _selectedItem;
+    final target = _selectedPortTarget;
+    if (selected == null || target == null) return null;
+    if (target.kind == _ConnectionTargetKind.equipmentAnchor &&
+        target.equipmentItemId == selected.id) {
+      return target;
+    }
+    if (target.kind == _ConnectionTargetKind.ironEndpoint &&
+        target.ironItemId == selected.id) {
+      return target;
+    }
+    return null;
   }
 
   void _toggleShowConnectionPoints() {
@@ -1331,11 +1449,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   bool _isInlineFittingType(_EquipmentType type) {
-    return type == _EquipmentType.bypass;
+    return type == _EquipmentType.bypass || type.name.startsWith('tee');
   }
 
   bool _usesInlineParentDragConstraint(_EquipmentType type) {
-    return type == _EquipmentType.bypass;
+    return type == _EquipmentType.bypass || type.name.startsWith('tee');
   }
 
   bool _isElbowFittingType(_EquipmentType type) {
@@ -1555,6 +1673,24 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       side,
       ignoreIronId: movingIronId,
       ignoreLeading: movingIronLeading,
+    );
+  }
+
+  _ConnectionTarget? _endpointAnchorTarget(_LayoutItem item, bool leading) {
+    final anchorItemId =
+        int.tryParse(item.properties[_endpointAnchorItemKey(leading)] ?? '');
+    final anchorSide = item.properties[_endpointAnchorSideKey(leading)];
+    if (anchorItemId == null || anchorSide == null || anchorSide.isEmpty) {
+      return null;
+    }
+    final point = _resolveIronEndpoint(item, leading);
+    return _ConnectionTarget(
+      kind: _ConnectionTargetKind.ironEndpoint,
+      point: point,
+      distance: 0,
+      isExactHit: true,
+      ironItemId: item.id,
+      ironLeading: leading,
     );
   }
 
@@ -4474,10 +4610,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       final sceneDelta = _sceneDeltaFromScreen(details.delta);
       final desired = Offset(item.x + sceneDelta.dx, item.y + sceneDelta.dy);
       final candidate = _nearestBypassRail(item, desired);
-      if (candidate == null) {
-        _snapIndicatorScene = null;
-        return;
-      }
+      if (candidate == null) return;
       final iron = _findItemById(candidate.ironId);
       if (iron == null) return;
       final center = _attachmentSpineCenterWorld(item, topLeft: desired);
@@ -4692,6 +4825,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       clamped,
       radiusScreen: _connectionPreviewRadiusScreen,
     );
+    if (start.isExactHit &&
+        endTarget != null &&
+        !_portsAreAligned(start, endTarget)) {
+      _showPortAlignmentWarning();
+      return;
+    }
     final startPoint = start.point;
     final endPoint = endTarget?.point ?? clamped;
     final dx = endPoint.dx - startPoint.dx;
@@ -4759,6 +4898,185 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _drawIronHoverTarget = null;
       _drawIronPointerScene = null;
       _pendingContinueIronTarget = continueTarget;
+      _pendingContinueIronSize = _drawIronSize;
+      _snapIndicatorScene = null;
+    });
+    _appendHistoryEntry('Added iron');
+  }
+
+  Offset _portOutwardVector(_ConnectionTarget target) {
+    if (target.kind == _ConnectionTargetKind.ironEndpoint) {
+      final item =
+          target.ironItemId == null ? null : _findItemById(target.ironItemId!);
+      if (item == null || !_isStraightIronType(item.type)) return Offset.zero;
+      if (item.type == _EquipmentType.ironHorizontal) {
+        return target.ironLeading == true
+            ? const Offset(-1, 0)
+            : const Offset(1, 0);
+      }
+      return target.ironLeading == true
+          ? const Offset(0, -1)
+          : const Offset(0, 1);
+    }
+
+    final item = target.equipmentItemId == null
+        ? null
+        : _findItemById(target.equipmentItemId!);
+    if (item == null || target.anchorId == null || target.anchorId!.isEmpty) {
+      return Offset.zero;
+    }
+    final anchorPoint = _equipmentAnchorPointOrNull(item, target.anchorId!);
+    if (anchorPoint == null) return Offset.zero;
+    final center = Offset(item.x + item.width / 2, item.y + item.height / 2);
+    final vector = anchorPoint - center;
+    if (vector.distance <= 1e-6) return Offset.zero;
+    return Offset(vector.dx / vector.distance, vector.dy / vector.distance);
+  }
+
+  bool _portsAreAligned(_ConnectionTarget start, _ConnectionTarget end) {
+    final delta = end.point - start.point;
+    return delta.dx.abs() <= 0.5 || delta.dy.abs() <= 0.5;
+  }
+
+  void _showPortAlignmentWarning() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Ports must be aligned. Add a 90 for this connection.'),
+      ),
+    );
+  }
+
+  void _createShortIronFromPort(_ConnectionTarget source) {
+    final vector = _portOutwardVector(source);
+    if (vector == Offset.zero) return;
+    final horizontal = vector.dx.abs() >= vector.dy.abs();
+    final leadLength = _portLeadDefaultLength;
+    final type = horizontal
+        ? _EquipmentType.ironHorizontal
+        : _EquipmentType.ironVertical;
+    final width = horizontal ? leadLength : type.defaultWidth;
+    final height = horizontal ? type.defaultHeight : leadLength;
+    final sourceOnLeading = horizontal ? vector.dx >= 0 : vector.dy >= 0;
+    final x = horizontal
+        ? (sourceOnLeading ? source.point.dx : source.point.dx - width)
+        : source.point.dx - width / 2;
+    final y = horizontal
+        ? source.point.dy - height / 2
+        : (sourceOnLeading ? source.point.dy : source.point.dy - height);
+    final canvasSize = _virtualCanvasSize;
+
+    _runHistoryChange(() {
+      final id = _nextId++;
+      final newIron = _LayoutItem(
+        id: id,
+        type: type,
+        x: _snap(x).clamp(0.0, canvasSize.width - width),
+        y: _snap(y).clamp(0.0, canvasSize.height - height),
+        width: width,
+        height: height,
+        properties: <String, String>{'ironSize': _drawIronSize},
+      );
+      _items.add(newIron);
+      _applyConnectionTargetToIronEndpoint(newIron, sourceOnLeading, source);
+      _selectedId = id;
+      _selectedIds
+        ..clear()
+        ..add(id);
+      _selectedEndpointLeading = sourceOnLeading ? false : true;
+      _selectedPortTarget = null;
+      _pendingConnectIronSourceTarget = null;
+      _drawIronMode = false;
+      _interactionMode = _InteractionMode.idle;
+      _snapIndicatorScene = null;
+      _drawIronStartTarget = null;
+      _drawIronHoverTarget = null;
+      _drawIronPointerScene = null;
+      _pendingContinueIronTarget = _ConnectionTarget(
+        kind: _ConnectionTargetKind.ironEndpoint,
+        point: sourceOnLeading
+            ? _ironEndpoint(newIron, false)
+            : _ironEndpoint(newIron, true),
+        distance: 0,
+        isExactHit: true,
+        ironItemId: id,
+        ironLeading: sourceOnLeading ? false : true,
+      );
+      _pendingContinueIronSize = _drawIronSize;
+    });
+    _appendHistoryEntry('Added iron');
+  }
+
+  void _createIronBetweenPorts(
+    _ConnectionTarget start,
+    _ConnectionTarget end,
+  ) {
+    if (!_portsAreAligned(start, end)) {
+      _showPortAlignmentWarning();
+      return;
+    }
+    final horizontal = (end.point.dx - start.point.dx).abs() >=
+        (end.point.dy - start.point.dy).abs();
+    final type = horizontal
+        ? _EquipmentType.ironHorizontal
+        : _EquipmentType.ironVertical;
+    final width = horizontal
+        ? (end.point.dx - start.point.dx)
+            .abs()
+            .clamp(_freeIronMinLength, 1200.0)
+            .toDouble()
+        : type.defaultWidth;
+    final height = horizontal
+        ? type.defaultHeight
+        : (end.point.dy - start.point.dy)
+            .abs()
+            .clamp(_freeIronMinLength, 1200.0)
+            .toDouble();
+    final startIsLeading = horizontal
+        ? start.point.dx <= end.point.dx
+        : start.point.dy <= end.point.dy;
+    final x = horizontal
+        ? (startIsLeading ? start.point.dx : end.point.dx)
+        : start.point.dx - width / 2;
+    final y = horizontal
+        ? start.point.dy - height / 2
+        : (startIsLeading ? start.point.dy : end.point.dy);
+    final canvasSize = _virtualCanvasSize;
+
+    _runHistoryChange(() {
+      final id = _nextId++;
+      final newIron = _LayoutItem(
+        id: id,
+        type: type,
+        x: _snap(x).clamp(0.0, canvasSize.width - width),
+        y: _snap(y).clamp(0.0, canvasSize.height - height),
+        width: width,
+        height: height,
+        properties: <String, String>{'ironSize': _drawIronSize},
+      );
+      _items.add(newIron);
+      _applyConnectionTargetToIronEndpoint(newIron, startIsLeading, start);
+      _applyConnectionTargetToIronEndpoint(newIron, !startIsLeading, end);
+      _selectedId = id;
+      _selectedIds
+        ..clear()
+        ..add(id);
+      _selectedEndpointLeading = null;
+      _selectedPortTarget = null;
+      _pendingConnectIronSourceTarget = null;
+      _drawIronMode = false;
+      _interactionMode = _InteractionMode.idle;
+      _drawIronStartTarget = null;
+      _drawIronHoverTarget = null;
+      _drawIronPointerScene = null;
+      _pendingContinueIronTarget = _ConnectionTarget(
+        kind: _ConnectionTargetKind.ironEndpoint,
+        point: _ironEndpoint(newIron, !startIsLeading),
+        distance: 0,
+        isExactHit: true,
+        ironItemId: id,
+        ironLeading: !startIsLeading,
+      );
       _pendingContinueIronSize = _drawIronSize;
       _snapIndicatorScene = null;
     });
@@ -4881,6 +5199,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _selectedIds
         ..clear()
         ..add(id);
+      final selected = _findItemById(id);
+      _selectedPortTarget =
+          selected == null ? null : _defaultPortForItem(selected);
+      _pendingConnectIronSourceTarget = null;
     });
   }
 
@@ -4910,6 +5232,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _selectedEndpointLeading = null;
       _selectedBypassHandle = null;
       _selectedBypassLeadId = null;
+      _selectedPortTarget = null;
+      _pendingConnectIronSourceTarget = null;
       _selectedIds.clear();
     });
   }
@@ -5198,6 +5522,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _selectedIds
         ..clear()
         ..addAll(restoredSelectedIds);
+      final restoredSelectedItem =
+          restoredSelectedId == null ? null : _findItemById(restoredSelectedId);
+      _selectedPortTarget = restoredSelectedItem == null
+          ? null
+          : _defaultPortForItem(restoredSelectedItem);
       _reflowSnappedFittings();
     });
   }
@@ -9160,6 +9489,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final locked = selected?.locked ?? true;
     final canMove = hasSelection && !locked && !_hideFloatingToolbar;
     final canAct = hasSelection && !_hideFloatingToolbar;
+    final selectedPort = _selectedPortForSelectedItem();
 
     return Container(
       key: const ValueKey<String>('selection-dock-toolbar'),
@@ -9253,6 +9583,52 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                       label: const Text('Delete'),
                       style: _compactOutlineStyle(highlighted: true),
                     ),
+                    if (selectedPort != null) ...[
+                      const SizedBox(width: 6),
+                      FilledButton.icon(
+                        onPressed: () => _createShortIronFromPort(selectedPort),
+                        icon: const Icon(Icons.playlist_add),
+                        label: const Text('Add Iron'),
+                        style: _compactFilledStyle(highlighted: true),
+                      ),
+                      const SizedBox(width: 6),
+                      FilledButton.icon(
+                        onPressed: () {
+                          final sourceTarget = selectedPort;
+                          if (sourceTarget != null) {
+                            final destinationTarget = _findBestConnectionTarget(
+                              sourceTarget.point,
+                              radiusScreen: 10000.0,
+                              excludedAnchorItemId:
+                                  sourceTarget.equipmentItemId,
+                            );
+                            if (destinationTarget != null &&
+                                _portsAreAligned(
+                                    sourceTarget, destinationTarget)) {
+                              _createIronBetweenPorts(
+                                  sourceTarget, destinationTarget);
+                              return;
+                            }
+                          }
+                          _pendingConnectIronSourceTarget = sourceTarget;
+                          _startConnectIronMode(
+                            _drawIronSize,
+                            minimizeLibrary: false,
+                            initialTarget: sourceTarget,
+                          );
+                        },
+                        icon: const Icon(Icons.call_split),
+                        label: const Text('Connect With Iron'),
+                        style: _compactFilledStyle(highlighted: true),
+                      ),
+                      const SizedBox(width: 6),
+                      OutlinedButton.icon(
+                        onPressed: _clearPortSelection,
+                        icon: const Icon(Icons.cancel_outlined),
+                        label: const Text('Cancel Port Selection'),
+                        style: _compactOutlineStyle(),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -9927,6 +10303,48 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     ];
   }
 
+  List<Widget> _selectedPortWidgets() {
+    final selected = _selectedItem;
+    if (selected == null || selected.locked) return const <Widget>[];
+    final ports = _availablePortsForItem(selected);
+    if (ports.isEmpty) return const <Widget>[];
+    final selectedPort = _selectedPortForSelectedItem();
+
+    return ports.map((port) {
+      final viewportPoint = _viewportPointFromScene(port.point);
+      final active = selectedPort != null &&
+          selectedPort.kind == port.kind &&
+          selectedPort.point == port.point;
+      return Positioned(
+        key: ValueKey<String>(
+          'selected-port-${selected.id}-${port.kind.name}-${port.equipmentItemId ?? port.ironItemId}-${port.anchorId ?? (port.ironLeading == true ? 'start' : 'end')}',
+        ),
+        left: viewportPoint.dx - 7,
+        top: viewportPoint.dy - 7,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _selectConnectionPort(port),
+          child: Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: active
+                  ? const Color(0xFFCDA56A).withValues(alpha: 0.34)
+                  : Colors.transparent,
+              border: Border.all(
+                color: active
+                    ? const Color(0xFFCDA56A)
+                    : const Color(0xFFCDA56A).withValues(alpha: 0.7),
+                width: active ? 2.0 : 1.4,
+              ),
+            ),
+          ),
+        ),
+      );
+    }).toList(growable: false);
+  }
+
   List<Widget> _resolvedStraightIronWidgets() {
     final widgets = <Widget>[];
     for (final item in _items) {
@@ -10056,14 +10474,43 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                       if (!_isStraightIronType(it.type))
                                         for (final anchor
                                             in _equipmentAnchorCandidates(it))
-                                          if (_shouldShowAnchorCandidate(
-                                              anchor))
+                                          if (_isEquipmentAnchorAvailable(
+                                              it, anchor.side))
                                             Positioned(
                                               key: ValueKey<String>(
                                                   'connect-anchor-${it.id}-${anchor.side}'),
                                               left: anchor.point.dx - 3,
                                               top: anchor.point.dy - 3,
-                                              child: IgnorePointer(
+                                              child: GestureDetector(
+                                                behavior:
+                                                    HitTestBehavior.opaque,
+                                                onTap: () {
+                                                  final target =
+                                                      _ConnectionTarget(
+                                                    kind: _ConnectionTargetKind
+                                                        .equipmentAnchor,
+                                                    point: anchor.point,
+                                                    distance: 0,
+                                                    isExactHit: true,
+                                                    equipmentItemId: it.id,
+                                                    anchorId: anchor.side,
+                                                  );
+                                                  final startTarget =
+                                                      _drawIronStartTarget;
+                                                  if (startTarget == null) {
+                                                    setState(() {
+                                                      _drawIronStartTarget =
+                                                          target;
+                                                      _drawIronPointerScene =
+                                                          target.point;
+                                                      _drawIronHoverTarget =
+                                                          null;
+                                                    });
+                                                  } else {
+                                                    _createIronBetweenPorts(
+                                                        startTarget, target);
+                                                  }
+                                                },
                                                 child: Container(
                                                   width: 10,
                                                   height: 10,
@@ -10093,7 +10540,34 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                                     4,
                                             top: _ironEndpoint(it, leading).dy -
                                                 4,
-                                            child: IgnorePointer(
+                                            child: GestureDetector(
+                                              behavior: HitTestBehavior.opaque,
+                                              onTap: () {
+                                                final target =
+                                                    _ConnectionTarget(
+                                                  kind: _ConnectionTargetKind
+                                                      .ironEndpoint,
+                                                  point: _ironEndpoint(
+                                                      it, leading),
+                                                  distance: 0,
+                                                  isExactHit: true,
+                                                  ironItemId: it.id,
+                                                  ironLeading: leading,
+                                                );
+                                                if (_drawIronStartTarget ==
+                                                    null) {
+                                                  setState(() {
+                                                    _drawIronStartTarget =
+                                                        target;
+                                                    _drawIronPointerScene =
+                                                        target.point;
+                                                    _drawIronHoverTarget = null;
+                                                  });
+                                                } else {
+                                                  _finalizeDrawIron(
+                                                      target.point);
+                                                }
+                                              },
                                               child: Container(
                                                 width: 8,
                                                 height: 8,
@@ -10243,6 +10717,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                   ..._resolvedBypassLeadWidgets(),
                                   ..._fittingConnectionPointIndicators(),
                                   ..._fittingDestinationPreviewWidgets(),
+                                  ..._selectedPortWidgets(),
                                   for (final item in _items)
                                     () {
                                       final interactionPadding =
