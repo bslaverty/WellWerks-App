@@ -168,9 +168,9 @@ Future<Uint8List> _resizePngBytes(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('Build number is 157 in pubspec', () async {
+  test('Build number is 158 in pubspec', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+157'));
+    expect(pubspec, contains('version: 1.0.1+158'));
     expect(
         pubspec, contains('image_path: "assets/icons/app_icon_build145.png"'));
   });

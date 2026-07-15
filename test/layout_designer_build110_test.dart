@@ -83,6 +83,17 @@ bool _anchoredEndpointIsLeading(
 }
 
 Offset _ironEndpointFromMap(Map<String, dynamic> iron, bool leading) {
+  final props = (iron['properties'] as Map?)?.cast<String, dynamic>() ??
+      <String, dynamic>{};
+  if (props['freeAngleIron'] == 'true') {
+    final xKey = leading ? 'freeAngleStartX' : 'freeAngleEndX';
+    final yKey = leading ? 'freeAngleStartY' : 'freeAngleEndY';
+    final x = double.tryParse((props[xKey] ?? '').toString());
+    final y = double.tryParse((props[yKey] ?? '').toString());
+    if (x != null && y != null) {
+      return Offset(x, y);
+    }
+  }
   final type = iron['type'] as String;
   final x = (iron['x'] as num).toDouble();
   final y = (iron['y'] as num).toDouble();
@@ -354,9 +365,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 157', () async {
+  test('Build number is 158', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+157'));
+    expect(pubspec, contains('version: 1.0.1+158'));
   });
 
   testWidgets('Selected bypass shows built-in lead handles', (tester) async {
@@ -813,8 +824,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets(
-      'Auto Connect enters destination mode and highlights destination anchors',
+  testWidgets('Auto Connect enters destination mode without global port flood',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -836,7 +846,7 @@ void main() {
         findsOneWidget);
     expect(find.text('Select destination connection point'), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('connect-anchor-2-left')),
-        findsOneWidget);
+        findsNothing);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -878,7 +888,77 @@ void main() {
   });
 
   testWidgets(
-      'Auto Connect non-aligned tap does not create iron and remains cancellable',
+      'Attached Tee keeps independent open ports and Auto Connect works from open branch',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(10, x: 120, y: 240, width: 240),
+        <String, dynamic>{
+          ..._equipmentItem(1, 'teeUp', x: 220, y: 230, width: 21, height: 21),
+          'properties': <String, String>{
+            'ironSize': '3',
+            'inlineParentIronId': '10',
+            'inlineParentT': '0.50',
+            'inlineParentOrientation': 'horizontal',
+            'inlineAttachedSegmentId': 'inline:10:0.50',
+          },
+        },
+        _ironItem(
+          2,
+          x: 170,
+          y: 240,
+          width: 80,
+          properties: <String, String>{
+            'ironSize': '3',
+            'anchorEndItemId': '1',
+            'anchorEndSide': 'runStart',
+          },
+        ),
+        _equipmentItem(3, 'plugCatcher', x: 360, y: 220, width: 40, height: 26),
+      ],
+      selectedId: 1,
+    );
+
+    expect(
+      find.byKey(
+          const ValueKey<String>('selected-port-1-equipmentAnchor-1-runStart')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(
+          const ValueKey<String>('selected-port-1-equipmentAnchor-1-runEnd')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+          const ValueKey<String>('selected-port-1-equipmentAnchor-1-branch')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(
+        const ValueKey<String>('selected-port-1-equipmentAnchor-1-branch')));
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.byKey(const ValueKey<String>('port-action-auto-connect')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('item-hitbox-3')));
+    await tester.pumpAndSettle();
+    final targetHitbox3 =
+        tester.getRect(find.byKey(const ValueKey<String>('item-hitbox-3')));
+    await tester.tapAt(
+      Offset(targetHitbox3.left + 15, targetHitbox3.center.dy),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey<String>('auto-connect-instruction')),
+        findsNothing);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Auto Connect connects diagonal ports with exact endpoint coordinates and no alignment warning',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -896,15 +976,17 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey<String>('item-hitbox-2')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey<String>('auto-connect-instruction')),
-        findsOneWidget);
-
-    await _saveRigUp(tester);
-    final items = _itemsFromPayload(await _savedLayoutPayload());
-    expect(
-      items.where((item) => (item['type'] as String).startsWith('iron')),
-      isEmpty,
+    final targetHitbox2 =
+        tester.getRect(find.byKey(const ValueKey<String>('item-hitbox-2')));
+    await tester.tapAt(
+      Offset(targetHitbox2.left + 15, targetHitbox2.center.dy),
     );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ports are not aligned. Add a 90° fitting first.'),
+        findsNothing);
+    expect(find.byKey(const ValueKey<String>('auto-connect-instruction')),
+        findsNothing);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
