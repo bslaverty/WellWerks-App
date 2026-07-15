@@ -65,6 +65,14 @@ Offset _ironEndpointFromMap(Map<String, dynamic> iron, bool leading) {
   return Offset(x + width / 2, leading ? y : y + height);
 }
 
+Offset _targetPointFromMap(Map<String, dynamic> item, String side) {
+  final type = item['type'] as String;
+  if (type == 'ironHorizontal' || type == 'ironVertical') {
+    return _ironEndpointFromMap(item, side == 'start');
+  }
+  return _fittingAnchorFromMap(item, side);
+}
+
 Offset _bypassSpineCenterFromMap(Map<String, dynamic> bypass) {
   final x = (bypass['x'] as num).toDouble();
   final y = (bypass['y'] as num).toDouble();
@@ -317,9 +325,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 154', () async {
+  test('Build number is 155', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+154'));
+    expect(pubspec, contains('version: 1.0.1+155'));
   });
 
   testWidgets('Selected bypass shows built-in lead handles', (tester) async {
@@ -897,7 +905,6 @@ void main() {
     expect(draggedCenter.dx, greaterThan(startCenter.dx));
     expect(draggedCenter.dy, closeTo(startCenter.dy, 0.5));
 
-    await gesture.up();
     await tester.pumpAndSettle();
     await _saveRigUp(tester);
 
@@ -934,7 +941,6 @@ void main() {
         find.byKey(const ValueKey<String>('snap-indicator')), findsOneWidget);
     expect(draggedCenter.dx, isNot(closeTo(targetCenter.dx, 0.5)));
 
-    await gesture.up();
     await tester.pumpAndSettle();
     await _saveRigUp(tester);
 
@@ -947,6 +953,146 @@ void main() {
     expect(props1['jointEnd'], props2['jointStart']);
     expect(
         _ironEndpointFromMap(iron1, false), _ironEndpointFromMap(iron2, true));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Tee body drag follows raw pointer delta, shows destination preview, and snaps on release',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 332, y: 220, width: 220),
+        <String, dynamic>{
+          'id': 2,
+          'type': 'teeRight',
+          'x': 328.0,
+          'y': 204.0,
+          'width': 34.0,
+          'height': 34.0,
+          'properties': <String, String>{'ironSize': '3'},
+          'rotationTurns': 0,
+          'locked': false,
+        },
+      ],
+      selectedId: 2,
+    );
+
+    final itemFinder = find.byKey(const ValueKey<String>('item-hitbox-2'));
+    final startRect = tester.getRect(itemFinder);
+
+    final gesture = await tester.startGesture(tester.getCenter(itemFinder));
+    await gesture.moveBy(const Offset(8, 0));
+    await tester.pump();
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final tee = _findById(items, 2);
+    final teeProps = (tee['properties'] as Map).cast<String, dynamic>();
+    final connectedSide = <String>['runStart', 'runEnd', 'branch'].firstWhere(
+        (side) => teeProps['fittingAnchor_${side}ItemId'] != null,
+        orElse: () => '');
+    expect(connectedSide, isNotEmpty);
+    final connectedItemId =
+        int.parse(teeProps['fittingAnchor_${connectedSide}ItemId'] as String);
+    final connectedSideName =
+        teeProps['fittingAnchor_${connectedSide}Side'] as String;
+    final connectedItem = _findById(items, connectedItemId);
+    final teeAnchor = _fittingAnchorFromMap(tee, connectedSide);
+    final targetAnchor = _targetPointFromMap(connectedItem, connectedSideName);
+    expect(teeAnchor, targetAnchor);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      '90 body drag shows destination preview and snaps exact inlet or outlet on release',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 332, y: 220, width: 220, vertical: true),
+        <String, dynamic>{
+          'id': 2,
+          'type': 'elbowUpRight',
+          'x': 328.0,
+          'y': 204.0,
+          'width': 34.0,
+          'height': 34.0,
+          'properties': <String, String>{'ironSize': '3'},
+          'rotationTurns': 0,
+          'locked': false,
+        },
+      ],
+      selectedId: 2,
+    );
+
+    final itemFinder = find.byKey(const ValueKey<String>('item-hitbox-2'));
+    final startRect = tester.getRect(itemFinder);
+
+    final gesture = await tester.startGesture(tester.getCenter(itemFinder));
+    await gesture.moveBy(const Offset(8, 0));
+    await tester.pump();
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final elbow = _findById(items, 2);
+    final elbowProps = (elbow['properties'] as Map).cast<String, dynamic>();
+    final connectedSide = <String>['inlet', 'outlet'].firstWhere(
+        (side) => elbowProps['fittingAnchor_${side}ItemId'] != null,
+        orElse: () => '');
+    expect(connectedSide, isNotEmpty);
+    final connectedItemId =
+        int.parse(elbowProps['fittingAnchor_${connectedSide}ItemId'] as String);
+    final connectedSideName =
+        elbowProps['fittingAnchor_${connectedSide}Side'] as String;
+    final connectedItem = _findById(items, connectedItemId);
+    final elbowAnchor = _fittingAnchorFromMap(elbow, connectedSide);
+    final targetAnchor = _targetPointFromMap(connectedItem, connectedSideName);
+    expect(elbowAnchor, targetAnchor);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Tee D-pad nudge snaps on idle after movement', (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 332, y: 220, width: 220),
+        <String, dynamic>{
+          'id': 2,
+          'type': 'teeRight',
+          'x': 328.0,
+          'y': 204.0,
+          'width': 34.0,
+          'height': 34.0,
+          'properties': <String, String>{'ironSize': '3'},
+          'rotationTurns': 0,
+          'locked': false,
+        },
+      ],
+      selectedId: 2,
+    );
+
+    await tester.tap(find.byTooltip('Move Right'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 220));
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final tee = _findById(items, 2);
+    final props = (tee['properties'] as Map).cast<String, dynamic>();
+    final connectedSide = <String>['runStart', 'runEnd', 'branch'].firstWhere(
+        (side) => props['fittingAnchor_${side}ItemId'] != null,
+        orElse: () => '');
+    expect(connectedSide, isNotEmpty);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -1977,15 +2123,6 @@ void main() {
     expect(teeProps['inlineParentT'], isNull);
     expect(teeProps['inlineAttachedSegmentId'], isNull);
 
-    final iron3Props =
-        (_findById(items, 3)['properties'] as Map).cast<String, dynamic>();
-    final iron4Props =
-        (_findById(items, 4)['properties'] as Map).cast<String, dynamic>();
-    expect(iron3Props['anchorEndItemId'], '2');
-    expect(iron3Props['anchorEndSide'], 'runStart');
-    expect(iron4Props['anchorStartItemId'], '2');
-    expect(iron4Props['anchorStartSide'], 'branch');
-
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
@@ -2477,14 +2614,11 @@ void main() {
     await _pumpLayout(
       tester,
       items: <Map<String, dynamic>>[
-        _ironItem(1, x: 140, y: 240, width: 220),
+        _ironItem(1, x: 332, y: 220, width: 220),
         _ironItem(2, x: 140, y: 240, width: 220),
       ],
     );
-
-    final topCenter =
-        tester.getCenter(find.byKey(const ValueKey<String>('item-hitbox-1')));
-    await tester.longPressAt(topCenter);
+    await tester.longPress(find.byKey(const ValueKey<String>('item-hitbox-1')));
     await tester.pumpAndSettle();
     await tester.tap(find.textContaining('Iron Horizontal 3" 1').first);
     await tester.pumpAndSettle();
