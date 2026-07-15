@@ -179,16 +179,16 @@ Future<Uint8List> _resizePngBytes(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('Build number is 143 in pubspec', () async {
+  test('Build number is 145 in pubspec', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+144'));
+    expect(pubspec, contains('version: 1.0.1+145'));
     expect(
-        pubspec, contains('image_path: "assets/icons/app_icon_build142.png"'));
+        pubspec, contains('image_path: "assets/icons/app_icon_build145.png"'));
   });
 
-  test('Configured Build 142 master icon exists and is exactly 1024x1024',
+  test('Configured Build 145 master icon exists and is exactly 1024x1024',
       () async {
-    final iconFile = File('assets/icons/app_icon_build142.png');
+    final iconFile = File('assets/icons/app_icon_build145.png');
     expect(iconFile.existsSync(), isTrue);
 
     final icon = await _decodePng(iconFile);
@@ -196,38 +196,37 @@ void main() {
     expect(icon.height, 1024);
   });
 
-  test('Build 142 master hash differs from Build 141 master hash', () async {
+  test('Build 145 master hash differs from Build 141 master hash', () async {
     final build141 = File('assets/icons/app_icon_build141.png');
-    final build142 = File('assets/icons/app_icon_build142.png');
+    final build145 = File('assets/icons/app_icon_build145.png');
     expect(build141.existsSync(), isTrue);
-    expect(build142.existsSync(), isTrue);
+    expect(build145.existsSync(), isTrue);
 
     final hash141 = _fnv1a64Hex(await build141.readAsBytes());
-    final hash142 = _fnv1a64Hex(await build142.readAsBytes());
-    expect(hash142, isNot(equals(hash141)));
+    final hash145 = _fnv1a64Hex(await build145.readAsBytes());
+    expect(hash145, isNot(equals(hash141)));
   });
 
-  test('Build 142 master icon keeps flat-black background', () async {
-    final build142 =
-        await _decodePng(File('assets/icons/app_icon_build142.png'));
-    _expectFlatBlackSamples(build142, _flatBlackProbePoints1024);
+  test('Build 145 master icon keeps flat-black background', () async {
+    final build145 =
+        await _decodePng(File('assets/icons/app_icon_build145.png'));
+    _expectFlatBlackSamples(build145, _flatBlackProbePoints1024);
   });
 
-  test('Build 142 WW mark is an additional ~4 percent smaller than Build 141',
-      () async {
-    final build141 =
-        await _decodePng(File('assets/icons/app_icon_build141.png'));
+  test('Build 145 WW mark remains centered and near Build 142 scale', () async {
     final build142 =
         await _decodePng(File('assets/icons/app_icon_build142.png'));
+    final build145 =
+        await _decodePng(File('assets/icons/app_icon_build145.png'));
     final before = _normalizedBoundsInRect(
-      build141,
+      build142,
       left: 140,
       top: 140,
       right: 900,
       bottom: 900,
     );
     final after = _normalizedBoundsInRect(
-      build142,
+      build145,
       left: 140,
       top: 140,
       right: 900,
@@ -239,8 +238,8 @@ void main() {
     final widthAfter = after[2] - after[0];
     final heightAfter = after[3] - after[1];
 
-    expect(widthAfter / widthBefore, closeTo(0.96, 0.02));
-    expect(heightAfter / heightBefore, closeTo(0.96, 0.02));
+    expect(widthAfter / widthBefore, closeTo(1.0, 0.03));
+    expect(heightAfter / heightBefore, closeTo(1.0, 0.03));
 
     final centerXBefore = (before[0] + before[2]) / 2;
     final centerYBefore = (before[1] + before[3]) / 2;
@@ -250,9 +249,9 @@ void main() {
     expect((centerYAfter - centerYBefore).abs(), lessThan(0.01));
   });
 
-  test('Build 142 inset gold border is visible at master and app sizes',
+  test('Build 145 inset gold border is visible at master and app sizes',
       () async {
-    final master = await _decodePng(File('assets/icons/app_icon_build142.png'));
+    final master = await _decodePng(File('assets/icons/app_icon_build145.png'));
     expect(
       _hasGoldInRect(
         master,

@@ -824,9 +824,15 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   bool _isInlineFittingType(_EquipmentType type) {
-    return type == _EquipmentType.bypass ||
-        type.name.startsWith('elbow') ||
-        type.name.startsWith('tee');
+    return type == _EquipmentType.bypass || type.name.startsWith('tee');
+  }
+
+  bool _isElbowFittingType(_EquipmentType type) {
+    return type.name.startsWith('elbow');
+  }
+
+  bool _isFittingEndpointConnectableType(_EquipmentType type) {
+    return type.name.startsWith('tee') || type.name.startsWith('elbow');
   }
 
   _LayoutItem? _findItemById(int id) {
@@ -866,6 +872,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     ]) {
       copy.remove(key);
     }
+    copy.removeWhere((key, _) => key.startsWith('fittingAnchor_'));
     return copy;
   }
 
@@ -1364,11 +1371,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     Offset target, {
     required double radius,
     required bool exact,
+    int? excludedItemId,
   }) {
     _ConnectionTarget? best;
     var bestDistance = double.infinity;
     for (final item in _items) {
       if (_isStraightIronType(item.type)) continue;
+      if (excludedItemId != null && item.id == excludedItemId) continue;
       for (final anchor in _equipmentAnchorCandidates(item)) {
         final distance = (anchor.point - target).distance;
         if (distance > radius) continue;
@@ -1426,12 +1435,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     Offset target, {
     int? movingIronId,
     bool? movingIronLeading,
+    int? excludedAnchorItemId,
   }) {
     final snapRadius = _sceneRadiusFromScreen(_connectionSnapRadius);
     final nearestAnchor = _nearestAnchorTarget(
       target,
       radius: snapRadius,
       exact: false,
+      excludedItemId: excludedAnchorItemId,
     );
     final nearestEndpoint = _nearestIronEndpointTarget(
       target,
@@ -1556,6 +1567,133 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     );
     if (resolved == null) return null;
     return _snapTargetFromConnection(resolved);
+  }
+
+  List<String> _fittingEndpointSides(_LayoutItem item) {
+    if (_isElbowFittingType(item.type)) {
+      return const <String>['inlet', 'outlet'];
+    }
+    if (item.type.name.startsWith('tee')) {
+      return const <String>['runStart', 'runEnd', 'branch'];
+    }
+    return const <String>[];
+  }
+
+  _FittingEndpointSnapCandidate? _nearestFittingEndpointSnapCandidate(
+      _LayoutItem fitting) {
+    if (!_isFittingEndpointConnectableType(fitting.type)) return null;
+    _FittingEndpointSnapCandidate? best;
+    for (final side in _fittingEndpointSides(fitting)) {
+      final point = _equipmentAnchorPointOrNull(fitting, side);
+      if (point == null) continue;
+      final target = _findBestConnectionTarget(
+        point,
+        excludedAnchorItemId: fitting.id,
+      );
+      if (target == null) continue;
+      final distance = (point - target.point).distance;
+      if (best == null || distance < best.distance) {
+        best = _FittingEndpointSnapCandidate(
+          fittingSide: side,
+          fittingPoint: point,
+          target: target,
+          distance: distance,
+        );
+      }
+    }
+    return best;
+  }
+
+  String _fittingAnchorItemKey(String side) => 'fittingAnchor_${side}ItemId';
+
+  String _fittingAnchorSideKey(String side) => 'fittingAnchor_${side}Side';
+
+  void _setFittingAnchor(
+    _LayoutItem fitting,
+    String fittingSide, {
+    int? anchorItemId,
+    String? anchorSide,
+  }) {
+    if (anchorItemId == null || anchorSide == null || anchorSide.isEmpty) {
+      fitting.properties.remove(_fittingAnchorItemKey(fittingSide));
+      fitting.properties.remove(_fittingAnchorSideKey(fittingSide));
+      return;
+    }
+    fitting.properties[_fittingAnchorItemKey(fittingSide)] =
+        anchorItemId.toString();
+    fitting.properties[_fittingAnchorSideKey(fittingSide)] = anchorSide;
+  }
+
+  void _clearFittingAnchors(_LayoutItem fitting) {
+    for (final side in _fittingEndpointSides(fitting)) {
+      _setFittingAnchor(fitting, side, anchorItemId: null, anchorSide: null);
+    }
+  }
+
+  void _attachIronEndpointToFitting(
+    _LayoutItem iron,
+    bool leading,
+    _LayoutItem fitting,
+    String fittingSide,
+  ) {
+    final anchorPoint = _equipmentAnchorPointOrNull(fitting, fittingSide);
+    if (anchorPoint == null) return;
+    _clearEndpointAttachment(iron, leading);
+    _setEndpointAnchor(
+      iron,
+      leading,
+      anchorItemId: fitting.id,
+      side: fittingSide,
+    );
+    _setIronEndpointPosition(iron, leading, anchorPoint);
+    _snapIndicatorScene = anchorPoint;
+  }
+
+  void _commitFittingEndpointConnections(_LayoutItem fitting) {
+    final candidate = _nearestFittingEndpointSnapCandidate(fitting);
+    if (candidate == null) {
+      _clearFittingAnchors(fitting);
+      return;
+    }
+
+    final shifted = Offset(
+      fitting.x + candidate.target.point.dx - candidate.fittingPoint.dx,
+      fitting.y + candidate.target.point.dy - candidate.fittingPoint.dy,
+    );
+    fitting.x = shifted.dx;
+    fitting.y = shifted.dy;
+
+    final fittedPoint =
+        _equipmentAnchorPointOrNull(fitting, candidate.fittingSide);
+    if (fittedPoint == null) return;
+    if ((fittedPoint - candidate.target.point).distance > 0.01) {
+      fitting.x += candidate.target.point.dx - fittedPoint.dx;
+      fitting.y += candidate.target.point.dy - fittedPoint.dy;
+    }
+
+    if (candidate.target.kind == _ConnectionTargetKind.ironEndpoint) {
+      _clearFittingAnchors(fitting);
+      final iron = candidate.target.ironItemId == null
+          ? null
+          : _findItemById(candidate.target.ironItemId!);
+      final leading = candidate.target.ironLeading;
+      if (iron != null && _isStraightIronType(iron.type) && leading != null) {
+        _attachIronEndpointToFitting(
+            iron, leading, fitting, candidate.fittingSide);
+      }
+    } else if (candidate.target.kind == _ConnectionTargetKind.equipmentAnchor) {
+      final anchorItemId = candidate.target.equipmentItemId;
+      final anchorSide = candidate.target.anchorId;
+      if (anchorItemId != null && anchorSide != null && anchorSide.isNotEmpty) {
+        _setFittingAnchor(
+          fitting,
+          candidate.fittingSide,
+          anchorItemId: anchorItemId,
+          anchorSide: anchorSide,
+        );
+      }
+    }
+    _snapIndicatorScene = candidate.target.point;
   }
 
   _EndpointSnapTarget? _stabilizeEndpointSnapTarget({
@@ -2164,6 +2302,32 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           }
         }
       }
+
+      if (_isFittingEndpointConnectableType(item.type)) {
+        for (final side in _fittingEndpointSides(item)) {
+          final anchorItemId =
+              int.tryParse(item.properties[_fittingAnchorItemKey(side)] ?? '');
+          final anchorSide = item.properties[_fittingAnchorSideKey(side)];
+          if (anchorItemId == null ||
+              anchorSide == null ||
+              anchorSide.isEmpty) {
+            continue;
+          }
+          final anchorItem = _findItemById(anchorItemId);
+          final anchorPoint = anchorItem == null
+              ? null
+              : _equipmentAnchorPointOrNull(anchorItem, anchorSide);
+          if (anchorPoint == null) {
+            _setFittingAnchor(item, side, anchorItemId: null, anchorSide: null);
+            continue;
+          }
+          final currentPoint = _equipmentAnchorPointOrNull(item, side);
+          if (currentPoint == null) continue;
+          final delta = anchorPoint - currentPoint;
+          item.x += delta.dx;
+          item.y += delta.dy;
+        }
+      }
     }
 
     for (final jointId in jointIds) {
@@ -2470,7 +2634,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     if (_interactionMode == _InteractionMode.stretchEndpoint &&
         _isStraightIronType(anchor.type) &&
         _selectedEndpointLeading != null) {
-      _updateEndpointHandleDrag(anchor, _selectedEndpointLeading!, details.delta);
+      _updateEndpointHandleDrag(
+          anchor, _selectedEndpointLeading!, details.delta);
       return;
     }
 
@@ -2510,6 +2675,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         } else {
           it.x = desired.dx.clamp(0.0, canvasSize.width - it.width);
           it.y = desired.dy.clamp(0.0, canvasSize.height - it.height);
+        }
+        if (_isFittingEndpointConnectableType(it.type)) {
+          final fittingCandidate = _nearestFittingEndpointSnapCandidate(it);
+          if (fittingCandidate != null) {
+            _snapIndicatorScene = fittingCandidate.target.point;
+          }
         }
         if (it.id == _selectedId && !it.type.isIron) {
           _dragPreviewItemId = it.id;
@@ -2580,15 +2751,19 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   void _finalizeDraggedItemConnections(List<_LayoutItem> moving) {
     for (final it in moving) {
       if (_segmentMoveBlocked(it)) continue;
-      if (!_isInlineFittingType(it.type)) continue;
-      final parentIron = _inlineParentIron(it);
-      final parentT = _inlineParentT(it);
-      if (parentIron != null && parentT != null) {
-        _setInlineParentAttachment(it, parentIron, parentT);
-        _alignInlineToParent(it, parentIron, parentT);
-      } else {
-        _clearInlineParentAttachment(it);
-        _attachInlineToNearestRailOnDrop(it);
+      if (_isInlineFittingType(it.type)) {
+        final parentIron = _inlineParentIron(it);
+        final parentT = _inlineParentT(it);
+        if (parentIron != null && parentT != null) {
+          _setInlineParentAttachment(it, parentIron, parentT);
+          _alignInlineToParent(it, parentIron, parentT);
+        } else {
+          _clearInlineParentAttachment(it);
+          _attachInlineToNearestRailOnDrop(it);
+        }
+      }
+      if (_isFittingEndpointConnectableType(it.type)) {
+        _commitFittingEndpointConnections(it);
       }
     }
     _reflowSnappedFittings();
@@ -2779,6 +2954,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       final holdRadius = _sceneRadiusFromScreen(_ironBypassHoldRadiusScreen);
       final detachThreshold =
           _sceneRadiusFromScreen(_ironBypassDetachThresholdScreen);
+      final reconnectReleaseDistance =
+          _sceneRadiusFromScreen(_connectionSnapRadius + 8.0);
 
       if (isAttached && (prior?.detached ?? false) == false) {
         final anchorPoint = current;
@@ -2789,6 +2966,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           worldPosition: desired,
           target: null,
           detached: false,
+          blockedTargetKey: prior?.blockedTargetKey,
+          blockedOrigin: prior?.blockedOrigin,
+          reconnectAllowed: prior?.reconnectAllowed ?? false,
         );
         if (distanceFromAnchor <= holdRadius) {
           _snapIndicatorScene = null;
@@ -2815,6 +2995,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           worldPosition: snappedPoint,
           target: target,
           detached: true,
+          blockedTargetKey: prior?.blockedTargetKey,
+          blockedOrigin: prior?.blockedOrigin ?? anchorPoint,
+          reconnectAllowed: false,
         );
         _snapIndicatorScene = target?.point;
         _reflowSnappedFittings();
@@ -2824,10 +3007,22 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _setIronEndpointPosition(item, leading, desired);
       final snappedPoint = _ironEndpoint(item, leading);
       final candidate = _nearestEndpointSnapTarget(item, leading, snappedPoint);
+      final priorBlockedTargetKey = prior?.blockedTargetKey;
+      final priorBlockedOrigin = prior?.blockedOrigin;
+      var reconnectAllowed = prior?.reconnectAllowed ?? false;
+      if (!reconnectAllowed && priorBlockedOrigin != null) {
+        reconnectAllowed = (snappedPoint - priorBlockedOrigin).distance >=
+            reconnectReleaseDistance;
+      }
+      final filteredCandidate = (!reconnectAllowed &&
+              priorBlockedTargetKey != null &&
+              _endpointSnapTargetKey(candidate) == priorBlockedTargetKey)
+          ? null
+          : candidate;
       final target = _stabilizeEndpointSnapTarget(
         sourcePoint: snappedPoint,
         previous: prior?.target,
-        candidate: candidate,
+        candidate: filteredCandidate,
       );
       _activeEndpointDrag = _ActiveEndpointDrag(
         ironId: item.id,
@@ -2835,6 +3030,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         worldPosition: snappedPoint,
         target: target,
         detached: true,
+        blockedTargetKey: priorBlockedTargetKey,
+        blockedOrigin: priorBlockedOrigin,
+        reconnectAllowed: reconnectAllowed,
       );
       _snapIndicatorScene = target?.point;
       _reflowSnappedFittings();
@@ -2854,8 +3052,45 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         worldPosition: _ironEndpoint(item, leading),
         target: null,
         detached: false,
+        blockedTargetKey: _currentEndpointConnectionKey(item, leading),
+        blockedOrigin: _ironEndpoint(item, leading),
+        reconnectAllowed: false,
       );
     });
+  }
+
+  String? _currentEndpointConnectionKey(_LayoutItem item, bool leading) {
+    final anchorItemId =
+        int.tryParse(item.properties[_endpointAnchorItemKey(leading)] ?? '');
+    final anchorSide = item.properties[_endpointAnchorSideKey(leading)];
+    if (anchorItemId != null && anchorSide != null && anchorSide.isNotEmpty) {
+      return 'anchor:$anchorItemId:$anchorSide';
+    }
+    final jointId = _jointId(item, leading);
+    if (jointId == null || jointId.isEmpty) return null;
+    for (final other in _items) {
+      if (other.id == item.id || !_isStraightIronType(other.type)) continue;
+      for (final otherLeading in const <bool>[true, false]) {
+        if (_jointId(other, otherLeading) == jointId) {
+          return 'joint:${other.id}:${otherLeading ? 'start' : 'end'}';
+        }
+      }
+    }
+    return null;
+  }
+
+  String? _endpointSnapTargetKey(_EndpointSnapTarget? target) {
+    if (target == null) return null;
+    if (target.endpoint != null) {
+      return 'joint:${target.endpoint!.itemId}:${target.endpoint!.leading ? 'start' : 'end'}';
+    }
+    if (target.equipment != null) {
+      return 'anchor:${target.equipment!.itemId}:${target.equipment!.side}';
+    }
+    if (target.bypass != null) {
+      return 'anchor:${target.bypass!.itemId}:${target.bypass!.side}';
+    }
+    return null;
   }
 
   void _updateEndpointHandleDrag(_LayoutItem item, bool leading, Offset delta) {
@@ -3472,6 +3707,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         ..clear()
         ..addAll(items);
       for (final item in _items) {
+        if (_isElbowFittingType(item.type)) {
+          _clearInlineParentAttachment(item);
+        }
         if (_isInlineFittingType(item.type)) {
           final parentIron = _inlineParentIron(item);
           final parentT = _inlineParentT(item);
@@ -3518,6 +3756,33 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
             } else {
               item.properties[_endpointAnchorSideKey(leading)] = canonical;
             }
+          }
+        }
+
+        if (_isFittingEndpointConnectableType(item.type)) {
+          for (final side in _fittingEndpointSides(item)) {
+            final anchorItemId = int.tryParse(
+                item.properties[_fittingAnchorItemKey(side)] ?? '');
+            final anchorSide = item.properties[_fittingAnchorSideKey(side)];
+            if (anchorItemId == null ||
+                anchorSide == null ||
+                anchorSide.isEmpty) {
+              continue;
+            }
+            final anchorItem = _findItemById(anchorItemId);
+            final anchorPoint = anchorItem == null
+                ? null
+                : _equipmentAnchorPointOrNull(anchorItem, anchorSide);
+            if (anchorPoint == null) {
+              _setFittingAnchor(item, side,
+                  anchorItemId: null, anchorSide: null);
+              continue;
+            }
+            final currentPoint = _equipmentAnchorPointOrNull(item, side);
+            if (currentPoint == null) continue;
+            final delta = anchorPoint - currentPoint;
+            item.x += delta.dx;
+            item.y += delta.dy;
           }
         }
       }
@@ -8066,6 +8331,62 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     ];
   }
 
+  List<Widget> _fittingConnectionPointIndicators() {
+    final indicatorItems = <_LayoutItem>{};
+    final selected = _selectedItem;
+    if (selected != null &&
+        (_isStraightIronType(selected.type) ||
+            _isFittingEndpointConnectableType(selected.type))) {
+      indicatorItems.add(selected);
+    }
+    if (_interactionMode == _InteractionMode.itemDrag) {
+      for (final id in _dragItemStart.keys) {
+        final item = _findItemById(id);
+        if (item == null) continue;
+        if (_isStraightIronType(item.type) ||
+            _isFittingEndpointConnectableType(item.type)) {
+          indicatorItems.add(item);
+        }
+      }
+    }
+
+    final points = <Offset>[];
+    for (final item in indicatorItems) {
+      if (_isStraightIronType(item.type)) {
+        points.add(_resolveIronEndpoint(item, true));
+        points.add(_resolveIronEndpoint(item, false));
+      } else {
+        for (final side in _fittingEndpointSides(item)) {
+          final point = _equipmentAnchorPointOrNull(item, side);
+          if (point != null) points.add(point);
+        }
+      }
+    }
+
+    return points
+        .map(
+          (point) => Positioned(
+            left: point.dx - 5,
+            top: point.dy - 5,
+            child: IgnorePointer(
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFCDA56A).withValues(alpha: 0.18),
+                  border: Border.all(
+                    color: const Color(0xFFCDA56A).withValues(alpha: 0.92),
+                    width: 1.4,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        )
+        .toList(growable: false);
+  }
+
   List<Widget> _resolvedStraightIronWidgets() {
     final widgets = <Widget>[];
     for (final item in _items) {
@@ -8373,6 +8694,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                       ),
                                     ),
                                   ..._resolvedStraightIronWidgets(),
+                                  ..._fittingConnectionPointIndicators(),
                                   for (final item in _items)
                                     () {
                                       final interactionPadding =
@@ -8573,6 +8895,20 @@ class _ConnectionTarget {
   });
 }
 
+class _FittingEndpointSnapCandidate {
+  final String fittingSide;
+  final Offset fittingPoint;
+  final _ConnectionTarget target;
+  final double distance;
+
+  const _FittingEndpointSnapCandidate({
+    required this.fittingSide,
+    required this.fittingPoint,
+    required this.target,
+    required this.distance,
+  });
+}
+
 class _DrawIronPreviewPainter extends CustomPainter {
   final Offset start;
   final Offset end;
@@ -8692,6 +9028,9 @@ class _ActiveEndpointDrag {
   final Offset worldPosition;
   final _EndpointSnapTarget? target;
   final bool detached;
+  final String? blockedTargetKey;
+  final Offset? blockedOrigin;
+  final bool reconnectAllowed;
 
   const _ActiveEndpointDrag({
     required this.ironId,
@@ -8699,6 +9038,9 @@ class _ActiveEndpointDrag {
     required this.worldPosition,
     required this.target,
     required this.detached,
+    required this.blockedTargetKey,
+    required this.blockedOrigin,
+    required this.reconnectAllowed,
   });
 }
 
