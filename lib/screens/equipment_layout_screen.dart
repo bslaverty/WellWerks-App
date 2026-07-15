@@ -112,7 +112,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   static const double _mobileLibraryDefaultFraction = 0.38;
   static const double _mobileLibraryMaxFraction = 0.82;
   static const double _dragLiftScreenOffsetY = 64.0;
-  static const double _connectionSnapRadius = 32.0;
+  static const double _connectionPreviewRadiusScreen = 34.0;
+  static const double _connectionReleaseRadiusScreen = 18.0;
+  static const double _disconnectHoldRadiusScreen = 8.0;
+  static const double _disconnectThresholdScreen = 18.0;
+  static const double _sameTargetLockoutRadiusScreen = 42.0;
   static const double _ironSelectionCorridorScreen = 22.0;
   static const double _ironBodyHitCorridorScreen = 20.0;
   static const double _endpointResizeHitRadiusScreen = 16.0;
@@ -120,10 +124,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   static const double _freeIronMinLength = 14.0;
   static const double _bypassLeadDefaultLength = 28.0;
   static const double _bypassAttachRadiusScreen = 38.0;
-  static const double _inlineSpineAttachToleranceScreen = 22.0;
-  static const double _bypassDetachThresholdScreen = 52.0;
-  static const double _ironBypassHoldRadiusScreen = 10.0;
-  static const double _ironBypassDetachThresholdScreen = 24.0;
+  static const double _inlineSpineReleaseRadiusScreen = 18.0;
   static const String _labelsPrefKey = 'wellwerks_layout_show_labels_v1';
   static const String _bypassPortMainTop = 'mainTop';
   static const String _bypassPortMainBottom = 'mainBottom';
@@ -2001,14 +2002,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   _ConnectionTarget? _findBestConnectionTarget(
     Offset target, {
+    required double radiusScreen,
     int? movingIronId,
     bool? movingIronLeading,
     int? excludedAnchorItemId,
   }) {
-    const snapRadius = _connectionSnapRadius;
     final nearestAnchor = _nearestAnchorTarget(
       target,
-      radius: snapRadius,
+      radius: radiusScreen,
       exact: false,
       excludedItemId: excludedAnchorItemId,
       movingIronId: movingIronId,
@@ -2016,7 +2017,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     );
     final nearestEndpoint = _nearestIronEndpointTarget(
       target,
-      radius: snapRadius,
+      radius: radiusScreen,
       exact: false,
       movingIronId: movingIronId,
       movingIronLeading: movingIronLeading,
@@ -2099,7 +2100,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   _BypassHandleCandidate? _nearestBypassHandleCandidate(Offset target) {
-    final handleRadius = _sceneRadiusFromScreen(_ironBypassHoldRadiusScreen);
+    final handleRadius = _sceneRadiusFromScreen(_disconnectHoldRadiusScreen);
     _BypassHandleCandidate? best;
     for (final item in _items) {
       if (item.type != _EquipmentType.bypass) continue;
@@ -2128,10 +2129,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   _EndpointSnapTarget? _nearestEndpointSnapTarget(
     _LayoutItem item,
     bool leading,
-    Offset target,
-  ) {
+    Offset target, {
+    required double radiusScreen,
+  }) {
     final resolved = _findBestConnectionTarget(
       target,
+      radiusScreen: radiusScreen,
       movingIronId: item.id,
       movingIronLeading: leading,
     );
@@ -2150,7 +2153,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   _FittingEndpointSnapCandidate? _nearestFittingEndpointSnapCandidate(
-      _LayoutItem fitting) {
+    _LayoutItem fitting, {
+    required double radiusScreen,
+  }) {
     if (!_isFittingEndpointConnectableType(fitting.type)) return null;
     _FittingEndpointSnapCandidate? best;
     for (final side in _fittingEndpointSides(fitting)) {
@@ -2158,6 +2163,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       if (point == null) continue;
       final target = _findBestConnectionTarget(
         point,
+        radiusScreen: radiusScreen,
         excludedAnchorItemId: fitting.id,
       );
       if (target == null) continue;
@@ -2245,7 +2251,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   void _commitFittingEndpointConnections(_LayoutItem fitting) {
-    final candidate = _nearestFittingEndpointSnapCandidate(fitting);
+    final candidate = _nearestFittingEndpointSnapCandidate(
+      fitting,
+      radiusScreen: _connectionReleaseRadiusScreen,
+    );
     if (candidate == null) {
       _clearFittingAnchors(fitting);
       return;
@@ -3217,6 +3226,16 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     );
     if (!context.wasAttached || context.detached) {
       _setBypassTopLeft(item, desiredTopLeft, canvasSize);
+      if (!context.reconnectAllowed && context.blockedParentIronId != null) {
+        final blockedIron = _findItemById(context.blockedParentIronId!);
+        if (blockedIron != null && _isStraightIronType(blockedIron.type)) {
+          final lockoutRadius =
+              _sceneRadiusFromScreen(_sameTargetLockoutRadiusScreen);
+          final distance =
+              _inlineDistanceToIron(item, Offset(item.x, item.y), blockedIron);
+          context.reconnectAllowed = distance >= lockoutRadius;
+        }
+      }
       return false;
     }
 
@@ -3233,10 +3252,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final horizontal = parentIron.type == _EquipmentType.ironHorizontal;
     final alongDelta = horizontal ? delta.dx : delta.dy;
     final perpendicular = horizontal ? delta.dy.abs() : delta.dx.abs();
-    final detachThreshold =
-        _sceneRadiusFromScreen(_bypassDetachThresholdScreen);
+    final detachThreshold = _sceneRadiusFromScreen(_disconnectThresholdScreen);
     if (perpendicular > detachThreshold) {
       context.detached = true;
+      context.blockedParentIronId = parentIron.id;
+      context.reconnectAllowed = false;
       _clearInlineParentAttachment(item);
       _setBypassTopLeft(item, desiredTopLeft, canvasSize);
       return true;
@@ -3281,12 +3301,51 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     return _applyInlineAttachedDrag(item, context, delta, canvasSize);
   }
 
-  void _attachInlineToNearestRailOnDrop(_LayoutItem item) {
-    final candidate = _nearestBypassRail(
+  double _inlineDistanceToIron(
+    _LayoutItem item,
+    Offset topLeft,
+    _LayoutItem iron,
+  ) {
+    final start = _resolveIronEndpoint(iron, true);
+    final end = _resolveIronEndpoint(iron, false);
+    var bestDistance = double.infinity;
+    for (final segment
+        in _inlineAttachmentSegmentsWorld(item, topLeft: topLeft)) {
+      if (!_segmentCompatibleWithIron(segment, iron)) continue;
+      final distance =
+          _distanceBetweenSegments(segment.start, segment.end, start, end);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+      }
+    }
+    return bestDistance;
+  }
+
+  void _attachInlineToNearestRailOnDrop(
+    _LayoutItem item, {
+    _BypassDragContext? context,
+  }) {
+    final lockoutIronId = context != null && !context.reconnectAllowed
+        ? context.blockedParentIronId
+        : null;
+    var candidate = _nearestBypassRail(
       item,
       Offset(item.x, item.y),
-      maxDistance: _sceneRadiusFromScreen(_inlineSpineAttachToleranceScreen),
+      excludedIronId: lockoutIronId,
+      maxDistance: _sceneRadiusFromScreen(_inlineSpineReleaseRadiusScreen),
     );
+    candidate ??= _nearestBypassRail(
+      item,
+      Offset(item.x, item.y),
+      maxDistance: _sceneRadiusFromScreen(_inlineSpineReleaseRadiusScreen),
+    );
+    if (candidate != null &&
+        lockoutIronId != null &&
+        candidate.ironId == lockoutIronId &&
+        context != null &&
+        !context.reconnectAllowed) {
+      return;
+    }
     if (candidate == null) return;
     final iron = _findItemById(candidate.ironId);
     if (iron == null || !_isStraightIronType(iron.type)) return;
@@ -3378,6 +3437,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         parentIronId: parentIron?.id,
         startT: parentT,
         attachedSegmentId: _inlineAttachedSegmentId(it),
+        blockedParentIronId: parentIron?.id,
+        reconnectAllowed: !attached,
       );
     }
     if (mounted) {
@@ -3432,14 +3493,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           it.y = desired.dy.clamp(0.0, canvasSize.height - it.height);
         }
         if (_isFittingEndpointConnectableType(it.type)) {
-          final fittingCandidate = _nearestFittingEndpointSnapCandidate(it);
+          final fittingCandidate = _nearestFittingEndpointSnapCandidate(
+            it,
+            radiusScreen: _connectionPreviewRadiusScreen,
+          );
           if (fittingCandidate != null) {
-            if (_isElbowFittingType(it.type)) {
-              final snappedTopLeft =
-                  _fittingTopLeftForSnapCandidate(it, fittingCandidate);
-              it.x = snappedTopLeft.dx;
-              it.y = snappedTopLeft.dy;
-            }
             _snapIndicatorScene = fittingCandidate.target.point;
           }
         }
@@ -3515,12 +3573,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       if (_isInlineFittingType(it.type)) {
         final parentIron = _inlineParentIron(it);
         final parentT = _inlineParentT(it);
+        final context = _bypassDragContexts[it.id];
         if (parentIron != null && parentT != null) {
           _setInlineParentAttachment(it, parentIron, parentT);
           _alignInlineToParent(it, parentIron, parentT);
         } else {
           _clearInlineParentAttachment(it);
-          _attachInlineToNearestRailOnDrop(it);
+          _attachInlineToNearestRailOnDrop(it, context: context);
         }
       }
       if (_isFittingEndpointConnectableType(it.type)) {
@@ -3536,7 +3595,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     _EndpointSnapTarget? target,
   }) {
     final effectiveTarget = target ??
-        _nearestEndpointSnapTarget(item, leading, _ironEndpoint(item, leading));
+        _nearestEndpointSnapTarget(
+          item,
+          leading,
+          _ironEndpoint(item, leading),
+          radiusScreen: _connectionReleaseRadiusScreen,
+        );
     if (effectiveTarget == null) {
       _reflowSnappedFittings();
       return;
@@ -3591,35 +3655,40 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     String leadId,
     _ConnectionTarget? target,
   ) {
-    if (target == null) {
+    final effectiveTarget = target ??
+        _findBestConnectionTarget(
+          _resolveBypassLeadEndpointWorld(item, leadId),
+          radiusScreen: _connectionReleaseRadiusScreen,
+          excludedAnchorItemId: item.id,
+        );
+    if (effectiveTarget == null) {
       _setBypassLeadTarget(item, leadId,
           kind: null, targetItemId: null, side: null);
       return;
     }
-    _setBypassLeadEndpointWorld(item, leadId, target.point);
-    if (target.kind == _ConnectionTargetKind.ironEndpoint) {
+    _setBypassLeadEndpointWorld(item, leadId, effectiveTarget.point);
+    if (effectiveTarget.kind == _ConnectionTargetKind.ironEndpoint) {
       _setBypassLeadTarget(
         item,
         leadId,
         kind: 'ironEndpoint',
-        targetItemId: target.ironItemId,
-        side: target.ironLeading == true ? 'start' : 'end',
+        targetItemId: effectiveTarget.ironItemId,
+        side: effectiveTarget.ironLeading == true ? 'start' : 'end',
       );
     } else {
       _setBypassLeadTarget(
         item,
         leadId,
         kind: 'equipmentAnchor',
-        targetItemId: target.equipmentItemId,
-        side: target.anchorId,
+        targetItemId: effectiveTarget.equipmentItemId,
+        side: effectiveTarget.anchorId,
       );
     }
-    _snapIndicatorScene = target.point;
+    _snapIndicatorScene = effectiveTarget.point;
   }
 
   void _startBypassLeadDrag(_LayoutItem item, String leadId) {
     if (item.locked || item.type != _EquipmentType.bypass) return;
-    _recordUndo();
     setState(() {
       _selectedBypassLeadId = leadId;
       _selectedEndpointLeading = null;
@@ -3634,6 +3703,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         blockedTargetKey: _currentBypassLeadConnectionKey(item, leadId),
         blockedOrigin: _resolveBypassLeadEndpointWorld(item, leadId),
         reconnectAllowed: false,
+        historyRecorded: false,
       );
     });
   }
@@ -3653,11 +3723,17 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       final desired = (prior?.worldPosition ?? current) + sceneDelta;
       final connectedTarget = _bypassLeadStoredTarget(item, leadId);
       final isAttached = connectedTarget != null;
-      final holdRadius = _sceneRadiusFromScreen(_ironBypassHoldRadiusScreen);
+      final holdRadius = _sceneRadiusFromScreen(_disconnectHoldRadiusScreen);
       final detachThreshold =
-          _sceneRadiusFromScreen(_ironBypassDetachThresholdScreen);
+          _sceneRadiusFromScreen(_disconnectThresholdScreen);
       final reconnectReleaseDistance =
-          _sceneRadiusFromScreen(_connectionSnapRadius + 8.0);
+          _sceneRadiusFromScreen(_sameTargetLockoutRadiusScreen);
+
+      final shouldRecordHistory =
+          !(prior?.historyRecorded ?? false) && desired != current;
+      if (shouldRecordHistory) {
+        _recordUndo();
+      }
 
       if (isAttached && (prior?.detached ?? false) == false) {
         final anchorPoint = connectedTarget.point;
@@ -3671,6 +3747,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           blockedTargetKey: prior?.blockedTargetKey,
           blockedOrigin: prior?.blockedOrigin,
           reconnectAllowed: prior?.reconnectAllowed ?? false,
+          historyRecorded:
+              shouldRecordHistory || (prior?.historyRecorded ?? false),
         );
         if (distanceFromAnchor <= holdRadius ||
             distanceFromAnchor < detachThreshold) {
@@ -3683,6 +3761,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         _setBypassLeadEndpointWorld(item, leadId, desired);
         final candidate = _findBestConnectionTarget(
           desired,
+          radiusScreen: _connectionPreviewRadiusScreen,
           excludedAnchorItemId: item.id,
         );
         _activeBypassLeadDrag = _ActiveBypassLeadDrag(
@@ -3694,6 +3773,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           blockedTargetKey: prior?.blockedTargetKey,
           blockedOrigin: prior?.blockedOrigin ?? anchorPoint,
           reconnectAllowed: false,
+          historyRecorded:
+              shouldRecordHistory || (prior?.historyRecorded ?? false),
         );
         _snapIndicatorScene = candidate?.point;
         return;
@@ -3702,6 +3783,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _setBypassLeadEndpointWorld(item, leadId, desired);
       final candidate = _findBestConnectionTarget(
         desired,
+        radiusScreen: _connectionPreviewRadiusScreen,
         excludedAnchorItemId: item.id,
       );
       final priorBlockedTargetKey = prior?.blockedTargetKey;
@@ -3725,6 +3807,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         blockedTargetKey: priorBlockedTargetKey,
         blockedOrigin: priorBlockedOrigin,
         reconnectAllowed: reconnectAllowed,
+        historyRecorded:
+            shouldRecordHistory || (prior?.historyRecorded ?? false),
       );
       _snapIndicatorScene = filteredCandidate?.point;
     });
@@ -3733,13 +3817,22 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   void _endBypassLeadDrag(_LayoutItem item, String leadId) {
     setState(() {
       final active = _activeBypassLeadDrag;
-      final activeTarget = (active != null &&
+      final releaseTarget = (active != null &&
               active.itemId == item.id &&
               active.leadId == leadId &&
               active.detached)
-          ? active.target
+          ? _findBestConnectionTarget(
+              _resolveBypassLeadEndpointWorld(item, leadId),
+              radiusScreen: _connectionReleaseRadiusScreen,
+              excludedAnchorItemId: item.id,
+            )
           : null;
-      _commitBypassLeadConnection(item, leadId, activeTarget);
+      final filteredTarget = (!((active?.reconnectAllowed) ?? true) &&
+              active?.blockedTargetKey != null &&
+              _bypassLeadTargetKey(releaseTarget) == active?.blockedTargetKey)
+          ? null
+          : releaseTarget;
+      _commitBypassLeadConnection(item, leadId, filteredTarget);
       _activeBypassLeadDrag = null;
       _interactionMode = _InteractionMode.idle;
       _snapIndicatorScene = null;
@@ -3877,11 +3970,17 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       final anchorSide = item.properties[_endpointAnchorSideKey(leading)];
       final isAttached =
           anchorItemId != null && anchorSide != null && anchorSide.isNotEmpty;
-      final holdRadius = _sceneRadiusFromScreen(_ironBypassHoldRadiusScreen);
+      final holdRadius = _sceneRadiusFromScreen(_disconnectHoldRadiusScreen);
       final detachThreshold =
-          _sceneRadiusFromScreen(_ironBypassDetachThresholdScreen);
+          _sceneRadiusFromScreen(_disconnectThresholdScreen);
       final reconnectReleaseDistance =
-          _sceneRadiusFromScreen(_connectionSnapRadius + 8.0);
+          _sceneRadiusFromScreen(_sameTargetLockoutRadiusScreen);
+
+      final shouldRecordHistory =
+          !(prior?.historyRecorded ?? false) && desired != current;
+      if (shouldRecordHistory) {
+        _recordUndo();
+      }
 
       if (isAttached && (prior?.detached ?? false) == false) {
         final anchorPoint = current;
@@ -3895,6 +3994,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           blockedTargetKey: prior?.blockedTargetKey,
           blockedOrigin: prior?.blockedOrigin,
           reconnectAllowed: prior?.reconnectAllowed ?? false,
+          historyRecorded:
+              shouldRecordHistory || (prior?.historyRecorded ?? false),
         );
         if (distanceFromAnchor <= holdRadius) {
           _snapIndicatorScene = null;
@@ -3908,8 +4009,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         _clearEndpointAttachment(item, leading);
         _setIronEndpointPosition(item, leading, desired);
         final snappedPoint = _ironEndpoint(item, leading);
-        final candidate =
-            _nearestEndpointSnapTarget(item, leading, snappedPoint);
+        final candidate = _nearestEndpointSnapTarget(
+          item,
+          leading,
+          snappedPoint,
+          radiusScreen: _connectionPreviewRadiusScreen,
+        );
         final target = _stabilizeEndpointSnapTarget(
           sourcePoint: snappedPoint,
           previous: prior?.target,
@@ -3924,6 +4029,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           blockedTargetKey: prior?.blockedTargetKey,
           blockedOrigin: prior?.blockedOrigin ?? anchorPoint,
           reconnectAllowed: false,
+          historyRecorded:
+              shouldRecordHistory || (prior?.historyRecorded ?? false),
         );
         _snapIndicatorScene = target?.point;
         _reflowSnappedFittings();
@@ -3932,7 +4039,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
       _setIronEndpointPosition(item, leading, desired);
       final snappedPoint = _ironEndpoint(item, leading);
-      final candidate = _nearestEndpointSnapTarget(item, leading, snappedPoint);
+      final candidate = _nearestEndpointSnapTarget(
+        item,
+        leading,
+        snappedPoint,
+        radiusScreen: _connectionPreviewRadiusScreen,
+      );
       final priorBlockedTargetKey = prior?.blockedTargetKey;
       final priorBlockedOrigin = prior?.blockedOrigin;
       var reconnectAllowed = prior?.reconnectAllowed ?? false;
@@ -3959,6 +4071,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         blockedTargetKey: priorBlockedTargetKey,
         blockedOrigin: priorBlockedOrigin,
         reconnectAllowed: reconnectAllowed,
+        historyRecorded:
+            shouldRecordHistory || (prior?.historyRecorded ?? false),
       );
       _snapIndicatorScene = target?.point;
       _reflowSnappedFittings();
@@ -3967,7 +4081,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   void _startEndpointHandleDrag(_LayoutItem item, bool leading) {
     if (item.locked || !_isStraightIronType(item.type)) return;
-    _recordUndo();
     setState(() {
       _selectedEndpointLeading = leading;
       _selectedBypassHandle = null;
@@ -3981,6 +4094,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         blockedTargetKey: _currentEndpointConnectionKey(item, leading),
         blockedOrigin: _ironEndpoint(item, leading),
         reconnectAllowed: false,
+        historyRecorded: false,
       );
     });
   }
@@ -4026,14 +4140,24 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   void _endEndpointHandleDrag(_LayoutItem item, bool leading) {
     setState(() {
       final active = _activeEndpointDrag;
-      final activeTarget = (active != null &&
+      final releaseTarget = (active != null &&
               active.ironId == item.id &&
               active.leading == leading &&
               active.detached)
-          ? active.target
+          ? _nearestEndpointSnapTarget(
+              item,
+              leading,
+              _ironEndpoint(item, leading),
+              radiusScreen: _connectionReleaseRadiusScreen,
+            )
           : null;
-      if (activeTarget != null) {
-        _commitIronEndpointConnection(item, leading, target: activeTarget);
+      final filteredTarget = (!((active?.reconnectAllowed) ?? true) &&
+              active?.blockedTargetKey != null &&
+              _endpointSnapTargetKey(releaseTarget) == active?.blockedTargetKey)
+          ? null
+          : releaseTarget;
+      if (filteredTarget != null) {
+        _commitIronEndpointConnection(item, leading, target: filteredTarget);
       }
       _activeEndpointDrag = null;
       _interactionMode = _InteractionMode.idle;
@@ -4148,6 +4272,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
     if (_isStraightIronType(selected.type) &&
         _selectedEndpointLeading != null) {
+      final active = _activeEndpointDrag;
+      if (active == null ||
+          active.ironId != selected.id ||
+          active.leading != _selectedEndpointLeading ||
+          !active.detached) {
+        return;
+      }
       _recordUndo();
       _commitIronEndpointConnection(selected, _selectedEndpointLeading!);
       return;
@@ -4155,10 +4286,16 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
     if (selected.type == _EquipmentType.bypass &&
         _selectedBypassLeadId != null &&
-        _activeBypassLeadDrag?.target != null) {
+        _activeBypassLeadDrag != null) {
+      final active = _activeBypassLeadDrag!;
+      if (active.itemId != selected.id ||
+          active.leadId != _selectedBypassLeadId ||
+          !active.detached) {
+        return;
+      }
       _recordUndo();
       _commitBypassLeadConnection(
-          selected, _selectedBypassLeadId!, _activeBypassLeadDrag!.target);
+          selected, _selectedBypassLeadId!, active.target);
       return;
     }
 
@@ -4210,7 +4347,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       return;
     }
     if (_drawIronStartTarget == null) {
-      final startTarget = _findBestConnectionTarget(clampedPoint);
+      final startTarget = _findBestConnectionTarget(
+        clampedPoint,
+        radiusScreen: _connectionPreviewRadiusScreen,
+      );
       if (startTarget == null) return;
       setState(() {
         _drawIronStartTarget = startTarget;
@@ -4226,7 +4366,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   void _updateDrawIronPreview(Offset scenePoint) {
     if (!_drawIronMode || _drawIronStartTarget == null) return;
     final clamped = _clampToCanvas(scenePoint);
-    final hover = _findBestConnectionTarget(clamped);
+    final hover = _findBestConnectionTarget(
+      clamped,
+      radiusScreen: _connectionPreviewRadiusScreen,
+    );
     setState(() {
       _drawIronPointerScene = clamped;
       _drawIronHoverTarget = hover;
@@ -4238,7 +4381,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     if (!_drawIronMode) return;
     final scenePoint = _scenePointFromGlobal(details.globalPosition);
     if (_drawIronStartTarget == null) {
-      final start = _findBestConnectionTarget(scenePoint);
+      final start = _findBestConnectionTarget(
+        scenePoint,
+        radiusScreen: _connectionPreviewRadiusScreen,
+      );
       if (start == null) return;
       setState(() {
         _drawIronStartTarget = start;
@@ -4266,7 +4412,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final start = _drawIronStartTarget;
     if (start == null) return;
     final clamped = _clampToCanvas(scenePoint);
-    final endTarget = _findBestConnectionTarget(clamped);
+    final endTarget = _findBestConnectionTarget(
+      clamped,
+      radiusScreen: _connectionPreviewRadiusScreen,
+    );
     final startPoint = start.point;
     final endPoint = endTarget?.point ?? clamped;
     final dx = endPoint.dx - startPoint.dx;
@@ -10156,6 +10305,7 @@ class _ActiveEndpointDrag {
   final String? blockedTargetKey;
   final Offset? blockedOrigin;
   final bool reconnectAllowed;
+  final bool historyRecorded;
 
   const _ActiveEndpointDrag({
     required this.ironId,
@@ -10166,6 +10316,7 @@ class _ActiveEndpointDrag {
     required this.blockedTargetKey,
     required this.blockedOrigin,
     required this.reconnectAllowed,
+    required this.historyRecorded,
   });
 }
 
@@ -10178,6 +10329,7 @@ class _ActiveBypassLeadDrag {
   final String? blockedTargetKey;
   final Offset? blockedOrigin;
   final bool reconnectAllowed;
+  final bool historyRecorded;
 
   const _ActiveBypassLeadDrag({
     required this.itemId,
@@ -10188,6 +10340,7 @@ class _ActiveBypassLeadDrag {
     required this.blockedTargetKey,
     required this.blockedOrigin,
     required this.reconnectAllowed,
+    required this.historyRecorded,
   });
 }
 
@@ -10199,6 +10352,8 @@ class _BypassDragContext {
   final double? startT;
   final String? attachedSegmentId;
   bool detached = false;
+  int? blockedParentIronId;
+  bool reconnectAllowed;
 
   _BypassDragContext({
     required this.startTopLeft,
@@ -10207,6 +10362,8 @@ class _BypassDragContext {
     required this.parentIronId,
     required this.startT,
     required this.attachedSegmentId,
+    this.blockedParentIronId,
+    this.reconnectAllowed = true,
   });
 }
 
@@ -10363,8 +10520,8 @@ extension _EquipmentTypeInfo on _EquipmentType {
     if (this == _EquipmentType.ironHorizontal) return 150;
     if (this == _EquipmentType.ironVertical) return 28;
     if (this == _EquipmentType.bypass) return 30;
-    if (name.startsWith('tee')) return 42;
-    if (name.startsWith('elbow')) return 42;
+    if (name.startsWith('tee')) return 21;
+    if (name.startsWith('elbow')) return 21;
     if (isIron) return 76;
     return 36;
   }
@@ -10386,8 +10543,8 @@ extension _EquipmentTypeInfo on _EquipmentType {
     if (this == _EquipmentType.ironHorizontal) return 24;
     if (this == _EquipmentType.ironVertical) return 150;
     if (this == _EquipmentType.bypass) return 32;
-    if (name.startsWith('tee')) return 42;
-    if (name.startsWith('elbow')) return 42;
+    if (name.startsWith('tee')) return 21;
+    if (name.startsWith('elbow')) return 21;
     if (isIron) return 76;
     return 28;
   }
@@ -10543,6 +10700,19 @@ class _LayoutItem {
         type == _EquipmentType.bypass &&
         (rawWidth - 34.0).abs() < 0.2 &&
         (rawHeight - 32.0).abs() < 0.2) {
+      final centerX = x + width / 2;
+      final centerY = y + height / 2;
+      width = type.defaultWidth;
+      height = type.defaultHeight;
+      x = centerX - width / 2;
+      y = centerY - height / 2;
+    }
+
+    if (rawWidth != null &&
+        rawHeight != null &&
+        (type.name.startsWith('tee') || type.name.startsWith('elbow')) &&
+        (rawWidth - 42.0).abs() < 0.2 &&
+        (rawHeight - 42.0).abs() < 0.2) {
       final centerX = x + width / 2;
       final centerY = y + height / 2;
       width = type.defaultWidth;

@@ -305,9 +305,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 149', () async {
+  test('Build number is 150', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+149'));
+    expect(pubspec, contains('version: 1.0.1+150'));
   });
 
   testWidgets('Selected bypass shows built-in lead handles', (tester) async {
@@ -859,13 +859,94 @@ void main() {
   });
 
   testWidgets(
+      'Dragging endpoint inside preview radius shows one target but does not connect before release',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 120, y: 96, width: 80),
+        _ironItem(2, x: 248, y: 96, width: 120),
+      ],
+      selectedId: 1,
+      selectedEndpointLeading: false,
+    );
+
+    final handle = find.byKey(const ValueKey<String>('iron-handle-1-end'));
+    expect(handle, findsOneWidget);
+
+    final startCenter = tester.getCenter(handle);
+    final gesture = await tester.startGesture(startCenter);
+    await gesture.moveBy(const Offset(24, 0));
+    await tester.pump();
+
+    expect(
+        find.byKey(const ValueKey<String>('snap-indicator')), findsOneWidget);
+    final draggedCenter = tester.getCenter(handle);
+    expect(draggedCenter.dx, greaterThan(startCenter.dx));
+    expect(draggedCenter.dy, closeTo(startCenter.dy, 0.5));
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final props =
+        (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
+    expect(props['jointEnd'], isNull);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Dragging endpoint inside final release radius snaps exactly on release',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 120, y: 96, width: 80),
+        _ironItem(2, x: 236, y: 96, width: 120),
+      ],
+      selectedId: 1,
+      selectedEndpointLeading: false,
+    );
+
+    final handle = find.byKey(const ValueKey<String>('iron-handle-1-end'));
+    const targetCenter = Offset(236, 108);
+
+    final gesture = await tester.startGesture(tester.getCenter(handle));
+    await gesture.moveBy(const Offset(24, 0));
+    await tester.pump();
+
+    final draggedCenter = tester.getCenter(handle);
+    expect(
+        find.byKey(const ValueKey<String>('snap-indicator')), findsOneWidget);
+    expect(draggedCenter.dx, isNot(closeTo(targetCenter.dx, 0.5)));
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final iron1 = _findById(items, 1);
+    final iron2 = _findById(items, 2);
+    final props1 = (iron1['properties'] as Map).cast<String, dynamic>();
+    final props2 = (iron2['properties'] as Map).cast<String, dynamic>();
+    expect(props1['jointEnd'], isNotNull);
+    expect(props1['jointEnd'], props2['jointStart']);
+    expect(
+        _ironEndpointFromMap(iron1, false), _ironEndpointFromMap(iron2, true));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
       'Dragging endpoint within snap radius creates an iron-to-iron connection that survives save reload and can disconnect',
       (tester) async {
     await _pumpLayout(
       tester,
       items: <Map<String, dynamic>>[
         _ironItem(1, x: 120, y: 96, width: 80),
-        _ironItem(2, x: 214, y: 96, width: 120),
+        _ironItem(2, x: 236, y: 96, width: 120),
       ],
       selectedId: 1,
       selectedEndpointLeading: false,
@@ -873,7 +954,7 @@ void main() {
 
     await tester.drag(
       find.byKey(const ValueKey<String>('iron-handle-1-end')),
-      const Offset(16, 0),
+      const Offset(24, 0),
     );
     await tester.pumpAndSettle();
 
@@ -991,8 +1072,12 @@ void main() {
     expect(props['anchorEndItemId'], '2');
     expect(props['anchorEndSide'], anyOf('left', 'right', 'inlet', 'outlet'));
 
-    await tester.drag(find.byKey(const ValueKey<String>('item-hitbox-2')),
-        const Offset(48, 0));
+    final wellheadRect =
+        tester.getRect(find.byKey(const ValueKey<String>('item-hitbox-2')));
+    await tester.dragFrom(
+      Offset(wellheadRect.right - 8, wellheadRect.center.dy),
+      const Offset(48, 0),
+    );
     await tester.pumpAndSettle();
     await _saveRigUp(tester);
 
@@ -1028,8 +1113,10 @@ void main() {
     expect(props['anchorEndItemId'], '2');
     expect(props['anchorEndSide'], isNotNull);
 
-    await tester.drag(
-      find.byKey(const ValueKey<String>('item-hitbox-2')),
+    final cyclonicRect =
+        tester.getRect(find.byKey(const ValueKey<String>('item-hitbox-2')));
+    await tester.dragFrom(
+      Offset(cyclonicRect.right - 8, cyclonicRect.center.dy),
       const Offset(36, 0),
     );
     await tester.pumpAndSettle();
@@ -1334,6 +1421,57 @@ void main() {
     final expectedEndpoint = Offset(itemRect.right - 24.0, itemRect.center.dy);
     expect(handleCenter.dx, closeTo(expectedEndpoint.dx, 1.0));
     expect(handleCenter.dy, closeTo(expectedEndpoint.dy, 1.0));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Endpoint same-target lockout blocks immediate recapture until leaving the lockout radius',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 120, y: 96, width: 120, properties: <String, String>{
+          'anchorEndItemId': '3',
+          'anchorEndSide': 'upperValveOutlet',
+        }),
+        _bypassItem(3, x: 260, y: 92),
+      ],
+      selectedId: 1,
+      selectedEndpointLeading: false,
+    );
+
+    final handle = find.byKey(const ValueKey<String>('iron-handle-1-end'));
+    final firstGesture = await tester.startGesture(tester.getCenter(handle));
+    await firstGesture.moveBy(const Offset(24, 0));
+    await tester.pump();
+    await firstGesture.moveBy(const Offset(-24, 0));
+    await tester.pump();
+    await firstGesture.up();
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    var items = _itemsFromPayload(await _savedLayoutPayload());
+    var props =
+        (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
+    expect(props['anchorEndItemId'], isNull);
+    expect(props['anchorEndSide'], isNull);
+
+    final secondGesture = await tester.startGesture(tester.getCenter(handle));
+    await secondGesture.moveBy(const Offset(60, 0));
+    await tester.pump();
+    await secondGesture.moveBy(const Offset(-60, 0));
+    await tester.pump();
+    expect(
+        find.byKey(const ValueKey<String>('snap-indicator')), findsOneWidget);
+    await secondGesture.up();
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    items = _itemsFromPayload(await _savedLayoutPayload());
+    props = (_findById(items, 1)['properties'] as Map).cast<String, dynamic>();
+    expect(props['anchorEndItemId'], '3');
+    expect(props['anchorEndSide'], 'upperValveOutlet');
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -2714,6 +2852,66 @@ void main() {
     expect(matchedDistance, lessThanOrEqualTo(0.2));
     expect(props['anchorEndItemId'], '2');
     expect(props['anchorEndSide'], anyOf('inlet', 'outlet'));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Build 150 tee and elbow migrate to half-size visuals while keeping usable hitboxes',
+      (tester) async {
+    const teeCenter = Offset(210, 210);
+    const elbowCenter = Offset(340, 210);
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'teeRight',
+            x: teeCenter.dx - 21, y: teeCenter.dy - 21, width: 42, height: 42),
+        _equipmentItem(2, 'elbowUpRight',
+            x: elbowCenter.dx - 21,
+            y: elbowCenter.dy - 21,
+            width: 42,
+            height: 42),
+      ],
+      selectedId: 1,
+    );
+
+    await _saveRigUp(tester);
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final tee = _findById(items, 1);
+    final elbow = _findById(items, 2);
+    expect((tee['width'] as num).toDouble(), closeTo(21.0, 0.01));
+    expect((tee['height'] as num).toDouble(), closeTo(21.0, 0.01));
+    expect((elbow['width'] as num).toDouble(), closeTo(21.0, 0.01));
+    expect((elbow['height'] as num).toDouble(), closeTo(21.0, 0.01));
+
+    final teeCenterAfter = Offset(
+      (tee['x'] as num).toDouble() + (tee['width'] as num).toDouble() / 2,
+      (tee['y'] as num).toDouble() + (tee['height'] as num).toDouble() / 2,
+    );
+    final elbowCenterAfter = Offset(
+      (elbow['x'] as num).toDouble() + (elbow['width'] as num).toDouble() / 2,
+      (elbow['y'] as num).toDouble() + (elbow['height'] as num).toDouble() / 2,
+    );
+    expect(teeCenterAfter.dx, closeTo(teeCenter.dx, 0.01));
+    expect(teeCenterAfter.dy, closeTo(teeCenter.dy, 0.01));
+    expect(elbowCenterAfter.dx, closeTo(elbowCenter.dx, 0.01));
+    expect(elbowCenterAfter.dy, closeTo(elbowCenter.dy, 0.01));
+
+    final teeHitbox =
+        tester.getRect(find.byKey(const ValueKey<String>('item-hitbox-1')));
+    final elbowHitbox =
+        tester.getRect(find.byKey(const ValueKey<String>('item-hitbox-2')));
+    expect(teeHitbox.width, closeTo(45.0, 0.5));
+    expect(teeHitbox.height, closeTo(45.0, 0.5));
+    expect(elbowHitbox.width, closeTo(45.0, 0.5));
+    expect(elbowHitbox.height, closeTo(45.0, 0.5));
+
+    final teeBranch = _fittingAnchorFromMap(tee, 'branch');
+    expect(teeBranch.dx, greaterThan(teeCenter.dx));
+    expect(teeBranch.dy, closeTo(teeCenter.dy, 0.5));
+    final elbowOutlet = _fittingAnchorFromMap(elbow, 'outlet');
+    expect(elbowOutlet.dx, greaterThan(elbowCenter.dx));
+    expect(elbowOutlet.dy, closeTo(elbowCenter.dy, 0.5));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
