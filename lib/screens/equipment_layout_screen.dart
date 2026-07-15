@@ -64,6 +64,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   final Map<int, Offset> _dragItemStart = <int, Offset>{};
   final Map<int, _BypassDragContext> _bypassDragContexts =
       <int, _BypassDragContext>{};
+  final Set<int> _activeFreeDragItemIds = <int>{};
   bool? _selectedEndpointLeading;
   String? _selectedBypassHandle;
   String? _selectedBypassLeadId;
@@ -259,6 +260,155 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   void _clearDragPreview() {
     _dragPreviewItemId = null;
     _dragPreviewScenePosition = null;
+  }
+
+  void _detachConnectionsForFreeFittingDrag(_LayoutItem fitting) {
+    _clearFittingAnchors(fitting);
+    _clearInlineParentAttachment(fitting);
+
+    for (final other in _items) {
+      if (other.id == fitting.id) continue;
+      if (_isStraightIronType(other.type)) {
+        for (final leading in const <bool>[true, false]) {
+          final anchorItemId = int.tryParse(
+              other.properties[_endpointAnchorItemKey(leading)] ?? '');
+          if (anchorItemId == fitting.id) {
+            _clearEndpointAttachment(other, leading);
+          }
+        }
+      }
+
+      if (other.type == _EquipmentType.bypass) {
+        for (final leadId in _bypassLeadIds) {
+          final target = _bypassLeadStoredTarget(other, leadId);
+          if (target?.equipmentItemId == fitting.id) {
+            final endpoint = _resolveBypassLeadEndpointWorld(other, leadId);
+            _setBypassLeadTarget(
+              other,
+              leadId,
+              kind: null,
+              targetItemId: null,
+              side: null,
+            );
+            _setBypassLeadEndpointWorld(other, leadId, endpoint);
+          }
+        }
+      }
+
+      if (_isFittingEndpointConnectableType(other.type)) {
+        for (final side in _fittingEndpointSides(other)) {
+          final anchorItemId =
+              int.tryParse(other.properties[_fittingAnchorItemKey(side)] ?? '');
+          if (anchorItemId == fitting.id) {
+            _setFittingAnchor(
+              other,
+              side,
+              anchorItemId: null,
+              anchorSide: null,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  void _beginFreeItemDrag(List<_LayoutItem> moving, Offset sceneStart) {
+    _interactionMode = _InteractionMode.itemDrag;
+    _activeEndpointDrag = null;
+    _snapIndicatorScene = null;
+    _dragSceneStart = sceneStart;
+    _selectedEndpointLeading = null;
+    _dragActive = false;
+    _clearDragPreview();
+    _bypassDragContexts.clear();
+    _activeFreeDragItemIds
+      ..clear()
+      ..addAll(moving.map((it) => it.id));
+    _dragItemStart
+      ..clear()
+      ..addEntries(moving.map((it) => MapEntry(it.id, Offset(it.x, it.y))));
+
+    for (final it in moving) {
+      if (_isFittingEndpointConnectableType(it.type)) {
+        _detachConnectionsForFreeFittingDrag(it);
+      }
+      if (!_isInlineFittingType(it.type)) continue;
+      final parentIron = _inlineParentIron(it);
+      final parentT = _inlineParentT(it);
+      final attached = parentIron != null && parentT != null;
+      if (!_usesInlineParentDragConstraint(it.type) && attached) {
+        _clearInlineParentAttachment(it);
+      }
+      _bypassDragContexts[it.id] = _BypassDragContext(
+        startTopLeft: Offset(it.x, it.y),
+        startCenter: _attachmentSpineCenterWorld(it, parentIron: parentIron),
+        wasAttached: _usesInlineParentDragConstraint(it.type) && attached,
+        parentIronId: parentIron?.id,
+        startT: parentT,
+        attachedSegmentId: _inlineAttachedSegmentId(it),
+        blockedParentIronId: parentIron?.id,
+        reconnectAllowed:
+            !_usesInlineParentDragConstraint(it.type) || !attached,
+      );
+    }
+  }
+
+  void _applyFreeDraggedItemPosition(
+    _LayoutItem item,
+    Offset desiredTopLeft,
+    Size canvasSize,
+  ) {
+    if (_usesInlineParentDragConstraint(item.type)) {
+      final context = _bypassDragContexts[item.id];
+      if (context != null) {
+        _applyInlineAttachedDrag(
+          item,
+          context,
+          desiredTopLeft - (context.startTopLeft),
+          canvasSize,
+        );
+        return;
+      }
+    }
+    _setBypassTopLeft(item, desiredTopLeft, canvasSize);
+  }
+
+  void _updateFreeItemDrag(List<_LayoutItem> moving, Offset delta) {
+    if (!_dragActive && delta.distance < _dragStartThreshold) {
+      return;
+    }
+
+    if (!_dragActive) {
+      _recordUndo();
+      _dragActive = true;
+    }
+
+    setState(() {
+      final canvasSize = _virtualCanvasSize;
+      _snapCandidateIronId = null;
+      _snapIndicatorScene = null;
+      _clearDragPreview();
+      for (final it in moving) {
+        if (_segmentMoveBlocked(it)) continue;
+        final origin = _dragItemStart[it.id] ?? Offset(it.x, it.y);
+        final desired = Offset(origin.dx + delta.dx, origin.dy + delta.dy);
+        _applyFreeDraggedItemPosition(it, desired, canvasSize);
+        if (_isFittingEndpointConnectableType(it.type)) {
+          final fittingCandidate = _nearestFittingEndpointSnapCandidate(
+            it,
+            radiusScreen: _connectionPreviewRadiusScreen,
+          );
+          if (fittingCandidate != null) {
+            _snapIndicatorScene = fittingCandidate.target.point;
+          }
+        }
+        if (it.id == _selectedId && !it.type.isIron) {
+          _dragPreviewItemId = it.id;
+          _dragPreviewScenePosition =
+              Offset(it.x + it.width / 2, it.y + it.height / 2);
+        }
+      }
+    });
   }
 
   Future<void> _persistShowLabelsPreference() async {
@@ -3224,6 +3374,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     Offset delta,
     Size canvasSize,
   ) {
+    assert(
+      !_activeFreeDragItemIds.contains(item.id) ||
+          _usesInlineParentDragConstraint(item.type),
+      'Only the shared free-drag controller may move an active Tee/90.',
+    );
     final desiredTopLeft = Offset(
       context.startTopLeft.dx + delta.dx,
       context.startTopLeft.dy + delta.dy,
@@ -3419,39 +3574,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       return;
     }
     _interactionMode = _InteractionMode.itemDrag;
-    _activeEndpointDrag = null;
-    _snapIndicatorScene = null;
-    _dragSceneStart = _scenePointFromGlobal(details.globalPosition);
-    _selectedEndpointLeading = null;
-    _dragActive = false;
-    _clearDragPreview();
-    _bypassDragContexts.clear();
-    _dragItemStart
-      ..clear()
-      ..addEntries(moving.map((it) => MapEntry(it.id, Offset(it.x, it.y))));
-    for (final it in moving) {
-      if (_isFittingEndpointConnectableType(it.type)) {
-        _clearFittingAnchors(it);
-      }
-      if (!_isInlineFittingType(it.type)) continue;
-      final parentIron = _inlineParentIron(it);
-      final parentT = _inlineParentT(it);
-      final attached = parentIron != null && parentT != null;
-      if (!_usesInlineParentDragConstraint(it.type) && attached) {
-        _clearInlineParentAttachment(it);
-      }
-      _bypassDragContexts[it.id] = _BypassDragContext(
-        startTopLeft: Offset(it.x, it.y),
-        startCenter: _attachmentSpineCenterWorld(it, parentIron: parentIron),
-        wasAttached: _usesInlineParentDragConstraint(it.type) && attached,
-        parentIronId: parentIron?.id,
-        startT: parentT,
-        attachedSegmentId: _inlineAttachedSegmentId(it),
-        blockedParentIronId: parentIron?.id,
-        reconnectAllowed:
-            !_usesInlineParentDragConstraint(it.type) || !attached,
-      );
-    }
+    _beginFreeItemDrag(moving, _scenePointFromGlobal(details.globalPosition));
     if (mounted) {
       setState(() {});
     }
@@ -3474,51 +3597,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final scenePoint = _scenePointFromGlobal(details.globalPosition);
     final delta = scenePoint - start;
 
-    if (!_dragActive && delta.distance < _dragStartThreshold) {
-      return;
-    }
-
-    if (!_dragActive) {
-      _recordUndo();
-      _dragActive = true;
-    }
-
-    setState(() {
-      final canvasSize = _virtualCanvasSize;
-      _snapCandidateIronId = null;
-      _snapIndicatorScene = null;
-      _clearDragPreview();
-      for (final it in moving) {
-        if (_segmentMoveBlocked(it)) continue;
-        final origin = _dragItemStart[it.id] ?? Offset(it.x, it.y);
-        final desired = Offset(origin.dx + delta.dx, origin.dy + delta.dy);
-        if (_isInlineFittingType(it.type)) {
-          final context = _bypassDragContexts[it.id];
-          if (context != null && _usesInlineParentDragConstraint(it.type)) {
-            _applyInlineAttachedDrag(it, context, delta, canvasSize);
-          } else {
-            _setBypassTopLeft(it, desired, canvasSize);
-          }
-        } else {
-          it.x = desired.dx.clamp(0.0, canvasSize.width - it.width);
-          it.y = desired.dy.clamp(0.0, canvasSize.height - it.height);
-        }
-        if (_isFittingEndpointConnectableType(it.type)) {
-          final fittingCandidate = _nearestFittingEndpointSnapCandidate(
-            it,
-            radiusScreen: _connectionPreviewRadiusScreen,
-          );
-          if (fittingCandidate != null) {
-            _snapIndicatorScene = fittingCandidate.target.point;
-          }
-        }
-        if (it.id == _selectedId && !it.type.isIron) {
-          _dragPreviewItemId = it.id;
-          _dragPreviewScenePosition =
-              Offset(it.x + it.width / 2, it.y + it.height / 2);
-        }
-      }
-    });
+    _updateFreeItemDrag(moving, delta);
   }
 
   void _endItemDrag(_LayoutItem anchor) {
@@ -3564,6 +3643,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     setState(() {
       _dragSceneStart = null;
       _dragItemStart.clear();
+      _activeFreeDragItemIds.clear();
       _bypassDragContexts.clear();
       _dragActive = false;
       _activeEndpointDrag = null;
