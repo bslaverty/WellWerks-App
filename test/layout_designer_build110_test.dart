@@ -100,6 +100,13 @@ Map<String, Offset> _anchorFractionsForType(String type) {
         'bottom': const Offset(0.5, 0.84),
         'left': const Offset(0.18, 0.5),
       };
+    case 'bypass':
+      return <String, Offset>{
+        'mainTop': const Offset(0.28, 0.14),
+        'mainBottom': const Offset(0.28, 0.86),
+        'upperValveOutlet': const Offset(0.82, 0.34),
+        'lowerValveOutlet': const Offset(0.82, 0.66),
+      };
     case 'teeUp':
       return <String, Offset>{
         'runStart': const Offset(0.08, 0.5),
@@ -183,6 +190,21 @@ Offset _fittingAnchorFromMap(Map<String, dynamic> item, String side) {
     throw StateError('Unsupported side "$side" for type $type in test helper');
   }
   final local = Offset(width * uv.dx, height * uv.dy);
+  final rotated = _rotateLocal(local, Size(width, height), turns);
+  return Offset(x + rotated.dx, y + rotated.dy);
+}
+
+Offset _bypassLeadEndpointFromMap(Map<String, dynamic> item, String leadId) {
+  final x = (item['x'] as num).toDouble();
+  final y = (item['y'] as num).toDouble();
+  final width = (item['width'] as num).toDouble();
+  final height = (item['height'] as num).toDouble();
+  final turns = (item['rotationTurns'] as num?)?.toInt() ?? 0;
+  final props = (item['properties'] as Map).cast<String, dynamic>();
+  final local = Offset(
+    double.parse(props['bypassLead${leadId}EndX'] as String),
+    double.parse(props['bypassLead${leadId}EndY'] as String),
+  );
   final rotated = _rotateLocal(local, Size(width, height), turns);
   return Offset(x + rotated.dx, y + rotated.dy);
 }
@@ -283,13 +305,12 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 148', () async {
+  test('Build number is 149', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+148'));
+    expect(pubspec, contains('version: 1.0.1+149'));
   });
 
-  testWidgets('Build 134 selected bypass keeps full artwork and no handle dots',
-      (tester) async {
+  testWidgets('Selected bypass shows built-in lead handles', (tester) async {
     await _pumpLayout(
       tester,
       items: <Map<String, dynamic>>[
@@ -306,10 +327,10 @@ void main() {
       selectedId: 1,
     );
 
-    expect(find.byKey(const ValueKey<String>('bypass-handle-1-primary')),
-        findsNothing);
-    expect(find.byKey(const ValueKey<String>('bypass-handle-1-secondary')),
-        findsNothing);
+    expect(find.byKey(const ValueKey<String>('bypass-lead-handle-1-leadA')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('bypass-lead-handle-1-leadB')),
+        findsOneWidget);
 
     await _saveRigUp(tester);
     final items = _itemsFromPayload(await _savedLayoutPayload());
@@ -2526,6 +2547,128 @@ void main() {
     final iron = _findById(items, 1);
     expect((iron['width'] as num).toDouble(), greaterThan(120));
     expect((iron['y'] as num).toDouble(), closeTo(220, 0.01));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('New bypass creates two built-in leads anchored to bypass ports',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _bypassItem(1, x: 180, y: 110),
+      ],
+      selectedId: 1,
+    );
+
+    await _saveRigUp(tester);
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final bypass = _findById(items, 1);
+    final props = (bypass['properties'] as Map).cast<String, dynamic>();
+    expect(props['bypassLeadleadAOriginPortId'], 'upperValveOutlet');
+    expect(props['bypassLeadleadBOriginPortId'], 'lowerValveOutlet');
+    final originA = _fittingAnchorFromMap(bypass, 'upperValveOutlet');
+    final originB = _fittingAnchorFromMap(bypass, 'lowerValveOutlet');
+    final endA = _bypassLeadEndpointFromMap(bypass, 'leadA');
+    final endB = _bypassLeadEndpointFromMap(bypass, 'leadB');
+    expect((endA - originA).distance, greaterThan(8.0));
+    expect((endB - originB).distance, greaterThan(8.0));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Legacy bypass receives default built-in leads on load',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 1,
+          'type': 'bypass',
+          'x': 180.0,
+          'y': 110.0,
+          'width': 30.0,
+          'height': 32.0,
+          'properties': <String, String>{'ironSize': '3'},
+          'rotationTurns': 0,
+          'locked': false,
+        },
+      ],
+    );
+
+    await _saveRigUp(tester);
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final bypass = _findById(items, 1);
+    final props = (bypass['properties'] as Map).cast<String, dynamic>();
+    expect(props['bypassLeadleadAEndX'], isNotNull);
+    expect(props['bypassLeadleadAEndY'], isNotNull);
+    expect(props['bypassLeadleadBEndX'], isNotNull);
+    expect(props['bypassLeadleadBEndY'], isNotNull);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Bypass lead geometry persists without moving bypass or equipment',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _bypassItem(1, x: 180, y: 110, properties: <String, String>{
+          'bypassLeadleadAEndX': '52.6000',
+          'bypassLeadleadAEndY': '10.8800',
+          'bypassLeadleadBEndX': '52.6000',
+          'bypassLeadleadBEndY': '21.1200',
+        }),
+        _equipmentItem(2, 'wellhead', x: 420, y: 120, width: 30, height: 28),
+      ],
+      selectedId: 1,
+    );
+
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final bypass = _findById(items, 1);
+    final equipment = _findById(items, 2);
+    expect((bypass['x'] as num).toDouble(), closeTo(198.0, 0.01));
+    expect((bypass['y'] as num).toDouble(), closeTo(111.0, 0.01));
+    expect((equipment['x'] as num).toDouble(), closeTo(420.0, 0.01));
+    expect((equipment['y'] as num).toDouble(), closeTo(120.0, 0.01));
+    final endA = _bypassLeadEndpointFromMap(bypass, 'leadA');
+    final originA = _fittingAnchorFromMap(bypass, 'upperValveOutlet');
+    expect((endA - originA).distance, greaterThanOrEqualTo(28.0));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Bypass connected lead resolves exact target coordinate on reload',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _bypassItem(1, x: 180, y: 110, properties: <String, String>{
+          'bypassLeadleadATargetKind': 'equipmentAnchor',
+          'bypassLeadleadATargetItemId': '2',
+          'bypassLeadleadATargetSide': 'left',
+        }),
+        _equipmentItem(2, 'wellhead', x: 420, y: 120, width: 30, height: 28),
+      ],
+      selectedId: 1,
+    );
+
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final bypass = _findById(items, 1);
+    final equipment = _findById(items, 2);
+    final props = (bypass['properties'] as Map).cast<String, dynamic>();
+    expect(props['bypassLeadleadATargetItemId'], '2');
+    expect(props['bypassLeadleadATargetSide'],
+        anyOf('top', 'right', 'bottom', 'left'));
+    final target = _fittingAnchorFromMap(
+        equipment, props['bypassLeadleadATargetSide'] as String);
+    expect(target.dx, greaterThan(0));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
