@@ -365,9 +365,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 158', () async {
+  test('Build number is 159', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+158'));
+    expect(pubspec, contains('version: 1.0.1+159'));
   });
 
   testWidgets('Selected bypass shows built-in lead handles', (tester) async {
@@ -797,9 +797,11 @@ void main() {
 
     final menu = find.byKey(const ValueKey<String>('port-action-menu'));
     expect(menu, findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('port-action-add-iron')),
+    expect(find.byKey(const ValueKey<String>('port-action-straight-iron')),
         findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('port-action-auto-connect')),
+    expect(find.byKey(const ValueKey<String>('port-action-add-90')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('port-action-add-tee')),
         findsOneWidget);
     expect(find.byKey(const ValueKey<String>('port-action-cancel')),
         findsOneWidget);
@@ -820,33 +822,6 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('port-action-cancel')));
     await tester.pumpAndSettle();
     expect(menu, findsNothing);
-
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-  });
-
-  testWidgets('Auto Connect enters destination mode without global port flood',
-      (tester) async {
-    await _pumpLayout(
-      tester,
-      items: <Map<String, dynamic>>[
-        _equipmentItem(1, 'wellhead', x: 180, y: 220, width: 30, height: 28),
-        _equipmentItem(2, 'plugCatcher',
-            x: 360, y: 231.92, width: 40, height: 26),
-      ],
-      selectedId: 1,
-    );
-
-    await tester.tapAt(const Offset(220.6, 482.0));
-    await tester.pumpAndSettle();
-    await tester
-        .tap(find.byKey(const ValueKey<String>('port-action-auto-connect')));
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const ValueKey<String>('auto-connect-instruction')),
-        findsOneWidget);
-    expect(find.text('Select destination connection point'), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('connect-anchor-2-left')),
-        findsNothing);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -888,7 +863,7 @@ void main() {
   });
 
   testWidgets(
-      'Attached Tee keeps independent open ports and Auto Connect works from open branch',
+      'Attached Tee keeps independent open ports and opens port menu from open branch',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -939,60 +914,20 @@ void main() {
     await tester.tap(find.byKey(
         const ValueKey<String>('selected-port-1-equipmentAnchor-1-branch')));
     await tester.pumpAndSettle();
-    await tester
-        .tap(find.byKey(const ValueKey<String>('port-action-auto-connect')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('item-hitbox-3')));
-    await tester.pumpAndSettle();
-    final targetHitbox3 =
-        tester.getRect(find.byKey(const ValueKey<String>('item-hitbox-3')));
-    await tester.tapAt(
-      Offset(targetHitbox3.left + 15, targetHitbox3.center.dy),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const ValueKey<String>('auto-connect-instruction')),
-        findsNothing);
+    expect(
+        find.byKey(const ValueKey<String>('port-action-menu')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('port-action-straight-iron')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('port-action-add-90')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('port-action-add-tee')),
+        findsOneWidget);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
   testWidgets(
-      'Auto Connect connects diagonal ports with exact endpoint coordinates and no alignment warning',
-      (tester) async {
-    await _pumpLayout(
-      tester,
-      items: <Map<String, dynamic>>[
-        _equipmentItem(1, 'wellhead', x: 180, y: 220, width: 30, height: 28),
-        _equipmentItem(2, 'plugCatcher', x: 360, y: 206, width: 40, height: 26),
-      ],
-      selectedId: 1,
-    );
-
-    await tester.tapAt(const Offset(220.6, 482.0));
-    await tester.pumpAndSettle();
-    await tester
-        .tap(find.byKey(const ValueKey<String>('port-action-auto-connect')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('item-hitbox-2')));
-    await tester.pumpAndSettle();
-    final targetHitbox2 =
-        tester.getRect(find.byKey(const ValueKey<String>('item-hitbox-2')));
-    await tester.tapAt(
-      Offset(targetHitbox2.left + 15, targetHitbox2.center.dy),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Ports are not aligned. Add a 90° fitting first.'),
-        findsNothing);
-    expect(find.byKey(const ValueKey<String>('auto-connect-instruction')),
-        findsNothing);
-
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-  });
-
-  testWidgets(
-      'Auto Connect cancel exits destination mode without creating iron',
+      '90 from selected open port creates attached elbow with anchored inlet',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1002,29 +937,63 @@ void main() {
       selectedId: 1,
     );
 
-    await tester.tapAt(const Offset(220.6, 482.0));
+    await tester.tap(find.byKey(
+        const ValueKey<String>('selected-port-1-equipmentAnchor-1-right')));
     await tester.pumpAndSettle();
-    await tester
-        .tap(find.byKey(const ValueKey<String>('port-action-auto-connect')));
+    await tester.tap(find.byKey(const ValueKey<String>('port-action-add-90')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('auto-connect-cancel')));
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const ValueKey<String>('auto-connect-instruction')),
-        findsNothing);
 
     await _saveRigUp(tester);
     final items = _itemsFromPayload(await _savedLayoutPayload());
-    expect(
-      items.where((item) => (item['type'] as String).startsWith('iron')),
-      isEmpty,
+    final elbow = items.firstWhere(
+      (item) => (item['type'] as String).startsWith('elbow'),
     );
+    final inlet = _fittingAnchorFromMap(elbow, 'inlet');
+    final source = _targetPointFromMap(_findById(items, 1), 'right');
+    final props = (elbow['properties'] as Map).cast<String, dynamic>();
+    expect(props['fittingAnchor_inletItemId'], '1');
+    expect(props['fittingAnchor_inletSide'], 'right');
+    expect(inlet.dx, closeTo(source.dx, 0.2));
+    expect(inlet.dy, closeTo(source.dy, 0.2));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
   testWidgets(
-      'Add Iron from right-facing tee port creates horizontal iron to the right',
+      'Tee from selected open port creates attached tee with anchored branch',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'wellhead', x: 180, y: 220, width: 30, height: 28),
+      ],
+      selectedId: 1,
+    );
+
+    await tester.tap(find.byKey(
+        const ValueKey<String>('selected-port-1-equipmentAnchor-1-right')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('port-action-add-tee')));
+    await tester.pumpAndSettle();
+
+    await _saveRigUp(tester);
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final tee = items.firstWhere(
+      (item) => (item['type'] as String).startsWith('tee'),
+    );
+    final branch = _fittingAnchorFromMap(tee, 'branch');
+    final source = _targetPointFromMap(_findById(items, 1), 'right');
+    final props = (tee['properties'] as Map).cast<String, dynamic>();
+    expect(props['fittingAnchor_branchItemId'], '1');
+    expect(props['fittingAnchor_branchSide'], 'right');
+    expect(branch.dx, closeTo(source.dx, 0.2));
+    expect(branch.dy, closeTo(source.dy, 0.2));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Straight Iron from right-facing tee port creates horizontal iron to the right',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1037,7 +1006,7 @@ void main() {
     await tester.tapAt(const Offset(210.64, 478.5));
     await tester.pumpAndSettle();
     await tester
-        .tap(find.byKey(const ValueKey<String>('port-action-add-iron')));
+        .tap(find.byKey(const ValueKey<String>('port-action-straight-iron')));
     await tester.pumpAndSettle();
     await _saveRigUp(tester);
 
@@ -1059,7 +1028,7 @@ void main() {
   });
 
   testWidgets(
-      'Add Iron from left-facing tee port creates horizontal iron to the left',
+      'Straight Iron from left-facing tee port creates horizontal iron to the left',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1072,7 +1041,7 @@ void main() {
     await tester.tapAt(const Offset(196.36, 478.5));
     await tester.pumpAndSettle();
     await tester
-        .tap(find.byKey(const ValueKey<String>('port-action-add-iron')));
+        .tap(find.byKey(const ValueKey<String>('port-action-straight-iron')));
     await tester.pumpAndSettle();
     await _saveRigUp(tester);
 
@@ -1093,7 +1062,8 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Add Iron from top-facing port remains vertical', (tester) async {
+  testWidgets('Straight Iron from top-facing port remains vertical',
+      (tester) async {
     await _pumpLayout(
       tester,
       items: <Map<String, dynamic>>[
@@ -1105,7 +1075,7 @@ void main() {
     await tester.tapAt(const Offset(208.0, 470.24));
     await tester.pumpAndSettle();
     await tester
-        .tap(find.byKey(const ValueKey<String>('port-action-add-iron')));
+        .tap(find.byKey(const ValueKey<String>('port-action-straight-iron')));
     await tester.pumpAndSettle();
 
     await _saveRigUp(tester);

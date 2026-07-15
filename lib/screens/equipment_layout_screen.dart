@@ -5302,7 +5302,34 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     return Offset(vector.dx / vector.distance, vector.dy / vector.distance);
   }
 
-  void _createShortIronFromPort(_ConnectionTarget source) {
+  Offset _normalizedDirection(Offset value) {
+    final length = value.distance;
+    if (length <= 1e-6) {
+      return const Offset(1, 0);
+    }
+    return Offset(value.dx / length, value.dy / length);
+  }
+
+  Offset? _fittingAnchorLocalPoint(_EquipmentType type, String side) {
+    final prototype = _LayoutItem(
+      id: -1,
+      type: type,
+      x: 0,
+      y: 0,
+      width: type.defaultWidth,
+      height: type.defaultHeight,
+    );
+    return _equipmentAnchorPointOrNull(prototype, side);
+  }
+
+  Offset _fittingSideOutwardDirection(_EquipmentType type, String side) {
+    final anchor = _fittingAnchorLocalPoint(type, side);
+    if (anchor == null) return const Offset(1, 0);
+    final center = Offset(type.defaultWidth / 2, type.defaultHeight / 2);
+    return _normalizedDirection(anchor - center);
+  }
+
+  void _createStraightIronFromPort(_ConnectionTarget source) {
     final vector = _portOutwardVector(source);
     if (vector == Offset.zero) return;
     final horizontal = vector.dx.abs() >= vector.dy.abs();
@@ -5362,6 +5389,125 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _pendingContinueIronSize = _drawIronSize;
     });
     _appendHistoryEntry('Added iron');
+  }
+
+  void _createFittingFromPort(
+    _ConnectionTarget source, {
+    required bool tee,
+  }) {
+    final sourceDirection = _normalizedDirection(_portOutwardVector(source));
+    final desiredAttachDirection =
+        Offset(-sourceDirection.dx, -sourceDirection.dy);
+    final candidateTypes = tee
+        ? const <_EquipmentType>[
+            _EquipmentType.teeUp,
+            _EquipmentType.teeRight,
+            _EquipmentType.teeDown,
+            _EquipmentType.teeLeft,
+          ]
+        : const <_EquipmentType>[
+            _EquipmentType.elbowUpRight,
+            _EquipmentType.elbowRightDown,
+            _EquipmentType.elbowDownLeft,
+            _EquipmentType.elbowLeftUp,
+          ];
+    final attachSide = tee ? 'branch' : 'inlet';
+
+    _EquipmentType bestType = candidateTypes.first;
+    var bestScore = -double.infinity;
+    for (final type in candidateTypes) {
+      final outward = _fittingSideOutwardDirection(type, attachSide);
+      final score = (outward.dx * desiredAttachDirection.dx) +
+          (outward.dy * desiredAttachDirection.dy);
+      if (score > bestScore) {
+        bestScore = score;
+        bestType = type;
+      }
+    }
+
+    final anchorPoint = _fittingAnchorLocalPoint(bestType, attachSide);
+    if (anchorPoint == null) return;
+    final canvasSize = _virtualCanvasSize;
+    final rawX = source.point.dx - anchorPoint.dx;
+    final rawY = source.point.dy - anchorPoint.dy;
+
+    _runHistoryChange(() {
+      final id = _nextId++;
+      final fitting = _LayoutItem(
+        id: id,
+        type: bestType,
+        x: rawX.clamp(0.0, canvasSize.width - bestType.defaultWidth),
+        y: rawY.clamp(0.0, canvasSize.height - bestType.defaultHeight),
+        width: bestType.defaultWidth,
+        height: bestType.defaultHeight,
+        properties: <String, String>{'ironSize': _drawIronSize},
+      );
+      _items.add(fitting);
+
+      if (source.kind == _ConnectionTargetKind.equipmentAnchor) {
+        final sourceItemId = source.equipmentItemId;
+        final sourceSide = source.anchorId;
+        if (sourceItemId != null &&
+            sourceSide != null &&
+            sourceSide.isNotEmpty) {
+          _setFittingAnchor(
+            fitting,
+            attachSide,
+            anchorItemId: sourceItemId,
+            anchorSide: sourceSide,
+          );
+        }
+      } else {
+        final sourceIron = source.ironItemId == null
+            ? null
+            : _findItemById(source.ironItemId!);
+        final sourceLeading = source.ironLeading;
+        if (sourceIron != null &&
+            sourceLeading != null &&
+            _isStraightIronType(sourceIron.type)) {
+          _setFittingAnchor(
+            fitting,
+            attachSide,
+            anchorItemId: sourceIron.id,
+            anchorSide: sourceLeading ? 'start' : 'end',
+          );
+          _attachIronEndpointToFitting(
+            sourceIron,
+            sourceLeading,
+            fitting,
+            attachSide,
+          );
+        }
+      }
+
+      _reflowSnappedFittings();
+      _selectedId = id;
+      _selectedIds
+        ..clear()
+        ..add(id);
+      _selectedEndpointLeading = null;
+      _selectedPortTarget = null;
+      _pendingConnectIronSourceTarget = null;
+      _autoConnectDestinationItemId = null;
+      _autoConnectMode = false;
+      _drawIronMode = false;
+      _interactionMode = _InteractionMode.idle;
+      _drawIronStartTarget = null;
+      _drawIronHoverTarget = null;
+      _drawIronPointerScene = null;
+      _pendingContinueIronTarget = null;
+      _pendingContinueIronSize = null;
+      _snapIndicatorScene = null;
+    });
+    _appendHistoryEntry(tee ? 'Added tee' : 'Added 90° fitting');
+  }
+
+  void _createNinetyFromPort(_ConnectionTarget source) {
+    _createFittingFromPort(source, tee: false);
+  }
+
+  void _createTeeFromPort(_ConnectionTarget source) {
+    _createFittingFromPort(source, tee: true);
   }
 
   void _createIronBetweenPorts(
@@ -9547,16 +9693,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               style: _compactFilledStyle(highlighted: true),
             ),
             const SizedBox(width: 8),
-            FilledButton.icon(
-              onPressed: () {
-                setState(() => _showSideLibrary = true);
-                _enterDrawIronMode(minimizeLibrary: false);
-              },
-              icon: const Icon(Icons.edit_road),
-              label: const Text('Add Iron'),
-              style: _compactFilledStyle(highlighted: _drawIronMode),
-            ),
-            const SizedBox(width: 8),
             OutlinedButton.icon(
               onPressed: () {
                 if (!_drawIronMode) return;
@@ -10695,15 +10831,74 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   Widget _portActionMenuOverlay(Size viewportSize) {
     final selectedPort = _selectedPortForSelectedItem();
-    if (selectedPort == null || _autoConnectMode) {
+    if (selectedPort == null) {
       return const SizedBox.shrink();
     }
+
+    final menuEntries = <_PortBuildActionEntry>[
+      _PortBuildActionEntry(
+        key: 'straight-iron',
+        label: 'Straight Iron',
+        icon: Icons.edit_road,
+        enabled: true,
+        highlighted: true,
+        onTap: () => _createStraightIronFromPort(selectedPort),
+      ),
+      _PortBuildActionEntry(
+        key: 'add-90',
+        label: '90°',
+        icon: Icons.turn_right,
+        enabled: true,
+        onTap: () => _createNinetyFromPort(selectedPort),
+      ),
+      _PortBuildActionEntry(
+        key: 'add-tee',
+        label: 'Tee',
+        icon: Icons.call_split,
+        enabled: true,
+        onTap: () => _createTeeFromPort(selectedPort),
+      ),
+      const _PortBuildActionEntry(
+        key: 'valve-placeholder',
+        label: 'Valve',
+        icon: Icons.tune,
+        enabled: false,
+      ),
+      const _PortBuildActionEntry(
+        key: 'blind-placeholder',
+        label: 'Blind',
+        icon: Icons.block,
+        enabled: false,
+      ),
+      const _PortBuildActionEntry(
+        key: 'cap-placeholder',
+        label: 'Cap',
+        icon: Icons.circle,
+        enabled: false,
+      ),
+      const _PortBuildActionEntry(
+        key: 'reducer-placeholder',
+        label: 'Reducer',
+        icon: Icons.straighten,
+        enabled: false,
+      ),
+      _PortBuildActionEntry(
+        key: 'cancel',
+        label: 'Cancel',
+        icon: Icons.cancel_outlined,
+        enabled: true,
+        onTap: () => _clearPortSelection(),
+      ),
+    ];
+    final visibleEntries =
+        menuEntries.where((entry) => entry.enabled).toList(growable: false);
 
     final anchor = _viewportPointFromScene(selectedPort.point);
     const menuWidth = 176.0;
     const rowHeight = 44.0;
     const verticalPadding = 8.0;
-    const menuHeight = rowHeight * 3 + (verticalPadding * 2);
+    final menuHeight =
+        rowHeight * visibleEntries.length + (verticalPadding * 2);
     const edgePadding = 8.0;
     const gap = 14.0;
 
@@ -10800,25 +10995,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              actionRow(
-                key: const ValueKey<String>('port-action-add-iron'),
-                label: 'Add Iron',
-                icon: Icons.playlist_add,
-                highlighted: true,
-                onTap: () => _createShortIronFromPort(selectedPort),
-              ),
-              actionRow(
-                key: const ValueKey<String>('port-action-auto-connect'),
-                label: 'Auto Connect',
-                icon: Icons.call_split,
-                onTap: _startAutoConnectFromSelectedPort,
-              ),
-              actionRow(
-                key: const ValueKey<String>('port-action-cancel'),
-                label: 'Cancel',
-                icon: Icons.cancel_outlined,
-                onTap: () => _cancelAutoConnect(clearSelectedPort: true),
-              ),
+              for (final entry in visibleEntries)
+                actionRow(
+                  key: ValueKey<String>('port-action-${entry.key}'),
+                  label: entry.label,
+                  icon: entry.icon,
+                  highlighted: entry.highlighted,
+                  onTap: entry.onTap!,
+                ),
             ],
           ),
         ),
@@ -11719,6 +11903,24 @@ class _ActiveBypassLeadDrag {
     required this.blockedOrigin,
     required this.reconnectAllowed,
     required this.historyRecorded,
+  });
+}
+
+class _PortBuildActionEntry {
+  final String key;
+  final String label;
+  final IconData icon;
+  final bool enabled;
+  final bool highlighted;
+  final VoidCallback? onTap;
+
+  const _PortBuildActionEntry({
+    required this.key,
+    required this.label,
+    required this.icon,
+    required this.enabled,
+    this.highlighted = false,
+    this.onTap,
   });
 }
 
