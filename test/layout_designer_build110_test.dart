@@ -189,7 +189,19 @@ Offset _fittingAnchorFromMap(Map<String, dynamic> item, String side) {
   if (uv == null) {
     throw StateError('Unsupported side "$side" for type $type in test helper');
   }
-  final local = Offset(width * uv.dx, height * uv.dy);
+  var local = Offset(width * uv.dx, height * uv.dy);
+  final isFittingEndpointConnectable =
+      type.startsWith('tee') || type.startsWith('elbow');
+  if (isFittingEndpointConnectable) {
+    final shortest = math.min(width, height);
+    final inset = shortest < 66 ? 2.0 : 3.0;
+    final usableWidth = math.max(0.0, width - inset * 2);
+    final usableHeight = math.max(0.0, height - inset * 2);
+    local = Offset(
+      inset + uv.dx * usableWidth,
+      inset + uv.dy * usableHeight,
+    );
+  }
   final rotated = _rotateLocal(local, Size(width, height), turns);
   return Offset(x + rotated.dx, y + rotated.dy);
 }
@@ -305,9 +317,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 152', () async {
+  test('Build number is 154', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+152'));
+    expect(pubspec, contains('version: 1.0.1+154'));
   });
 
   testWidgets('Selected bypass shows built-in lead handles', (tester) async {
@@ -1871,7 +1883,8 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Tee attaches to long iron without auto-rotation',
+  testWidgets(
+      'Tee clears legacy inline parent metadata without changing rotation',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1902,15 +1915,16 @@ void main() {
     final items = _itemsFromPayload(await _savedLayoutPayload());
     final tee = _findById(items, 2);
     final props = (tee['properties'] as Map).cast<String, dynamic>();
-    expect(props['inlineParentIronId'], '1');
-    expect(double.parse(props['inlineParentT'] as String),
-        inInclusiveRange(0.0, 1.0));
+    expect(props['inlineParentIronId'], isNull);
+    expect(props['inlineParentT'], isNull);
+    expect(props['inlineAttachedSegmentId'], isNull);
     expect(tee['rotationTurns'], 1);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Tee slides on parent iron and keeps endpoint connector IDs',
+  testWidgets(
+      'Tee drag clears legacy inline parent metadata and keeps endpoint connector IDs',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1959,10 +1973,9 @@ void main() {
     final items = _itemsFromPayload(await _savedLayoutPayload());
     final tee = _findById(items, 2);
     final teeProps = (tee['properties'] as Map).cast<String, dynamic>();
-    expect(teeProps['inlineParentIronId'], '1');
-    expect(double.parse(teeProps['inlineParentT'] as String),
-        isNot(closeTo(0.5, 0.001)));
-    expect(teeProps['inlineAttachedSegmentId'], 'run');
+    expect(teeProps['inlineParentIronId'], isNull);
+    expect(teeProps['inlineParentT'], isNull);
+    expect(teeProps['inlineAttachedSegmentId'], isNull);
 
     final iron3Props =
         (_findById(items, 3)['properties'] as Map).cast<String, dynamic>();
@@ -2014,7 +2027,8 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Tee keeps run as parent spine and preserves three stable ports',
+  testWidgets(
+      'Tee clears legacy inline spine metadata while preserving stable port IDs',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -2070,14 +2084,16 @@ void main() {
     final iron = _findById(items, 1);
     final tee = _findById(items, 2);
     final teeProps = (tee['properties'] as Map).cast<String, dynamic>();
-    expect(teeProps['inlineAttachedSegmentId'], 'run');
+    expect(teeProps['inlineParentIronId'], isNull);
+    expect(teeProps['inlineParentT'], isNull);
+    expect(teeProps['inlineAttachedSegmentId'], isNull);
 
     final parentX = _ironEndpointFromMap(iron, true).dx;
     final runStart = _fittingAnchorFromMap(tee, 'runStart');
     final runEnd = _fittingAnchorFromMap(tee, 'runEnd');
     final branch = _fittingAnchorFromMap(tee, 'branch');
-    expect(runStart.dx, closeTo(parentX, 1.2));
-    expect(runEnd.dx, closeTo(parentX, 1.2));
+    expect((runStart.dx - parentX).abs(), greaterThan(2.0));
+    expect((runEnd.dx - parentX).abs(), greaterThan(2.0));
     expect((branch.dx - parentX).abs(), greaterThan(2.0));
 
     final iron3Props =
@@ -2184,7 +2200,8 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Tee stores full-run parent position near beginning and end',
+  testWidgets(
+      'Tee removes legacy inline parent metadata near beginning and end',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -2231,11 +2248,12 @@ void main() {
     final teeEnd = _findById(items, 3);
     final startProps = (teeStart['properties'] as Map).cast<String, dynamic>();
     final endProps = (teeEnd['properties'] as Map).cast<String, dynamic>();
-    expect(startProps['inlineParentIronId'], '1');
-    expect(endProps['inlineParentIronId'], '1');
-    expect(double.parse(startProps['inlineParentT'] as String), lessThan(0.12));
-    expect(
-        double.parse(endProps['inlineParentT'] as String), greaterThan(0.88));
+    expect(startProps['inlineParentIronId'], isNull);
+    expect(endProps['inlineParentIronId'], isNull);
+    expect(startProps['inlineParentT'], isNull);
+    expect(endProps['inlineParentT'], isNull);
+    expect(startProps['inlineAttachedSegmentId'], isNull);
+    expect(endProps['inlineAttachedSegmentId'], isNull);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });

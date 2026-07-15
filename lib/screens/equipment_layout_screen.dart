@@ -1194,7 +1194,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   bool _isInlineFittingType(_EquipmentType type) {
-    return type == _EquipmentType.bypass || type.name.startsWith('tee');
+    return type == _EquipmentType.bypass;
   }
 
   bool _usesInlineParentDragConstraint(_EquipmentType type) {
@@ -1671,7 +1671,21 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Offset _rotatedLocalAnchorPoint(_LayoutItem item, _AnchorDefinition anchor) {
-    final local = Offset(item.width * anchor.u, item.height * anchor.v);
+    var local = Offset(item.width * anchor.u, item.height * anchor.v);
+
+    // Tee/90 symbols are rendered inside an inset shell; map anchors into that
+    // same inset so visual endpoints and connection math coincide.
+    if (_isFittingEndpointConnectableType(item.type)) {
+      final shortest = math.min(item.width, item.height);
+      final inset = shortest < 66 ? 2.0 : 3.0;
+      final usableWidth = math.max(0.0, item.width - inset * 2);
+      final usableHeight = math.max(0.0, item.height - inset * 2);
+      local = Offset(
+        inset + anchor.u * usableWidth,
+        inset + anchor.v * usableHeight,
+      );
+    }
+
     return _rotateLocalPoint(item, local);
   }
 
@@ -3093,6 +3107,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
             _setEndpointAnchor(item, leading, anchorItemId: null, side: null);
           }
         }
+      }
+
+      if (_isFittingEndpointConnectableType(item.type) &&
+          !_usesInlineParentDragConstraint(item.type)) {
+        _clearInlineParentAttachment(item);
       }
 
       if (!_isInlineFittingType(item.type)) continue;
