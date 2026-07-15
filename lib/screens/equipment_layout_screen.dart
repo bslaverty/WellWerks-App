@@ -72,6 +72,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   String? _selectedBypassLeadId;
   _ConnectionTarget? _selectedPortTarget;
   _ConnectionTarget? _pendingConnectIronSourceTarget;
+  bool _autoConnectMode = false;
   _ActiveEndpointDrag? _activeEndpointDrag;
   _ActiveBypassLeadDrag? _activeBypassLeadDrag;
   _FittingPreviewState? _activeFittingPreview;
@@ -124,6 +125,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   static const double _connectionReleaseRadiusScreen = 18.0;
   static const double _disconnectHoldRadiusScreen = 8.0;
   static const double _disconnectThresholdScreen = 18.0;
+  static const double _teeDetachThresholdScreen = 24.0;
   static const double _sameTargetLockoutRadiusScreen = 42.0;
   static const double _ironSelectionCorridorScreen = 22.0;
   static const double _ironBodyHitCorridorScreen = 20.0;
@@ -613,6 +615,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         _selectedEndpointLeading = null;
         _selectedBypassHandle = null;
         _selectedBypassLeadId = null;
+        _selectedPortTarget = null;
+        _pendingConnectIronSourceTarget = null;
+        _autoConnectMode = false;
         _selectedIds.clear();
       }
       _showSideLibrary = true;
@@ -648,6 +653,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         _selectedEndpointLeading = null;
         _selectedBypassHandle = null;
         _selectedBypassLeadId = null;
+        _selectedPortTarget = null;
+        _pendingConnectIronSourceTarget = null;
+        _autoConnectMode = false;
         _selectedIds.clear();
       }
       _showSideLibrary = opening;
@@ -702,6 +710,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   void _clearPortSelection({bool clearPendingSource = true}) {
     setState(() {
       _selectedPortTarget = null;
+      _autoConnectMode = false;
       if (clearPendingSource) {
         _pendingConnectIronSourceTarget = null;
       }
@@ -719,15 +728,17 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       final item =
           target.ironItemId == null ? null : _findItemById(target.ironItemId!);
       if (item == null || !_isStraightIronType(item.type)) return;
-      if (_endpointAnchorTarget(item, target.ironLeading == true) != null)
+      if (_endpointAnchorTarget(item, target.ironLeading == true) != null) {
         return;
+      }
     }
     setState(() {
       _selectedPortTarget = target;
+      _autoConnectMode = false;
       _selectedId = target.kind == _ConnectionTargetKind.equipmentAnchor
           ? target.equipmentItemId
           : target.ironItemId;
-      _selectedIds..clear();
+      _selectedIds.clear();
       if (_selectedId != null) {
         _selectedIds.add(_selectedId!);
       }
@@ -800,6 +811,96 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       return target;
     }
     return null;
+  }
+
+  void _startAutoConnectFromSelectedPort() {
+    final source = _selectedPortForSelectedItem();
+    if (source == null) return;
+    setState(() {
+      _pendingConnectIronSourceTarget = source;
+      _autoConnectMode = true;
+      _drawIronMode = false;
+      _drawIronStartTarget = null;
+      _drawIronHoverTarget = null;
+      _drawIronPointerScene = null;
+      _interactionMode = _InteractionMode.idle;
+    });
+  }
+
+  void _cancelAutoConnect({bool clearSelectedPort = false}) {
+    setState(() {
+      _autoConnectMode = false;
+      _pendingConnectIronSourceTarget = null;
+      _drawIronStartTarget = null;
+      _drawIronHoverTarget = null;
+      _drawIronPointerScene = null;
+      if (clearSelectedPort) {
+        _selectedPortTarget = null;
+      }
+    });
+  }
+
+  void _showPortUnavailableMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  void _handleAutoConnectDestinationTap(
+    _LayoutItem item,
+    _EquipmentAnchorCandidate anchor,
+  ) {
+    final destination = _ConnectionTarget(
+      kind: _ConnectionTargetKind.equipmentAnchor,
+      point: anchor.point,
+      distance: 0,
+      isExactHit: true,
+      equipmentItemId: item.id,
+      anchorId: anchor.side,
+    );
+
+    _handleAutoConnectDestinationTarget(destination);
+  }
+
+  void _handleAutoConnectDestinationTarget(_ConnectionTarget destination) {
+    if (!_autoConnectMode) return;
+    final source = _pendingConnectIronSourceTarget;
+    if (source == null ||
+        source.kind != _ConnectionTargetKind.equipmentAnchor) {
+      _cancelAutoConnect(clearSelectedPort: false);
+      return;
+    }
+
+    if (destination.kind != _ConnectionTargetKind.equipmentAnchor ||
+        destination.equipmentItemId == null ||
+        destination.anchorId == null) {
+      _showPortUnavailableMessage(
+          'Select a valid destination connection point.');
+      return;
+    }
+
+    final isSource = source.equipmentItemId == destination.equipmentItemId &&
+        source.anchorId == destination.anchorId;
+    if (isSource) {
+      _showPortUnavailableMessage(
+          'Select a different destination connection point.');
+      return;
+    }
+
+    final destinationItem = _findItemById(destination.equipmentItemId!);
+    if (destinationItem == null ||
+        !_isEquipmentAnchorAvailable(destinationItem, destination.anchorId!)) {
+      _showPortUnavailableMessage('That connection point is unavailable.');
+      return;
+    }
+
+    if (!_portsAreAligned(source, destination)) {
+      _showPortAlignmentWarning();
+      return;
+    }
+
+    _createIronBetweenPorts(source, destination);
   }
 
   void _toggleShowConnectionPoints() {
@@ -1100,7 +1201,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         if (_isFittingEndpointConnectableType(item.type)) {
           _fittingDragBlockedTargetKeys[item.id] =
               _currentFittingConnectionKeys(item);
-          _detachConnectionsForFreeFittingDrag(item);
+          final isInlineAttached = _usesInlineParentDragConstraint(item.type) &&
+              _inlineParentIron(item) != null &&
+              _inlineParentT(item) != null;
+          if (!isInlineAttached) {
+            _detachConnectionsForFreeFittingDrag(item);
+          }
         }
         if (_isInlineFittingType(item.type)) {
           final parentIron = _inlineParentIron(item);
@@ -3726,7 +3832,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final horizontal = parentIron.type == _EquipmentType.ironHorizontal;
     final alongDelta = horizontal ? delta.dx : delta.dy;
     final perpendicular = horizontal ? delta.dy.abs() : delta.dx.abs();
-    final detachThreshold = _sceneRadiusFromScreen(_disconnectThresholdScreen);
+    final detachThreshold = _sceneRadiusFromScreen(
+      item.type.name.startsWith('tee')
+          ? _teeDetachThresholdScreen
+          : _disconnectThresholdScreen,
+    );
     if (perpendicular > detachThreshold) {
       context.detached = true;
       context.blockedParentIronId = parentIron.id;
@@ -4746,10 +4856,47 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       return;
     }
 
+    if (_autoConnectMode) {
+      _ConnectionTarget? destination;
+      _rebuildSelectionCandidatesAt(clampedPoint);
+      if (_lastSelectionCandidateIds.isNotEmpty) {
+        final tappedItem = _findItemById(_lastSelectionCandidateIds.first);
+        if (tappedItem != null && !_isStraightIronType(tappedItem.type)) {
+          var bestDistance = double.infinity;
+          for (final anchor in _equipmentAnchorCandidates(tappedItem)) {
+            final target = _ConnectionTarget(
+              kind: _ConnectionTargetKind.equipmentAnchor,
+              point: anchor.point,
+              distance: 0,
+              isExactHit: true,
+              equipmentItemId: tappedItem.id,
+              anchorId: anchor.side,
+            );
+            final distance =
+                _screenDistanceBetweenScenePoints(clampedPoint, target.point);
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              destination = target;
+            }
+          }
+        }
+      }
+      destination ??= _findBestConnectionTarget(
+        clampedPoint,
+        radiusScreen: _connectionPreviewRadiusScreen,
+      );
+      if (destination != null) {
+        _handleAutoConnectDestinationTarget(destination);
+      }
+      return;
+    }
+
     if (!_drawIronMode) {
       _rebuildSelectionCandidatesAt(clampedPoint);
       if (_lastSelectionCandidateIds.isNotEmpty) {
         _selectOnly(_lastSelectionCandidateIds.first);
+      } else if (_selectedPortForSelectedItem() != null && !_autoConnectMode) {
+        _clearPortSelection();
       } else if (_selectedIds.isNotEmpty) {
         _clearSelection();
       }
@@ -4942,7 +5089,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Ports must be aligned. Add a 90 for this connection.'),
+        content: Text('Ports are not aligned. Add a 90° fitting first.'),
       ),
     );
   }
@@ -4951,7 +5098,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final vector = _portOutwardVector(source);
     if (vector == Offset.zero) return;
     final horizontal = vector.dx.abs() >= vector.dy.abs();
-    final leadLength = _portLeadDefaultLength;
+    const leadLength = _portLeadDefaultLength;
     final type = horizontal
         ? _EquipmentType.ironHorizontal
         : _EquipmentType.ironVertical;
@@ -4986,6 +5133,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _selectedEndpointLeading = sourceOnLeading ? false : true;
       _selectedPortTarget = null;
       _pendingConnectIronSourceTarget = null;
+      _autoConnectMode = false;
       _drawIronMode = false;
       _interactionMode = _InteractionMode.idle;
       _snapIndicatorScene = null;
@@ -5064,6 +5212,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _selectedEndpointLeading = null;
       _selectedPortTarget = null;
       _pendingConnectIronSourceTarget = null;
+      _autoConnectMode = false;
       _drawIronMode = false;
       _interactionMode = _InteractionMode.idle;
       _drawIronStartTarget = null;
@@ -5199,9 +5348,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _selectedIds
         ..clear()
         ..add(id);
-      final selected = _findItemById(id);
-      _selectedPortTarget =
-          selected == null ? null : _defaultPortForItem(selected);
+      _selectedPortTarget = null;
+      _autoConnectMode = false;
       _pendingConnectIronSourceTarget = null;
     });
   }
@@ -5233,6 +5381,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _selectedBypassHandle = null;
       _selectedBypassLeadId = null;
       _selectedPortTarget = null;
+      _autoConnectMode = false;
       _pendingConnectIronSourceTarget = null;
       _selectedIds.clear();
     });
@@ -5522,11 +5671,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _selectedIds
         ..clear()
         ..addAll(restoredSelectedIds);
-      final restoredSelectedItem =
-          restoredSelectedId == null ? null : _findItemById(restoredSelectedId);
-      _selectedPortTarget = restoredSelectedItem == null
-          ? null
-          : _defaultPortForItem(restoredSelectedItem);
+      _selectedPortTarget = null;
+      _autoConnectMode = false;
+      _pendingConnectIronSourceTarget = null;
       _reflowSnappedFittings();
     });
   }
@@ -9489,7 +9636,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final locked = selected?.locked ?? true;
     final canMove = hasSelection && !locked && !_hideFloatingToolbar;
     final canAct = hasSelection && !_hideFloatingToolbar;
-    final selectedPort = _selectedPortForSelectedItem();
 
     return Container(
       key: const ValueKey<String>('selection-dock-toolbar'),
@@ -9583,52 +9729,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                       label: const Text('Delete'),
                       style: _compactOutlineStyle(highlighted: true),
                     ),
-                    if (selectedPort != null) ...[
-                      const SizedBox(width: 6),
-                      FilledButton.icon(
-                        onPressed: () => _createShortIronFromPort(selectedPort),
-                        icon: const Icon(Icons.playlist_add),
-                        label: const Text('Add Iron'),
-                        style: _compactFilledStyle(highlighted: true),
-                      ),
-                      const SizedBox(width: 6),
-                      FilledButton.icon(
-                        onPressed: () {
-                          final sourceTarget = selectedPort;
-                          if (sourceTarget != null) {
-                            final destinationTarget = _findBestConnectionTarget(
-                              sourceTarget.point,
-                              radiusScreen: 10000.0,
-                              excludedAnchorItemId:
-                                  sourceTarget.equipmentItemId,
-                            );
-                            if (destinationTarget != null &&
-                                _portsAreAligned(
-                                    sourceTarget, destinationTarget)) {
-                              _createIronBetweenPorts(
-                                  sourceTarget, destinationTarget);
-                              return;
-                            }
-                          }
-                          _pendingConnectIronSourceTarget = sourceTarget;
-                          _startConnectIronMode(
-                            _drawIronSize,
-                            minimizeLibrary: false,
-                            initialTarget: sourceTarget,
-                          );
-                        },
-                        icon: const Icon(Icons.call_split),
-                        label: const Text('Connect With Iron'),
-                        style: _compactFilledStyle(highlighted: true),
-                      ),
-                      const SizedBox(width: 6),
-                      OutlinedButton.icon(
-                        onPressed: _clearPortSelection,
-                        icon: const Icon(Icons.cancel_outlined),
-                        label: const Text('Cancel Port Selection'),
-                        style: _compactOutlineStyle(),
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -10309,18 +10409,22 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final ports = _availablePortsForItem(selected);
     if (ports.isEmpty) return const <Widget>[];
     final selectedPort = _selectedPortForSelectedItem();
+    final sourcePort = _pendingConnectIronSourceTarget;
 
     return ports.map((port) {
-      final viewportPoint = _viewportPointFromScene(port.point);
       final active = selectedPort != null &&
           selectedPort.kind == port.kind &&
           selectedPort.point == port.point;
+      final isAutoConnectSource = _autoConnectMode &&
+          sourcePort != null &&
+          sourcePort.kind == port.kind &&
+          sourcePort.point == port.point;
       return Positioned(
         key: ValueKey<String>(
           'selected-port-${selected.id}-${port.kind.name}-${port.equipmentItemId ?? port.ironItemId}-${port.anchorId ?? (port.ironLeading == true ? 'start' : 'end')}',
         ),
-        left: viewportPoint.dx - 7,
-        top: viewportPoint.dy - 7,
+        left: port.point.dx - 7,
+        top: port.point.dy - 7,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => _selectConnectionPort(port),
@@ -10330,19 +10434,201 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: active
-                  ? const Color(0xFFCDA56A).withValues(alpha: 0.34)
+                  ? const Color(0xFFCDA56A).withValues(
+                      alpha: isAutoConnectSource ? 0.46 : 0.34,
+                    )
                   : Colors.transparent,
               border: Border.all(
-                color: active
+                color: (active || isAutoConnectSource)
                     ? const Color(0xFFCDA56A)
                     : const Color(0xFFCDA56A).withValues(alpha: 0.7),
-                width: active ? 2.0 : 1.4,
+                width: isAutoConnectSource ? 2.8 : (active ? 2.0 : 1.4),
               ),
             ),
           ),
         ),
       );
     }).toList(growable: false);
+  }
+
+  Widget _portActionMenuOverlay(Size viewportSize) {
+    final selectedPort = _selectedPortForSelectedItem();
+    if (selectedPort == null || _autoConnectMode) {
+      return const SizedBox.shrink();
+    }
+
+    final anchor = _viewportPointFromScene(selectedPort.point);
+    const menuWidth = 176.0;
+    const rowHeight = 44.0;
+    const verticalPadding = 8.0;
+    const menuHeight = rowHeight * 3 + (verticalPadding * 2);
+    const edgePadding = 8.0;
+    const gap = 14.0;
+
+    final maxLeft =
+        math.max(edgePadding, viewportSize.width - menuWidth - edgePadding);
+    final maxTop =
+        math.max(edgePadding, viewportSize.height - menuHeight - edgePadding);
+
+    final canRight =
+        anchor.dx + gap + menuWidth <= viewportSize.width - edgePadding;
+    final canLeft = anchor.dx - gap - menuWidth >= edgePadding;
+    final canBelow =
+        anchor.dy + gap + menuHeight <= viewportSize.height - edgePadding;
+    final canAbove = anchor.dy - gap - menuHeight >= edgePadding;
+
+    double left;
+    double top;
+    if (canRight || canLeft) {
+      left = (canRight ? anchor.dx + gap : anchor.dx - gap - menuWidth)
+          .clamp(edgePadding, maxLeft)
+          .toDouble();
+      top = (anchor.dy - menuHeight / 2).clamp(edgePadding, maxTop).toDouble();
+    } else {
+      left = (anchor.dx - menuWidth / 2).clamp(edgePadding, maxLeft).toDouble();
+      top = (canBelow
+              ? anchor.dy + gap
+              : (canAbove ? anchor.dy - gap - menuHeight : anchor.dy + gap))
+          .clamp(edgePadding, maxTop)
+          .toDouble();
+    }
+
+    final rowText = TextStyle(
+      color: _gold,
+      fontWeight: FontWeight.w700,
+      fontSize: 13,
+    );
+
+    Widget actionRow({
+      required Key key,
+      required String label,
+      required VoidCallback onTap,
+      IconData? icon,
+      bool highlighted = false,
+    }) {
+      return SizedBox(
+        key: key,
+        width: menuWidth - 16,
+        height: rowHeight,
+        child: Material(
+          color:
+              highlighted ? _gold.withValues(alpha: 0.18) : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, size: 18, color: _gold),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(child: Text(label, style: rowText)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Positioned(
+      key: const ValueKey<String>('port-action-menu'),
+      left: left,
+      top: top,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: menuWidth,
+          padding: const EdgeInsets.symmetric(
+              horizontal: 8, vertical: verticalPadding),
+          decoration: BoxDecoration(
+            color: const Color(0xEE101216),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _gold.withValues(alpha: 0.9), width: 1.2),
+            boxShadow: const [
+              BoxShadow(
+                  color: Color(0x66000000),
+                  blurRadius: 12,
+                  offset: Offset(0, 4)),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              actionRow(
+                key: const ValueKey<String>('port-action-add-iron'),
+                label: 'Add Iron',
+                icon: Icons.playlist_add,
+                highlighted: true,
+                onTap: () => _createShortIronFromPort(selectedPort),
+              ),
+              actionRow(
+                key: const ValueKey<String>('port-action-auto-connect'),
+                label: 'Auto Connect',
+                icon: Icons.call_split,
+                onTap: _startAutoConnectFromSelectedPort,
+              ),
+              actionRow(
+                key: const ValueKey<String>('port-action-cancel'),
+                label: 'Cancel',
+                icon: Icons.cancel_outlined,
+                onTap: () => _cancelAutoConnect(clearSelectedPort: true),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _autoConnectInstructionOverlay(Size viewportSize) {
+    if (!_autoConnectMode || _pendingConnectIronSourceTarget == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Positioned(
+      key: const ValueKey<String>('auto-connect-instruction'),
+      right: 10,
+      top: 10,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xEE101216),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _gold.withValues(alpha: 0.88), width: 1.2),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Select destination connection point',
+                style: TextStyle(
+                  color: _gold,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton(
+                key: const ValueKey<String>('auto-connect-cancel'),
+                onPressed: () => _cancelAutoConnect(clearSelectedPort: true),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(76, 34),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  side: BorderSide(color: _gold.withValues(alpha: 0.9)),
+                  foregroundColor: _gold,
+                ),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   List<Widget> _resolvedStraightIronWidgets() {
@@ -10469,13 +10755,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                   Positioned.fill(
                                     child: CustomPaint(painter: _GridPainter()),
                                   ),
-                                  if (_drawIronMode)
+                                  if (_drawIronMode || _autoConnectMode)
                                     for (final it in _items)
                                       if (!_isStraightIronType(it.type))
                                         for (final anchor
                                             in _equipmentAnchorCandidates(it))
-                                          if (_isEquipmentAnchorAvailable(
-                                              it, anchor.side))
+                                          if (_drawIronMode || _autoConnectMode)
                                             Positioned(
                                               key: ValueKey<String>(
                                                   'connect-anchor-${it.id}-${anchor.side}'),
@@ -10485,6 +10770,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                                 behavior:
                                                     HitTestBehavior.opaque,
                                                 onTap: () {
+                                                  if (_autoConnectMode) {
+                                                    _handleAutoConnectDestinationTap(
+                                                        it, anchor);
+                                                    return;
+                                                  }
+
                                                   final target =
                                                       _ConnectionTarget(
                                                     kind: _ConnectionTargetKind
@@ -10517,10 +10808,53 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                                   decoration: BoxDecoration(
                                                     shape: BoxShape.circle,
                                                     border: Border.all(
-                                                      color: _gold,
-                                                      width: 1.8,
+                                                      color: () {
+                                                        final source =
+                                                            _pendingConnectIronSourceTarget;
+                                                        final isSource = _autoConnectMode &&
+                                                            source != null &&
+                                                            source.kind ==
+                                                                _ConnectionTargetKind
+                                                                    .equipmentAnchor &&
+                                                            source.equipmentItemId ==
+                                                                it.id &&
+                                                            source.anchorId ==
+                                                                anchor.side;
+                                                        if (isSource) {
+                                                          return _gold;
+                                                        }
+                                                        if (_autoConnectMode &&
+                                                            !_isEquipmentAnchorAvailable(
+                                                                it,
+                                                                anchor.side)) {
+                                                          return const Color(
+                                                              0xFF666666);
+                                                        }
+                                                        return _gold;
+                                                      }(),
+                                                      width: () {
+                                                        final source =
+                                                            _pendingConnectIronSourceTarget;
+                                                        final isSource = _autoConnectMode &&
+                                                            source != null &&
+                                                            source.kind ==
+                                                                _ConnectionTargetKind
+                                                                    .equipmentAnchor &&
+                                                            source.equipmentItemId ==
+                                                                it.id &&
+                                                            source.anchorId ==
+                                                                anchor.side;
+                                                        return isSource
+                                                            ? 2.8
+                                                            : 1.8;
+                                                      }(),
                                                     ),
-                                                    color: Colors.transparent,
+                                                    color: _autoConnectMode &&
+                                                            !_isEquipmentAnchorAvailable(
+                                                                it, anchor.side)
+                                                        ? const Color(
+                                                            0x55353535)
+                                                        : Colors.transparent,
                                                   ),
                                                 ),
                                               ),
@@ -10717,7 +11051,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                   ..._resolvedBypassLeadWidgets(),
                                   ..._fittingConnectionPointIndicators(),
                                   ..._fittingDestinationPreviewWidgets(),
-                                  ..._selectedPortWidgets(),
                                   for (final item in _items)
                                     () {
                                       final interactionPadding =
@@ -10786,6 +11119,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                       );
                                     }(),
                                   ..._bypassLeadHandleSceneWidgets(),
+                                  ..._selectedPortWidgets(),
                                 ],
                               ),
                             ),
@@ -10843,6 +11177,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                             ),
                           );
                         }(),
+                      _portActionMenuOverlay(viewportSize),
+                      _autoConnectInstructionOverlay(viewportSize),
                     ],
                   );
                 },
