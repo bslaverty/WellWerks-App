@@ -112,6 +112,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   static const double _dragLiftScreenOffsetY = 64.0;
   static const double _connectionSnapRadius = 32.0;
   static const double _ironSelectionCorridorScreen = 22.0;
+  static const double _ironBodyHitCorridorScreen = 20.0;
+  static const double _endpointResizeHitRadiusScreen = 16.0;
   static const double _itemSelectionCorridorScreen = 16.0;
   static const double _freeIronMinLength = 14.0;
   static const double _bypassAttachRadiusScreen = 38.0;
@@ -1957,6 +1959,31 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     return best;
   }
 
+  Offset _fittingTopLeftForSnapCandidate(
+    _LayoutItem fitting,
+    _FittingEndpointSnapCandidate candidate,
+  ) {
+    var snappedTopLeft = Offset(
+      fitting.x + candidate.target.point.dx - candidate.fittingPoint.dx,
+      fitting.y + candidate.target.point.dy - candidate.fittingPoint.dy,
+    );
+    final originalX = fitting.x;
+    final originalY = fitting.y;
+    fitting.x = snappedTopLeft.dx;
+    fitting.y = snappedTopLeft.dy;
+    final resolvedPoint =
+        _equipmentAnchorPointOrNull(fitting, candidate.fittingSide);
+    if (resolvedPoint != null) {
+      snappedTopLeft = Offset(
+        fitting.x + candidate.target.point.dx - resolvedPoint.dx,
+        fitting.y + candidate.target.point.dy - resolvedPoint.dy,
+      );
+    }
+    fitting.x = originalX;
+    fitting.y = originalY;
+    return snappedTopLeft;
+  }
+
   String _fittingAnchorItemKey(String side) => 'fittingAnchor_${side}ItemId';
 
   String _fittingAnchorSideKey(String side) => 'fittingAnchor_${side}Side';
@@ -2009,10 +2036,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       return;
     }
 
-    final shifted = Offset(
-      fitting.x + candidate.target.point.dx - candidate.fittingPoint.dx,
-      fitting.y + candidate.target.point.dy - candidate.fittingPoint.dy,
-    );
+    final shifted = _fittingTopLeftForSnapCandidate(fitting, candidate);
     fitting.x = shifted.dx;
     fitting.y = shifted.dy;
 
@@ -2047,6 +2071,30 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       }
     }
     _snapIndicatorScene = candidate.target.point;
+  }
+
+  _IronDragIntent _resolveIronDragIntent(
+    _LayoutItem iron,
+    Offset scenePoint,
+  ) {
+    final startPoint = _resolveIronEndpoint(iron, true);
+    final endPoint = _resolveIronEndpoint(iron, false);
+    final resizeRadius = _sceneRadiusFromScreen(_endpointResizeHitRadiusScreen);
+    final bodyRadius = _sceneRadiusFromScreen(_ironBodyHitCorridorScreen);
+    final startDistance = (scenePoint - startPoint).distance;
+    final endDistance = (scenePoint - endPoint).distance;
+    if (startDistance <= resizeRadius && startDistance <= endDistance) {
+      return const _IronDragIntent.resizeStart();
+    }
+    if (endDistance <= resizeRadius) {
+      return const _IronDragIntent.resizeEnd();
+    }
+    final bodyDistance =
+        _distancePointToSegment(scenePoint, startPoint, endPoint);
+    if (bodyDistance <= bodyRadius) {
+      return const _IronDragIntent.moveBody();
+    }
+    return const _IronDragIntent.none();
   }
 
   _EndpointSnapTarget? _stabilizeEndpointSnapTarget({
@@ -3001,23 +3049,23 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   void _beginItemDrag(_LayoutItem anchor, DragStartDetails details) {
     if (_isStraightIronType(anchor.type) && !anchor.locked) {
       final sceneStart = _scenePointFromGlobal(details.globalPosition);
-      final hitRadius = _sceneRadiusFromScreen(_endpointHandleTouchSize / 2);
-      final startPoint = _resolveIronEndpoint(anchor, true);
-      final endPoint = _resolveIronEndpoint(anchor, false);
-      final startDistance = (sceneStart - startPoint).distance;
-      final endDistance = (sceneStart - endPoint).distance;
-      bool? endpointLeading;
-      if (startDistance <= hitRadius && startDistance <= endDistance) {
-        endpointLeading = true;
-      } else if (endDistance <= hitRadius) {
-        endpointLeading = false;
-      }
-      if (endpointLeading != null) {
-        _startEndpointHandleDrag(anchor, endpointLeading);
-        _dragSceneStart = sceneStart;
-        _dragItemStart.clear();
-        _dragActive = false;
-        return;
+      switch (_resolveIronDragIntent(anchor, sceneStart).type) {
+        case _IronDragIntentType.resizeStart:
+          _startEndpointHandleDrag(anchor, true);
+          _dragSceneStart = sceneStart;
+          _dragItemStart.clear();
+          _dragActive = false;
+          return;
+        case _IronDragIntentType.resizeEnd:
+          _startEndpointHandleDrag(anchor, false);
+          _dragSceneStart = sceneStart;
+          _dragItemStart.clear();
+          _dragActive = false;
+          return;
+        case _IronDragIntentType.moveBody:
+          break;
+        case _IronDragIntentType.none:
+          return;
       }
     }
 
@@ -3106,6 +3154,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         if (_isFittingEndpointConnectableType(it.type)) {
           final fittingCandidate = _nearestFittingEndpointSnapCandidate(it);
           if (fittingCandidate != null) {
+            if (_isElbowFittingType(it.type)) {
+              final snappedTopLeft =
+                  _fittingTopLeftForSnapCandidate(it, fittingCandidate);
+              it.x = snappedTopLeft.dx;
+              it.y = snappedTopLeft.dy;
+            }
             _snapIndicatorScene = fittingCandidate.target.point;
           }
         }
@@ -8895,7 +8949,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                   final canvasSize = _virtualCanvasSize;
                   final allowCanvasPan =
                       _interactionMode == _InteractionMode.idle &&
-                          !_drawIronMode;
+                          !_drawIronMode &&
+                          _selectedIds.isEmpty;
 
                   return Stack(
                     children: [
@@ -9383,6 +9438,19 @@ class _SelectionCandidate {
     required this.zIndex,
     required this.directHit,
   });
+}
+
+enum _IronDragIntentType { none, moveBody, resizeStart, resizeEnd }
+
+class _IronDragIntent {
+  final _IronDragIntentType type;
+
+  const _IronDragIntent._(this.type);
+
+  const _IronDragIntent.none() : this._(_IronDragIntentType.none);
+  const _IronDragIntent.moveBody() : this._(_IronDragIntentType.moveBody);
+  const _IronDragIntent.resizeStart() : this._(_IronDragIntentType.resizeStart);
+  const _IronDragIntent.resizeEnd() : this._(_IronDragIntentType.resizeEnd);
 }
 
 class _DrawIronPreviewPainter extends CustomPainter {

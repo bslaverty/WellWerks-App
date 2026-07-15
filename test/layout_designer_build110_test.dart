@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -282,9 +283,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 147', () async {
+  test('Build number is 148', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+147'));
+    expect(pubspec, contains('version: 1.0.1+148'));
   });
 
   testWidgets('Build 134 selected bypass keeps full artwork and no handle dots',
@@ -2525,6 +2526,51 @@ void main() {
     final iron = _findById(items, 1);
     expect((iron['width'] as num).toDouble(), greaterThan(120));
     expect((iron['y'] as num).toDouble(), closeTo(220, 0.01));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Iron dragged to 90 and 90 dragged to iron resolve same node',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 180, y: 260, width: 100),
+        <String, dynamic>{
+          'id': 2,
+          'type': 'elbowUpRight',
+          'x': 320.0,
+          'y': 240.0,
+          'width': 34.0,
+          'height': 34.0,
+          'properties': <String, String>{'ironSize': '3'},
+          'rotationTurns': 0,
+          'locked': false,
+        },
+      ],
+      selectedId: 1,
+      selectedEndpointLeading: false,
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('iron-handle-1-end')),
+      const Offset(56, 14),
+    );
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final iron = _findById(items, 1);
+    final elbow = _findById(items, 2);
+    final ironEnd = _ironEndpointFromMap(iron, false);
+    final inlet = _fittingAnchorFromMap(elbow, 'inlet');
+    final outlet = _fittingAnchorFromMap(elbow, 'outlet');
+    final matchedDistance =
+        math.min((ironEnd - inlet).distance, (ironEnd - outlet).distance);
+    final props = (iron['properties'] as Map).cast<String, dynamic>();
+    expect(matchedDistance, lessThanOrEqualTo(0.2));
+    expect(props['anchorEndItemId'], '2');
+    expect(props['anchorEndSide'], anyOf('inlet', 'outlet'));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
