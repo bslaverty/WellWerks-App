@@ -74,6 +74,31 @@ Offset _bypassSpineCenterFromMap(Map<String, dynamic> bypass) {
 
 Map<String, Offset> _anchorFractionsForType(String type) {
   switch (type) {
+    case 'wellhead':
+    case 'esdValve':
+    case 'lineHeater':
+    case 'plugCatcher':
+    case 'cyclonicSandSep':
+    case 'sphericalSandSep':
+    case 'chokeManifold':
+    case 'testSeparator':
+    case 'flare':
+    case 'compressor':
+      return <String, Offset>{
+        'top': const Offset(0.5, 0.08),
+        'right': const Offset(0.92, 0.5),
+        'bottom': const Offset(0.5, 0.92),
+        'left': const Offset(0.08, 0.5),
+      };
+    case 'flowbackTank':
+    case 'productionTank':
+    case 'facilities':
+      return <String, Offset>{
+        'top': const Offset(0.5, 0.16),
+        'right': const Offset(0.82, 0.5),
+        'bottom': const Offset(0.5, 0.84),
+        'left': const Offset(0.18, 0.5),
+      };
     case 'teeUp':
       return <String, Offset>{
         'runStart': const Offset(0.08, 0.5),
@@ -259,7 +284,7 @@ Future<void> _pumpLayout(
 void main() {
   test('Build number is 143', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+145'));
+    expect(pubspec, contains('version: 1.0.1+146'));
   });
 
   testWidgets('Build 134 selected bypass keeps full artwork and no handle dots',
@@ -2109,6 +2134,162 @@ void main() {
     expect(endProps['inlineParentT'], isNull);
     expect(startProps['inlineAttachedSegmentId'], isNull);
     expect(endProps['inlineAttachedSegmentId'], isNull);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Inline equipment supports top/right/bottom/left iron endpoints',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'testSeparator',
+            x: 420, y: 220, width: 112, height: 74),
+        <String, dynamic>{
+          ..._ironItem(2, x: 320, y: 250, width: 80),
+          'properties': <String, String>{
+            'ironSize': '3',
+            'anchorEndItemId': '1',
+            'anchorEndSide': 'left',
+          },
+        },
+        <String, dynamic>{
+          ..._ironItem(3, x: 540, y: 250, width: 80),
+          'properties': <String, String>{
+            'ironSize': '3',
+            'anchorStartItemId': '1',
+            'anchorStartSide': 'right',
+          },
+        },
+        <String, dynamic>{
+          ..._ironItem(4, x: 460, y: 130, width: 80, vertical: true),
+          'properties': <String, String>{
+            'ironSize': '3',
+            'anchorEndItemId': '1',
+            'anchorEndSide': 'top',
+          },
+        },
+        <String, dynamic>{
+          ..._ironItem(5, x: 460, y: 296, width: 80, vertical: true),
+          'properties': <String, String>{
+            'ironSize': '3',
+            'anchorStartItemId': '1',
+            'anchorStartSide': 'bottom',
+          },
+        },
+      ],
+    );
+
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final sep = _findById(items, 1);
+    final center = Offset(
+      (sep['x'] as num).toDouble() + (sep['width'] as num).toDouble() / 2,
+      (sep['y'] as num).toDouble() + (sep['height'] as num).toDouble() / 2,
+    );
+    for (final side in const <String>['top', 'right', 'bottom', 'left']) {
+      final p = _fittingAnchorFromMap(sep, side);
+      expect((p - center).distance, greaterThan(8.0));
+    }
+
+    final leftIronProps =
+        (_findById(items, 2)['properties'] as Map).cast<String, dynamic>();
+    final rightIronProps =
+        (_findById(items, 3)['properties'] as Map).cast<String, dynamic>();
+    final topIronProps =
+        (_findById(items, 4)['properties'] as Map).cast<String, dynamic>();
+    final bottomIronProps =
+        (_findById(items, 5)['properties'] as Map).cast<String, dynamic>();
+    expect(leftIronProps['anchorEndSide'], 'left');
+    expect(rightIronProps['anchorStartSide'], 'right');
+    expect(topIronProps['anchorEndSide'], 'top');
+    expect(bottomIronProps['anchorStartSide'], 'bottom');
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Tank allows only one active inlet side at a time',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'flowbackTank',
+            x: 420, y: 220, width: 38, height: 28),
+        <String, dynamic>{
+          ..._ironItem(2, x: 320, y: 250, width: 80),
+          'properties': <String, String>{
+            'ironSize': '3',
+            'anchorEndItemId': '1',
+            'anchorEndSide': 'left',
+          },
+        },
+        <String, dynamic>{
+          ..._ironItem(3, x: 540, y: 250, width: 80),
+          'properties': <String, String>{
+            'ironSize': '3',
+            'anchorStartItemId': '1',
+            'anchorStartSide': 'right',
+          },
+        },
+      ],
+    );
+
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final p2 =
+        (_findById(items, 2)['properties'] as Map).cast<String, dynamic>();
+    final p3 =
+        (_findById(items, 3)['properties'] as Map).cast<String, dynamic>();
+    final occupied = <String>[];
+    if (p2['anchorEndItemId'] == '1' &&
+        (p2['anchorEndSide'] as String?) != null) {
+      occupied.add(p2['anchorEndSide'] as String);
+    }
+    if (p3['anchorStartItemId'] == '1' &&
+        (p3['anchorStartSide'] as String?) != null) {
+      occupied.add(p3['anchorStartSide'] as String);
+    }
+    expect(occupied.length, 1);
+    expect(occupied.single, anyOf('top', 'right', 'bottom', 'left'));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Connected iron endpoint follows equipment side exactly on move',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'wellhead', x: 240, y: 220, width: 30, height: 28),
+        <String, dynamic>{
+          ..._ironItem(2, x: 120, y: 220, width: 120),
+          'properties': <String, String>{
+            'ironSize': '3',
+            'anchorEndItemId': '1',
+            'anchorEndSide': 'left',
+          },
+        },
+      ],
+      selectedId: 1,
+    );
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Move Right'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Move Right'));
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final equipment = _findById(items, 1);
+    final iron = _findById(items, 2);
+    final anchor = _fittingAnchorFromMap(equipment, 'left');
+    final endpoint = _ironEndpointFromMap(iron, false);
+    expect((endpoint - anchor).distance, lessThanOrEqualTo(0.2));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });

@@ -109,7 +109,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   static const double _mobileLibraryDefaultFraction = 0.38;
   static const double _mobileLibraryMaxFraction = 0.82;
   static const double _dragLiftScreenOffsetY = 64.0;
-  static const double _connectionSnapRadius = 24.0;
+  static const double _connectionSnapRadius = 32.0;
   static const double _bypassAttachRadiusScreen = 38.0;
   static const double _inlineSpineAttachToleranceScreen = 22.0;
   static const double _bypassDetachThresholdScreen = 52.0;
@@ -907,10 +907,122 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   String _normalizedAnchorSide(_LayoutItem item, String side) {
-    if (item.type != _EquipmentType.bypass) return side;
+    if (item.type != _EquipmentType.bypass) {
+      if (_usesFourSideEquipmentPorts(item.type)) {
+        switch (side) {
+          case 'inlet':
+            return 'left';
+          case 'outlet':
+            return 'right';
+          case 'upperBypass':
+            return 'top';
+          case 'lowerBypass':
+            return 'bottom';
+          default:
+            return side;
+        }
+      }
+      return side;
+    }
     final canonical = _normalizedBypassPortId(side);
     if (canonical != null) return canonical;
     return _bypassPortMainTop;
+  }
+
+  bool _usesFourSideEquipmentPorts(_EquipmentType type) {
+    if (_isStraightIronType(type) ||
+        type == _EquipmentType.bypass ||
+        type.name.startsWith('tee') ||
+        type.name.startsWith('elbow')) {
+      return false;
+    }
+    return true;
+  }
+
+  bool _isSingleInletEquipmentType(_EquipmentType type) {
+    return type == _EquipmentType.flowbackTank ||
+        type == _EquipmentType.productionTank ||
+        type == _EquipmentType.facilities;
+  }
+
+  bool _isEquipmentAnchorOccupied(
+    int itemId,
+    String side, {
+    int? ignoreIronId,
+    bool? ignoreLeading,
+  }) {
+    for (final item in _items) {
+      if (!_isStraightIronType(item.type)) continue;
+      for (final leading in const <bool>[true, false]) {
+        if (ignoreIronId != null &&
+            ignoreLeading != null &&
+            item.id == ignoreIronId &&
+            leading == ignoreLeading) {
+          continue;
+        }
+        final anchorItemId = int.tryParse(
+            item.properties[_endpointAnchorItemKey(leading)] ?? '');
+        final anchorSide = item.properties[_endpointAnchorSideKey(leading)];
+        if (anchorItemId == itemId && anchorSide == side) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  bool _isEquipmentInletOccupied(
+    int itemId, {
+    int? ignoreIronId,
+    bool? ignoreLeading,
+  }) {
+    for (final item in _items) {
+      if (!_isStraightIronType(item.type)) continue;
+      for (final leading in const <bool>[true, false]) {
+        if (ignoreIronId != null &&
+            ignoreLeading != null &&
+            item.id == ignoreIronId &&
+            leading == ignoreLeading) {
+          continue;
+        }
+        final anchorItemId = int.tryParse(
+            item.properties[_endpointAnchorItemKey(leading)] ?? '');
+        final anchorSide = item.properties[_endpointAnchorSideKey(leading)];
+        if (anchorItemId == itemId &&
+            anchorSide != null &&
+            anchorSide.isNotEmpty) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  bool _isEquipmentAnchorAvailable(
+    _LayoutItem item,
+    String side, {
+    int? movingIronId,
+    bool? movingIronLeading,
+  }) {
+    if (_isSingleInletEquipmentType(item.type)) {
+      return !_isEquipmentInletOccupied(
+        item.id,
+        ignoreIronId: movingIronId,
+        ignoreLeading: movingIronLeading,
+      );
+    }
+    return !_isEquipmentAnchorOccupied(
+      item.id,
+      side,
+      ignoreIronId: movingIronId,
+      ignoreLeading: movingIronLeading,
+    );
+  }
+
+  double _screenDistanceBetweenScenePoints(Offset a, Offset b) {
+    final av = _viewportPointFromScene(a);
+    final bv = _viewportPointFromScene(b);
+    return (av - bv).distance;
   }
 
   String _endpointJointKey(bool leading) => leading ? 'jointStart' : 'jointEnd';
@@ -1048,15 +1160,17 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         ];
       case _EquipmentType.wellhead:
         return const <_AnchorDefinition>[
-          _AnchorDefinition('inlet', 0.0, 0.5),
-          _AnchorDefinition('outlet', 1.0, 0.5),
+          _AnchorDefinition('top', 0.5, 0.08),
+          _AnchorDefinition('right', 0.92, 0.5),
+          _AnchorDefinition('bottom', 0.5, 0.92),
+          _AnchorDefinition('left', 0.08, 0.5),
         ];
       case _EquipmentType.chokeManifold:
         return const <_AnchorDefinition>[
-          _AnchorDefinition('inlet', 0.0, 0.5),
-          _AnchorDefinition('outlet', 1.0, 0.5),
-          _AnchorDefinition('upperBypass', 0.5, 0.2),
-          _AnchorDefinition('lowerBypass', 0.5, 0.8),
+          _AnchorDefinition('top', 0.5, 0.08),
+          _AnchorDefinition('right', 0.92, 0.5),
+          _AnchorDefinition('bottom', 0.5, 0.92),
+          _AnchorDefinition('left', 0.08, 0.5),
         ];
       case _EquipmentType.esdValve:
       case _EquipmentType.lineHeater:
@@ -1067,14 +1181,19 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       case _EquipmentType.flare:
       case _EquipmentType.compressor:
         return const <_AnchorDefinition>[
-          _AnchorDefinition('inlet', 0.0, 0.5),
-          _AnchorDefinition('outlet', 1.0, 0.5),
+          _AnchorDefinition('top', 0.5, 0.08),
+          _AnchorDefinition('right', 0.92, 0.5),
+          _AnchorDefinition('bottom', 0.5, 0.92),
+          _AnchorDefinition('left', 0.08, 0.5),
         ];
       case _EquipmentType.flowbackTank:
       case _EquipmentType.productionTank:
       case _EquipmentType.facilities:
         return const <_AnchorDefinition>[
-          _AnchorDefinition('inlet', 0.0, 0.5),
+          _AnchorDefinition('top', 0.5, 0.16),
+          _AnchorDefinition('right', 0.82, 0.5),
+          _AnchorDefinition('bottom', 0.5, 0.84),
+          _AnchorDefinition('left', 0.18, 0.5),
         ];
       case _EquipmentType.teeUp:
         return const <_AnchorDefinition>[
@@ -1122,8 +1241,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         ];
       default:
         return const <_AnchorDefinition>[
-          _AnchorDefinition('inlet', 0.0, 0.5),
-          _AnchorDefinition('outlet', 1.0, 0.5),
+          _AnchorDefinition('top', 0.5, 0.08),
+          _AnchorDefinition('right', 0.92, 0.5),
+          _AnchorDefinition('bottom', 0.5, 0.92),
+          _AnchorDefinition('left', 0.08, 0.5),
         ];
     }
   }
@@ -1271,8 +1392,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       } else {
         item.width = newX - item.x;
       }
-      item.y =
-          _snap(item.y).clamp(0.0, _virtualCanvasSize.height - item.height);
+      item.y = (point.dy - item.height / 2)
+          .clamp(0.0, _virtualCanvasSize.height - item.height);
       return;
     }
 
@@ -1286,7 +1407,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     } else {
       item.height = newY - item.y;
     }
-    item.x = _snap(item.x).clamp(0.0, _virtualCanvasSize.width - item.width);
+    item.x = (point.dx - item.width / 2)
+        .clamp(0.0, _virtualCanvasSize.width - item.width);
   }
 
   String _newJointId() =>
@@ -1372,6 +1494,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     required double radius,
     required bool exact,
     int? excludedItemId,
+    int? movingIronId,
+    bool? movingIronLeading,
   }) {
     _ConnectionTarget? best;
     var bestDistance = double.infinity;
@@ -1379,7 +1503,16 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       if (_isStraightIronType(item.type)) continue;
       if (excludedItemId != null && item.id == excludedItemId) continue;
       for (final anchor in _equipmentAnchorCandidates(item)) {
-        final distance = (anchor.point - target).distance;
+        if (!_isEquipmentAnchorAvailable(
+          item,
+          anchor.side,
+          movingIronId: movingIronId,
+          movingIronLeading: movingIronLeading,
+        )) {
+          continue;
+        }
+        final distance =
+            _screenDistanceBetweenScenePoints(anchor.point, target);
         if (distance > radius) continue;
         if (distance < bestDistance) {
           bestDistance = distance;
@@ -1411,7 +1544,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           continue;
         }
         final point = _resolveIronEndpoint(other, leading);
-        final distance = (point - target).distance;
+        final distance = _screenDistanceBetweenScenePoints(point, target);
         if (distance > radius) continue;
         if (distance < bestDistance) {
           bestDistance = distance;
@@ -1437,12 +1570,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     bool? movingIronLeading,
     int? excludedAnchorItemId,
   }) {
-    final snapRadius = _sceneRadiusFromScreen(_connectionSnapRadius);
+    const snapRadius = _connectionSnapRadius;
     final nearestAnchor = _nearestAnchorTarget(
       target,
       radius: snapRadius,
       exact: false,
       excludedItemId: excludedAnchorItemId,
+      movingIronId: movingIronId,
+      movingIronLeading: movingIronLeading,
     );
     final nearestEndpoint = _nearestIronEndpointTarget(
       target,
@@ -1516,7 +1651,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     Offset target,
   ) {
     final best = _nearestAnchorTarget(target,
-        radius: _sceneRadiusFromScreen(40), exact: false);
+        radius: 40, exact: false, movingIronId: iron.id);
     if (best == null || best.kind != _ConnectionTargetKind.equipmentAnchor) {
       return null;
     }
@@ -1591,7 +1726,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         excludedAnchorItemId: fitting.id,
       );
       if (target == null) continue;
-      final distance = (point - target.point).distance;
+      final distance = target.distance;
       if (best == null || distance < best.distance) {
         best = _FittingEndpointSnapCandidate(
           fittingSide: side,
@@ -1713,9 +1848,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     if (sameEndpoint) {
       return candidate;
     }
-    final switchBias = _sceneRadiusFromScreen(4.0);
-    final previousDistance = (previous.point - sourcePoint).distance;
-    final candidateDistance = (candidate.point - sourcePoint).distance;
+    const switchBias = 4.0;
+    final previousDistance =
+        _screenDistanceBetweenScenePoints(previous.point, sourcePoint);
+    final candidateDistance =
+        _screenDistanceBetweenScenePoints(candidate.point, sourcePoint);
     if (candidateDistance + switchBias < previousDistance) {
       return candidate;
     }
@@ -1744,6 +1881,16 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     bool leading,
     _EquipmentAnchorCandidate candidate,
   ) {
+    final targetItem = _findItemById(candidate.itemId);
+    if (targetItem == null ||
+        !_isEquipmentAnchorAvailable(
+          targetItem,
+          candidate.side,
+          movingIronId: item.id,
+          movingIronLeading: leading,
+        )) {
+      return;
+    }
     _clearEndpointAttachment(item, leading);
     _setEndpointAnchor(
       item,
@@ -2242,6 +2389,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   void _reflowSnappedFittings() {
     final jointIds = <String>{};
+    final occupiedEquipmentPorts = <String>{};
+    final occupiedSingleInletItems = <int>{};
     for (final item in _items) {
       if (_isStraightIronType(item.type)) {
         for (final leading in const <bool>[true, false]) {
@@ -2258,11 +2407,38 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           if (anchorItem != null &&
               anchorSide != null &&
               anchorSide.isNotEmpty) {
+            final normalizedSide =
+                _normalizedAnchorSide(anchorItem, anchorSide);
+            final normalizedPortKey = '${anchorItem.id}:$normalizedSide';
+            final singleInlet = _isSingleInletEquipmentType(anchorItem.type);
+            if (singleInlet) {
+              if (occupiedSingleInletItems.contains(anchorItem.id)) {
+                _setEndpointAnchor(item, leading,
+                    anchorItemId: null, side: null);
+                continue;
+              }
+              occupiedSingleInletItems.add(anchorItem.id);
+            } else {
+              if (occupiedEquipmentPorts.contains(normalizedPortKey)) {
+                _setEndpointAnchor(item, leading,
+                    anchorItemId: null, side: null);
+                continue;
+              }
+              occupiedEquipmentPorts.add(normalizedPortKey);
+            }
             final resolved =
-                _equipmentAnchorPointOrNull(anchorItem, anchorSide);
+                _equipmentAnchorPointOrNull(anchorItem, normalizedSide);
             if (resolved == null) {
               _setEndpointAnchor(item, leading, anchorItemId: null, side: null);
               continue;
+            }
+            if (normalizedSide != anchorSide) {
+              _setEndpointAnchor(
+                item,
+                leading,
+                anchorItemId: anchorItem.id,
+                side: normalizedSide,
+              );
             }
             _setIronEndpointPosition(
               item,
@@ -2316,10 +2492,43 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           final anchorItem = _findItemById(anchorItemId);
           final anchorPoint = anchorItem == null
               ? null
-              : _equipmentAnchorPointOrNull(anchorItem, anchorSide);
+              : _equipmentAnchorPointOrNull(
+                  anchorItem,
+                  _normalizedAnchorSide(anchorItem, anchorSide),
+                );
+          final normalizedSide = anchorItem == null
+              ? anchorSide
+              : _normalizedAnchorSide(anchorItem, anchorSide);
+          final normalizedPortKey =
+              anchorItem == null ? '' : '${anchorItem.id}:$normalizedSide';
           if (anchorPoint == null) {
             _setFittingAnchor(item, side, anchorItemId: null, anchorSide: null);
             continue;
+          }
+          if (anchorItem != null) {
+            if (_isSingleInletEquipmentType(anchorItem.type)) {
+              if (occupiedSingleInletItems.contains(anchorItem.id)) {
+                _setFittingAnchor(item, side,
+                    anchorItemId: null, anchorSide: null);
+                continue;
+              }
+              occupiedSingleInletItems.add(anchorItem.id);
+            } else {
+              if (occupiedEquipmentPorts.contains(normalizedPortKey)) {
+                _setFittingAnchor(item, side,
+                    anchorItemId: null, anchorSide: null);
+                continue;
+              }
+              occupiedEquipmentPorts.add(normalizedPortKey);
+            }
+          }
+          if (anchorItem != null && normalizedSide != anchorSide) {
+            _setFittingAnchor(
+              item,
+              side,
+              anchorItemId: anchorItem.id,
+              anchorSide: normalizedSide,
+            );
           }
           final currentPoint = _equipmentAnchorPointOrNull(item, side);
           if (currentPoint == null) continue;
