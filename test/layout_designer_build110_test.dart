@@ -282,9 +282,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 143', () async {
+  test('Build number is 147', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+146'));
+    expect(pubspec, contains('version: 1.0.1+147'));
   });
 
   testWidgets('Build 134 selected bypass keeps full artwork and no handle dots',
@@ -2290,6 +2290,241 @@ void main() {
     final anchor = _fittingAnchorFromMap(equipment, 'left');
     final endpoint = _ironEndpointFromMap(iron, false);
     expect((endpoint - anchor).distance, lessThanOrEqualTo(0.2));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Select Next cycles stacked close iron IDs and wraps',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 140, y: 240, width: 220),
+        _ironItem(2, x: 140, y: 240, width: 220),
+      ],
+    );
+
+    final topCenter =
+        tester.getCenter(find.byKey(const ValueKey<String>('item-hitbox-1')));
+    await tester.longPressAt(topCenter);
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Iron Horizontal 3" 1').first);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey<String>('select-next-button')),
+        findsOneWidget);
+    final startedWithOne = find
+        .byKey(const ValueKey<String>('iron-handle-1-start'))
+        .evaluate()
+        .isNotEmpty;
+    final startedWithTwo = find
+        .byKey(const ValueKey<String>('iron-handle-2-start'))
+        .evaluate()
+        .isNotEmpty;
+    expect(startedWithOne || startedWithTwo, isTrue);
+
+    await tester.tap(find.byKey(const ValueKey<String>('select-next-button')));
+    await tester.pumpAndSettle();
+    if (startedWithOne) {
+      expect(find.byKey(const ValueKey<String>('iron-handle-2-start')),
+          findsOneWidget);
+    } else {
+      expect(find.byKey(const ValueKey<String>('iron-handle-1-start')),
+          findsOneWidget);
+    }
+
+    await tester.tap(find.byKey(const ValueKey<String>('select-next-button')));
+    await tester.pumpAndSettle();
+    if (startedWithOne) {
+      expect(find.byKey(const ValueKey<String>('iron-handle-1-start')),
+          findsOneWidget);
+    } else {
+      expect(find.byKey(const ValueKey<String>('iron-handle-2-start')),
+          findsOneWidget);
+    }
+
+    await _saveRigUp(tester);
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    expect((_findById(items, 1)['x'] as num).toDouble(), closeTo(140, 0.01));
+    expect((_findById(items, 2)['x'] as num).toDouble(), closeTo(140, 0.01));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Long press crowded location opens picker and selects exact item',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 140, y: 240, width: 220),
+        _ironItem(2, x: 140, y: 240, width: 220),
+        <String, dynamic>{
+          'id': 3,
+          'type': 'elbowUpRight',
+          'x': 220.0,
+          'y': 248.0,
+          'width': 34.0,
+          'height': 34.0,
+          'properties': <String, String>{'ironSize': '3'},
+          'rotationTurns': 0,
+          'locked': false,
+        },
+      ],
+    );
+
+    final topCenter =
+        tester.getCenter(find.byKey(const ValueKey<String>('item-hitbox-1')));
+    await tester.longPressAt(topCenter);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Select Item'), findsOneWidget);
+    expect(find.textContaining('Iron Horizontal 3" 1'), findsOneWidget);
+    expect(find.textContaining('Iron Horizontal 3" 2'), findsOneWidget);
+
+    await tester.tap(find.textContaining('Iron Horizontal 3" 1').first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey<String>('iron-handle-2-start')),
+        findsOneWidget);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('New tap location rebuilds candidates and hides Select Next',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 140, y: 240, width: 220),
+        _ironItem(2, x: 140, y: 240, width: 220),
+      ],
+    );
+
+    final topCenter =
+        tester.getCenter(find.byKey(const ValueKey<String>('item-hitbox-1')));
+    await tester.longPressAt(topCenter);
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Iron Horizontal 3" 1').first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey<String>('select-next-button')),
+        findsOneWidget);
+
+    await tester.tapAt(const Offset(24, 24));
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey<String>('select-next-button')), findsNothing);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Horizontal iron can shorten significantly from right endpoint',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 180, y: 220, width: 120),
+      ],
+      selectedId: 1,
+    );
+
+    const originalX = 180.0;
+    await tester.drag(
+      find.byKey(const ValueKey<String>('iron-handle-1-end')),
+      const Offset(-96, 0),
+    );
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final iron = _findById(items, 1);
+    expect((iron['width'] as num).toDouble(), lessThan(36.0));
+    expect((iron['width'] as num).toDouble(), greaterThanOrEqualTo(14.0));
+    expect((iron['x'] as num).toDouble(), closeTo(originalX, 0.5));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Vertical iron can shorten significantly from top endpoint',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 220, y: 180, width: 120, vertical: true),
+      ],
+      selectedId: 1,
+    );
+
+    const originalBottom = 300.0;
+    await tester.drag(
+      find.byKey(const ValueKey<String>('iron-handle-1-start')),
+      const Offset(0, 94),
+    );
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final iron = _findById(items, 1);
+    expect((iron['height'] as num).toDouble(), lessThan(36.0));
+    expect((iron['height'] as num).toDouble(), greaterThanOrEqualTo(14.0));
+    final bottomAfter =
+        (iron['y'] as num).toDouble() + (iron['height'] as num).toDouble();
+    expect(bottomAfter, closeTo(originalBottom, 0.8));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Connected short iron can be shorter than free minimum',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'wellhead', x: 280, y: 220, width: 30, height: 28),
+        _equipmentItem(2, 'wellhead', x: 306, y: 220, width: 30, height: 28),
+        <String, dynamic>{
+          ..._ironItem(3, x: 286, y: 220, width: 40),
+          'properties': <String, String>{
+            'ironSize': '3',
+            'anchorStartItemId': '1',
+            'anchorStartSide': 'right',
+            'anchorEndItemId': '2',
+            'anchorEndSide': 'left',
+          },
+        },
+      ],
+    );
+
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final iron = _findById(items, 3);
+    final width = (iron['width'] as num).toDouble();
+    expect(width, lessThan(14.0));
+    final props = (iron['properties'] as Map).cast<String, dynamic>();
+    expect(props['anchorStartSide'], 'right');
+    expect(props['anchorEndSide'], 'left');
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('D-pad fine adjusts selected horizontal endpoint only on axis',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _ironItem(1, x: 180, y: 220, width: 120),
+      ],
+      selectedId: 1,
+    );
+
+    await tester.tap(find.byKey(const ValueKey<String>('iron-handle-1-end')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Move Right'));
+    await tester.pumpAndSettle();
+    await _saveRigUp(tester);
+
+    final items = _itemsFromPayload(await _savedLayoutPayload());
+    final iron = _findById(items, 1);
+    expect((iron['width'] as num).toDouble(), greaterThan(120));
+    expect((iron['y'] as num).toDouble(), closeTo(220, 0.01));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });

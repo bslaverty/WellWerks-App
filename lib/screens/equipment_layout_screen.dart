@@ -33,7 +33,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   final List<_LayoutItem> _items = [];
   int? _selectedId;
   final Set<int> _selectedIds = <int>{};
-  final bool _multiSelectMode = false;
   bool _drawIronMode = false;
   String _drawIronSize = '3';
   final List<String> _undoStack = <String>[];
@@ -60,6 +59,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   bool _dragActive = false;
   int? _snapCandidateIronId;
   Offset? _snapIndicatorScene;
+  List<int> _lastSelectionCandidateIds = <int>[];
+  int _lastSelectionCandidateIndex = 0;
   final Map<int, Offset> _dragItemStart = <int, Offset>{};
   final Map<int, _BypassDragContext> _bypassDragContexts =
       <int, _BypassDragContext>{};
@@ -110,6 +111,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   static const double _mobileLibraryMaxFraction = 0.82;
   static const double _dragLiftScreenOffsetY = 64.0;
   static const double _connectionSnapRadius = 32.0;
+  static const double _ironSelectionCorridorScreen = 22.0;
+  static const double _itemSelectionCorridorScreen = 16.0;
+  static const double _freeIronMinLength = 14.0;
   static const double _bypassAttachRadiusScreen = 38.0;
   static const double _inlineSpineAttachToleranceScreen = 22.0;
   static const double _bypassDetachThresholdScreen = 52.0;
@@ -412,21 +416,185 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     setState(() => _showConnectionPoints = !_showConnectionPoints);
   }
 
-  _LayoutItem? _itemAtScenePoint(Offset scenePoint) {
-    for (final item in _items.reversed) {
+  double _distanceToRect(Offset point, Rect rect) {
+    final dx = point.dx < rect.left
+        ? rect.left - point.dx
+        : (point.dx > rect.right ? point.dx - rect.right : 0.0);
+    final dy = point.dy < rect.top
+        ? rect.top - point.dy
+        : (point.dy > rect.bottom ? point.dy - rect.bottom : 0.0);
+    return math.sqrt((dx * dx) + (dy * dy));
+  }
+
+  List<_SelectionCandidate> _resolveSelectionCandidates(Offset scenePoint) {
+    final viewportPoint = _viewportPointFromScene(scenePoint);
+    final candidates = <_SelectionCandidate>[];
+    for (var i = 0; i < _items.length; i++) {
+      final item = _items[i];
       if (!_itemIsVisible(item)) continue;
-      final pad = _interactionPaddingForItem(item);
-      final hitRect = Rect.fromLTWH(
-        item.x - pad,
-        item.y - pad,
-        item.width + (pad * 2),
-        item.height + (pad * 2),
+      if (_isStraightIronType(item.type)) {
+        final start = _viewportPointFromScene(_resolveIronEndpoint(item, true));
+        final end = _viewportPointFromScene(_resolveIronEndpoint(item, false));
+        final distance = _distancePointToSegment(viewportPoint, start, end);
+        if (distance <= _ironSelectionCorridorScreen) {
+          candidates.add(_SelectionCandidate(
+            itemId: item.id,
+            distance: distance,
+            zIndex: i,
+            directHit: distance <= (_ironSelectionCorridorScreen / 2),
+          ));
+        }
+        continue;
+      }
+
+      final topLeft = _viewportPointFromScene(Offset(item.x, item.y));
+      final bottomRight = _viewportPointFromScene(
+          Offset(item.x + item.width, item.y + item.height));
+      final rect = Rect.fromLTRB(
+        math.min(topLeft.dx, bottomRight.dx),
+        math.min(topLeft.dy, bottomRight.dy),
+        math.max(topLeft.dx, bottomRight.dx),
+        math.max(topLeft.dy, bottomRight.dy),
       );
-      if (hitRect.contains(scenePoint)) {
-        return item;
+      final distance = _distanceToRect(viewportPoint, rect);
+      if (distance <= _itemSelectionCorridorScreen) {
+        candidates.add(_SelectionCandidate(
+          itemId: item.id,
+          distance: distance,
+          zIndex: i,
+          directHit: rect.contains(viewportPoint),
+        ));
       }
     }
-    return null;
+
+    candidates.sort((a, b) {
+      if (a.directHit != b.directHit) {
+        return a.directHit ? -1 : 1;
+      }
+      final byDistance = a.distance.compareTo(b.distance);
+      if (byDistance != 0) return byDistance;
+      return b.zIndex.compareTo(a.zIndex);
+    });
+    return candidates;
+  }
+
+  bool get _canSelectNextCandidate =>
+      _lastSelectionCandidateIds.length > 1 && _selectedId != null;
+
+  void _rebuildSelectionCandidatesAt(Offset scenePoint) {
+    final candidates = _resolveSelectionCandidates(scenePoint)
+        .map((candidate) => candidate.itemId)
+        .toList(growable: false);
+    _lastSelectionCandidateIds = candidates;
+    _lastSelectionCandidateIndex = 0;
+  }
+
+  void _selectNextCandidateFromLastHit() {
+    if (_lastSelectionCandidateIds.length <= 1) return;
+    final currentId = _selectedId;
+    var index = _lastSelectionCandidateIndex;
+    if (currentId != null) {
+      final found = _lastSelectionCandidateIds.indexOf(currentId);
+      if (found >= 0) {
+        index = found;
+      }
+    }
+    index = (index + 1) % _lastSelectionCandidateIds.length;
+    final nextId = _lastSelectionCandidateIds[index];
+    _lastSelectionCandidateIndex = index;
+    _selectOnly(nextId);
+  }
+
+  Future<void> _showSelectionPickerForScenePoint(Offset scenePoint) async {
+    final candidates = _resolveSelectionCandidates(scenePoint);
+    if (candidates.isEmpty) return;
+    _lastSelectionCandidateIds =
+        candidates.map((candidate) => candidate.itemId).toList(growable: false);
+    _lastSelectionCandidateIndex = 0;
+    if (candidates.length == 1) {
+      _selectOnly(candidates.first.itemId);
+      return;
+    }
+
+    final items = <_LayoutItem>[];
+    for (final candidate in candidates) {
+      final item = _findItemById(candidate.itemId);
+      if (item != null) items.add(item);
+    }
+    if (items.length <= 1) {
+      if (items.isNotEmpty) {
+        _selectOnly(items.first.id);
+      }
+      return;
+    }
+
+    final labelCounts = <String, int>{};
+    for (final item in items) {
+      final label = item.type.isIron
+          ? '${item.displayLabel} ${item.ironSize}"'
+          : item.displayLabel;
+      labelCounts[label] = (labelCounts[label] ?? 0) + 1;
+    }
+    final nextLabelIndex = <String, int>{};
+
+    final selectedId = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: const Color(0xFF0F1114),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Select Item',
+                  style: TextStyle(
+                    color: _gold,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                for (final item in items)
+                  () {
+                    final base = item.type.isIron
+                        ? '${item.displayLabel} ${item.ironSize}"'
+                        : item.displayLabel;
+                    final duplicate = (labelCounts[base] ?? 0) > 1;
+                    final idx = (nextLabelIndex[base] ?? 0) + 1;
+                    nextLabelIndex[base] = idx;
+                    final label = duplicate ? '$base $idx' : base;
+                    return ListTile(
+                      dense: true,
+                      minTileHeight: 46,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                      title: Text(
+                        label,
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 13),
+                      ),
+                      onTap: () => Navigator.pop(context, item.id),
+                    );
+                  }(),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (selectedId != null) {
+      _selectOnly(selectedId);
+      final selectedIndex = _lastSelectionCandidateIds.indexOf(selectedId);
+      if (selectedIndex >= 0) {
+        _lastSelectionCandidateIndex = selectedIndex;
+      }
+    }
   }
 
   bool get _hideFloatingToolbar =>
@@ -575,7 +743,33 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   void _nudgeSelectionBy(Offset directionUnit) {
+    final selectedIron = _selectedStraightIron;
+    final selectedEndpoint = _selectedEndpointLeading;
+    if (selectedIron != null &&
+        selectedEndpoint != null &&
+        !selectedIron.locked) {
+      _nudgeSelectedEndpoint(directionUnit, recordHistory: true);
+      return;
+    }
     _moveSelectedBy(_nudgeDelta(directionUnit));
+  }
+
+  void _nudgeSelectedEndpoint(
+    Offset directionUnit, {
+    required bool recordHistory,
+  }) {
+    final item = _selectedStraightIron;
+    final leading = _selectedEndpointLeading;
+    if (item == null || leading == null || item.locked) return;
+    final delta = _nudgeDelta(directionUnit);
+    final endpointDelta = item.type == _EquipmentType.ironHorizontal
+        ? Offset(delta.dx, 0)
+        : Offset(0, delta.dy);
+    if (endpointDelta == Offset.zero) return;
+    if (recordHistory) {
+      _recordUndo();
+    }
+    _updateEndpointHandleDrag(item, leading, endpointDelta);
   }
 
   void _startArrowRepeat(Offset directionUnit) {
@@ -589,7 +783,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       }
       _arrowHoldTriggered = true;
       _recordUndo();
-      _moveSelectedBy(_nudgeDelta(directionUnit), recordHistory: false);
+      if (_selectedStraightIron != null && _selectedEndpointLeading != null) {
+        _nudgeSelectedEndpoint(directionUnit, recordHistory: false);
+      } else {
+        _moveSelectedBy(_nudgeDelta(directionUnit), recordHistory: false);
+      }
       _arrowRepeatTimer =
           Timer.periodic(const Duration(milliseconds: 100), (_) {
         if (!mounted ||
@@ -598,7 +796,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           _stopArrowRepeat();
           return;
         }
-        _moveSelectedBy(_nudgeDelta(directionUnit), recordHistory: false);
+        if (_selectedStraightIron != null && _selectedEndpointLeading != null) {
+          _nudgeSelectedEndpoint(directionUnit, recordHistory: false);
+        } else {
+          _moveSelectedBy(_nudgeDelta(directionUnit), recordHistory: false);
+        }
       });
     });
   }
@@ -1380,12 +1582,28 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         _endpointHasLockedPeer(item, false);
   }
 
+  bool _endpointIsConnected(_LayoutItem item, bool leading) {
+    final joint = _jointId(item, leading);
+    if (joint != null && joint.isNotEmpty) return true;
+    final anchorItemId =
+        int.tryParse(item.properties[_endpointAnchorItemKey(leading)] ?? '');
+    final anchorSide = item.properties[_endpointAnchorSideKey(leading)];
+    return anchorItemId != null && anchorSide != null && anchorSide.isNotEmpty;
+  }
+
+  double _effectiveIronMinLength(_LayoutItem item) {
+    final bothConnected =
+        _endpointIsConnected(item, true) && _endpointIsConnected(item, false);
+    return bothConnected ? 0.0 : _freeIronMinLength;
+  }
+
   void _setIronEndpointPosition(_LayoutItem item, bool leading, Offset point) {
+    final minLength = _effectiveIronMinLength(item);
     if (item.type == _EquipmentType.ironHorizontal) {
       final opposite = _ironEndpoint(item, !leading);
       final newX = leading
-          ? point.dx.clamp(0.0, opposite.dx - 36.0)
-          : point.dx.clamp(item.x + 36.0, _virtualCanvasSize.width);
+          ? point.dx.clamp(0.0, opposite.dx - minLength)
+          : point.dx.clamp(item.x + minLength, _virtualCanvasSize.width);
       if (leading) {
         item.width = opposite.dx - newX;
         item.x = newX;
@@ -1399,8 +1617,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
     final opposite = _ironEndpoint(item, !leading);
     final newY = leading
-        ? point.dy.clamp(0.0, opposite.dy - 36.0)
-        : point.dy.clamp(item.y + 36.0, _virtualCanvasSize.height);
+        ? point.dy.clamp(0.0, opposite.dy - minLength)
+        : point.dy.clamp(item.y + minLength, _virtualCanvasSize.height);
     if (leading) {
       item.height = opposite.dy - newY;
       item.y = newY;
@@ -3091,7 +3309,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     controller.dispose();
     if (result == null || result <= 0) return;
 
-    final newPixels = (result * 6).clamp(36.0, 1200.0).toDouble();
+    final newPixels = (result * 6).clamp(_freeIronMinLength, 1200.0).toDouble();
     _runHistoryChange(() {
       if (item.type == _EquipmentType.ironHorizontal) {
         item.width = newPixels;
@@ -3108,7 +3326,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     if (item == null ||
         !(item.type == _EquipmentType.ironHorizontal ||
             item.type == _EquipmentType.ironVertical)) return;
-    final newPixels = (feet * 6).clamp(36.0, 1200.0).toDouble();
+    final newPixels = (feet * 6).clamp(_freeIronMinLength, 1200.0).toDouble();
     _runHistoryChange(() {
       if (item.type == _EquipmentType.ironHorizontal) {
         item.width = newPixels;
@@ -3468,8 +3686,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     }
 
     if (!_drawIronMode) {
-      final hitItem = _itemAtScenePoint(clampedPoint);
-      if (hitItem == null && _selectedIds.isNotEmpty) {
+      _rebuildSelectionCandidatesAt(clampedPoint);
+      if (_lastSelectionCandidateIds.isNotEmpty) {
+        _selectOnly(_lastSelectionCandidateIds.first);
+      } else if (_selectedIds.isNotEmpty) {
         _clearSelection();
       }
       return;
@@ -3545,11 +3765,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         ? _EquipmentType.ironHorizontal
         : _EquipmentType.ironVertical;
     final width = horizontal
-        ? dx.abs().clamp(36.0, 1200.0).toDouble()
+        ? dx.abs().clamp(_freeIronMinLength, 1200.0).toDouble()
         : type.defaultWidth;
     final height = horizontal
         ? type.defaultHeight
-        : dy.abs().clamp(36.0, 1200.0).toDouble();
+        : dy.abs().clamp(_freeIronMinLength, 1200.0).toDouble();
     final x = horizontal
         ? (dx >= 0 ? startPoint.dx : endPoint.dx)
         : startPoint.dx - width / 2;
@@ -3704,6 +3924,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   void _selectOnly(int id) {
     _stopArrowRepeat();
+    if (_lastSelectionCandidateIds.contains(id)) {
+      _lastSelectionCandidateIndex = _lastSelectionCandidateIds.indexOf(id);
+    } else {
+      _lastSelectionCandidateIds = <int>[id];
+      _lastSelectionCandidateIndex = 0;
+    }
     setState(() {
       _selectedId = id;
       _selectedEndpointLeading = null;
@@ -3716,6 +3942,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   void _toggleSelection(int id) {
     _stopArrowRepeat();
+    _lastSelectionCandidateIds = <int>[id];
+    _lastSelectionCandidateIndex = 0;
     setState(() {
       _selectedEndpointLeading = null;
       _selectedBypassHandle = null;
@@ -3730,6 +3958,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   void _clearSelection() {
     _stopArrowRepeat();
+    _lastSelectionCandidateIds = <int>[];
+    _lastSelectionCandidateIndex = 0;
     setState(() {
       _selectedId = null;
       _selectedEndpointLeading = null;
@@ -8042,6 +8272,17 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                       label: const Text('Rotate'),
                       style: _compactOutlineStyle(),
                     ),
+                    if (_canSelectNextCandidate) ...[
+                      const SizedBox(width: 6),
+                      OutlinedButton.icon(
+                        key: const ValueKey<String>('select-next-button'),
+                        onPressed:
+                            canAct ? _selectNextCandidateFromLastHit : null,
+                        icon: const Icon(Icons.swap_vert),
+                        label: const Text('Select Next'),
+                        style: _compactOutlineStyle(),
+                      ),
+                    ],
                     const SizedBox(width: 6),
                     OutlinedButton.icon(
                       onPressed: canAct ? _duplicateSelected : null,
@@ -8690,6 +8931,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                 _scenePointFromViewport(details.localPosition);
                             _handleCanvasTap(scenePoint);
                           },
+                          onLongPressStart: (details) {
+                            final scenePoint =
+                                _scenePointFromGlobal(details.globalPosition);
+                            _showSelectionPickerForScenePoint(scenePoint);
+                          },
                           child: InteractiveViewer(
                             transformationController: _canvasTransform,
                             onInteractionEnd: (_) {
@@ -8919,17 +9165,24 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                           key: ValueKey<String>(
                                               'item-hitbox-${item.id}'),
                                           behavior: HitTestBehavior.opaque,
-                                          onTap: () => _multiSelectMode
-                                              ? _toggleSelection(item.id)
-                                              : _selectOnly(item.id),
+                                          onTapUp: (details) {
+                                            final scenePoint =
+                                                _scenePointFromGlobal(
+                                                    details.globalPosition);
+                                            _handleCanvasTap(scenePoint);
+                                          },
                                           onDoubleTap: () {
                                             _selectOnly(item.id);
                                             if (!item.locked) {
                                               _rotateSelected();
                                             }
                                           },
-                                          onLongPress: () {
-                                            _selectOnly(item.id);
+                                          onLongPressStart: (details) {
+                                            final scenePoint =
+                                                _scenePointFromGlobal(
+                                                    details.globalPosition);
+                                            _showSelectionPickerForScenePoint(
+                                                scenePoint);
                                           },
                                           onPanStart: (details) =>
                                               _beginItemDrag(item, details),
@@ -9115,6 +9368,20 @@ class _FittingEndpointSnapCandidate {
     required this.fittingPoint,
     required this.target,
     required this.distance,
+  });
+}
+
+class _SelectionCandidate {
+  final int itemId;
+  final double distance;
+  final int zIndex;
+  final bool directHit;
+
+  const _SelectionCandidate({
+    required this.itemId,
+    required this.distance,
+    required this.zIndex,
+    required this.directHit,
   });
 }
 
