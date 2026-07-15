@@ -1047,6 +1047,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     return type == _EquipmentType.bypass || type.name.startsWith('tee');
   }
 
+  bool _usesInlineParentDragConstraint(_EquipmentType type) {
+    return type == _EquipmentType.bypass;
+  }
+
   bool _isElbowFittingType(_EquipmentType type) {
     return type.name.startsWith('elbow');
   }
@@ -3426,19 +3430,26 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       ..clear()
       ..addEntries(moving.map((it) => MapEntry(it.id, Offset(it.x, it.y))));
     for (final it in moving) {
+      if (_isFittingEndpointConnectableType(it.type)) {
+        _clearFittingAnchors(it);
+      }
       if (!_isInlineFittingType(it.type)) continue;
       final parentIron = _inlineParentIron(it);
       final parentT = _inlineParentT(it);
       final attached = parentIron != null && parentT != null;
+      if (!_usesInlineParentDragConstraint(it.type) && attached) {
+        _clearInlineParentAttachment(it);
+      }
       _bypassDragContexts[it.id] = _BypassDragContext(
         startTopLeft: Offset(it.x, it.y),
         startCenter: _attachmentSpineCenterWorld(it, parentIron: parentIron),
-        wasAttached: attached,
+        wasAttached: _usesInlineParentDragConstraint(it.type) && attached,
         parentIronId: parentIron?.id,
         startT: parentT,
         attachedSegmentId: _inlineAttachedSegmentId(it),
         blockedParentIronId: parentIron?.id,
-        reconnectAllowed: !attached,
+        reconnectAllowed:
+            !_usesInlineParentDragConstraint(it.type) || !attached,
       );
     }
     if (mounted) {
@@ -3483,7 +3494,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         final desired = Offset(origin.dx + delta.dx, origin.dy + delta.dy);
         if (_isInlineFittingType(it.type)) {
           final context = _bypassDragContexts[it.id];
-          if (context != null) {
+          if (context != null && _usesInlineParentDragConstraint(it.type)) {
             _applyInlineAttachedDrag(it, context, delta, canvasSize);
           } else {
             _setBypassTopLeft(it, desired, canvasSize);
@@ -3534,7 +3545,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         final canvasSize = _virtualCanvasSize;
         for (final it in moving) {
           if (_segmentMoveBlocked(it)) continue;
-          if (_isInlineFittingType(it.type) && _inlineParentIron(it) != null) {
+          if (_usesInlineParentDragConstraint(it.type) &&
+              _inlineParentIron(it) != null) {
             continue;
           }
           it.x = _snap(it.x).clamp(0.0, canvasSize.width - it.width);
@@ -3574,7 +3586,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         final parentIron = _inlineParentIron(it);
         final parentT = _inlineParentT(it);
         final context = _bypassDragContexts[it.id];
-        if (parentIron != null && parentT != null) {
+        if (_usesInlineParentDragConstraint(it.type) &&
+            parentIron != null &&
+            parentT != null) {
           _setInlineParentAttachment(it, parentIron, parentT);
           _alignInlineToParent(it, parentIron, parentT);
         } else {

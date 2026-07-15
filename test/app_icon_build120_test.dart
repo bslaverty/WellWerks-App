@@ -119,6 +119,29 @@ List<double> _normalizedBoundsInRect(
   ];
 }
 
+List<int> _dominantNonBlackColorInRect(
+  _DecodedImage image, {
+  required int left,
+  required int top,
+  required int right,
+  required int bottom,
+}) {
+  final counts = <String, int>{};
+  for (var y = top; y <= bottom; y++) {
+    for (var x = left; x <= right; x++) {
+      final px = image.pixel(x, y);
+      if (px[3] < 200) continue;
+      if (px[0] <= 10 && px[1] <= 10 && px[2] <= 10) continue;
+      final key = '${px[0]},${px[1]},${px[2]},${px[3]}';
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+  }
+  final dominant = counts.entries.reduce(
+    (best, current) => current.value > best.value ? current : best,
+  );
+  return dominant.key.split(',').map(int.parse).toList(growable: false);
+}
+
 const List<List<double>> _flatBlackProbePoints1024 = <List<double>>[
   <double>[0.24, 0.24],
   <double>[0.76, 0.24],
@@ -179,9 +202,9 @@ Future<Uint8List> _resizePngBytes(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('Build number is 150 in pubspec', () async {
+  test('Build number is 151 in pubspec', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+150'));
+    expect(pubspec, contains('version: 1.0.1+151'));
     expect(
         pubspec, contains('image_path: "assets/icons/app_icon_build150.png"'));
   });
@@ -306,6 +329,19 @@ void main() {
       ),
       isTrue,
     );
+  });
+
+  test('Build 150 border color matches the dominant logo gold', () async {
+    final master = await _decodePng(File('assets/icons/app_icon_build150.png'));
+    final border = master.pixel(master.width ~/ 2, 20);
+    final logo = _dominantNonBlackColorInRect(
+      master,
+      left: 220,
+      top: 160,
+      right: 820,
+      bottom: 860,
+    );
+    expect(border, equals(logo));
   });
 
   test(
