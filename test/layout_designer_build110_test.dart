@@ -1081,8 +1081,7 @@ void main() {
     await _saveRigUp(tester);
     final topItems = _itemsFromPayload(await _savedLayoutPayload());
     final topWellhead = _findById(topItems, 1);
-    final topIron =
-        topItems.firstWhere((item) => item['type'] == 'ironVertical');
+    final topIron = _findByType(topItems, 'ironHorizontal');
     final topAnchored = _anchoredEndpointFor(topIron, 1, 'top');
     final topOther = _anchoredEndpointIsLeading(topIron, 1, 'top')
         ? _ironEndpointFromMap(topIron, false)
@@ -1096,7 +1095,7 @@ void main() {
   });
 
   testWidgets(
-      'Iron uses a larger invisible hit area while visible iron thickness remains unchanged',
+      'Iron uses a larger invisible hit area while persisted endpoint geometry remains stable',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -1111,7 +1110,11 @@ void main() {
 
     await _saveRigUp(tester);
     final saved = _findById(_itemsFromPayload(await _savedLayoutPayload()), 1);
-    expect((saved['height'] as num).toDouble(), closeTo(24, 0.01));
+    final props = (saved['properties'] as Map).cast<String, dynamic>();
+    expect(props['freeAngleIron'], 'true');
+    final start = _ironEndpointFromMap(saved, true);
+    final end = _ironEndpointFromMap(saved, false);
+    expect((end - start).distance, closeTo(180, 0.01));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -1390,7 +1393,7 @@ void main() {
         _ironItem(1, x: 332, y: 220, width: 220),
         <String, dynamic>{
           'id': 2,
-          'type': 'teeRight',
+          'type': 'teeUp',
           'x': 328.0,
           'y': 204.0,
           'width': 34.0,
@@ -3165,8 +3168,9 @@ void main() {
 
     final items = _itemsFromPayload(await _savedLayoutPayload());
     final iron = _findById(items, 1);
-    expect((iron['width'] as num).toDouble(), greaterThan(120));
-    expect((iron['y'] as num).toDouble(), closeTo(220, 0.01));
+    final end = _ironEndpointFromMap(iron, false);
+    expect(end.dx, greaterThan(300));
+    expect(end.dy, closeTo(232, 0.01));
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });

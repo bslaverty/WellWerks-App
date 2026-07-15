@@ -495,6 +495,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         return;
       }
     }
+    if (_isStraightIronType(item.type)) {
+      final origin = _dragItemStart[item.id] ?? Offset(item.x, item.y);
+      _translateStraightIronBy(item, desiredTopLeft - origin);
+      return;
+    }
     _setBypassTopLeft(item, desiredTopLeft, canvasSize);
   }
 
@@ -910,8 +915,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   bool _isFreeAngleIron(_LayoutItem item) {
-    return _isStraightIronType(item.type) &&
-        item.properties[_freeAngleIronKey] == 'true';
+    return _isStraightIronType(item.type);
   }
 
   bool _connectionTargetsEqual(_ConnectionTarget a, _ConnectionTarget b) {
@@ -1331,27 +1335,25 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           final parentIron = _inlineParentIron(item);
           final parentT = _inlineParentT(item);
           if (parentIron != null && parentT != null) {
-            final horizontal = parentIron.type == _EquipmentType.ironHorizontal;
-            final alongDelta = horizontal ? delta.dx : delta.dy;
+            final parentStart = _resolveIronEndpoint(parentIron, true);
+            final parentEnd = _resolveIronEndpoint(parentIron, false);
+            final parentVector = parentEnd - parentStart;
+            final parentLength = parentVector.distance;
+            if (parentLength < 1e-6) {
+              continue;
+            }
+            final parentDir = Offset(
+              parentVector.dx / parentLength,
+              parentVector.dy / parentLength,
+            );
+            final alongDelta =
+                (delta.dx * parentDir.dx) + (delta.dy * parentDir.dy);
             if (alongDelta.abs() < 0.0001) {
               continue;
             }
             final center = _pointOnIronCenterline(parentIron, parentT);
-            final parentStart = _resolveIronEndpoint(parentIron, true);
-            final parentEnd = _resolveIronEndpoint(parentIron, false);
-            final projected = horizontal
-                ? Offset(
-                    (center.dx + alongDelta).clamp(
-                        math.min(parentStart.dx, parentEnd.dx),
-                        math.max(parentStart.dx, parentEnd.dx)),
-                    parentStart.dy,
-                  )
-                : Offset(
-                    parentStart.dx,
-                    (center.dy + alongDelta).clamp(
-                        math.min(parentStart.dy, parentEnd.dy),
-                        math.max(parentStart.dy, parentEnd.dy)),
-                  );
+            final projected = center +
+                Offset(parentDir.dx * alongDelta, parentDir.dy * alongDelta);
             final t = _normalizedPositionAlongIron(parentIron, projected);
             _setInlineParentAttachment(item, parentIron, t);
             _alignInlineToParent(item, parentIron, t);
@@ -1360,8 +1362,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           }
         }
         final desired = Offset(origin.dx + delta.dx, origin.dy + delta.dy);
-        item.x = desired.dx.clamp(0.0, canvasSize.width - item.width);
-        item.y = desired.dy.clamp(0.0, canvasSize.height - item.height);
+        if (_isStraightIronType(item.type)) {
+          _translateStraightIronBy(item, delta);
+        } else {
+          item.x = desired.dx.clamp(0.0, canvasSize.width - item.width);
+          item.y = desired.dy.clamp(0.0, canvasSize.height - item.height);
+        }
       }
       _reflowSnappedFittings();
     }
@@ -1402,9 +1408,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final leading = _selectedEndpointLeading;
     if (item == null || leading == null || item.locked) return;
     final delta = _nudgeDelta(directionUnit);
-    final endpointDelta = item.type == _EquipmentType.ironHorizontal
-        ? Offset(delta.dx, 0)
-        : Offset(0, delta.dy);
+    final endpointDelta = delta;
     if (endpointDelta == Offset.zero) return;
     if (recordHistory) {
       _recordUndo();
@@ -1801,6 +1805,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         type == _EquipmentType.facilities;
   }
 
+  String _singleInletAnchorSide(_EquipmentType type) {
+    if (_isSingleInletEquipmentType(type)) {
+      return 'left';
+    }
+    return 'left';
+  }
+
   bool _isEquipmentAnchorOccupied(
     int itemId,
     String side, {
@@ -1887,6 +1898,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     bool? movingIronLeading,
   }) {
     if (_isSingleInletEquipmentType(item.type)) {
+      final canonicalSide = _normalizedAnchorSide(item, side);
+      if (canonicalSide != _singleInletAnchorSide(item.type)) {
+        return false;
+      }
       return !_isEquipmentInletOccupied(
         item.id,
         ignoreIronId: movingIronId,
@@ -1979,19 +1994,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Offset _storedIronEndpoint(_LayoutItem item, bool leading) {
-    if (_isFreeAngleIron(item)) {
-      final x = double.tryParse(
-            item.properties[
-                    leading ? _freeAngleStartXKey : _freeAngleEndXKey] ??
-                '',
-          ) ??
-          0;
-      final y = double.tryParse(
-            item.properties[
-                    leading ? _freeAngleStartYKey : _freeAngleEndYKey] ??
-                '',
-          ) ??
-          0;
+    final x = double.tryParse(
+      item.properties[leading ? _freeAngleStartXKey : _freeAngleEndXKey] ?? '',
+    );
+    final y = double.tryParse(
+      item.properties[leading ? _freeAngleStartYKey : _freeAngleEndYKey] ?? '',
+    );
+    if (x != null && y != null) {
       return Offset(x, y);
     }
     final horizontal = item.type == _EquipmentType.ironHorizontal;
@@ -2009,6 +2018,29 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   Offset _ironEndpoint(_LayoutItem item, bool leading) {
     return _storedIronEndpoint(item, leading);
+  }
+
+  void _storeIronEndpoints(_LayoutItem item, Offset start, Offset end) {
+    final minX = math.min(start.dx, end.dx);
+    final minY = math.min(start.dy, end.dy);
+    final maxX = math.max(start.dx, end.dx);
+    final maxY = math.max(start.dy, end.dy);
+    item.properties[_freeAngleIronKey] = 'true';
+    item.properties[_freeAngleStartXKey] = start.dx.toStringAsFixed(4);
+    item.properties[_freeAngleStartYKey] = start.dy.toStringAsFixed(4);
+    item.properties[_freeAngleEndXKey] = end.dx.toStringAsFixed(4);
+    item.properties[_freeAngleEndYKey] = end.dy.toStringAsFixed(4);
+    item.x = minX;
+    item.y = minY;
+    item.width = math.max(1.0, maxX - minX);
+    item.height = math.max(1.0, maxY - minY);
+  }
+
+  void _translateStraightIronBy(_LayoutItem item, Offset delta) {
+    if (!_isStraightIronType(item.type) || delta == Offset.zero) return;
+    final start = _storedIronEndpoint(item, true) + delta;
+    final end = _storedIronEndpoint(item, false) + delta;
+    _storeIronEndpoints(item, _clampToCanvas(start), _clampToCanvas(end));
   }
 
   Offset _resolveIronEndpoint(_LayoutItem item, bool leading) {
@@ -2545,18 +2577,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           }
         }
       }
-      item.properties[_freeAngleStartXKey] = start.dx.toStringAsFixed(4);
-      item.properties[_freeAngleStartYKey] = start.dy.toStringAsFixed(4);
-      item.properties[_freeAngleEndXKey] = end.dx.toStringAsFixed(4);
-      item.properties[_freeAngleEndYKey] = end.dy.toStringAsFixed(4);
-      final minX = math.min(start.dx, end.dx);
-      final minY = math.min(start.dy, end.dy);
-      final maxX = math.max(start.dx, end.dx);
-      final maxY = math.max(start.dy, end.dy);
-      item.x = minX;
-      item.y = minY;
-      item.width = math.max(1.0, maxX - minX);
-      item.height = math.max(1.0, maxY - minY);
+      _storeIronEndpoints(item, start, end);
       return;
     }
     final minLength = _effectiveIronMinLength(item);
@@ -3314,6 +3335,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   bool _segmentCompatibleWithIron(_InlineSegment segment, _LayoutItem iron) {
+    if (_isFreeAngleIron(iron)) {
+      return true;
+    }
     final horizontal = iron.type == _EquipmentType.ironHorizontal;
     final dx = (segment.end.dx - segment.start.dx).abs();
     final dy = (segment.end.dy - segment.start.dy).abs();
@@ -3937,7 +3961,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final t = normalizedT.clamp(0.0, 1.0).toDouble();
     item.properties[_inlineParentIronKey] = iron.id.toString();
     item.properties[_inlineParentTKey] = t.toStringAsFixed(4);
-    final horizontal = iron.type == _EquipmentType.ironHorizontal;
+    final ironStart = _resolveIronEndpoint(iron, true);
+    final ironEnd = _resolveIronEndpoint(iron, false);
+    final horizontal =
+        (ironEnd.dx - ironStart.dx).abs() >= (ironEnd.dy - ironStart.dy).abs();
     item.properties[_inlineParentOrientationKey] =
         horizontal ? 'horizontal' : 'vertical';
     item.properties[_bypassParentIronKey] = iron.id.toString();
@@ -4017,9 +4044,24 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       return true;
     }
 
-    final horizontal = parentIron.type == _EquipmentType.ironHorizontal;
-    final alongDelta = horizontal ? delta.dx : delta.dy;
-    final perpendicular = horizontal ? delta.dy.abs() : delta.dx.abs();
+    final parentStart = _resolveIronEndpoint(parentIron, true);
+    final parentEnd = _resolveIronEndpoint(parentIron, false);
+    final parentVector = parentEnd - parentStart;
+    final parentLength = parentVector.distance;
+    if (parentLength < 1e-6) {
+      context.detached = true;
+      _clearInlineParentAttachment(item);
+      _setBypassTopLeft(item, desiredTopLeft, canvasSize);
+      return true;
+    }
+    final parentDir = Offset(
+      parentVector.dx / parentLength,
+      parentVector.dy / parentLength,
+    );
+    final parentNormal = Offset(-parentDir.dy, parentDir.dx);
+    final alongDelta = (delta.dx * parentDir.dx) + (delta.dy * parentDir.dy);
+    final perpendicular =
+        ((delta.dx * parentNormal.dx) + (delta.dy * parentNormal.dy)).abs();
     final detachThreshold = _sceneRadiusFromScreen(
       item.type.name.startsWith('tee')
           ? _teeDetachThresholdScreen
@@ -4037,21 +4079,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final startT = context.startT ??
         _normalizedPositionAlongIron(parentIron, context.startCenter);
     final startCenter = _pointOnIronCenterline(parentIron, startT);
-    final parentStart = _resolveIronEndpoint(parentIron, true);
-    final parentEnd = _resolveIronEndpoint(parentIron, false);
-    final projected = horizontal
-        ? Offset(
-            (startCenter.dx + alongDelta).clamp(
-                math.min(parentStart.dx, parentEnd.dx),
-                math.max(parentStart.dx, parentEnd.dx)),
-            parentStart.dy,
-          )
-        : Offset(
-            parentStart.dx,
-            (startCenter.dy + alongDelta).clamp(
-                math.min(parentStart.dy, parentEnd.dy),
-                math.max(parentStart.dy, parentEnd.dy)),
-          );
+    final projected = startCenter +
+        Offset(parentDir.dx * alongDelta, parentDir.dy * alongDelta);
     final t = _normalizedPositionAlongIron(parentIron, projected);
     _setInlineParentAttachment(
       item,
@@ -4570,10 +4599,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   double _ironLengthFeet(_LayoutItem item) {
-    final pixels = _isFreeAngleIron(item)
-        ? (_resolveIronEndpoint(item, false) - _resolveIronEndpoint(item, true))
-            .distance
-        : (item.type == _EquipmentType.ironVertical ? item.height : item.width);
+    final pixels =
+        (_resolveIronEndpoint(item, false) - _resolveIronEndpoint(item, true))
+            .distance;
     return (pixels / 6).clamp(1, 200).toDouble();
   }
 
@@ -4615,12 +4643,17 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
     final newPixels = (result * 6).clamp(_freeIronMinLength, 1200.0).toDouble();
     _runHistoryChange(() {
-      if (item.type == _EquipmentType.ironHorizontal) {
-        item.width = newPixels;
-        item.height = 44;
-      } else {
-        item.height = newPixels;
-        item.width = 44;
+      final start = _resolveIronEndpoint(item, true);
+      final end = _resolveIronEndpoint(item, false);
+      final delta = end - start;
+      final length = delta.distance;
+      final dir = length < 1e-6
+          ? const Offset(1, 0)
+          : Offset(delta.dx / length, delta.dy / length);
+      final newEnd = start + Offset(dir.dx * newPixels, dir.dy * newPixels);
+      _storeIronEndpoints(item, start, _clampToCanvas(newEnd));
+      if (_endpointIsConnected(item, false)) {
+        _clearEndpointAttachment(item, false);
       }
     });
   }
@@ -4632,12 +4665,17 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
             item.type == _EquipmentType.ironVertical)) return;
     final newPixels = (feet * 6).clamp(_freeIronMinLength, 1200.0).toDouble();
     _runHistoryChange(() {
-      if (item.type == _EquipmentType.ironHorizontal) {
-        item.width = newPixels;
-        item.height = 44;
-      } else {
-        item.height = newPixels;
-        item.width = 44;
+      final start = _resolveIronEndpoint(item, true);
+      final end = _resolveIronEndpoint(item, false);
+      final delta = end - start;
+      final length = delta.distance;
+      final dir = length < 1e-6
+          ? const Offset(1, 0)
+          : Offset(delta.dx / length, delta.dy / length);
+      final newEnd = start + Offset(dir.dx * newPixels, dir.dy * newPixels);
+      _storeIronEndpoints(item, start, _clampToCanvas(newEnd));
+      if (_endpointIsConnected(item, false)) {
+        _clearEndpointAttachment(item, false);
       }
     });
   }
@@ -5208,34 +5246,26 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       return;
     }
 
-    final horizontal = dx.abs() >= dy.abs();
-    final type = horizontal
-        ? _EquipmentType.ironHorizontal
-        : _EquipmentType.ironVertical;
-    final width = horizontal
-        ? dx.abs().clamp(_freeIronMinLength, 1200.0).toDouble()
-        : type.defaultWidth;
-    final height = horizontal
-        ? type.defaultHeight
-        : dy.abs().clamp(_freeIronMinLength, 1200.0).toDouble();
-    final x = horizontal
-        ? (dx >= 0 ? startPoint.dx : endPoint.dx)
-        : startPoint.dx - width / 2;
-    final y = horizontal
-        ? startPoint.dy - height / 2
-        : (dy >= 0 ? startPoint.dy : endPoint.dy);
-    final canvasSize = _virtualCanvasSize;
+    final startClamped = _clampToCanvas(startPoint);
+    final endClamped = _clampToCanvas(endPoint);
 
     _runHistoryChange(() {
       final id = _nextId++;
       final newIron = _LayoutItem(
         id: id,
-        type: type,
-        x: _snap(x).clamp(0.0, canvasSize.width - width),
-        y: _snap(y).clamp(0.0, canvasSize.height - height),
-        width: width,
-        height: height,
-        properties: <String, String>{'ironSize': _drawIronSize},
+        type: _EquipmentType.ironHorizontal,
+        x: math.min(startClamped.dx, endClamped.dx),
+        y: math.min(startClamped.dy, endClamped.dy),
+        width: math.max(1.0, (endClamped.dx - startClamped.dx).abs()),
+        height: math.max(1.0, (endClamped.dy - startClamped.dy).abs()),
+        properties: <String, String>{
+          'ironSize': _drawIronSize,
+          _freeAngleIronKey: 'true',
+          _freeAngleStartXKey: startClamped.dx.toStringAsFixed(4),
+          _freeAngleStartYKey: startClamped.dy.toStringAsFixed(4),
+          _freeAngleEndXKey: endClamped.dx.toStringAsFixed(4),
+          _freeAngleEndYKey: endClamped.dy.toStringAsFixed(4),
+        },
       );
       _items.add(newIron);
       final startDistanceToLeading =
@@ -5278,14 +5308,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       final item =
           target.ironItemId == null ? null : _findItemById(target.ironItemId!);
       if (item == null || !_isStraightIronType(item.type)) return Offset.zero;
-      if (item.type == _EquipmentType.ironHorizontal) {
-        return target.ironLeading == true
-            ? const Offset(-1, 0)
-            : const Offset(1, 0);
-      }
-      return target.ironLeading == true
-          ? const Offset(0, -1)
-          : const Offset(0, 1);
+      final start = _resolveIronEndpoint(item, true);
+      final end = _resolveIronEndpoint(item, false);
+      final delta = end - start;
+      final length = delta.distance;
+      if (length < 1e-6) return const Offset(1, 0);
+      final dir = Offset(delta.dx / length, delta.dy / length);
+      return target.ironLeading == true ? Offset(-dir.dx, -dir.dy) : dir;
     }
 
     final item = target.equipmentItemId == null
@@ -5332,40 +5361,38 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   void _createStraightIronFromPort(_ConnectionTarget source) {
     final vector = _portOutwardVector(source);
     if (vector == Offset.zero) return;
-    final horizontal = vector.dx.abs() >= vector.dy.abs();
     const leadLength = _portLeadDefaultLength;
-    final type = horizontal
-        ? _EquipmentType.ironHorizontal
-        : _EquipmentType.ironVertical;
-    final width = horizontal ? leadLength : type.defaultWidth;
-    final height = horizontal ? type.defaultHeight : leadLength;
-    final sourceOnLeading = horizontal ? vector.dx >= 0 : vector.dy >= 0;
-    final x = horizontal
-        ? (sourceOnLeading ? source.point.dx : source.point.dx - width)
-        : source.point.dx - width / 2;
-    final y = horizontal
-        ? source.point.dy - height / 2
-        : (sourceOnLeading ? source.point.dy : source.point.dy - height);
-    final canvasSize = _virtualCanvasSize;
+    final dir = _normalizedDirection(vector);
+    final start = _clampToCanvas(source.point);
+    final end = _clampToCanvas(
+      start + Offset(dir.dx * leadLength, dir.dy * leadLength),
+    );
 
     _runHistoryChange(() {
       final id = _nextId++;
       final newIron = _LayoutItem(
         id: id,
-        type: type,
-        x: _snap(x).clamp(0.0, canvasSize.width - width),
-        y: _snap(y).clamp(0.0, canvasSize.height - height),
-        width: width,
-        height: height,
-        properties: <String, String>{'ironSize': _drawIronSize},
+        type: _EquipmentType.ironHorizontal,
+        x: math.min(start.dx, end.dx),
+        y: math.min(start.dy, end.dy),
+        width: math.max(1.0, (end.dx - start.dx).abs()),
+        height: math.max(1.0, (end.dy - start.dy).abs()),
+        properties: <String, String>{
+          'ironSize': _drawIronSize,
+          _freeAngleIronKey: 'true',
+          _freeAngleStartXKey: start.dx.toStringAsFixed(4),
+          _freeAngleStartYKey: start.dy.toStringAsFixed(4),
+          _freeAngleEndXKey: end.dx.toStringAsFixed(4),
+          _freeAngleEndYKey: end.dy.toStringAsFixed(4),
+        },
       );
       _items.add(newIron);
-      _applyConnectionTargetToIronEndpoint(newIron, sourceOnLeading, source);
+      _applyConnectionTargetToIronEndpoint(newIron, true, source);
       _selectedId = id;
       _selectedIds
         ..clear()
         ..add(id);
-      _selectedEndpointLeading = sourceOnLeading ? false : true;
+      _selectedEndpointLeading = false;
       _selectedPortTarget = null;
       _pendingConnectIronSourceTarget = null;
       _autoConnectDestinationItemId = null;
@@ -5376,17 +5403,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _drawIronStartTarget = null;
       _drawIronHoverTarget = null;
       _drawIronPointerScene = null;
-      _pendingContinueIronTarget = _ConnectionTarget(
-        kind: _ConnectionTargetKind.ironEndpoint,
-        point: sourceOnLeading
-            ? _ironEndpoint(newIron, false)
-            : _ironEndpoint(newIron, true),
-        distance: 0,
-        isExactHit: true,
-        ironItemId: id,
-        ironLeading: sourceOnLeading ? false : true,
-      );
-      _pendingContinueIronSize = _drawIronSize;
+      _pendingContinueIronTarget = null;
+      _pendingContinueIronSize = null;
     });
     _appendHistoryEntry('Added iron');
   }
@@ -5621,6 +5639,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         width: type.defaultWidth,
         height: type.defaultHeight,
       );
+      if (_isStraightIronType(item.type)) {
+        final start = _storedIronEndpoint(item, true);
+        final end = _storedIronEndpoint(item, false);
+        _storeIronEndpoints(item, _clampToCanvas(start), _clampToCanvas(end));
+      }
       if (item.type == _EquipmentType.bypass) {
         _ensureBypassLeadData(item);
       }
@@ -5637,30 +5660,37 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   void _addStraightIronFromLibrary({
-    required bool horizontal,
+    bool horizontal = true,
     required String size,
   }) {
-    final type = horizontal
-        ? _EquipmentType.ironHorizontal
-        : _EquipmentType.ironVertical;
     final isWide = MediaQuery.of(context).size.width >= 780;
     final center = _visibleCanvasPlacementCenter(isWide: isWide);
     const length = 180.0;
-    final width =
-        horizontal ? length : _EquipmentType.ironVertical.defaultWidth;
-    final height =
-        horizontal ? _EquipmentType.ironHorizontal.defaultHeight : length;
+    final start = horizontal
+        ? Offset(center.dx - (length / 2), center.dy)
+        : Offset(center.dx, center.dy - (length / 2));
+    final end = horizontal
+        ? Offset(center.dx + (length / 2), center.dy)
+        : Offset(center.dx, center.dy + (length / 2));
+    final clampedStart = _clampToCanvas(start);
+    final clampedEnd = _clampToCanvas(end);
     _runHistoryChange(() {
       final id = _nextId++;
-      final canvasSize = _virtualCanvasSize;
       final item = _LayoutItem(
         id: id,
-        type: type,
-        x: (center.dx - width / 2).clamp(0.0, canvasSize.width - width),
-        y: (center.dy - height / 2).clamp(0.0, canvasSize.height - height),
-        width: width,
-        height: height,
-        properties: <String, String>{'ironSize': size},
+        type: _EquipmentType.ironHorizontal,
+        x: math.min(clampedStart.dx, clampedEnd.dx),
+        y: math.min(clampedStart.dy, clampedEnd.dy),
+        width: math.max(1.0, (clampedEnd.dx - clampedStart.dx).abs()),
+        height: math.max(1.0, (clampedEnd.dy - clampedStart.dy).abs()),
+        properties: <String, String>{
+          'ironSize': size,
+          _freeAngleIronKey: 'true',
+          _freeAngleStartXKey: clampedStart.dx.toStringAsFixed(4),
+          _freeAngleStartYKey: clampedStart.dy.toStringAsFixed(4),
+          _freeAngleEndXKey: clampedEnd.dx.toStringAsFixed(4),
+          _freeAngleEndYKey: clampedEnd.dy.toStringAsFixed(4),
+        },
       );
       _items.add(item);
       _commitInitialIronConnections(item);
@@ -5908,6 +5938,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         ..clear()
         ..addAll(items);
       for (final item in _items) {
+        if (_isStraightIronType(item.type)) {
+          final start = _storedIronEndpoint(item, true);
+          final end = _storedIronEndpoint(item, false);
+          _storeIronEndpoints(item, start, end);
+        }
         if (item.type == _EquipmentType.bypass) {
           _ensureBypassLeadData(item);
         }
@@ -9121,11 +9156,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                   width: isMobile ? 162 : 138,
                   child: FilledButton.icon(
                     onPressed: () => _addStraightIronFromLibrary(
-                      horizontal: true,
                       size: '2',
                     ),
                     icon: const Icon(Icons.swap_horiz),
-                    label: const Text('2" Horizontal Iron'),
+                    label: const Text('2" Straight Iron'),
                     style: _compactFilledStyle(highlighted: true),
                   ),
                 ),
@@ -9133,55 +9167,20 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                   width: isMobile ? 162 : 138,
                   child: FilledButton(
                     onPressed: () => _addStraightIronFromLibrary(
-                      horizontal: false,
-                      size: '2',
-                    ),
-                    style: _compactFilledStyle(highlighted: true),
-                    child: const Text('2" Vertical Iron'),
-                  ),
-                ),
-                SizedBox(
-                  width: isMobile ? 162 : 138,
-                  child: FilledButton(
-                    onPressed: () => _addStraightIronFromLibrary(
-                      horizontal: true,
                       size: '3',
                     ),
                     style: _compactFilledStyle(highlighted: true),
-                    child: const Text('3" Horizontal Iron'),
+                    child: const Text('3" Straight Iron'),
                   ),
                 ),
                 SizedBox(
                   width: isMobile ? 162 : 138,
                   child: FilledButton(
                     onPressed: () => _addStraightIronFromLibrary(
-                      horizontal: false,
-                      size: '3',
-                    ),
-                    style: _compactFilledStyle(highlighted: true),
-                    child: const Text('3" Vertical Iron'),
-                  ),
-                ),
-                SizedBox(
-                  width: isMobile ? 162 : 138,
-                  child: FilledButton(
-                    onPressed: () => _addStraightIronFromLibrary(
-                      horizontal: true,
                       size: '4',
                     ),
                     style: _compactFilledStyle(highlighted: true),
-                    child: const Text('4" Horizontal Iron'),
-                  ),
-                ),
-                SizedBox(
-                  width: isMobile ? 162 : 138,
-                  child: FilledButton(
-                    onPressed: () => _addStraightIronFromLibrary(
-                      horizontal: false,
-                      size: '4',
-                    ),
-                    style: _compactFilledStyle(highlighted: true),
-                    child: const Text('4" Vertical Iron'),
+                    child: const Text('4" Straight Iron'),
                   ),
                 ),
               ],
@@ -10837,6 +10836,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
     final menuEntries = <_PortBuildActionEntry>[
       _PortBuildActionEntry(
+        key: 'auto-connect',
+        label: 'Auto Connect',
+        icon: Icons.auto_fix_high,
+        enabled: true,
+        onTap: _startAutoConnectFromSelectedPort,
+      ),
+      _PortBuildActionEntry(
         key: 'straight-iron',
         label: 'Straight Iron',
         icon: Icons.edit_road,
@@ -11222,10 +11228,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                                                           target.point;
                                                       _drawIronHoverTarget =
                                                           null;
+                                                      _pendingContinueIronTarget =
+                                                          null;
+                                                      _pendingContinueIronSize =
+                                                          null;
                                                     });
                                                   } else {
-                                                    _createIronBetweenPorts(
-                                                        startTarget, target);
+                                                    _finalizeDrawIron(
+                                                        target.point);
                                                   }
                                                 },
                                                 child: Container(
