@@ -1767,6 +1767,22 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   String _normalizedAnchorSide(_LayoutItem item, String side) {
+    if (item.type == _EquipmentType.chokeManifold) {
+      switch (side) {
+        case 'inlet':
+        case 'top':
+        case 'left':
+        case 'inletTopCenter':
+          return 'inletTopCenter';
+        case 'outlet':
+        case 'bottom':
+        case 'right':
+        case 'outletBottomCenter':
+          return 'outletBottomCenter';
+        default:
+          return side;
+      }
+    }
     if (item.type == _EquipmentType.facilities) {
       switch (side) {
         case 'inlet':
@@ -2158,6 +2174,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           _AnchorDefinition('left', 0.08, 0.5),
         ];
       case _EquipmentType.chokeManifold:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('inletTopCenter', 0.50, 0.08),
+          _AnchorDefinition('outletBottomCenter', 0.50, 0.92),
+        ];
       case _EquipmentType.plugCatcher:
       case _EquipmentType.testSeparator:
         return const <_AnchorDefinition>[
@@ -2167,10 +2187,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       case _EquipmentType.flowbackTank:
       case _EquipmentType.productionTank:
         return const <_AnchorDefinition>[
-          _AnchorDefinition('top', 0.5, 0.16),
-          _AnchorDefinition('right', 0.82, 0.5),
-          _AnchorDefinition('bottom', 0.5, 0.84),
-          _AnchorDefinition('left', 0.18, 0.5),
+          _AnchorDefinition('top', 0.5, 0.08),
+          _AnchorDefinition('right', 0.92, 0.5),
+          _AnchorDefinition('bottom', 0.5, 0.92),
+          _AnchorDefinition('left', 0.08, 0.5),
         ];
       case _EquipmentType.facilities:
         return const <_AnchorDefinition>[
@@ -12299,7 +12319,7 @@ extension _EquipmentTypeInfo on _EquipmentType {
     if (this == _EquipmentType.cyclonicSandSep) return 34;
     if (this == _EquipmentType.esdValve) return 30;
     if (this == _EquipmentType.chokeManifold) return 38;
-    if (this == _EquipmentType.flowbackTank) return 38;
+    if (this == _EquipmentType.flowbackTank) return 48;
     if (this == _EquipmentType.productionTank) return 38;
     if (this == _EquipmentType.testSeparator) return 36;
     if (this == _EquipmentType.flare) return 32;
@@ -12322,7 +12342,7 @@ extension _EquipmentTypeInfo on _EquipmentType {
     if (this == _EquipmentType.cyclonicSandSep) return 32;
     if (this == _EquipmentType.esdValve) return 24;
     if (this == _EquipmentType.chokeManifold) return 24;
-    if (this == _EquipmentType.flowbackTank) return 28;
+    if (this == _EquipmentType.flowbackTank) return 96;
     if (this == _EquipmentType.productionTank) return 28;
     if (this == _EquipmentType.testSeparator) return 28;
     if (this == _EquipmentType.flare) return 28;
@@ -12435,6 +12455,19 @@ class _LayoutItem {
         rawHeight != null &&
         type.usesCompactEquipmentFootprint &&
         type.matchesLegacyDimensions(width, height)) {
+      final centerX = x + width / 2;
+      final centerY = y + height / 2;
+      width = type.defaultWidth;
+      height = type.defaultHeight;
+      x = centerX - width / 2;
+      y = centerY - height / 2;
+    }
+
+    if (rawWidth != null &&
+        rawHeight != null &&
+        type == _EquipmentType.flowbackTank &&
+        (rawWidth - 38.0).abs() < 0.2 &&
+        (rawHeight - 28.0).abs() < 0.2) {
       final centerX = x + width / 2;
       final centerY = y + height / 2;
       width = type.defaultWidth;
@@ -13060,12 +13093,12 @@ class _ShapePainter extends CustomPainter {
     if (type == _EquipmentType.chokeManifold) {
       final bodyRect = RRect.fromRectAndRadius(
         Rect.fromLTWH(
-          size.width * .18,
-          size.height * .18,
-          size.width * .64,
-          size.height * .64,
+          size.width * .16,
+          size.height * .16,
+          size.width * .68,
+          size.height * .68,
         ),
-        Radius.circular(size.shortestSide * .16),
+        Radius.circular(size.shortestSide * .14),
       );
       canvas.drawRRect(bodyRect, bodyFill);
       canvas.drawRRect(bodyRect, accent);
@@ -13073,40 +13106,44 @@ class _ShapePainter extends CustomPainter {
       final linePaint = Paint()
         ..color = const Color(0xFFCDA56A)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = (size.shortestSide * .08).clamp(1.8, 3.0)
+        ..strokeWidth = (size.shortestSide * .075).clamp(1.7, 2.8)
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round;
 
-      final upperY = size.height * .42;
-      final lowerY = size.height * .58;
-      final leftX = size.width * .08;
-      final rightX = size.width * .92;
-      final splitX = size.width * .36;
-      final mergeX = size.width * .64;
+      final centerX = size.width * .50;
+      final inletY = size.height * .08;
+      final outletY = size.height * .92;
+      final bodyTop = bodyRect.top;
+      final bodyBottom = bodyRect.bottom;
+      final leftPathX = size.width * .32;
+      final rightPathX = size.width * .68;
+      final topCrossY = size.height * .28;
+      final bottomCrossY = size.height * .72;
 
-      final upperPath = Path()
-        ..moveTo(leftX, size.height * .5)
-        ..lineTo(splitX, upperY)
-        ..lineTo(mergeX, upperY)
-        ..lineTo(rightX, size.height * .5);
-      final lowerPath = Path()
-        ..moveTo(leftX, size.height * .5)
-        ..lineTo(splitX, lowerY)
-        ..lineTo(mergeX, lowerY)
-        ..lineTo(rightX, size.height * .5);
-      canvas.drawPath(upperPath, linePaint);
-      canvas.drawPath(lowerPath, linePaint);
       canvas.drawLine(
-        Offset((splitX + mergeX) / 2, upperY),
-        Offset((splitX + mergeX) / 2, lowerY),
+          Offset(centerX, inletY), Offset(centerX, bodyTop), linePaint);
+      canvas.drawLine(
+          Offset(centerX, bodyBottom), Offset(centerX, outletY), linePaint);
+      canvas.drawLine(
+          Offset(leftPathX, bodyTop), Offset(leftPathX, bodyBottom), linePaint);
+      canvas.drawLine(Offset(rightPathX, bodyTop),
+          Offset(rightPathX, bodyBottom), linePaint);
+      canvas.drawLine(Offset(leftPathX, topCrossY),
+          Offset(rightPathX, topCrossY), linePaint);
+      canvas.drawLine(Offset(leftPathX, bottomCrossY),
+          Offset(rightPathX, bottomCrossY), linePaint);
+      canvas.drawLine(
+        Offset(centerX, topCrossY),
+        Offset(centerX, bottomCrossY),
         linePaint,
       );
 
-      final wheelRadius = (size.shortestSide * .13).clamp(2.6, 4.6);
+      final wheelRadius = (size.shortestSide * .15).clamp(2.9, 5.2);
       final wheelPaint = Paint()
         ..color = const Color(0xFFCDA56A)
         ..style = PaintingStyle.stroke
         ..strokeWidth = (size.shortestSide * .055).clamp(1.3, 2.3);
+
       void drawWheel(Offset center) {
         canvas.drawCircle(center, wheelRadius, wheelPaint);
         canvas.drawLine(
@@ -13121,8 +13158,28 @@ class _ShapePainter extends CustomPainter {
         );
       }
 
-      drawWheel(Offset(size.width * .30, upperY));
-      drawWheel(Offset(size.width * .30, lowerY));
+      void drawValveX(Offset center) {
+        final arm = (size.shortestSide * .07).clamp(1.6, 3.0);
+        canvas.drawLine(
+          Offset(center.dx - arm, center.dy - arm),
+          Offset(center.dx + arm, center.dy + arm),
+          linePaint,
+        );
+        canvas.drawLine(
+          Offset(center.dx - arm, center.dy + arm),
+          Offset(center.dx + arm, center.dy - arm),
+          linePaint,
+        );
+      }
+
+      drawWheel(Offset(size.width * .30, size.height * .22));
+      drawWheel(Offset(size.width * .70, size.height * .22));
+
+      drawValveX(Offset(leftPathX, size.height * .36));
+      drawValveX(Offset(rightPathX, size.height * .36));
+      drawValveX(Offset(centerX, size.height * .50));
+      drawValveX(Offset(leftPathX, size.height * .64));
+      drawValveX(Offset(rightPathX, size.height * .64));
       return;
     }
 
@@ -13174,19 +13231,19 @@ class _ShapePainter extends CustomPainter {
 
     if (type == _EquipmentType.flowbackTank) {
       final v = variant();
-      var bodyStart = 0.18;
-      var bodyWidth = 0.64;
+      var bodyStart = 0.08;
+      var bodyWidth = 0.84;
       if (v == 'flowbackHalf') {
-        bodyWidth = 0.36;
+        bodyWidth = 0.44;
       } else if (v == 'flowbackQuarter') {
-        bodyWidth = 0.22;
+        bodyWidth = 0.30;
       }
       final bodyRect = RRect.fromRectAndRadius(
         Rect.fromLTWH(
           size.width * bodyStart,
-          size.height * .18,
+          size.height * .08,
           size.width * bodyWidth,
-          size.height * .64,
+          size.height * .84,
         ),
         Radius.circular(size.shortestSide * .08),
       );
@@ -13199,10 +13256,13 @@ class _ShapePainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = (size.shortestSide * .09).clamp(1.8, 3.2)
           ..strokeCap = StrokeCap.round;
-        final x1 = bodyRect.left + bodyRect.width * .34;
-        final x2 = bodyRect.left + bodyRect.width * .66;
-        final yTop = bodyRect.top + bodyRect.height * .22;
-        final yBottom = bodyRect.bottom - bodyRect.height * .22;
+        final x1 = bodyRect.left + bodyRect.width * .36;
+        final x2 = bodyRect.left + bodyRect.width * .64;
+        const barHalfLength = 24.0;
+        final yCenter = (bodyRect.top + bodyRect.bottom) / 2;
+        final yTop = math.max(bodyRect.top + 4.0, yCenter - barHalfLength);
+        final yBottom =
+            math.min(bodyRect.bottom - 4.0, yCenter + barHalfLength);
         canvas.drawLine(Offset(x1, yTop), Offset(x1, yBottom), barPaint);
         canvas.drawLine(Offset(x2, yTop), Offset(x2, yBottom), barPaint);
       }
