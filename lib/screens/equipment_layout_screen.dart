@@ -20,6 +20,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/job_setup.dart';
 import '../models/layout_interchange.dart';
 import '../services/job_storage_service.dart';
+import '../services/layout_export_service.dart';
 import '../services/layout_interchange_codec.dart';
 import '../services/recovery_state_service.dart';
 import '../widgets/app_header.dart';
@@ -31,10 +32,8 @@ class EquipmentLayoutScreen extends StatefulWidget {
   State<EquipmentLayoutScreen> createState() => _EquipmentLayoutScreenState();
 }
 
-enum _LayoutExportFormat { wellWerksEditable, visioSvg }
-
 class _LayoutExportRequest {
-  final _LayoutExportFormat format;
+  final LayoutExportFormat format;
   final String fileName;
 
   const _LayoutExportRequest({
@@ -45,6 +44,7 @@ class _LayoutExportRequest {
 
 class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     with WidgetsBindingObserver {
+  static const LayoutExportService _layoutExportService = LayoutExportService();
   final List<_LayoutItem> _items = [];
   int? _selectedId;
   final Set<int> _selectedIds = <int>{};
@@ -6551,128 +6551,209 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   String _defaultExchangeFileName() {
     final base = _layoutName.text.trim().isEmpty
-        ? 'wellwerks-layout'
+        ? LayoutExportService.fallbackFileName
         : _layoutName.text.trim();
-    return base.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    return _layoutExportService.sanitizeFileName(base);
   }
 
   String _fileNameWithExtension(String raw, String extension) {
-    final trimmed =
-        raw.trim().isEmpty ? _defaultExchangeFileName() : raw.trim();
-    final normalized = trimmed.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-    final suffix = '.${extension.toLowerCase()}';
-    if (normalized.toLowerCase().endsWith(suffix)) {
-      return normalized;
+    return _layoutExportService.fileNameWithExtension(raw, extension);
+  }
+
+  Rect _shareOriginForContext(BuildContext sourceContext) {
+    final sourceBox = sourceContext.findRenderObject() as RenderBox?;
+    if (sourceBox != null) {
+      return sourceBox.localToGlobal(Offset.zero) & sourceBox.size;
     }
-    return '$normalized$suffix';
+    final screenBox = context.findRenderObject() as RenderBox?;
+    if (screenBox != null) {
+      return screenBox.localToGlobal(Offset.zero) & screenBox.size;
+    }
+    return const Rect.fromLTWH(0, 0, 1, 1);
+  }
+
+  Future<void> _shareLayoutExport(
+    LayoutExportArtifact artifact, {
+    required BuildContext sourceContext,
+  }) async {
+    final shareOrigin = _shareOriginForContext(sourceContext);
+    final exportedFile =
+        await _layoutExportService.writeTemporaryFile(artifact);
+    final exists = await exportedFile.exists();
+    if (!exists) {
+      throw const LayoutExportException(
+        'The export file could not be written.',
+      );
+    }
+    final length = await exportedFile.length();
+    if (length <= 0) {
+      throw const LayoutExportException(
+        'The export file could not be written.',
+      );
+    }
+
+    final result = await Share.shareXFiles(
+      <XFile>[
+        XFile(
+          exportedFile.path,
+          mimeType: artifact.mimeType,
+          name: artifact.fileName,
+        ),
+      ],
+      subject: artifact.shareSubject,
+      text: artifact.shareText,
+      sharePositionOrigin: shareOrigin,
+    );
+    if (result.status == ShareResultStatus.unavailable) {
+      throw const LayoutExportException(
+        'The iOS share sheet could not be opened.',
+      );
+    }
+  }
+
+  Future<void> _performLayoutExport(
+    _LayoutExportRequest request, {
+    required BuildContext sourceContext,
+  }) async {
+    final model = _currentInterchangeModel();
+    final artifact = request.format == LayoutExportFormat.visioSvg
+        ? _layoutExportService.buildSvgArtifact(
+            model,
+            requestedFileName: request.fileName,
+          )
+        : _layoutExportService.buildEditableArtifact(
+            model,
+            requestedFileName: request.fileName,
+          );
+    await _shareLayoutExport(artifact, sourceContext: sourceContext);
   }
 
   Future<void> _showExportLayoutDialog() async {
     final controller = TextEditingController(text: _defaultExchangeFileName());
-    final request = await showDialog<_LayoutExportRequest>(
+    await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Export Layout'),
-        content: SizedBox(
-          width: _dialogWidth(context, max: 420),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                controller: controller,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'File Name',
-                  hintText: 'Rig Up',
-                ),
-              ),
-              const SizedBox(height: 14),
-              FilledButton.icon(
-                onPressed: () => Navigator.pop(
-                  context,
+      builder: (dialogContext) {
+        var isExporting = false;
+        return StatefulBuilder(
+          builder: (context, setState) {
+            Future<void> runExport(LayoutExportFormat format) async {
+              if (isExporting) return;
+              final messenger = ScaffoldMessenger.of(this.context);
+              FocusScope.of(dialogContext).unfocus();
+              FocusManager.instance.primaryFocus?.unfocus();
+              setState(() => isExporting = true);
+              try {
+                await _performLayoutExport(
                   _LayoutExportRequest(
-                    format: _LayoutExportFormat.wellWerksEditable,
+                    format: format,
                     fileName: controller.text,
                   ),
-                ),
-                icon: const Icon(Icons.data_object),
-                label: const Text('WellWerks Editable File'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(50),
-                  backgroundColor: _gold,
-                  foregroundColor: Colors.black,
-                ),
-              ),
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
-                onPressed: () => Navigator.pop(
-                  context,
-                  _LayoutExportRequest(
-                    format: _LayoutExportFormat.visioSvg,
-                    fileName: controller.text,
+                  sourceContext: dialogContext,
+                );
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+                if (!mounted) return;
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      format == LayoutExportFormat.visioSvg
+                          ? 'Layout exported as Microsoft Visio SVG.'
+                          : 'Layout exported as WellWerks editable file.',
+                    ),
                   ),
-                ),
-                icon: const Icon(Icons.draw),
-                label: const Text('Microsoft Visio SVG'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(50),
-                  foregroundColor: Colors.white,
+                );
+              } on LayoutExportException catch (error, stackTrace) {
+                debugPrint('Layout export failed: ${error.message}');
+                debugPrintStack(stackTrace: stackTrace);
+                if (!mounted) return;
+                messenger.showSnackBar(SnackBar(content: Text(error.message)));
+              } catch (error, stackTrace) {
+                debugPrint('Unexpected layout export failure: $error');
+                debugPrintStack(stackTrace: stackTrace);
+                if (!mounted) return;
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('The iOS share sheet could not be opened.'),
+                  ),
+                );
+              } finally {
+                if (dialogContext.mounted) {
+                  setState(() => isExporting = false);
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Export Layout'),
+              content: SizedBox(
+                width: _dialogWidth(dialogContext, max: 420),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: controller,
+                      autofocus: true,
+                      enabled: !isExporting,
+                      decoration: const InputDecoration(
+                        labelText: 'File Name',
+                        hintText: 'Rig Up',
+                      ),
+                      onSubmitted: (_) {},
+                    ),
+                    const SizedBox(height: 14),
+                    FilledButton.icon(
+                      onPressed: isExporting
+                          ? null
+                          : () =>
+                              runExport(LayoutExportFormat.wellWerksEditable),
+                      icon: isExporting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.data_object),
+                      label: Text(
+                        isExporting
+                            ? 'Exporting...'
+                            : 'WellWerks Editable File',
+                      ),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(50),
+                        backgroundColor: _gold,
+                        foregroundColor: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: isExporting
+                          ? null
+                          : () => runExport(LayoutExportFormat.visioSvg),
+                      icon: const Icon(Icons.draw),
+                      label: const Text('Microsoft Visio SVG'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(50),
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-        ],
-      ),
+              actions: [
+                TextButton(
+                  onPressed:
+                      isExporting ? null : () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
     controller.dispose();
-    if (request == null || !mounted) return;
-
-    try {
-      final model = _currentInterchangeModel();
-      final isSvg = request.format == _LayoutExportFormat.visioSvg;
-      final extension = isSvg ? 'svg' : 'wwlayout';
-      final location = await getSaveLocation(
-        suggestedName: _fileNameWithExtension(request.fileName, extension),
-        acceptedTypeGroups: [
-          XTypeGroup(
-            label: isSvg ? 'Microsoft Visio SVG' : 'WellWerks Layout',
-            extensions: <String>[extension],
-          ),
-        ],
-      );
-      if (location == null) return;
-
-      final output = isSvg
-          ? LayoutInterchangeCodec.encodeVisioSvg(model)
-          : LayoutInterchangeCodec.encodeWellWerksJson(model);
-      await File(location.path).writeAsString(output, flush: true);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isSvg
-                ? 'Layout exported as Microsoft Visio SVG.'
-                : 'Layout exported as WellWerks editable file.',
-          ),
-        ),
-      );
-    } on LayoutInterchangeException catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error.message)));
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to export the layout file.')),
-      );
-    }
   }
 
   Future<bool> _confirmLayoutImport(String fileName) async {
@@ -6747,7 +6828,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         SnackBar(content: Text('Imported layout: ${model.layoutName}')),
       );
     } on LayoutInterchangeException catch (error) {
-      if (error.message.contains('not created with WellWerks-compatible')) {
+      if (error.message
+          .contains('does not contain editable WellWerks layout data')) {
         await _showUnsupportedSvgDialog();
         return;
       }
