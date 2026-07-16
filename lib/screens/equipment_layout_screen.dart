@@ -44,7 +44,7 @@ class _LayoutExportRequest {
 
 class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     with WidgetsBindingObserver {
-  static const LayoutExportService _layoutExportService = LayoutExportService();
+  static final LayoutExportService _layoutExportService = LayoutExportService();
   final List<_LayoutItem> _items = [];
   int? _selectedId;
   final Set<int> _selectedIds = <int>{};
@@ -6616,15 +6616,21 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     required BuildContext sourceContext,
   }) async {
     final model = _currentInterchangeModel();
-    final artifact = request.format == LayoutExportFormat.visioSvg
-        ? _layoutExportService.buildSvgArtifact(
-            model,
-            requestedFileName: request.fileName,
-          )
-        : _layoutExportService.buildEditableArtifact(
-            model,
-            requestedFileName: request.fileName,
-          );
+    final artifact = switch (request.format) {
+      LayoutExportFormat.visioSvg => _layoutExportService.buildSvgArtifact(
+          model,
+          requestedFileName: request.fileName,
+        ),
+      LayoutExportFormat.visioToolkit =>
+        _layoutExportService.buildVisioToolkitArtifact(
+          requestedFileName: request.fileName,
+        ),
+      LayoutExportFormat.wellWerksEditable =>
+        _layoutExportService.buildEditableArtifact(
+          model,
+          requestedFileName: request.fileName,
+        ),
+    };
     await _shareLayoutExport(artifact, sourceContext: sourceContext);
   }
 
@@ -6657,9 +6663,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 messenger.showSnackBar(
                   SnackBar(
                     content: Text(
-                      format == LayoutExportFormat.visioSvg
-                          ? 'Layout exported as Microsoft Visio SVG.'
-                          : 'Layout exported as WellWerks editable file.',
+                      switch (format) {
+                        LayoutExportFormat.visioSvg =>
+                          'Layout exported as Microsoft Visio SVG.',
+                        LayoutExportFormat.visioToolkit =>
+                          'WellWerks Visio Toolkit exported.',
+                        LayoutExportFormat.wellWerksEditable =>
+                          'Layout exported as WellWerks editable file.',
+                      },
                     ),
                   ),
                 );
@@ -6733,6 +6744,18 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                           : () => runExport(LayoutExportFormat.visioSvg),
                       icon: const Icon(Icons.draw),
                       label: const Text('Microsoft Visio SVG'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(50),
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: isExporting
+                          ? null
+                          : () => runExport(LayoutExportFormat.visioToolkit),
+                      icon: const Icon(Icons.folder_zip),
+                      label: const Text('WellWerks Visio Toolkit'),
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size.fromHeight(50),
                         foregroundColor: Colors.white,

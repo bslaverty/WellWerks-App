@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wellwerks/models/layout_interchange.dart';
 import 'package:wellwerks/services/layout_export_service.dart';
@@ -67,7 +68,7 @@ WellWerksLayoutInterchange _modelFixture() {
 }
 
 void main() {
-  const service = LayoutExportService();
+  final service = LayoutExportService();
 
   test('filename sanitization preserves spaces and replaces invalid characters',
       () {
@@ -140,5 +141,75 @@ void main() {
 
     expect(await file.exists(), isTrue);
     expect(await file.length(), greaterThan(0));
+  });
+
+  test(
+      'visio toolkit artifact is a non-empty zip with README and svg libraries',
+      () {
+    final artifact = service.buildVisioToolkitArtifact(
+      requestedFileName: 'WellWerks Visio Toolkit',
+    );
+
+    expect(artifact.fileName, 'WellWerks Visio Toolkit.zip');
+    expect(artifact.mimeType, 'application/zip');
+    expect(artifact.binaryContents, isNotNull);
+    expect(artifact.binaryContents, isNotEmpty);
+
+    final archive = ZipDecoder().decodeBytes(artifact.binaryContents!);
+    final names = archive.files.map((file) => file.name).toSet();
+    expect(
+      names,
+      contains(
+        'WellWerks Visio Toolkit/WellWerks Equipment SVG Library/2in Choke Manifold.svg',
+      ),
+    );
+    expect(
+      names,
+      contains(
+        'WellWerks Visio Toolkit/WellWerks Iron Library/Straight Iron.svg',
+      ),
+    );
+    expect(
+      names,
+      contains(
+        'WellWerks Visio Toolkit/WellWerks Fittings Library/Equipment Bypass.svg',
+      ),
+    );
+    expect(names, contains('WellWerks Visio Toolkit/README.md'));
+
+    final readme = archive.files
+        .firstWhere((file) => file.name.endsWith('README.md'))
+        .content as List<int>;
+    final readmeText = utf8.decode(readme);
+    expect(readmeText, contains('WellWerks.vssx'));
+    expect(readmeText, contains('future WellWerks build'));
+
+    final svgFile = archive.files.firstWhere(
+      (file) => file.name.endsWith('2in Choke Manifold.svg'),
+    );
+    final svgText = utf8.decode(svgFile.content as List<int>);
+    expect(svgText, contains('<svg'));
+    expect(svgText, contains('data-wellwerks-type="choke_manifold_2"'));
+    expect(svgText, contains('wellwerks-layout-interchange'));
+  });
+
+  test('toolkit zip can be written as a non-empty temporary file', () async {
+    final artifact = service.buildVisioToolkitArtifact(
+      requestedFileName: 'WellWerks Visio Toolkit',
+    );
+    final directory =
+        await Directory.systemTemp.createTemp('wellwerks_toolkit_test');
+    addTearDown(() async {
+      if (await directory.exists()) {
+        await directory.delete(recursive: true);
+      }
+    });
+
+    final file =
+        await service.writeTemporaryFile(artifact, directory: directory);
+
+    expect(await file.exists(), isTrue);
+    expect(await file.length(), greaterThan(0));
+    expect(file.path.toLowerCase(), endsWith('.zip'));
   });
 }
