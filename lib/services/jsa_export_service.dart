@@ -227,7 +227,7 @@ class JsaExportService {
             child: logoBytes == null
                 ? pw.Text(
                     'WW',
-                    style: const pw.TextStyle(
+                    style: pw.TextStyle(
                       fontSize: 12,
                       fontWeight: pw.FontWeight.bold,
                       color: _gold,
@@ -245,7 +245,7 @@ class JsaExportService {
               children: [
                 pw.Text(
                   'WellWerks JSA',
-                  style: const pw.TextStyle(
+                  style: pw.TextStyle(
                     fontSize: 18,
                     fontWeight: pw.FontWeight.bold,
                     color: _gold,
@@ -306,10 +306,12 @@ class JsaExportService {
           pw.Container(
             width: double.infinity,
             padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            decoration: const pw.BoxDecoration(color: _headerFill),
+            decoration: const pw.BoxDecoration(
+              color: PdfColor.fromInt(0xFFF5F7FA),
+            ),
             child: pw.Text(
               'Job Information',
-              style: const pw.TextStyle(
+              style: pw.TextStyle(
                 fontWeight: pw.FontWeight.bold,
                 color: _gold,
                 fontSize: 11,
@@ -356,7 +358,9 @@ class JsaExportService {
       },
       children: [
         pw.TableRow(
-          decoration: const pw.BoxDecoration(color: _headerFill),
+          decoration: const pw.BoxDecoration(
+            color: PdfColor.fromInt(0xFFF5F7FA),
+          ),
           children: [
             _headerCell('Basic Job Step'),
             _headerCell('Potential Incident / Hazard'),
@@ -428,7 +432,9 @@ class JsaExportService {
       },
       children: [
         pw.TableRow(
-          decoration: const pw.BoxDecoration(color: _headerFill),
+          decoration: const pw.BoxDecoration(
+            color: PdfColor.fromInt(0xFFF5F7FA),
+          ),
           children: [
             _headerCell('Employee Name'),
             _headerCell('Company'),
@@ -500,7 +506,7 @@ class JsaExportService {
       ),
       child: pw.Text(
         title,
-        style: const pw.TextStyle(
+        style: pw.TextStyle(
           color: _gold,
           fontWeight: pw.FontWeight.bold,
           fontSize: 11,
@@ -514,7 +520,7 @@ class JsaExportService {
       padding: const pw.EdgeInsets.all(6),
       child: pw.Text(
         text,
-        style: const pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+        style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
       ),
     );
   }
@@ -524,7 +530,7 @@ class JsaExportService {
       padding: const pw.EdgeInsets.all(5),
       child: pw.Text(
         text,
-        style: const pw.TextStyle(
+        style: pw.TextStyle(
           fontSize: 9.4,
           fontWeight: pw.FontWeight.bold,
         ),

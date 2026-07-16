@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -17,7 +18,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/job_setup.dart';
+import '../models/layout_interchange.dart';
 import '../services/job_storage_service.dart';
+import '../services/layout_interchange_codec.dart';
 import '../services/recovery_state_service.dart';
 import '../widgets/app_header.dart';
 
@@ -26,6 +29,18 @@ class EquipmentLayoutScreen extends StatefulWidget {
 
   @override
   State<EquipmentLayoutScreen> createState() => _EquipmentLayoutScreenState();
+}
+
+enum _LayoutExportFormat { wellWerksEditable, visioSvg }
+
+class _LayoutExportRequest {
+  final _LayoutExportFormat format;
+  final String fileName;
+
+  const _LayoutExportRequest({
+    required this.format,
+    required this.fileName,
+  });
 }
 
 class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
@@ -6524,6 +6539,229 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     );
   }
 
+  WellWerksLayoutInterchange _currentInterchangeModel() {
+    _commitPendingSelectionConnections();
+    return LayoutInterchangeCodec.fromDesignerPayload(
+      _payload(),
+      canvasWidth: _virtualCanvasSize.width,
+      canvasHeight: _virtualCanvasSize.height,
+      showGrid: _showGrid,
+    );
+  }
+
+  String _defaultExchangeFileName() {
+    final base = _layoutName.text.trim().isEmpty
+        ? 'wellwerks-layout'
+        : _layoutName.text.trim();
+    return base.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+  }
+
+  String _fileNameWithExtension(String raw, String extension) {
+    final trimmed =
+        raw.trim().isEmpty ? _defaultExchangeFileName() : raw.trim();
+    final normalized = trimmed.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    final suffix = '.${extension.toLowerCase()}';
+    if (normalized.toLowerCase().endsWith(suffix)) {
+      return normalized;
+    }
+    return '$normalized$suffix';
+  }
+
+  Future<void> _showExportLayoutDialog() async {
+    final controller = TextEditingController(text: _defaultExchangeFileName());
+    final request = await showDialog<_LayoutExportRequest>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Export Layout'),
+        content: SizedBox(
+          width: _dialogWidth(context, max: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: controller,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'File Name',
+                  hintText: 'Rig Up',
+                ),
+              ),
+              const SizedBox(height: 14),
+              FilledButton.icon(
+                onPressed: () => Navigator.pop(
+                  context,
+                  _LayoutExportRequest(
+                    format: _LayoutExportFormat.wellWerksEditable,
+                    fileName: controller.text,
+                  ),
+                ),
+                icon: const Icon(Icons.data_object),
+                label: const Text('WellWerks Editable File'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                  backgroundColor: _gold,
+                  foregroundColor: Colors.black,
+                ),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.pop(
+                  context,
+                  _LayoutExportRequest(
+                    format: _LayoutExportFormat.visioSvg,
+                    fileName: controller.text,
+                  ),
+                ),
+                icon: const Icon(Icons.draw),
+                label: const Text('Microsoft Visio SVG'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (request == null || !mounted) return;
+
+    try {
+      final model = _currentInterchangeModel();
+      final isSvg = request.format == _LayoutExportFormat.visioSvg;
+      final extension = isSvg ? 'svg' : 'wwlayout';
+      final location = await getSaveLocation(
+        suggestedName: _fileNameWithExtension(request.fileName, extension),
+        acceptedTypeGroups: [
+          XTypeGroup(
+            label: isSvg ? 'Microsoft Visio SVG' : 'WellWerks Layout',
+            extensions: <String>[extension],
+          ),
+        ],
+      );
+      if (location == null) return;
+
+      final output = isSvg
+          ? LayoutInterchangeCodec.encodeVisioSvg(model)
+          : LayoutInterchangeCodec.encodeWellWerksJson(model);
+      await File(location.path).writeAsString(output, flush: true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isSvg
+                ? 'Layout exported as Microsoft Visio SVG.'
+                : 'Layout exported as WellWerks editable file.',
+          ),
+        ),
+      );
+    } on LayoutInterchangeException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to export the layout file.')),
+      );
+    }
+  }
+
+  Future<bool> _confirmLayoutImport(String fileName) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Import Layout'),
+        content: Text(
+          'Importing $fileName will replace the current canvas. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: _gold),
+            child: const Text('Import', style: TextStyle(color: Colors.black)),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Future<void> _showUnsupportedSvgDialog() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Unsupported SVG'),
+        content: const Text(
+          'This SVG was not created with WellWerks-compatible equipment data.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showImportLayoutDialog() async {
+    try {
+      final file = await openFile(
+        acceptedTypeGroups: const [
+          XTypeGroup(
+            label: 'WellWerks Layout Files',
+            extensions: <String>['wwlayout', 'json', 'svg'],
+          ),
+        ],
+      );
+      if (file == null || !mounted) return;
+      final confirmed = await _confirmLayoutImport(file.name);
+      if (!confirmed || !mounted) return;
+
+      final source = await file.readAsString();
+      final lowerName = file.name.toLowerCase();
+      final model = lowerName.endsWith('.svg')
+          ? LayoutInterchangeCodec.decodeVisioSvg(source)
+          : LayoutInterchangeCodec.decodeWellWerksJson(source);
+      final payload = LayoutInterchangeCodec.toDesignerPayload(model);
+      _recordUndo();
+      _applyPayload(payload);
+      await _persistWorkingLayoutSnapshot();
+      _appendHistoryEntry('Imported layout');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Imported layout: ${model.layoutName}')),
+      );
+    } on LayoutInterchangeException catch (error) {
+      if (error.message.contains('not created with WellWerks-compatible')) {
+        await _showUnsupportedSvgDialog();
+        return;
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to import the selected file.')),
+      );
+    }
+  }
+
   List<_EquipmentType> get _equipmentTypes => const [
         _EquipmentType.wellhead,
         _EquipmentType.esdValve,
@@ -9770,6 +10008,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                   case 'loadLayout':
                     _showLoadLayouts();
                     break;
+                  case 'exportLayout':
+                    _showExportLayoutDialog();
+                    break;
+                  case 'importLayout':
+                    _showImportLayoutDialog();
+                    break;
                   case 'exportPdf':
                     _exportPdf();
                     break;
@@ -9823,6 +10067,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 const PopupMenuItem<String>(
                   value: 'loadLayout',
                   child: Text('Load Layout'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'exportLayout',
+                  child: Text('Export Layout'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'importLayout',
+                  child: Text('Import Layout'),
                 ),
                 const PopupMenuItem<String>(
                   value: 'exportPdf',
