@@ -126,11 +126,8 @@ Map<String, Offset> _anchorFractionsForType(String type) {
     case 'wellhead':
     case 'esdValve':
     case 'lineHeater':
-    case 'plugCatcher':
     case 'cyclonicSandSep':
     case 'sphericalSandSep':
-    case 'chokeManifold':
-    case 'testSeparator':
     case 'flare':
     case 'compressor':
       return <String, Offset>{
@@ -139,14 +136,39 @@ Map<String, Offset> _anchorFractionsForType(String type) {
         'bottom': const Offset(0.5, 0.92),
         'left': const Offset(0.08, 0.5),
       };
+    case 'chokeManifold':
+    case 'plugCatcher':
+    case 'testSeparator':
+      return <String, Offset>{
+        'left': const Offset(0.08, 0.5),
+        'right': const Offset(0.92, 0.5),
+      };
     case 'flowbackTank':
     case 'productionTank':
-    case 'facilities':
       return <String, Offset>{
         'top': const Offset(0.5, 0.16),
         'right': const Offset(0.82, 0.5),
         'bottom': const Offset(0.5, 0.84),
         'left': const Offset(0.18, 0.5),
+      };
+    case 'facilities':
+      return <String, Offset>{
+        'topLeft': const Offset(0.24, 0.16),
+        'topCenter': const Offset(0.50, 0.16),
+        'topRight': const Offset(0.76, 0.16),
+        'rightTop': const Offset(0.84, 0.30),
+        'rightCenter': const Offset(0.84, 0.50),
+        'rightBottom': const Offset(0.84, 0.70),
+        'bottomRight': const Offset(0.76, 0.84),
+        'bottomCenter': const Offset(0.50, 0.84),
+        'bottomLeft': const Offset(0.24, 0.84),
+        'leftBottom': const Offset(0.16, 0.70),
+        'leftCenter': const Offset(0.16, 0.50),
+        'leftTop': const Offset(0.16, 0.30),
+        'left': const Offset(0.16, 0.50),
+        'right': const Offset(0.84, 0.50),
+        'top': const Offset(0.50, 0.16),
+        'bottom': const Offset(0.50, 0.84),
       };
     case 'bypass':
       return <String, Offset>{
@@ -365,9 +387,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 159', () async {
+  test('Build number is 160', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+159'));
+    expect(pubspec, contains('version: 1.0.1+160'));
   });
 
   testWidgets('Selected bypass shows built-in lead handles', (tester) async {
@@ -738,7 +760,8 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Wellhead').first);
     await tester.pumpAndSettle();
     await _ensureEquipmentLibraryOpen(tester);
-    await tester.tap(find.widgetWithText(FilledButton, 'Plug Catcher').first);
+    await tester
+        .tap(find.widgetWithText(FilledButton, 'Double Plug Catcher').first);
     await tester.pumpAndSettle();
     await _ensureEquipmentLibraryOpen(tester);
     await tester.tap(find.widgetWithText(FilledButton, 'Facilities').first);
@@ -759,6 +782,184 @@ void main() {
     expect((plug['height'] as num).toDouble(), closeTo(26, 0.01));
     expect((facilities['width'] as num).toDouble(), closeTo(220, 0.01));
     expect((facilities['height'] as num).toDouble(), closeTo(112, 0.01));
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Build 160 equipment library shows required labels',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.binding.setSurfaceSize(const Size(1280, 1500));
+    await tester.pumpWidget(const MaterialApp(home: EquipmentLayoutScreen()));
+    await tester.pumpAndSettle();
+
+    await _ensureEquipmentLibraryOpen(tester);
+
+    expect(find.text('2" Choke Manifold'), findsOneWidget);
+    expect(find.text('3" Choke Manifold'), findsOneWidget);
+    expect(find.text('Double Plug Catcher'), findsOneWidget);
+    expect(find.text('Flowback Tank'), findsOneWidget);
+    expect(find.text('Flowback Tank with Gas Busters'), findsOneWidget);
+    expect(find.text('Half Flowback Tank'), findsOneWidget);
+    expect(find.text('Quarter Flowback Tank'), findsOneWidget);
+    expect(find.text('Test Separator'), findsOneWidget);
+    expect(find.text('Facilities'), findsOneWidget);
+    expect(find.text('Single Plug Catcher'), findsNothing);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Build 160 choke manifold exposes only centered left/right ports',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'chokeManifold',
+            x: 220, y: 180, width: 38, height: 24),
+      ],
+      selectedId: 1,
+    );
+
+    expect(
+      find.byKey(
+          const ValueKey<String>('selected-port-1-equipmentAnchor-1-left')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+          const ValueKey<String>('selected-port-1-equipmentAnchor-1-right')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+          const ValueKey<String>('selected-port-1-equipmentAnchor-1-top')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(
+          const ValueKey<String>('selected-port-1-equipmentAnchor-1-bottom')),
+      findsNothing,
+    );
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Build 160 facilities exposes 12 perimeter ports and no center',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'facilities',
+            x: 260, y: 220, width: 220, height: 112),
+      ],
+      selectedId: 1,
+    );
+
+    const portIds = <String>[
+      'topLeft',
+      'topCenter',
+      'topRight',
+      'rightTop',
+      'rightCenter',
+      'rightBottom',
+      'bottomRight',
+      'bottomCenter',
+      'bottomLeft',
+      'leftBottom',
+      'leftCenter',
+      'leftTop',
+    ];
+
+    for (final side in portIds) {
+      expect(
+        find.byKey(
+          ValueKey<String>('selected-port-1-equipmentAnchor-1-$side'),
+        ),
+        findsOneWidget,
+      );
+    }
+    expect(
+      find.byKey(
+        const ValueKey<String>('selected-port-1-equipmentAnchor-1-center'),
+      ),
+      findsNothing,
+    );
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Build 160 facilities preserves single-inlet occupancy across all 12 alternate ports',
+      (tester) async {
+    await _pumpLayout(
+      tester,
+      items: <Map<String, dynamic>>[
+        _equipmentItem(1, 'facilities',
+            x: 260, y: 220, width: 220, height: 112),
+        _ironItem(2, x: 180, y: 276, width: 80, properties: <String, String>{
+          'anchorEndItemId': '1',
+          'anchorEndSide': 'leftCenter',
+        }),
+      ],
+      selectedId: 1,
+    );
+
+    expect(
+      find.byKey(
+        const ValueKey<String>('selected-port-1-equipmentAnchor-1-leftCenter'),
+      ),
+      findsNothing,
+    );
+    expect(
+        find.byKey(const ValueKey<String>(
+            'selected-port-1-equipmentAnchor-1-topLeft')),
+        findsNothing);
+    expect(
+        find.byKey(const ValueKey<String>(
+            'selected-port-1-equipmentAnchor-1-rightCenter')),
+        findsNothing);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Build 160 flowback variants persist variant metadata from library',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.binding.setSurfaceSize(const Size(1280, 1500));
+    await tester.pumpWidget(const MaterialApp(home: EquipmentLayoutScreen()));
+    await tester.pumpAndSettle();
+
+    await _ensureEquipmentLibraryOpen(tester);
+    await tester.tap(find.widgetWithText(FilledButton, 'Flowback Tank').first);
+    await tester.pumpAndSettle();
+    await _ensureEquipmentLibraryOpen(tester);
+    await tester.tap(find
+        .widgetWithText(FilledButton, 'Flowback Tank with Gas Busters')
+        .first);
+    await tester.pumpAndSettle();
+    await _ensureEquipmentLibraryOpen(tester);
+    await tester
+        .tap(find.widgetWithText(FilledButton, 'Half Flowback Tank').first);
+    await tester.pumpAndSettle();
+    await _ensureEquipmentLibraryOpen(tester);
+    await tester
+        .tap(find.widgetWithText(FilledButton, 'Quarter Flowback Tank').first);
+    await tester.pumpAndSettle();
+
+    await _saveRigUp(tester);
+    final items = _itemsFromPayload(await _savedLayoutPayload())
+        .where((item) => item['type'] == 'flowbackTank')
+        .toList(growable: false);
+    expect(items.length, 4);
+    final variants = items
+        .map((item) => ((item['properties'] as Map)
+            .cast<String, dynamic>())['equipmentVariant'])
+        .toSet();
+    expect(variants.contains('flowbackStandard'), isTrue);
+    expect(variants.contains('flowbackGasBusters'), isTrue);
+    expect(variants.contains('flowbackHalf'), isTrue);
+    expect(variants.contains('flowbackQuarter'), isTrue);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
@@ -2779,7 +2980,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('Inline equipment supports top/right/bottom/left iron endpoints',
+  testWidgets('Inline equipment supports left/right iron endpoints',
       (tester) async {
     await _pumpLayout(
       tester,
@@ -2802,22 +3003,6 @@ void main() {
             'anchorStartSide': 'right',
           },
         },
-        <String, dynamic>{
-          ..._ironItem(4, x: 460, y: 130, width: 80, vertical: true),
-          'properties': <String, String>{
-            'ironSize': '3',
-            'anchorEndItemId': '1',
-            'anchorEndSide': 'top',
-          },
-        },
-        <String, dynamic>{
-          ..._ironItem(5, x: 460, y: 296, width: 80, vertical: true),
-          'properties': <String, String>{
-            'ironSize': '3',
-            'anchorStartItemId': '1',
-            'anchorStartSide': 'bottom',
-          },
-        },
       ],
     );
 
@@ -2830,7 +3015,7 @@ void main() {
       (sep['x'] as num).toDouble() + (sep['width'] as num).toDouble() / 2,
       (sep['y'] as num).toDouble() + (sep['height'] as num).toDouble() / 2,
     );
-    for (final side in const <String>['top', 'right', 'bottom', 'left']) {
+    for (final side in const <String>['right', 'left']) {
       final p = _fittingAnchorFromMap(sep, side);
       expect((p - center).distance, greaterThan(8.0));
     }
@@ -2839,14 +3024,8 @@ void main() {
         (_findById(items, 2)['properties'] as Map).cast<String, dynamic>();
     final rightIronProps =
         (_findById(items, 3)['properties'] as Map).cast<String, dynamic>();
-    final topIronProps =
-        (_findById(items, 4)['properties'] as Map).cast<String, dynamic>();
-    final bottomIronProps =
-        (_findById(items, 5)['properties'] as Map).cast<String, dynamic>();
     expect(leftIronProps['anchorEndSide'], 'left');
     expect(rightIronProps['anchorStartSide'], 'right');
-    expect(topIronProps['anchorEndSide'], 'top');
-    expect(bottomIronProps['anchorStartSide'], 'bottom');
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });

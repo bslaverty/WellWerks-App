@@ -1767,6 +1767,22 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   String _normalizedAnchorSide(_LayoutItem item, String side) {
+    if (item.type == _EquipmentType.facilities) {
+      switch (side) {
+        case 'inlet':
+        case 'left':
+          return 'leftCenter';
+        case 'outlet':
+        case 'right':
+          return 'rightCenter';
+        case 'top':
+          return 'topCenter';
+        case 'bottom':
+          return 'bottomCenter';
+        default:
+          return side;
+      }
+    }
     if (item.type != _EquipmentType.bypass) {
       if (_usesFourSideEquipmentPorts(item.type)) {
         switch (side) {
@@ -1898,9 +1914,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     bool? movingIronLeading,
   }) {
     if (_isSingleInletEquipmentType(item.type)) {
-      final canonicalSide = _normalizedAnchorSide(item, side);
-      if (canonicalSide != _singleInletAnchorSide(item.type)) {
-        return false;
+      if (item.type != _EquipmentType.facilities) {
+        final canonicalSide = _normalizedAnchorSide(item, side);
+        if (canonicalSide != _singleInletAnchorSide(item.type)) {
+          return false;
+        }
       }
       return !_isEquipmentInletOccupied(
         item.id,
@@ -2140,18 +2158,39 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           _AnchorDefinition('left', 0.08, 0.5),
         ];
       case _EquipmentType.chokeManifold:
+      case _EquipmentType.plugCatcher:
+      case _EquipmentType.testSeparator:
         return const <_AnchorDefinition>[
-          _AnchorDefinition('top', 0.5, 0.08),
-          _AnchorDefinition('right', 0.92, 0.5),
-          _AnchorDefinition('bottom', 0.5, 0.92),
           _AnchorDefinition('left', 0.08, 0.5),
+          _AnchorDefinition('right', 0.92, 0.5),
+        ];
+      case _EquipmentType.flowbackTank:
+      case _EquipmentType.productionTank:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('top', 0.5, 0.16),
+          _AnchorDefinition('right', 0.82, 0.5),
+          _AnchorDefinition('bottom', 0.5, 0.84),
+          _AnchorDefinition('left', 0.18, 0.5),
+        ];
+      case _EquipmentType.facilities:
+        return const <_AnchorDefinition>[
+          _AnchorDefinition('topLeft', 0.24, 0.16),
+          _AnchorDefinition('topCenter', 0.50, 0.16),
+          _AnchorDefinition('topRight', 0.76, 0.16),
+          _AnchorDefinition('rightTop', 0.84, 0.30),
+          _AnchorDefinition('rightCenter', 0.84, 0.50),
+          _AnchorDefinition('rightBottom', 0.84, 0.70),
+          _AnchorDefinition('bottomRight', 0.76, 0.84),
+          _AnchorDefinition('bottomCenter', 0.50, 0.84),
+          _AnchorDefinition('bottomLeft', 0.24, 0.84),
+          _AnchorDefinition('leftBottom', 0.16, 0.70),
+          _AnchorDefinition('leftCenter', 0.16, 0.50),
+          _AnchorDefinition('leftTop', 0.16, 0.30),
         ];
       case _EquipmentType.esdValve:
       case _EquipmentType.lineHeater:
-      case _EquipmentType.plugCatcher:
       case _EquipmentType.cyclonicSandSep:
       case _EquipmentType.sphericalSandSep:
-      case _EquipmentType.testSeparator:
       case _EquipmentType.flare:
       case _EquipmentType.compressor:
         return const <_AnchorDefinition>[
@@ -2159,15 +2198,6 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           _AnchorDefinition('right', 0.92, 0.5),
           _AnchorDefinition('bottom', 0.5, 0.92),
           _AnchorDefinition('left', 0.08, 0.5),
-        ];
-      case _EquipmentType.flowbackTank:
-      case _EquipmentType.productionTank:
-      case _EquipmentType.facilities:
-        return const <_AnchorDefinition>[
-          _AnchorDefinition('top', 0.5, 0.16),
-          _AnchorDefinition('right', 0.82, 0.5),
-          _AnchorDefinition('bottom', 0.5, 0.84),
-          _AnchorDefinition('left', 0.18, 0.5),
         ];
       case _EquipmentType.teeUp:
         return const <_AnchorDefinition>[
@@ -5621,6 +5651,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     Offset? preferredScenePoint,
     bool applySpread = true,
     bool? keepLibraryOpen,
+    Map<String, String>? initialProperties,
   }) {
     final isWide = MediaQuery.of(context).size.width >= 780;
     final center =
@@ -5638,6 +5669,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         y: _snap(rawY).clamp(0.0, canvasSize.height - type.defaultHeight),
         width: type.defaultWidth,
         height: type.defaultHeight,
+        properties: Map<String, String>.from(initialProperties ?? const {}),
       );
       if (_isStraightIronType(item.type)) {
         final start = _storedIronEndpoint(item, true);
@@ -9122,6 +9154,173 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     );
   }
 
+  void _addLabeledEquipmentFromLibrary(
+    _EquipmentType type, {
+    required String label,
+    Map<String, String>? properties,
+  }) {
+    _addItem(
+      type,
+      initialProperties: <String, String>{
+        'displayLabel': label,
+        ...?properties,
+      },
+    );
+  }
+
+  Widget _equipmentVariantButton({
+    required bool isMobile,
+    required String label,
+    required _EquipmentType type,
+    Map<String, String>? properties,
+  }) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final narrowMobile = isMobile && screenWidth < 420;
+    final buttonWidth = narrowMobile
+        ? (screenWidth - 56).clamp(220.0, 360.0)
+        : (isMobile ? 162.0 : 138.0);
+    return SizedBox(
+      width: buttonWidth,
+      child: FilledButton.icon(
+        onPressed: () => _addLabeledEquipmentFromLibrary(
+          type,
+          label: label,
+          properties: properties,
+        ),
+        icon: _EquipmentSymbol(
+          type: type,
+          color: _gold,
+          size: 18,
+          symbolKey: ValueKey<String>('library-symbol-${type.name}-$label'),
+        ),
+        label: Text(label, maxLines: 2, overflow: TextOverflow.visible),
+        style: _compactFilledStyle(highlighted: true),
+      ),
+    );
+  }
+
+  Widget _equipmentCategoryBody({required bool isMobile}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Equipment',
+          style: TextStyle(
+            color: Color(0xFFCDA56A),
+            fontWeight: FontWeight.w700,
+            fontSize: 15,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _equipmentVariantButton(
+              isMobile: isMobile,
+              label: 'Wellhead',
+              type: _EquipmentType.wellhead,
+            ),
+            _equipmentVariantButton(
+              isMobile: isMobile,
+              label: 'ESD Valve',
+              type: _EquipmentType.esdValve,
+            ),
+            _equipmentVariantButton(
+              isMobile: isMobile,
+              label: '2" Choke Manifold',
+              type: _EquipmentType.chokeManifold,
+              properties: const <String, String>{'chokeSize': '2'},
+            ),
+            _equipmentVariantButton(
+              isMobile: isMobile,
+              label: '3" Choke Manifold',
+              type: _EquipmentType.chokeManifold,
+              properties: const <String, String>{'chokeSize': '3'},
+            ),
+            _equipmentVariantButton(
+              isMobile: isMobile,
+              label: 'Double Plug Catcher',
+              type: _EquipmentType.plugCatcher,
+            ),
+            _equipmentVariantButton(
+              isMobile: isMobile,
+              label: 'Flowback Tank',
+              type: _EquipmentType.flowbackTank,
+              properties: const <String, String>{
+                'equipmentVariant': 'flowbackStandard'
+              },
+            ),
+            _equipmentVariantButton(
+              isMobile: isMobile,
+              label: 'Flowback Tank with Gas Busters',
+              type: _EquipmentType.flowbackTank,
+              properties: const <String, String>{
+                'equipmentVariant': 'flowbackGasBusters'
+              },
+            ),
+            _equipmentVariantButton(
+              isMobile: isMobile,
+              label: 'Half Flowback Tank',
+              type: _EquipmentType.flowbackTank,
+              properties: const <String, String>{
+                'equipmentVariant': 'flowbackHalf'
+              },
+            ),
+            _equipmentVariantButton(
+              isMobile: isMobile,
+              label: 'Quarter Flowback Tank',
+              type: _EquipmentType.flowbackTank,
+              properties: const <String, String>{
+                'equipmentVariant': 'flowbackQuarter'
+              },
+            ),
+            _equipmentVariantButton(
+              isMobile: isMobile,
+              label: 'Test Separator',
+              type: _EquipmentType.testSeparator,
+            ),
+            _equipmentVariantButton(
+              isMobile: isMobile,
+              label: 'Facilities',
+              type: _EquipmentType.facilities,
+            ),
+            _equipmentVariantButton(
+              isMobile: isMobile,
+              label: 'Line Heater',
+              type: _EquipmentType.lineHeater,
+            ),
+            _equipmentVariantButton(
+              isMobile: isMobile,
+              label: 'Cyclonic Sand Separator',
+              type: _EquipmentType.cyclonicSandSep,
+            ),
+            _equipmentVariantButton(
+              isMobile: isMobile,
+              label: 'Spherical Sand Separator',
+              type: _EquipmentType.sphericalSandSep,
+            ),
+            _equipmentVariantButton(
+              isMobile: isMobile,
+              label: 'Production Tank',
+              type: _EquipmentType.productionTank,
+            ),
+            _equipmentVariantButton(
+              isMobile: isMobile,
+              label: 'Flare',
+              type: _EquipmentType.flare,
+            ),
+            _equipmentVariantButton(
+              isMobile: isMobile,
+              label: 'Compressor',
+              type: _EquipmentType.compressor,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _libraryCategoryBody({required bool isMobile}) {
     List<_EquipmentType> types;
     var outlined = false;
@@ -9129,9 +9328,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
     switch (_mobileDrawerSection) {
       case _DrawerLibrarySection.equipment:
-        types = _equipmentTypes;
-        title = 'Equipment';
-        break;
+        return _equipmentCategoryBody(isMobile: isMobile);
       case _DrawerLibrarySection.iron:
         types = const <_EquipmentType>[];
         outlined = true;
@@ -12003,7 +12200,7 @@ extension _EquipmentTypeInfo on _EquipmentType {
       case _EquipmentType.lineHeater:
         return 'Line Heater';
       case _EquipmentType.plugCatcher:
-        return 'Plug Catcher';
+        return 'Double Plug Catcher';
       case _EquipmentType.cyclonicSandSep:
         return 'Cyclonic Sand Sep';
       case _EquipmentType.sphericalSandSep:
@@ -12345,9 +12542,41 @@ class _BillOfMaterialsData {
 }
 
 extension _LayoutItemProperties on _LayoutItem {
+  String get equipmentVariant {
+    final value = properties['equipmentVariant'];
+    if (value == null || value.trim().isEmpty) return '';
+    return value.trim();
+  }
+
   String get displayLabel {
     final custom = properties['displayLabel'];
-    if (custom != null && custom.trim().isNotEmpty) return custom.trim();
+    if (custom != null && custom.trim().isNotEmpty) {
+      final normalized = custom.trim().toLowerCase();
+      if (normalized == 'single plug catcher' ||
+          normalized == 'single barrel plug catcher') {
+        return 'Double Plug Catcher';
+      }
+      return custom.trim();
+    }
+    if (type == _EquipmentType.chokeManifold) {
+      final chokeSize = properties['chokeSize']?.trim();
+      if (chokeSize == '2' || chokeSize == '3') {
+        return '$chokeSize" Choke Manifold';
+      }
+      return '3" Choke Manifold';
+    }
+    if (type == _EquipmentType.flowbackTank) {
+      switch (equipmentVariant) {
+        case 'flowbackGasBusters':
+          return 'Flowback Tank with Gas Busters';
+        case 'flowbackHalf':
+          return 'Half Flowback Tank';
+        case 'flowbackQuarter':
+          return 'Quarter Flowback Tank';
+        default:
+          return 'Flowback Tank';
+      }
+    }
     return type.label;
   }
 
@@ -12476,6 +12705,14 @@ class _LayoutTile extends StatelessWidget {
       this.snapHighlight = false,
       this.renderStraightIronInternally = true});
 
+  bool _usesCustomEquipmentArtwork(_LayoutItem item) {
+    return item.type == _EquipmentType.chokeManifold ||
+        item.type == _EquipmentType.plugCatcher ||
+        item.type == _EquipmentType.flowbackTank ||
+        item.type == _EquipmentType.testSeparator ||
+        item.type == _EquipmentType.facilities;
+  }
+
   double get _labelBottomOffset {
     if (item.type == _EquipmentType.facilities) return -15;
     if (item.height <= 62) return -18;
@@ -12513,6 +12750,7 @@ class _LayoutTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final isIron = item.type.isIron;
     final isFacilities = item.type == _EquipmentType.facilities;
+    final useCustomEquipmentArtwork = _usesCustomEquipmentArtwork(item);
     final showSnapHighlight = snapHighlight &&
         (item.type == _EquipmentType.ironHorizontal ||
             item.type == _EquipmentType.ironVertical);
@@ -12536,8 +12774,9 @@ class _LayoutTile extends StatelessWidget {
               painter: _ShapePainter(item.type,
                   turns: item.rotationTurns,
                   ironSize: item.ironSize,
+                  properties: item.properties,
                   renderStraightIronInternally: renderStraightIronInternally),
-              child: isIron
+              child: (isIron || useCustomEquipmentArtwork)
                   ? const SizedBox.expand()
                   : LayoutBuilder(
                       builder: (context, constraints) {
@@ -12638,19 +12877,25 @@ class _ShapePainter extends CustomPainter {
   final _EquipmentType type;
   final int turns;
   final String ironSize;
+  final Map<String, String> properties;
   final bool renderStraightIronInternally;
 
   _ShapePainter(this.type,
       {this.turns = 0,
       this.ironSize = '3',
-      this.renderStraightIronInternally = true});
+      Map<String, String>? properties,
+      this.renderStraightIronInternally = true})
+      : properties = properties ?? const <String, String>{};
 
   @override
   void paint(Canvas canvas, Size size) {
     final accent = Paint()
-      ..color = const Color(0xFFCDA56A).withOpacity(.24)
+      ..color = const Color(0xFFCDA56A)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
+    final bodyFill = Paint()
+      ..color = const Color(0xFF000000)
+      ..style = PaintingStyle.fill;
     final strokeWidth = ironSize == '2' ? 1.4 : (ironSize == '4' ? 2.0 : 1.7);
     final iron = Paint()
       ..color = const Color(0xFFD7D7D7)
@@ -12674,6 +12919,12 @@ class _ShapePainter extends CustomPainter {
     void drawIron(Path p) {
       canvas.drawPath(p, shadow);
       canvas.drawPath(p, iron);
+    }
+
+    String variant() {
+      final value = properties['equipmentVariant'];
+      if (value == null || value.trim().isEmpty) return '';
+      return value.trim();
     }
 
     if (type == _EquipmentType.ironHorizontal) {
@@ -12806,6 +13057,231 @@ class _ShapePainter extends CustomPainter {
       return;
     }
 
+    if (type == _EquipmentType.chokeManifold) {
+      final bodyRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          size.width * .18,
+          size.height * .18,
+          size.width * .64,
+          size.height * .64,
+        ),
+        Radius.circular(size.shortestSide * .16),
+      );
+      canvas.drawRRect(bodyRect, bodyFill);
+      canvas.drawRRect(bodyRect, accent);
+
+      final linePaint = Paint()
+        ..color = const Color(0xFFCDA56A)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = (size.shortestSide * .08).clamp(1.8, 3.0)
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+
+      final upperY = size.height * .42;
+      final lowerY = size.height * .58;
+      final leftX = size.width * .08;
+      final rightX = size.width * .92;
+      final splitX = size.width * .36;
+      final mergeX = size.width * .64;
+
+      final upperPath = Path()
+        ..moveTo(leftX, size.height * .5)
+        ..lineTo(splitX, upperY)
+        ..lineTo(mergeX, upperY)
+        ..lineTo(rightX, size.height * .5);
+      final lowerPath = Path()
+        ..moveTo(leftX, size.height * .5)
+        ..lineTo(splitX, lowerY)
+        ..lineTo(mergeX, lowerY)
+        ..lineTo(rightX, size.height * .5);
+      canvas.drawPath(upperPath, linePaint);
+      canvas.drawPath(lowerPath, linePaint);
+      canvas.drawLine(
+        Offset((splitX + mergeX) / 2, upperY),
+        Offset((splitX + mergeX) / 2, lowerY),
+        linePaint,
+      );
+
+      final wheelRadius = (size.shortestSide * .13).clamp(2.6, 4.6);
+      final wheelPaint = Paint()
+        ..color = const Color(0xFFCDA56A)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = (size.shortestSide * .055).clamp(1.3, 2.3);
+      void drawWheel(Offset center) {
+        canvas.drawCircle(center, wheelRadius, wheelPaint);
+        canvas.drawLine(
+          Offset(center.dx - wheelRadius, center.dy),
+          Offset(center.dx + wheelRadius, center.dy),
+          wheelPaint,
+        );
+        canvas.drawLine(
+          Offset(center.dx, center.dy - wheelRadius),
+          Offset(center.dx, center.dy + wheelRadius),
+          wheelPaint,
+        );
+      }
+
+      drawWheel(Offset(size.width * .30, upperY));
+      drawWheel(Offset(size.width * .30, lowerY));
+      return;
+    }
+
+    if (type == _EquipmentType.plugCatcher) {
+      final bodyRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          size.width * .14,
+          size.height * .22,
+          size.width * .72,
+          size.height * .56,
+        ),
+        Radius.circular(size.shortestSide * .12),
+      );
+      canvas.drawRRect(bodyRect, bodyFill);
+      canvas.drawRRect(bodyRect, accent);
+
+      final linePaint = Paint()
+        ..color = const Color(0xFFCDA56A)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = (size.shortestSide * .08).clamp(1.8, 3.0)
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+
+      final inletX = size.width * .08;
+      final outletX = size.width * .92;
+      final centerY = size.height * .50;
+      final branchX = size.width * .28;
+      final rejoinX = size.width * .72;
+      final upperY = size.height * .36;
+      final lowerY = size.height * .64;
+
+      canvas.drawLine(
+          Offset(inletX, centerY), Offset(outletX, centerY), linePaint);
+
+      final upperPath = Path()
+        ..moveTo(branchX, centerY)
+        ..lineTo(branchX, upperY)
+        ..lineTo(rejoinX, upperY)
+        ..lineTo(rejoinX, centerY);
+      final lowerPath = Path()
+        ..moveTo(branchX, centerY)
+        ..lineTo(branchX, lowerY)
+        ..lineTo(rejoinX, lowerY)
+        ..lineTo(rejoinX, centerY);
+      canvas.drawPath(upperPath, linePaint);
+      canvas.drawPath(lowerPath, linePaint);
+      return;
+    }
+
+    if (type == _EquipmentType.flowbackTank) {
+      final v = variant();
+      var bodyStart = 0.18;
+      var bodyWidth = 0.64;
+      if (v == 'flowbackHalf') {
+        bodyWidth = 0.36;
+      } else if (v == 'flowbackQuarter') {
+        bodyWidth = 0.22;
+      }
+      final bodyRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          size.width * bodyStart,
+          size.height * .18,
+          size.width * bodyWidth,
+          size.height * .64,
+        ),
+        Radius.circular(size.shortestSide * .08),
+      );
+      canvas.drawRRect(bodyRect, bodyFill);
+      canvas.drawRRect(bodyRect, accent);
+
+      if (v == 'flowbackGasBusters') {
+        final barPaint = Paint()
+          ..color = const Color(0xFFCDA56A)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = (size.shortestSide * .09).clamp(1.8, 3.2)
+          ..strokeCap = StrokeCap.round;
+        final x1 = bodyRect.left + bodyRect.width * .34;
+        final x2 = bodyRect.left + bodyRect.width * .66;
+        final yTop = bodyRect.top + bodyRect.height * .22;
+        final yBottom = bodyRect.bottom - bodyRect.height * .22;
+        canvas.drawLine(Offset(x1, yTop), Offset(x1, yBottom), barPaint);
+        canvas.drawLine(Offset(x2, yTop), Offset(x2, yBottom), barPaint);
+      }
+      return;
+    }
+
+    if (type == _EquipmentType.testSeparator) {
+      final vesselRect = Rect.fromLTWH(
+        size.width * .16,
+        size.height * .26,
+        size.width * .68,
+        size.height * .48,
+      );
+      final portPaint = Paint()
+        ..color = const Color(0xFFCDA56A)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = (size.shortestSide * .08).clamp(1.8, 3.0)
+        ..strokeCap = StrokeCap.round;
+      final centerY = size.height * .50;
+      canvas.drawLine(
+        Offset(size.width * .08, centerY),
+        Offset(vesselRect.left, centerY),
+        portPaint,
+      );
+      canvas.drawLine(
+        Offset(vesselRect.right, centerY),
+        Offset(size.width * .92, centerY),
+        portPaint,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          vesselRect,
+          Radius.circular(vesselRect.height / 2),
+        ),
+        bodyFill,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          vesselRect,
+          Radius.circular(vesselRect.height / 2),
+        ),
+        accent,
+      );
+
+      final legPaint = Paint()
+        ..color = const Color(0xFFCDA56A)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = (size.shortestSide * .07).clamp(1.4, 2.4)
+        ..strokeCap = StrokeCap.round;
+      final legTop = vesselRect.bottom;
+      final legBottom = size.height * .86;
+      canvas.drawLine(
+        Offset(size.width * .36, legTop),
+        Offset(size.width * .36, legBottom),
+        legPaint,
+      );
+      canvas.drawLine(
+        Offset(size.width * .64, legTop),
+        Offset(size.width * .64, legBottom),
+        legPaint,
+      );
+      return;
+    }
+
+    if (type == _EquipmentType.facilities) {
+      final bodyRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          size.width * .16,
+          size.height * .16,
+          size.width * .68,
+          size.height * .68,
+        ),
+        Radius.circular(size.shortestSide * .08),
+      );
+      canvas.drawRRect(bodyRect, bodyFill);
+      canvas.drawRRect(bodyRect, accent);
+      return;
+    }
+
     if (type == _EquipmentType.wellhead) {
       final topY = size.height * .18;
       final branchY = size.height * .4;
@@ -12849,8 +13325,7 @@ class _ShapePainter extends CustomPainter {
         ..cubicTo(size.width * .62, size.height * .43, size.width * .68,
             size.height * .54, size.width * .5, size.height * .68);
       canvas.drawPath(flame, accent);
-    } else if (type == _EquipmentType.flowbackTank ||
-        type == _EquipmentType.productionTank) {
+    } else if (type == _EquipmentType.productionTank) {
       final rect = Rect.fromLTWH(size.width * .18, size.height * .16,
           size.width * .64, size.height * .68);
       canvas.drawRRect(
@@ -12859,20 +13334,6 @@ class _ShapePainter extends CustomPainter {
           Offset(size.width * .75, size.height * .28), accent);
       canvas.drawLine(Offset(size.width * .25, size.height * .72),
           Offset(size.width * .75, size.height * .72), accent);
-    } else if (type == _EquipmentType.chokeManifold) {
-      canvas.drawLine(Offset(size.width * .18, size.height * .5),
-          Offset(size.width * .82, size.height * .5), accent);
-      canvas.drawCircle(Offset(size.width * .38, size.height * .5), 7, accent);
-      canvas.drawCircle(Offset(size.width * .62, size.height * .5), 7, accent);
-    } else if (type == _EquipmentType.plugCatcher) {
-      canvas.drawRRect(
-          RRect.fromRectAndRadius(
-              Rect.fromLTWH(size.width * .15, size.height * .28,
-                  size.width * .7, size.height * .44),
-              const Radius.circular(8)),
-          accent);
-      canvas.drawLine(Offset(size.width * .25, size.height * .35),
-          Offset(size.width * .75, size.height * .65), accent);
     }
   }
 
@@ -12881,6 +13342,7 @@ class _ShapePainter extends CustomPainter {
       oldDelegate.type != type ||
       oldDelegate.turns != turns ||
       oldDelegate.ironSize != ironSize ||
+      oldDelegate.properties != properties ||
       oldDelegate.renderStraightIronInternally != renderStraightIronInternally;
 }
 
