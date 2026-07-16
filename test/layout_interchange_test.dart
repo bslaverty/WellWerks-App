@@ -243,10 +243,55 @@ void main() {
     final svg = LayoutInterchangeCodec.encodeVisioSvg(model);
 
     expect(svg, contains('data-wellwerks-format="wellwerks-layout-svg"'));
+    expect(svg, contains('wellwerks-layout-interchange'));
     expect(svg, contains('data-wellwerks-type="wellhead"'));
     expect(svg, contains('data-wellwerks-id="1"'));
     expect(svg, contains('data-wellwerks-port-id="right"'));
     expect(svg, contains('data-wellwerks-iron-size="3"'));
+  });
+
+  test('non-wellwerks svg is rejected with the expected message', () {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+
+    expect(
+      () => LayoutInterchangeCodec.decodeVisioSvg(svg),
+      throwsA(
+        predicate((error) =>
+            error is LayoutInterchangeException &&
+            error.message ==
+                'This SVG does not contain editable WellWerks layout data.'),
+      ),
+    );
+  });
+
+  test('esd equipment uses stable esd identifier', () {
+    final payload = <String, dynamic>{
+      'name': 'Rig Up',
+      'nextId': 2,
+      'items': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 1,
+          'type': 'esdValve',
+          'x': 20.0,
+          'y': 30.0,
+          'width': 30.0,
+          'height': 24.0,
+          'rotationTurns': 0,
+          'locked': false,
+          'properties': <String, String>{},
+        },
+      ],
+      'metadata': <String, dynamic>{'version': 1},
+    };
+
+    final model = LayoutInterchangeCodec.fromDesignerPayload(
+      payload,
+      canvasWidth: 1200,
+      canvasHeight: 800,
+      showGrid: false,
+    );
+
+    expect(model.equipment.single.stableTypeId, 'esd');
   });
 
   test('svg export and import round trip rebuilds editable layout state', () {

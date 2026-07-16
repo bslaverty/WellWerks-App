@@ -178,7 +178,7 @@ class LayoutInterchangeCodec {
     final format = root.getAttribute('data-wellwerks-format');
     if (format != svgFormatName) {
       throw const LayoutInterchangeException(
-          'This SVG was not created with WellWerks-compatible equipment data.');
+          'This SVG does not contain editable WellWerks layout data.');
     }
 
     final metadataNode = document.findAllElements('metadata').firstWhere(
@@ -187,7 +187,7 @@ class LayoutInterchangeCodec {
         );
     if (metadataNode.name.local == 'missing') {
       throw const LayoutInterchangeException(
-          'This SVG was not created with WellWerks-compatible equipment data.');
+          'This SVG does not contain editable WellWerks layout data.');
     }
     final encoded = metadataNode.innerText.trim();
     if (encoded.isEmpty) {
@@ -448,7 +448,7 @@ class LayoutInterchangeCodec {
       case 'lineHeater':
         return 'line_heater';
       case 'esdValve':
-        return 'esd_valve';
+        return 'esd';
       case 'testSeparator':
         return 'test_separator';
       case 'sphericalSandSep':

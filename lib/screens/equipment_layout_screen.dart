@@ -6706,7 +6706,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       builder: (context) => AlertDialog(
         title: const Text('Unsupported SVG'),
         content: const Text(
-          'This SVG was not created with WellWerks-compatible equipment data.',
+          'This SVG does not contain editable WellWerks layout data.',
         ),
         actions: [
           TextButton(
