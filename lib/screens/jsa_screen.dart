@@ -535,7 +535,6 @@ class _JsaScreenState extends State<JsaScreen>
     final picked = await showTimeWheelPickerSheet(
       context,
       initialTime: _time,
-      use24Hour: false,
     );
     if (picked != null) {
       setState(() => _time = picked);

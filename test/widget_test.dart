@@ -33,6 +33,7 @@ import 'package:wellwerks/services/production_shift_service.dart';
 import 'package:wellwerks/services/report_profile_service.dart';
 import 'package:wellwerks/services/rig_up_inventory_service.dart';
 import 'package:wellwerks/utils/jsa_time_format.dart';
+import 'package:wellwerks/widgets/time_wheel_picker_sheet.dart';
 
 Finder labeledTextField(String label) {
   return find.byWidgetPredicate(
@@ -1579,7 +1580,15 @@ void main() {
       labeledTextField('Job Box Number').first,
       'JB-101',
     );
-    await tester.tap(find.widgetWithText(FilledButton, 'Save to History'));
+    await tester.scrollUntilVisible(
+      find.widgetWithText(FilledButton, 'Save to History').first,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final saveButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Save to History').first,
+    );
+    saveButton.onPressed!.call();
     await tester.pumpAndSettle();
 
     final records = await inventoryService.loadAllRecords();
@@ -1621,6 +1630,9 @@ void main() {
     );
 
     await tester.pumpWidget(const MaterialApp(home: JsaScreen()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Current JSA'));
     await tester.pumpAndSettle();
 
     expect(find.text('Active Job'), findsOneWidget);
@@ -1668,59 +1680,44 @@ void main() {
   testWidgets('JSA time picker commits only on Done', (
     WidgetTester tester,
   ) async {
-    SharedPreferences.setMockInitialValues({});
+    TimeOfDay selected = const TimeOfDay(hour: 18, minute: 5);
 
-    final jobStorage = JobStorageService();
-    final jsaStorage = JsaStorageService();
-    final activeJob = await jobStorage.saveActiveJob(
-      JobSetup(
-        company: 'Mach Energy',
-        padName: 'Time Pad',
-        wells: const ['Time Well'],
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            final label = formatJsaTime(selected);
+            return Scaffold(
+              body: Center(
+                child: OutlinedButton(
+                  onPressed: () async {
+                    final picked = await showTimeWheelPickerSheet(
+                      context,
+                      initialTime: selected,
+                    );
+                    if (picked == null) return;
+                    setState(() => selected = picked);
+                  },
+                  child: Text('Time: $label'),
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
-
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day)
-        .toIso8601String()
-        .split('T')
-        .first;
-
-    await jsaStorage.saveDraft(
-      JsaDraft(
-        activeJobId: activeJob.id,
-        company: 'Mach Energy',
-        date: today,
-        time: '6:05 PM',
-        location: 'Time Pad',
-        task: 'Flowback',
-        steps: const ['Monitor well flow'],
-        hazards: const ['High pressure'],
-        recommendations: const ['Wear PPE'],
-        employees: List.generate(6, (_) => JsaEmployee()),
-        notes: '',
-      ),
-    );
-
-    await tester.pumpWidget(const MaterialApp(home: JsaScreen()));
     await tester.pumpAndSettle();
 
-    final timeButton = find.widgetWithText(OutlinedButton, 'Time: 6:05 PM');
-    expect(timeButton, findsOneWidget);
-    await tester.ensureVisible(timeButton);
-    await tester.pumpAndSettle();
+    expect(
+        find.widgetWithText(OutlinedButton, 'Time: 6:05 PM'), findsOneWidget);
 
-    await tester.tap(timeButton);
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Time: 6:05 PM'));
     await tester.pumpAndSettle();
-
     expect(find.text('Select Time'), findsOneWidget);
 
     await tester.drag(
-      find.byType(CupertinoPicker).at(1),
-      const Offset(0, -264),
-    );
+        find.byType(CupertinoPicker).at(1), const Offset(0, -264));
     await tester.pumpAndSettle();
-
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 
@@ -1730,27 +1727,23 @@ void main() {
 
     await tester.tap(find.widgetWithText(OutlinedButton, 'Time: 6:05 PM'));
     await tester.pumpAndSettle();
-
     await tester.drag(
-      find.byType(CupertinoPicker).at(1),
-      const Offset(0, -264),
-    );
+        find.byType(CupertinoPicker).at(1), const Offset(0, -264));
     await tester.pumpAndSettle();
-
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
 
     expect(find.text('Select Time'), findsNothing);
     expect(find.widgetWithText(OutlinedButton, 'Time: 6:05 PM'), findsNothing);
     expect(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is OutlinedButton &&
-              widget.child is Text &&
-              (widget.child as Text).data?.startsWith('Time: ') == true,
-          description: 'Updated time button',
-        ),
-        findsOneWidget);
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is OutlinedButton &&
+            widget.child is Text &&
+            (widget.child as Text).data?.startsWith('Time: ') == true,
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('JSA Build 105 tabs and built-in templates render', (

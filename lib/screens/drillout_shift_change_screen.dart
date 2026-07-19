@@ -46,6 +46,9 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   final _surfaceTotalFluid = TextEditingController();
   final _waterHauled = TextEditingController();
   final _oilHauled = TextEditingController();
+  final _manifoldPsi = TextEditingController();
+  final _casingPsi = TextEditingController();
+  final _pumpPsi = TextEditingController();
   final _plugNumber = TextEditingController();
   final _coilDepth = TextEditingController();
   final _notes = TextEditingController();
@@ -76,6 +79,9 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   bool _includeSurfaceTotalFluid = false;
   bool _includeWaterHauled = false;
   bool _includeOilHauled = false;
+  bool _includeManifoldPsi = false;
+  bool _includeCasingPsi = false;
+  bool _includePumpPsi = false;
 
   bool _showStatus = false;
   bool _showPlugNumber = false;
@@ -171,6 +177,9 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         (saved['surfaceTotalFluid'] as String? ?? '').trim();
     final savedWaterHauled = (saved['waterHauled'] as String? ?? '').trim();
     final savedOilHauled = (saved['oilHauled'] as String? ?? '').trim();
+    final savedManifoldPsi = (saved['manifoldPsi'] as String? ?? '').trim();
+    final savedCasingPsi = (saved['casingPsi'] as String? ?? '').trim();
+    final savedPumpPsi = (saved['pumpPsi'] as String? ?? '').trim();
 
     final savedTypeRaw =
         (saved['chokeType'] as String? ?? '').trim().toUpperCase();
@@ -232,6 +241,21 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         key: 'includeOilHauled',
         value: savedOilHauled,
       );
+      _includeManifoldPsi = _resolveIncludeToggle(
+        saved: saved,
+        key: 'includeManifoldPsi',
+        value: savedManifoldPsi,
+      );
+      _includeCasingPsi = _resolveIncludeToggle(
+        saved: saved,
+        key: 'includeCasingPsi',
+        value: savedCasingPsi,
+      );
+      _includePumpPsi = _resolveIncludeToggle(
+        saved: saved,
+        key: 'includePumpPsi',
+        value: savedPumpPsi,
+      );
       _showStatus = saved.containsKey('showStatus')
           ? (saved['showStatus'] as bool? ?? false)
           : ((saved['status'] as String? ?? '').trim().isNotEmpty);
@@ -254,6 +278,9 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _surfaceTotalFluid.text = savedSurfaceTotalFluid;
       _waterHauled.text = savedWaterHauled;
       _oilHauled.text = savedOilHauled;
+      _manifoldPsi.text = savedManifoldPsi;
+      _casingPsi.text = savedCasingPsi;
+      _pumpPsi.text = savedPumpPsi;
       _plugNumber.text = saved['plugNumber'] as String? ?? '';
       _coilDepth.text = saved['coilDepth'] as String? ?? '';
       _notes.text = saved['notes'] as String? ?? '';
@@ -298,6 +325,9 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         'includeSurfaceTotalFluid': _includeSurfaceTotalFluid,
         'includeWaterHauled': _includeWaterHauled,
         'includeOilHauled': _includeOilHauled,
+        'includeManifoldPsi': _includeManifoldPsi,
+        'includeCasingPsi': _includeCasingPsi,
+        'includePumpPsi': _includePumpPsi,
         'showStatus': _showStatus,
         'showPlugNumber': _showPlugNumber,
         'showCoilDepth': _showCoilDepth,
@@ -307,6 +337,9 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         'surfaceTotalFluid': _surfaceTotalFluid.text.trim(),
         'waterHauled': _waterHauled.text.trim(),
         'oilHauled': _oilHauled.text.trim(),
+        'manifoldPsi': _manifoldPsi.text.trim(),
+        'casingPsi': _casingPsi.text.trim(),
+        'pumpPsi': _pumpPsi.text.trim(),
         'status': _status,
         'plugNumber': _plugNumber.text.trim(),
         'coilDepth': _coilDepth.text.trim(),
@@ -396,6 +429,10 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     return parsed.round().toString();
   }
 
+  bool _hasEnteredValue(String raw) {
+    return raw.trim().isNotEmpty;
+  }
+
   double _resolvedRateBblPerMin() {
     final override = double.tryParse(_rate.text.trim());
     if (_includeRateOverride && override != null) {
@@ -415,7 +452,6 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     final picked = await showTimeWheelPickerSheet(
       context,
       initialTime: TimeOfDay(hour: _selectedTime.hour, minute: 0),
-      use24Hour: _textTimeFormat == '24h',
     );
 
     if (!mounted || picked == null) return;
@@ -629,45 +665,60 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     final company = _customer.text.trim();
     final wellName = _wellName.text.trim();
 
-    final optionalStatusLines = <String>[
-      if (_showStatus)
-        'Status: ${(_status ?? '').trim().isEmpty ? '-' : _status!}',
-      if (_showStatus && _showPlugNumber)
-        'Plug #: ${_plugNumber.text.trim().isEmpty ? '-' : _plugNumber.text.trim()}',
-      if (_showStatus && _showCoilDepth)
-        'Coil Depth: ${_coilDepth.text.trim().isEmpty ? '-' : _coilDepth.text.trim()} ft',
-      if (_showGas) 'Gas: ${(_gas ?? '').trim().isEmpty ? '-' : _gas!}',
-      if (_showSand) 'Sand: ${(_sand ?? '').trim().isEmpty ? '-' : _sand!}',
-    ];
+    final lines = <String>[];
 
-    final optionalFluidLines = <String>[
-      if (_includeSurfaceTotalFluid &&
-          _surfaceTotalFluid.text.trim().isNotEmpty)
-        'Surface Total Fluid: ${_fmtWholeBbl(_surfaceTotalFluid.text)} bbl',
-      if (_includeWaterHauled && _waterHauled.text.trim().isNotEmpty)
-        'Water Hauled: ${_fmtWholeBbl(_waterHauled.text)} bbl',
-      if (_includeOilHauled && _oilHauled.text.trim().isNotEmpty)
-        'Oil Hauled: ${_fmtWholeBbl(_oilHauled.text)} bbl',
-    ];
+    lines.add('${_formatTime(_selectedTime)} $_modeLabel');
+    if (company.isNotEmpty) lines.add(company);
+    if (padName.isNotEmpty) lines.add(padName);
+    if (wellName.isNotEmpty) lines.add(wellName);
 
-    final lines = <String>[
-      '${_formatTime(_selectedTime)} $_modeLabel',
-      '',
-      company,
-      if (padName.isNotEmpty) padName,
-      wellName,
-      '',
-      ...optionalStatusLines,
-      if (optionalStatusLines.isNotEmpty) '',
-      if (!_choke.isNone) 'Choke: ${formatChokeDisplay(_choke)}',
-      'Rate: ${_fmtTrim(_resolvedRateBblPerMin())} bbl/min',
-      if (optionalFluidLines.isNotEmpty) '',
-      ...optionalFluidLines,
-      '',
-      'Tank Inventory',
-      '',
-      _inventoryLine(_primaryTankLabel(), primaryGauge, _primaryChart()),
-    ];
+    if (_showStatus && (_status ?? '').trim().isNotEmpty) {
+      lines.add('Status: ${_status!.trim()}');
+    }
+    if (_showStatus && _showPlugNumber && _hasEnteredValue(_plugNumber.text)) {
+      lines.add('Plug #: ${_plugNumber.text.trim()}');
+    }
+    if (_showStatus && _showCoilDepth && _hasEnteredValue(_coilDepth.text)) {
+      lines.add('Coil Depth: ${_coilDepth.text.trim()} ft');
+    }
+    if (_showGas) {
+      final gasValue = (_gas ?? '').trim();
+      lines.add('Gas: ${gasValue.isEmpty ? '-' : gasValue}');
+    }
+    if (_showSand) {
+      final sandValue = (_sand ?? '').trim();
+      lines.add('Sand: ${sandValue.isEmpty ? '-' : sandValue}');
+    }
+    if (!_choke.isNone) {
+      lines.add('Choke: ${formatChokeDisplay(_choke)}');
+    }
+
+    lines.add('Rate: ${_fmtTrim(_resolvedRateBblPerMin())} BBL/min');
+
+    if (_includeManifoldPsi && _hasEnteredValue(_manifoldPsi.text)) {
+      lines.add('Manifold PSI: ${_manifoldPsi.text.trim()}');
+    }
+    if (_includeCasingPsi && _hasEnteredValue(_casingPsi.text)) {
+      lines.add('Casing PSI: ${_casingPsi.text.trim()}');
+    }
+    if (_includePumpPsi && _hasEnteredValue(_pumpPsi.text)) {
+      lines.add('Pump PSI: ${_pumpPsi.text.trim()}');
+    }
+    if (_includeSurfaceTotalFluid &&
+        _hasEnteredValue(_surfaceTotalFluid.text)) {
+      lines.add(
+          'Surface Total Fluid: ${_fmtWholeBbl(_surfaceTotalFluid.text)} bbl');
+    }
+    if (_includeWaterHauled && _hasEnteredValue(_waterHauled.text)) {
+      lines.add('Water Hauled: ${_fmtWholeBbl(_waterHauled.text)} bbl');
+    }
+    if (_includeOilHauled && _hasEnteredValue(_oilHauled.text)) {
+      lines.add('Oil Hauled: ${_fmtWholeBbl(_oilHauled.text)} bbl');
+    }
+
+    lines.add('Tank Inventory');
+    lines.add(
+        _inventoryLine(_primaryTankLabel(), primaryGauge, _primaryChart()));
 
     if (_showGasTank) {
       final gauge = _parseGaugeOrNull(_gas1Gauge.text);
@@ -688,13 +739,11 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
           'Water Tank 2', gauge, _flowbackWaterChart(_waterTank2Type)));
     }
 
-    lines.add('');
-    lines
-        .add('Notes: ${_notes.text.trim().isEmpty ? '-' : _notes.text.trim()}');
+    if (_hasEnteredValue(_notes.text)) {
+      lines.add('Notes: ${_notes.text.trim()}');
+    }
 
-    return lines
-        .where((line) => line.trim().isNotEmpty || line.isEmpty)
-        .join('\n');
+    return lines.where((line) => line.trim().isNotEmpty).join('\n');
   }
 
   Future<void> _preview() async {
@@ -782,6 +831,9 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _surfaceTotalFluid.clear();
       _waterHauled.clear();
       _oilHauled.clear();
+      _manifoldPsi.clear();
+      _casingPsi.clear();
+      _pumpPsi.clear();
       _primaryGauge.clear();
       _gas1Gauge.clear();
       _gas2Gauge.clear();
@@ -837,6 +889,9 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _includeSurfaceTotalFluid = false;
       _includeWaterHauled = false;
       _includeOilHauled = false;
+      _includeManifoldPsi = false;
+      _includeCasingPsi = false;
+      _includePumpPsi = false;
       _showStatus = false;
       _showPlugNumber = false;
       _showCoilDepth = false;
@@ -851,6 +906,9 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _surfaceTotalFluid.clear();
       _waterHauled.clear();
       _oilHauled.clear();
+      _manifoldPsi.clear();
+      _casingPsi.clear();
+      _pumpPsi.clear();
       _plugNumber.clear();
       _coilDepth.clear();
       _notes.clear();
@@ -926,6 +984,9 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     _surfaceTotalFluid.dispose();
     _waterHauled.dispose();
     _oilHauled.dispose();
+    _manifoldPsi.dispose();
+    _casingPsi.dispose();
+    _pumpPsi.dispose();
     _plugNumber.dispose();
     _coilDepth.dispose();
     _notes.dispose();
@@ -1047,6 +1108,67 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                             onChanged: (_) => _saveSetup(),
                             decoration: const InputDecoration(
                               labelText: 'Rate Override (bbl/min)',
+                            ),
+                          ),
+                        _optionalToggleRow(
+                          key:
+                              const Key('drillout-toggle-include-manifold-psi'),
+                          label: 'Include Manifold PSI',
+                          value: _includeManifoldPsi,
+                          onChanged: (value) => _onOptionalToggleChanged(
+                            nextValue: value,
+                            assign: (next) => _includeManifoldPsi = next,
+                          ),
+                        ),
+                        if (_includeManifoldPsi)
+                          TextField(
+                            key: const Key('drillout-manifold-psi-field'),
+                            controller: _manifoldPsi,
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            onChanged: (_) => _saveSetup(),
+                            decoration: const InputDecoration(
+                              labelText: 'Manifold PSI',
+                            ),
+                          ),
+                        _optionalToggleRow(
+                          key: const Key('drillout-toggle-include-casing-psi'),
+                          label: 'Include Casing PSI',
+                          value: _includeCasingPsi,
+                          onChanged: (value) => _onOptionalToggleChanged(
+                            nextValue: value,
+                            assign: (next) => _includeCasingPsi = next,
+                          ),
+                        ),
+                        if (_includeCasingPsi)
+                          TextField(
+                            key: const Key('drillout-casing-psi-field'),
+                            controller: _casingPsi,
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            onChanged: (_) => _saveSetup(),
+                            decoration: const InputDecoration(
+                              labelText: 'Casing PSI',
+                            ),
+                          ),
+                        _optionalToggleRow(
+                          key: const Key('drillout-toggle-include-pump-psi'),
+                          label: 'Include Pump PSI',
+                          value: _includePumpPsi,
+                          onChanged: (value) => _onOptionalToggleChanged(
+                            nextValue: value,
+                            assign: (next) => _includePumpPsi = next,
+                          ),
+                        ),
+                        if (_includePumpPsi)
+                          TextField(
+                            key: const Key('drillout-pump-psi-field'),
+                            controller: _pumpPsi,
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            onChanged: (_) => _saveSetup(),
+                            decoration: const InputDecoration(
+                              labelText: 'Pump PSI',
                             ),
                           ),
                         _optionalToggleRow(

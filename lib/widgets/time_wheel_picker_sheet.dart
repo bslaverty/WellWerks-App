@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 Future<TimeOfDay?> showTimeWheelPickerSheet(
   BuildContext context, {
   required TimeOfDay initialTime,
-  required bool use24Hour,
 }) async {
   return showModalBottomSheet<TimeOfDay>(
     context: context,
@@ -12,7 +11,6 @@ Future<TimeOfDay?> showTimeWheelPickerSheet(
     isScrollControlled: true,
     builder: (context) => _TimeWheelPickerBody(
       initialTime: initialTime,
-      use24Hour: use24Hour,
     ),
   );
 }
@@ -20,11 +18,9 @@ Future<TimeOfDay?> showTimeWheelPickerSheet(
 class _TimeWheelPickerBody extends StatefulWidget {
   const _TimeWheelPickerBody({
     required this.initialTime,
-    required this.use24Hour,
   });
 
   final TimeOfDay initialTime;
-  final bool use24Hour;
 
   @override
   State<_TimeWheelPickerBody> createState() => _TimeWheelPickerBodyState();
@@ -41,9 +37,7 @@ class _TimeWheelPickerBodyState extends State<_TimeWheelPickerBody> {
   @override
   void initState() {
     super.initState();
-    _hourIndex = widget.use24Hour
-        ? widget.initialTime.hour
-        : _displayHour(widget.initialTime.hour);
+    _hourIndex = _displayHour(widget.initialTime.hour);
     _minuteIndex = widget.initialTime.minute;
     _periodIndex = widget.initialTime.hour >= 12 ? 1 : 0;
     _hourController = FixedExtentScrollController(initialItem: _hourIndex);
@@ -107,11 +101,9 @@ class _TimeWheelPickerBodyState extends State<_TimeWheelPickerBody> {
                           setState(() => _hourIndex = index);
                         },
                         children: List.generate(
-                          widget.use24Hour ? 24 : 12,
+                          12,
                           (index) {
-                            final label = widget.use24Hour
-                                ? index.toString().padLeft(2, '0')
-                                : _twelveHourLabel(index + 1);
+                            final label = (index + 1).toString();
                             return Center(
                               child: Text(
                                 label,
@@ -150,39 +142,38 @@ class _TimeWheelPickerBodyState extends State<_TimeWheelPickerBody> {
                       ),
                     ),
                   ),
-                  if (!widget.use24Hour)
-                    Expanded(
-                      child: _wheelWithLabel(
-                        label: 'AM/PM',
-                        child: CupertinoPicker(
-                          itemExtent: 44,
-                          scrollController: _periodController,
-                          onSelectedItemChanged: (index) {
-                            setState(() => _periodIndex = index);
-                          },
-                          children: const [
-                            Center(
-                              child: Text(
-                                'AM',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w800,
-                                ),
+                  Expanded(
+                    child: _wheelWithLabel(
+                      label: 'AM/PM',
+                      child: CupertinoPicker(
+                        itemExtent: 44,
+                        scrollController: _periodController,
+                        onSelectedItemChanged: (index) {
+                          setState(() => _periodIndex = index);
+                        },
+                        children: const [
+                          Center(
+                            child: Text(
+                              'AM',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
-                            Center(
-                              child: Text(
-                                'PM',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w800,
-                                ),
+                          ),
+                          Center(
+                            child: Text(
+                              'PM',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
+                  ),
                 ],
               ),
             ),
@@ -222,9 +213,6 @@ class _TimeWheelPickerBodyState extends State<_TimeWheelPickerBody> {
   }
 
   TimeOfDay _selectedTime() {
-    if (widget.use24Hour) {
-      return TimeOfDay(hour: _hourIndex, minute: _minuteIndex);
-    }
     final hour12 = _hourIndex + 1;
     final hour24 = _periodIndex == 1 ? (hour12 % 12) + 12 : (hour12 % 12);
     return TimeOfDay(hour: hour24, minute: _minuteIndex);
@@ -233,10 +221,5 @@ class _TimeWheelPickerBodyState extends State<_TimeWheelPickerBody> {
   int _displayHour(int hour24) {
     final hour12 = hour24 % 12;
     return hour12 == 0 ? 12 : hour12 - 1;
-  }
-
-  String _twelveHourLabel(int hour12) {
-    final period = hour12 == 12 ? 'PM' : 'AM';
-    return '$hour12:00 $period';
   }
 }

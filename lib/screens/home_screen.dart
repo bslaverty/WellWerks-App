@@ -5,6 +5,7 @@ import '../widgets/app_header.dart';
 import '../widgets/tool_card.dart';
 import '../models/job_setup.dart';
 import '../services/app_settings_service.dart';
+import '../services/active_workflow_mode_service.dart';
 import '../services/active_company_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/rate_timer_notification_service.dart';
@@ -48,6 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _settingsService = AppSettingsService();
   final _rateTimerNotifications = RateTimerNotificationService.instance;
   final _activeCompanyService = ActiveCompanyService.instance;
+  final _workflowModeService = ActiveWorkflowModeService.instance;
 
   JobSetup? _activeJob;
   String _lastModule = '';
@@ -55,6 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<String> _companyOptions = const [];
   bool _loading = true;
   bool _activeJobExpanded = false;
+  ActiveWorkflowMode _activeWorkflowMode = ActiveWorkflowMode.production;
 
   @override
   void initState() {
@@ -62,6 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _activeCompanyService.activeCompany
         .addListener(_handleActiveCompanyChanged);
     _jobStorage.activeJobListenable.addListener(_handleActiveJobChanged);
+    _workflowModeService.mode.addListener(_handleWorkflowModeChanged);
     _loadRecovery();
   }
 
@@ -70,7 +74,15 @@ class _HomeScreenState extends State<HomeScreen> {
     _activeCompanyService.activeCompany
         .removeListener(_handleActiveCompanyChanged);
     _jobStorage.activeJobListenable.removeListener(_handleActiveJobChanged);
+    _workflowModeService.mode.removeListener(_handleWorkflowModeChanged);
     super.dispose();
+  }
+
+  void _handleWorkflowModeChanged() {
+    if (!mounted) return;
+    setState(() {
+      _activeWorkflowMode = _workflowModeService.mode.value;
+    });
   }
 
   void _handleActiveCompanyChanged() {
@@ -94,6 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final activeJob = await _jobStorage.ensureActiveJobLoaded();
     final lastActiveJobId = await _jobStorage.loadLastActiveJobId();
     final activeCompany = await _activeCompanyService.ensureLoaded();
+    final workflowMode = await _workflowModeService.ensureLoaded();
     final snapshot = await _recoveryState.loadSnapshot(
       lastActiveJobId: lastActiveJobId,
     );
@@ -106,9 +119,82 @@ class _HomeScreenState extends State<HomeScreen> {
       _activeCompany = activeCompany;
       _companyOptions = _activeCompanyService.companyOptions;
       _activeJobExpanded = false;
+      _activeWorkflowMode = workflowMode;
       _loading = false;
     });
     _handlePendingRateTimerAction();
+  }
+
+  String get _workflowTitle {
+    switch (_activeWorkflowMode) {
+      case ActiveWorkflowMode.drillout:
+        return 'Drillout';
+      case ActiveWorkflowMode.cleanout:
+        return 'Cleanout';
+      case ActiveWorkflowMode.production:
+        return 'Production';
+    }
+  }
+
+  String get _workflowSubtitle {
+    switch (_activeWorkflowMode) {
+      case ActiveWorkflowMode.drillout:
+        return 'Drillout shift changes and Drillout JSAs';
+      case ActiveWorkflowMode.cleanout:
+        return 'Cleanout text updates, JSAs, and future cleanout tools';
+      case ActiveWorkflowMode.production:
+        return 'Quick Round, reports, text updates, and production setup';
+    }
+  }
+
+  Widget _workflowScreenForMode() {
+    switch (_activeWorkflowMode) {
+      case ActiveWorkflowMode.drillout:
+        return const ModuleMenuScreen(
+          title: 'Drillout',
+          showHomeButton: true,
+          tools: [
+            ModuleTool(
+              icon: Icons.text_snippet_outlined,
+              title: 'Drillout Shift Change / Update',
+              subtitle: 'Build, preview, and copy drillout shift text',
+              screen: DrilloutShiftChangeScreen(),
+            ),
+            ModuleTool(
+              icon: Icons.fact_check,
+              title: 'Drillout JSA',
+              subtitle: 'Build and export a job safety analysis',
+              screen: JsaScreen(),
+            ),
+          ],
+        );
+      case ActiveWorkflowMode.cleanout:
+        return const ModuleMenuScreen(
+          title: 'Cleanout',
+          showHomeButton: true,
+          tools: [
+            ModuleTool(
+              icon: Icons.message,
+              title: 'Cleanout Text Update',
+              subtitle: 'Prepare field-ready cleanout text updates',
+              screen: TextUpdateScreen(),
+            ),
+            ModuleTool(
+              icon: Icons.fact_check,
+              title: 'Cleanout JSA',
+              subtitle: 'Build and export cleanout JSAs',
+              screen: JsaScreen(),
+            ),
+            ModuleTool(
+              icon: Icons.construction,
+              title: 'Future Cleanout Tools',
+              subtitle: 'Reserved for upcoming cleanout workflows',
+            ),
+          ],
+        );
+      case ActiveWorkflowMode.production:
+        return const ProductionDashboardScreen();
+    }
   }
 
   Future<bool> _confirmCompanyChange(String nextCompany) async {
@@ -712,10 +798,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           ToolCard(
             icon: Icons.oil_barrel,
-            title: 'Production',
-            subtitle:
-                'Quick Round, reports, text updates, and production setup',
-            onTap: () => open(context, const ProductionDashboardScreen()),
+            title: _workflowTitle,
+            subtitle: _workflowSubtitle,
+            onTap: () => open(context, _workflowScreenForMode()),
           ),
           _moduleCard(
             context: context,

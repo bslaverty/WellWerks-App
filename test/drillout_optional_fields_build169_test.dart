@@ -82,7 +82,7 @@ void main() {
     await _seedActiveJob();
   });
 
-  testWidgets('Build 169 optional drillout fields default to hidden',
+  testWidgets('Build 170 optional drillout fields default to hidden',
       (WidgetTester tester) async {
     await _pumpScreen(tester);
 
@@ -93,9 +93,12 @@ void main() {
     );
     expect(find.byKey(const Key('drillout-water-hauled-field')), findsNothing);
     expect(find.byKey(const Key('drillout-oil-hauled-field')), findsNothing);
+    expect(find.byKey(const Key('drillout-manifold-psi-field')), findsNothing);
+    expect(find.byKey(const Key('drillout-casing-psi-field')), findsNothing);
+    expect(find.byKey(const Key('drillout-pump-psi-field')), findsNothing);
   });
 
-  testWidgets('Build 169 optional field values persist while toggles are off',
+  testWidgets('Build 170 optional field values persist while toggles are off',
       (WidgetTester tester) async {
     await _pumpScreen(tester);
 
@@ -139,7 +142,7 @@ void main() {
   });
 
   testWidgets(
-      'Build 169 status toggle controls status, plug, and coil sections',
+      'Build 170 status toggle controls status, plug, and coil sections',
       (WidgetTester tester) async {
     await _pumpScreen(tester);
 
@@ -155,7 +158,7 @@ void main() {
     expect(find.byKey(const Key('drillout-toggle-coil-depth')), findsOneWidget);
   });
 
-  testWidgets('Build 169 migration enables saved non-empty optional values',
+  testWidgets('Build 170 migration enables saved non-empty optional values',
       (WidgetTester tester) async {
     final prefs = await SharedPreferences.getInstance();
     final key = await _scopedSetupKey();
@@ -166,6 +169,9 @@ void main() {
           'surfaceTotalFluid': '77',
           'waterHauled': '11',
           'oilHauled': '5',
+          'manifoldPsi': '4200',
+          'casingPsi': '2800',
+          'pumpPsi': '5100',
         },
       ),
     );
@@ -179,5 +185,31 @@ void main() {
     expect(
         find.byKey(const Key('drillout-water-hauled-field')), findsOneWidget);
     expect(find.byKey(const Key('drillout-oil-hauled-field')), findsOneWidget);
+    expect(
+        find.byKey(const Key('drillout-manifold-psi-field')), findsOneWidget);
+    expect(find.byKey(const Key('drillout-casing-psi-field')), findsOneWidget);
+    expect(find.byKey(const Key('drillout-pump-psi-field')), findsOneWidget);
+  });
+
+  testWidgets('Build 170 copy omits blank labels and blank lines',
+      (WidgetTester tester) async {
+    await _pumpScreen(tester);
+
+    await _tapVisible(
+      tester,
+      find.byKey(const Key('drillout-toggle-include-manifold-psi')),
+      scrollDelta: -240,
+    );
+    await tester.enterText(
+      find.byKey(const Key('drillout-manifold-psi-field')),
+      '0',
+    );
+    await tester.pumpAndSettle();
+
+    final preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('Manifold PSI: 0'));
+    expect(preview.contains('Casing PSI:'), isFalse);
+    expect(preview.contains('Pump PSI:'), isFalse);
+    expect(preview.contains('\n\n'), isFalse);
   });
 }

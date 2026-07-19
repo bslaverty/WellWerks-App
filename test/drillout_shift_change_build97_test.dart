@@ -479,9 +479,9 @@ void main() {
     final preview = await _openPreviewAndRead(tester);
     await _expectCopyLabel(tester, 'Copy Update');
     expect(preview, contains('5:00 AM Update'));
-    expect(preview, contains('Status: -'));
-    expect(preview, contains('Plug #: -'));
-    expect(preview, contains('Coil Depth: - ft'));
+    expect(preview.contains('Status:'), isFalse);
+    expect(preview.contains('Plug #:'), isFalse);
+    expect(preview.contains('Coil Depth:'), isFalse);
     expect(preview, contains('Gas: -'));
     expect(preview, contains('Sand: -'));
   });
@@ -534,7 +534,7 @@ void main() {
     expect(preview.contains('Gas:'), isFalse);
     expect(preview.contains('Status:'), isFalse);
     expect(preview.contains('Sand:'), isFalse);
-    expect(preview, contains('Notes: -'));
+    expect(preview.contains('Notes:'), isFalse);
   });
 
   testWidgets('Build 102 gas selector offers exact options',

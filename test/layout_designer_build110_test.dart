@@ -397,9 +397,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 169', () async {
+  test('Build number is 170', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+169'));
+    expect(pubspec, contains('version: 1.0.1+170'));
   });
 
   testWidgets('Selected bypass shows built-in lead handles', (tester) async {
@@ -1084,7 +1084,9 @@ void main() {
       selectedId: 1,
     );
 
-    await tester.tapAt(const Offset(220.6, 482.0));
+    await tester.tap(find.byKey(
+      const ValueKey<String>('selected-port-1-equipmentAnchor-1-right'),
+    ));
     await tester.pumpAndSettle();
 
     final menu = find.byKey(const ValueKey<String>('port-action-menu'));
@@ -1295,7 +1297,9 @@ void main() {
       selectedId: 1,
     );
 
-    await tester.tapAt(const Offset(210.64, 478.5));
+    await tester.tap(find.byKey(
+      const ValueKey<String>('selected-port-1-equipmentAnchor-1-branch'),
+    ));
     await tester.pumpAndSettle();
     await tester
         .tap(find.byKey(const ValueKey<String>('port-action-straight-iron')));
@@ -1330,7 +1334,9 @@ void main() {
       selectedId: 1,
     );
 
-    await tester.tapAt(const Offset(196.36, 478.5));
+    await tester.tap(find.byKey(
+      const ValueKey<String>('selected-port-1-equipmentAnchor-1-branch'),
+    ));
     await tester.pumpAndSettle();
     await tester
         .tap(find.byKey(const ValueKey<String>('port-action-straight-iron')));
@@ -1364,7 +1370,9 @@ void main() {
       selectedId: 1,
     );
 
-    await tester.tapAt(const Offset(208.0, 470.24));
+    await tester.tap(find.byKey(
+      const ValueKey<String>('selected-port-1-equipmentAnchor-1-top'),
+    ));
     await tester.pumpAndSettle();
     await tester
         .tap(find.byKey(const ValueKey<String>('port-action-straight-iron')));
