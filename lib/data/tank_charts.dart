@@ -10,12 +10,33 @@ class TankChart {
   final List<TankPoint> points;
   const TankChart({required this.id, required this.name, required this.points});
 
-  double barrelsAt(double inches) {
-    if (points.isEmpty) return 0;
+  List<TankPoint> get _sortedPoints {
     final sorted = List<TankPoint>.from(points)
       ..sort((a, b) => a.inches.compareTo(b.inches));
-    if (inches <= sorted.first.inches) return sorted.first.barrels;
-    if (inches >= sorted.last.inches) return sorted.last.barrels;
+    return sorted;
+  }
+
+  double get minInches {
+    if (points.isEmpty) return 0;
+    return _sortedPoints.first.inches;
+  }
+
+  double get maxInches {
+    if (points.isEmpty) return 0;
+    return _sortedPoints.last.inches;
+  }
+
+  bool supportsGauge(double inches) {
+    if (points.isEmpty) return false;
+    return inches >= minInches && inches <= maxInches;
+  }
+
+  double? barrelsAtOrNull(double inches) {
+    if (!supportsGauge(inches)) return null;
+    final sorted = _sortedPoints;
+    if (inches == sorted.first.inches) return sorted.first.barrels;
+    if (inches == sorted.last.inches) return sorted.last.barrels;
+
     for (var i = 0; i < sorted.length - 1; i++) {
       final a = sorted[i];
       final b = sorted[i + 1];
@@ -26,7 +47,16 @@ class TankChart {
         return a.barrels + ((b.barrels - a.barrels) * percent);
       }
     }
-    return 0;
+
+    return null;
+  }
+
+  double barrelsAt(double inches) {
+    if (points.isEmpty) return 0;
+    final sorted = _sortedPoints;
+    if (inches <= sorted.first.inches) return sorted.first.barrels;
+    if (inches >= sorted.last.inches) return sorted.last.barrels;
+    return barrelsAtOrNull(inches) ?? 0;
   }
 }
 
@@ -252,32 +282,42 @@ const flowback500Chart = TankChart(
   ],
 );
 
-const flowbackRoundBottomChart = TankChart(
+List<TankPoint> _buildFlowbackRoundBottomWichita500Points() {
+  final points = <TankPoint>[];
+
+  // Wichita 500 BBL Round-Bottom Flowback Tank
+  points.add(const TankPoint(0, 0));
+
+  for (int inches = 1; inches <= 10; inches++) {
+    points.add(TankPoint(inches.toDouble(), inches * 4.5));
+  }
+
+  const lowerStartInches = 10.0;
+  const lowerStartBarrels = 45.0;
+  const lowerEndInches = 44.0;
+  const lowerEndBarrels = 200.0;
+  const lowerSlope = (lowerEndBarrels - lowerStartBarrels) /
+      (lowerEndInches - lowerStartInches);
+  for (int inches = 11; inches <= 44; inches++) {
+    final barrels =
+        lowerStartBarrels + ((inches - lowerStartInches) * lowerSlope);
+    points.add(TankPoint(inches.toDouble(), barrels));
+  }
+
+  for (int inches = 45; inches <= 104; inches++) {
+    points.add(TankPoint(inches.toDouble(), 205.0 + ((inches - 45) * 5.0)));
+  }
+
+  return List<TankPoint>.unmodifiable(points);
+}
+
+final List<TankPoint> _flowbackRoundBottomWichita500Points =
+    _buildFlowbackRoundBottomWichita500Points();
+
+final TankChart flowbackRoundBottomChart = TankChart(
   id: 'flowback_round_bottom',
   name: 'Flowback Tank - Round Bottom',
-  points: [
-    TankPoint(0, 0.0),
-    TankPoint(6, 19.5),
-    TankPoint(12, 46.0),
-    TankPoint(18, 81.0),
-    TankPoint(24, 122.0),
-    TankPoint(30, 166.5),
-    TankPoint(36, 213.0),
-    TankPoint(42, 260.0),
-    TankPoint(48, 306.0),
-    TankPoint(54, 350.0),
-    TankPoint(60, 391.0),
-    TankPoint(66, 428.0),
-    TankPoint(72, 460.0),
-    TankPoint(78, 487.0),
-    TankPoint(84, 508.0),
-    TankPoint(90, 523.0),
-    TankPoint(96, 531.0),
-    TankPoint(102, 533.0),
-    TankPoint(108, 533.0),
-    TankPoint(114, 533.0),
-    TankPoint(120, 533.0),
-  ],
+  points: _flowbackRoundBottomWichita500Points,
 );
 
 const flowbackGasTankChart = TankChart(

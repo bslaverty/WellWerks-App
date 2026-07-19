@@ -72,11 +72,18 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   String _editedText = '';
   _DrilloutMode _mode = _DrilloutMode.shiftChange;
 
+  bool _includeRateOverride = false;
+  bool _includeSurfaceTotalFluid = false;
+  bool _includeWaterHauled = false;
+  bool _includeOilHauled = false;
+
   bool _showStatus = false;
   bool _showPlugNumber = false;
   bool _showCoilDepth = false;
   bool _showGas = false;
   bool _showSand = false;
+
+  double? _latestCalculatedRate;
 
   String? _status;
   String? _gas;
@@ -157,6 +164,13 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         : fallbackWell;
 
     final latestRate = _latestBblPerMinuteFromLogs(prefs);
+    final savedRateOverride =
+        (saved['rateOverride'] as String? ?? saved['rate'] as String? ?? '')
+            .trim();
+    final savedSurfaceTotalFluid =
+        (saved['surfaceTotalFluid'] as String? ?? '').trim();
+    final savedWaterHauled = (saved['waterHauled'] as String? ?? '').trim();
+    final savedOilHauled = (saved['oilHauled'] as String? ?? '').trim();
 
     final savedTypeRaw =
         (saved['chokeType'] as String? ?? '').trim().toUpperCase();
@@ -198,9 +212,35 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _choke = normalizedChoke;
       _selectedTime = DateTime(2000, 1, 1, savedHour);
       _mode = _modeFromStorage(saved['mode'] as String?);
-      _showStatus = saved['showStatus'] as bool? ?? false;
-      _showPlugNumber = saved['showPlugNumber'] as bool? ?? false;
-      _showCoilDepth = saved['showCoilDepth'] as bool? ?? false;
+      _includeRateOverride = _resolveIncludeToggle(
+        saved: saved,
+        key: 'includeRateOverride',
+        value: savedRateOverride,
+      );
+      _includeSurfaceTotalFluid = _resolveIncludeToggle(
+        saved: saved,
+        key: 'includeSurfaceTotalFluid',
+        value: savedSurfaceTotalFluid,
+      );
+      _includeWaterHauled = _resolveIncludeToggle(
+        saved: saved,
+        key: 'includeWaterHauled',
+        value: savedWaterHauled,
+      );
+      _includeOilHauled = _resolveIncludeToggle(
+        saved: saved,
+        key: 'includeOilHauled',
+        value: savedOilHauled,
+      );
+      _showStatus = saved.containsKey('showStatus')
+          ? (saved['showStatus'] as bool? ?? false)
+          : ((saved['status'] as String? ?? '').trim().isNotEmpty);
+      _showPlugNumber = saved.containsKey('showPlugNumber')
+          ? (saved['showPlugNumber'] as bool? ?? false)
+          : ((saved['plugNumber'] as String? ?? '').trim().isNotEmpty);
+      _showCoilDepth = saved.containsKey('showCoilDepth')
+          ? (saved['showCoilDepth'] as bool? ?? false)
+          : ((saved['coilDepth'] as String? ?? '').trim().isNotEmpty);
       _showGas = saved['showGas'] as bool? ??
           saved['showGasSpotRate'] as bool? ??
           false;
@@ -210,14 +250,30 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         saved['gas'] as String? ?? saved['gasSpotRate'] as String?,
       );
       _sand = _validatedSand(saved['sand'] as String?);
+      _rate.text = savedRateOverride;
+      _surfaceTotalFluid.text = savedSurfaceTotalFluid;
+      _waterHauled.text = savedWaterHauled;
+      _oilHauled.text = savedOilHauled;
       _plugNumber.text = saved['plugNumber'] as String? ?? '';
       _coilDepth.text = saved['coilDepth'] as String? ?? '';
       _notes.text = saved['notes'] as String? ?? '';
+      _latestCalculatedRate = latestRate;
 
       if (_rate.text.trim().isEmpty && latestRate != null) {
         _rate.text = _fmtTrim(latestRate);
       }
     });
+  }
+
+  bool _resolveIncludeToggle({
+    required Map<String, dynamic> saved,
+    required String key,
+    required String value,
+  }) {
+    if (saved.containsKey(key)) {
+      return saved[key] as bool? ?? false;
+    }
+    return value.trim().isNotEmpty;
   }
 
   Future<void> _saveSetup() async {
@@ -238,11 +294,19 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         'mode': _modeStorageValue,
         'chokeType': _choke.type,
         'chokeSize': _choke.size64,
+        'includeRateOverride': _includeRateOverride,
+        'includeSurfaceTotalFluid': _includeSurfaceTotalFluid,
+        'includeWaterHauled': _includeWaterHauled,
+        'includeOilHauled': _includeOilHauled,
         'showStatus': _showStatus,
         'showPlugNumber': _showPlugNumber,
         'showCoilDepth': _showCoilDepth,
         'showGas': _showGas,
         'showSand': _showSand,
+        'rateOverride': _rate.text.trim(),
+        'surfaceTotalFluid': _surfaceTotalFluid.text.trim(),
+        'waterHauled': _waterHauled.text.trim(),
+        'oilHauled': _oilHauled.text.trim(),
         'status': _status,
         'plugNumber': _plugNumber.text.trim(),
         'coilDepth': _coilDepth.text.trim(),
@@ -330,6 +394,14 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   String _fmtWholeBbl(String raw) {
     final parsed = double.tryParse(raw.trim()) ?? 0;
     return parsed.round().toString();
+  }
+
+  double _resolvedRateBblPerMin() {
+    final override = double.tryParse(_rate.text.trim());
+    if (_includeRateOverride && override != null) {
+      return override;
+    }
+    return _latestCalculatedRate ?? override ?? 0;
   }
 
   String _formatTime(DateTime value) {
@@ -483,6 +555,39 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     setState(() => _activeGaugeTarget = null);
   }
 
+  void _onOptionalToggleChanged({
+    required bool nextValue,
+    required void Function(bool) assign,
+  }) {
+    if (!nextValue) {
+      FocusScope.of(context).unfocus();
+    }
+    setState(() => assign(nextValue));
+    _saveSetup();
+  }
+
+  Widget _optionalToggleRow({
+    required Key key,
+    required String label,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          Switch.adaptive(key: key, value: value, onChanged: onChanged),
+        ],
+      ),
+    );
+  }
+
   TankChart _primaryChart() {
     switch (_primaryTank) {
       case 'fs3':
@@ -524,6 +629,27 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     final company = _customer.text.trim();
     final wellName = _wellName.text.trim();
 
+    final optionalStatusLines = <String>[
+      if (_showStatus)
+        'Status: ${(_status ?? '').trim().isEmpty ? '-' : _status!}',
+      if (_showStatus && _showPlugNumber)
+        'Plug #: ${_plugNumber.text.trim().isEmpty ? '-' : _plugNumber.text.trim()}',
+      if (_showStatus && _showCoilDepth)
+        'Coil Depth: ${_coilDepth.text.trim().isEmpty ? '-' : _coilDepth.text.trim()} ft',
+      if (_showGas) 'Gas: ${(_gas ?? '').trim().isEmpty ? '-' : _gas!}',
+      if (_showSand) 'Sand: ${(_sand ?? '').trim().isEmpty ? '-' : _sand!}',
+    ];
+
+    final optionalFluidLines = <String>[
+      if (_includeSurfaceTotalFluid &&
+          _surfaceTotalFluid.text.trim().isNotEmpty)
+        'Surface Total Fluid: ${_fmtWholeBbl(_surfaceTotalFluid.text)} bbl',
+      if (_includeWaterHauled && _waterHauled.text.trim().isNotEmpty)
+        'Water Hauled: ${_fmtWholeBbl(_waterHauled.text)} bbl',
+      if (_includeOilHauled && _oilHauled.text.trim().isNotEmpty)
+        'Oil Hauled: ${_fmtWholeBbl(_oilHauled.text)} bbl',
+    ];
+
     final lines = <String>[
       '${_formatTime(_selectedTime)} $_modeLabel',
       '',
@@ -531,26 +657,12 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       if (padName.isNotEmpty) padName,
       wellName,
       '',
-      if (_showStatus)
-        'Status: ${(_status ?? '').trim().isEmpty ? '-' : _status!}',
-      if (_showPlugNumber)
-        'Plug #: ${_plugNumber.text.trim().isEmpty ? '-' : _plugNumber.text.trim()}',
-      if (_showCoilDepth)
-        'Coil Depth: ${_coilDepth.text.trim().isEmpty ? '-' : _coilDepth.text.trim()} ft',
-      if (_showGas) 'Gas: ${(_gas ?? '').trim().isEmpty ? '-' : _gas!}',
-      if (_showSand) 'Sand: ${(_sand ?? '').trim().isEmpty ? '-' : _sand!}',
-      if (_showStatus ||
-          _showPlugNumber ||
-          _showCoilDepth ||
-          _showGas ||
-          _showSand)
-        '',
+      ...optionalStatusLines,
+      if (optionalStatusLines.isNotEmpty) '',
       if (!_choke.isNone) 'Choke: ${formatChokeDisplay(_choke)}',
-      'Rate: ${_fmtTrim(double.tryParse(_rate.text.trim()) ?? 0)} bbl/min',
-      '',
-      'Surface Total Fluid: ${_fmtWholeBbl(_surfaceTotalFluid.text)} bbl',
-      'Water Hauled: ${_fmtWholeBbl(_waterHauled.text)} bbl',
-      'Oil Hauled: ${_fmtWholeBbl(_oilHauled.text)} bbl',
+      'Rate: ${_fmtTrim(_resolvedRateBblPerMin())} bbl/min',
+      if (optionalFluidLines.isNotEmpty) '',
+      ...optionalFluidLines,
       '',
       'Tank Inventory',
       '',
@@ -721,6 +833,10 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _waterTankType = 'flowback_round_bottom';
       _waterTank2Type = 'flowback_round_bottom';
       _choke = const ChokeSelection(type: ChokeTypes.none);
+      _includeRateOverride = false;
+      _includeSurfaceTotalFluid = false;
+      _includeWaterHauled = false;
+      _includeOilHauled = false;
       _showStatus = false;
       _showPlugNumber = false;
       _showCoilDepth = false;
@@ -911,50 +1027,102 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                             child: const Text('Select'),
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _rate,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          decoration: const InputDecoration(
-                              labelText: 'Rate Override (bbl/min)'),
+                        const SizedBox(height: 10),
+                        _optionalToggleRow(
+                          key: const Key(
+                              'drillout-toggle-include-rate-override'),
+                          label: 'Include Rate Override',
+                          value: _includeRateOverride,
+                          onChanged: (value) => _onOptionalToggleChanged(
+                            nextValue: value,
+                            assign: (next) => _includeRateOverride = next,
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _surfaceTotalFluid,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          decoration: const InputDecoration(
-                              labelText: 'Surface Total Fluid (bbl)'),
+                        if (_includeRateOverride)
+                          TextField(
+                            key: const Key('drillout-rate-override-field'),
+                            controller: _rate,
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            onChanged: (_) => _saveSetup(),
+                            decoration: const InputDecoration(
+                              labelText: 'Rate Override (bbl/min)',
+                            ),
+                          ),
+                        _optionalToggleRow(
+                          key: const Key(
+                              'drillout-toggle-include-surface-total-fluid'),
+                          label: 'Include Surface Total Fluid',
+                          value: _includeSurfaceTotalFluid,
+                          onChanged: (value) => _onOptionalToggleChanged(
+                            nextValue: value,
+                            assign: (next) => _includeSurfaceTotalFluid = next,
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _waterHauled,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          decoration: const InputDecoration(
-                              labelText: 'Water Hauled (bbl)'),
+                        if (_includeSurfaceTotalFluid)
+                          TextField(
+                            key:
+                                const Key('drillout-surface-total-fluid-field'),
+                            controller: _surfaceTotalFluid,
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            onChanged: (_) => _saveSetup(),
+                            decoration: const InputDecoration(
+                              labelText: 'Surface Total Fluid (bbl)',
+                            ),
+                          ),
+                        _optionalToggleRow(
+                          key:
+                              const Key('drillout-toggle-include-water-hauled'),
+                          label: 'Include Water Hauled',
+                          value: _includeWaterHauled,
+                          onChanged: (value) => _onOptionalToggleChanged(
+                            nextValue: value,
+                            assign: (next) => _includeWaterHauled = next,
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _oilHauled,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          decoration: const InputDecoration(
-                              labelText: 'Oil Hauled (bbl)'),
+                        if (_includeWaterHauled)
+                          TextField(
+                            key: const Key('drillout-water-hauled-field'),
+                            controller: _waterHauled,
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            onChanged: (_) => _saveSetup(),
+                            decoration: const InputDecoration(
+                              labelText: 'Water Hauled (bbl)',
+                            ),
+                          ),
+                        _optionalToggleRow(
+                          key: const Key('drillout-toggle-include-oil-hauled'),
+                          label: 'Include Oil Hauled',
+                          value: _includeOilHauled,
+                          onChanged: (value) => _onOptionalToggleChanged(
+                            nextValue: value,
+                            assign: (next) => _includeOilHauled = next,
+                          ),
                         ),
+                        if (_includeOilHauled)
+                          TextField(
+                            key: const Key('drillout-oil-hauled-field'),
+                            controller: _oilHauled,
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            onChanged: (_) => _saveSetup(),
+                            decoration: const InputDecoration(
+                              labelText: 'Oil Hauled (bbl)',
+                            ),
+                          ),
                         const SizedBox(height: 12),
                         const Divider(height: 1),
-                        const SizedBox(height: 8),
-                        SwitchListTile.adaptive(
+                        const SizedBox(height: 10),
+                        _optionalToggleRow(
                           key: const Key('drillout-toggle-status'),
+                          label: 'Include Status',
                           value: _showStatus,
-                          onChanged: (value) {
-                            setState(() => _showStatus = value);
-                            _saveSetup();
-                          },
-                          title: const Text('Status'),
-                          contentPadding: EdgeInsets.zero,
+                          onChanged: (value) => _onOptionalToggleChanged(
+                            nextValue: value,
+                            assign: (next) => _showStatus = next,
+                          ),
                         ),
                         if (_showStatus)
                           DropdownButtonFormField<String>(
@@ -974,36 +1142,36 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                               _saveSetup();
                             },
                           ),
-                        SwitchListTile.adaptive(
-                          key: const Key('drillout-toggle-plug-number'),
-                          value: _showPlugNumber,
-                          onChanged: (value) {
-                            setState(() => _showPlugNumber = value);
-                            _saveSetup();
-                          },
-                          title: const Text('Plug #'),
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        if (_showPlugNumber)
+                        if (_showStatus)
+                          _optionalToggleRow(
+                            key: const Key('drillout-toggle-plug-number'),
+                            label: 'Include Plug Number',
+                            value: _showPlugNumber,
+                            onChanged: (value) => _onOptionalToggleChanged(
+                              nextValue: value,
+                              assign: (next) => _showPlugNumber = next,
+                            ),
+                          ),
+                        if (_showStatus && _showPlugNumber)
                           TextField(
                             key: const Key('drillout-plug-number-field'),
                             controller: _plugNumber,
                             keyboardType: TextInputType.number,
                             onChanged: (_) => _saveSetup(),
                             decoration:
-                                const InputDecoration(labelText: 'Plug #'),
+                                const InputDecoration(labelText: 'Plug Number'),
                           ),
-                        SwitchListTile.adaptive(
-                          key: const Key('drillout-toggle-coil-depth'),
-                          value: _showCoilDepth,
-                          onChanged: (value) {
-                            setState(() => _showCoilDepth = value);
-                            _saveSetup();
-                          },
-                          title: const Text('Coil Depth'),
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        if (_showCoilDepth)
+                        if (_showStatus)
+                          _optionalToggleRow(
+                            key: const Key('drillout-toggle-coil-depth'),
+                            label: 'Include Coil Depth',
+                            value: _showCoilDepth,
+                            onChanged: (value) => _onOptionalToggleChanged(
+                              nextValue: value,
+                              assign: (next) => _showCoilDepth = next,
+                            ),
+                          ),
+                        if (_showStatus && _showCoilDepth)
                           TextField(
                             key: const Key('drillout-coil-depth-field'),
                             controller: _coilDepth,

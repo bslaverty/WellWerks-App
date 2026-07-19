@@ -1141,6 +1141,11 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     return null;
   }
 
+  String get _activeTankName {
+    final title = widget.config.title.trim();
+    return title.isEmpty ? 'tank' : title;
+  }
+
   double parseGauge(String value) {
     return parseGaugeInput(value);
   }
@@ -1178,25 +1183,52 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       setState(() => _activeKeypadTarget = null);
     }
 
-    if (!_hasGaugeInputs || minutes.text.trim().isEmpty) {
-      setState(
-        () => error = 'Enter Starting Gauge, Ending Gauge, and Minutes.',
-      );
+    final startText = startGauge.text.trim();
+    final endText = endGauge.text.trim();
+    final minutesText = minutes.text.trim();
+
+    if (startText.isEmpty) {
+      setState(() => error = 'Enter a starting gauge.');
       return;
     }
-    final m = double.tryParse(minutes.text.trim()) ?? 0;
+    if (endText.isEmpty) {
+      setState(() => error = 'Enter an ending gauge.');
+      return;
+    }
+    if (minutesText.isEmpty) {
+      setState(() => error = 'Select the number of minutes.');
+      return;
+    }
+
+    final m = double.tryParse(minutesText) ?? 0;
     if (m <= 0) {
-      setState(() => error = 'Minutes must be greater than zero.');
+      setState(() => error = 'Select the number of minutes.');
       return;
     }
+
     if (!widget.config.usesChart &&
         (double.tryParse(factor.text.trim()) ?? 0) <= 0) {
       setState(() => error = 'Tank factor must be greater than zero.');
       return;
     }
 
-    final startBbl = barrelsAt(parseGauge(startGauge.text));
-    final endBbl = barrelsAt(parseGauge(endGauge.text));
+    final startInches = parseGauge(startText);
+    final endInches = parseGauge(endText);
+
+    final activeChart = chart;
+    if (activeChart != null) {
+      if (!activeChart.supportsGauge(startInches) ||
+          !activeChart.supportsGauge(endInches)) {
+        setState(() {
+          error =
+              'Gauge reading is outside the supported $_activeTankName chart.';
+        });
+        return;
+      }
+    }
+
+    final startBbl = barrelsAt(startInches);
+    final endBbl = barrelsAt(endInches);
     final change = (endBbl - startBbl).abs();
     final perMin = change / m;
     final perHour = perMin * 60;
@@ -1455,8 +1487,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       onBackspace: _backspaceKeypad,
       onClear: _clearActiveInput,
       onDone: _closeKeypad,
-      showPrimaryAction: !_showResetButton,
-      primaryActionEnabled: _canCalculate,
+      showPrimaryAction: true,
+      primaryActionEnabled: true,
       primaryActionLabel: 'Calculate Rate',
       onPrimaryAction: calculate,
     );
