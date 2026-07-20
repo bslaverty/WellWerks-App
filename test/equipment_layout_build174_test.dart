@@ -59,7 +59,7 @@ List<Map<String, dynamic>> _itemsFromPayload(Map<String, dynamic> payload) {
 }
 
 void main() {
-  testWidgets('Build 176 completions library shows official items',
+  testWidgets('Build 177 completions library shows official items',
       (WidgetTester tester) async {
     await _pumpLayout(tester);
     await _ensureEquipmentLibraryOpen(tester);

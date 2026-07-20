@@ -13299,7 +13299,7 @@ class _CompletionsArtworkPainter extends CustomPainter {
     canvas.translate(-center.dx, -center.dy);
 
     final stroke = (size.shortestSide * 0.054).clamp(1.2, 2.2);
-    final detailStroke = (stroke * 0.7).clamp(0.9, 1.7);
+    final detailStroke = (stroke * 0.72).clamp(0.9, 1.7);
     final bodyFill = Paint()
       ..color = const Color(0xFF101317)
       ..style = PaintingStyle.fill;
@@ -13318,752 +13318,279 @@ class _CompletionsArtworkPainter extends CustomPainter {
       ..strokeWidth = detailStroke
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
-    final darkDetail = Paint()
-      ..color = const Color(0xFF2B3138)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = detailStroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
 
-    final trackFill = Paint()
-      ..color = const Color(0xFF0D0F12)
-      ..style = PaintingStyle.fill;
-
-    void drawWheel(Offset center, double radius) {
-      canvas.drawCircle(center, radius, outline);
-      canvas.drawCircle(center, radius * 0.52, accentFill);
-    }
-
-    void drawCab(Rect rect) {
-      canvas.drawRRect(
-          RRect.fromRectAndRadius(rect, const Radius.circular(6)), bodyFill);
-      canvas.drawRRect(
-          RRect.fromRectAndRadius(rect, const Radius.circular(6)), outline);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-              rect.left + rect.width * 0.18,
-              rect.top + rect.height * 0.15,
-              rect.width * 0.44,
-              rect.height * 0.28),
-          const Radius.circular(2),
-        ),
-        accentFill,
-      );
-    }
-
-    void drawAxleSet(double x1, double x2, double y, double radius) {
-      drawWheel(Offset(x1, y), radius);
-      drawWheel(Offset(x2, y), radius);
-    }
-
-    void drawTankSkid(Rect rect) {
-      canvas.drawRRect(
-          RRect.fromRectAndRadius(rect, const Radius.circular(4)), bodyFill);
-      canvas.drawRRect(
-          RRect.fromRectAndRadius(rect, const Radius.circular(4)), outline);
-      canvas.drawLine(Offset(rect.left + 2, rect.bottom + 2),
-          Offset(rect.right - 2, rect.bottom + 2), outline);
+    void drawWheel(Offset wheelCenter, double radius) {
+      canvas.drawCircle(wheelCenter, radius, outline);
+      canvas.drawCircle(wheelCenter, radius * 0.52, accentFill);
     }
 
     void drawRightCab(Rect rect) {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, const Radius.circular(6)),
-        bodyFill,
+      canvas.drawRect(rect, bodyFill);
+      canvas.drawRect(rect, outline);
+      final glass = Rect.fromLTWH(
+        rect.left + rect.width * 0.44,
+        rect.top + rect.height * 0.12,
+        rect.width * 0.38,
+        rect.height * 0.30,
       );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, const Radius.circular(6)),
-        outline,
-      );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            rect.left + rect.width * 0.24,
-            rect.top + rect.height * 0.14,
-            rect.width * 0.52,
-            rect.height * 0.30,
-          ),
-          const Radius.circular(2),
-        ),
-        accentFill,
-      );
+      canvas.drawRect(glass, accentFill);
+      canvas.drawRect(glass, outline);
     }
 
-    void drawAxles(List<double> centersX, double y, double radius) {
-      for (final x in centersX) {
+    void drawAxles(List<double> xCenters, double y, double radius) {
+      for (final x in xCenters) {
         drawWheel(Offset(x, y), radius);
       }
     }
 
     if (type == _EquipmentType.dateVan) {
-      final trailer = RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          size.width * 0.16,
-          size.height * 0.34,
-          size.width * 0.58,
-          size.height * 0.30,
-        ),
-        const Radius.circular(6),
+      final trailer = Rect.fromLTWH(
+        size.width * 0.16,
+        size.height * 0.34,
+        size.width * 0.56,
+        size.height * 0.30,
       );
-      canvas.drawRRect(trailer, bodyFill);
-      canvas.drawRRect(trailer, outline);
-      canvas.drawRect(
-        Rect.fromLTWH(
-          size.width * 0.28,
+      canvas.drawRect(trailer, bodyFill);
+      canvas.drawRect(trailer, outline);
+      for (final x in <double>[0.24, 0.38, 0.52]) {
+        final window = Rect.fromLTWH(
+          size.width * x,
           size.height * 0.40,
           size.width * 0.10,
-          size.height * 0.07,
-        ),
-        accentFill,
-      );
-      canvas.drawRect(
-        Rect.fromLTWH(
-          size.width * 0.40,
-          size.height * 0.40,
-          size.width * 0.10,
-          size.height * 0.07,
-        ),
-        accentFill,
-      );
-      canvas.drawRect(
-        Rect.fromLTWH(
-          size.width * 0.52,
-          size.height * 0.40,
-          size.width * 0.10,
-          size.height * 0.07,
-        ),
-        accentFill,
-      );
-      canvas.drawRect(
-        Rect.fromLTWH(
-          size.width * 0.74,
-          size.height * 0.46,
-          size.width * 0.10,
-          size.height * 0.03,
-        ),
-        bodyFill,
-      );
-      canvas.drawRect(
-        Rect.fromLTWH(
-          size.width * 0.74,
-          size.height * 0.46,
-          size.width * 0.10,
-          size.height * 0.03,
-        ),
+          size.height * 0.08,
+        );
+        canvas.drawRect(window, accentFill);
+        canvas.drawRect(window, outline);
+      }
+      canvas.drawLine(
+        Offset(size.width * 0.72, size.height * 0.49),
+        Offset(size.width * 0.84, size.height * 0.49),
         outline,
       );
-      drawAxles(
-        <double>[size.width * 0.34, size.width * 0.58],
-        size.height * 0.74,
-        size.shortestSide * 0.05,
-      );
+      drawAxles(<double>[size.width * 0.34, size.width * 0.56],
+          size.height * 0.74, size.shortestSide * 0.05);
       canvas.restore();
       return;
     }
 
     switch (type) {
       case _EquipmentType.coilTubingUnit:
-        canvas.drawLine(
-          Offset(size.width * 0.16, size.height * 0.62),
-          Offset(size.width * 0.84, size.height * 0.62),
-          outline,
-        );
-        drawRightCab(
-          Rect.fromLTWH(
-            size.width * 0.70,
-            size.height * 0.36,
-            size.width * 0.16,
-            size.height * 0.22,
-          ),
-        );
-        final reelCenter = Offset(size.width * 0.40, size.height * 0.46);
-        canvas.drawCircle(reelCenter, size.shortestSide * 0.20, outline);
-        canvas.drawCircle(reelCenter, size.shortestSide * 0.14, bodyFill);
+        canvas.drawLine(Offset(size.width * 0.12, size.height * 0.62),
+            Offset(size.width * 0.88, size.height * 0.62), outline);
+        drawRightCab(Rect.fromLTWH(size.width * 0.72, size.height * 0.36,
+            size.width * 0.14, size.height * 0.22));
+        final reelCenter = Offset(size.width * 0.36, size.height * 0.46);
+        canvas.drawCircle(reelCenter, size.shortestSide * 0.22, outline);
+        canvas.drawCircle(reelCenter, size.shortestSide * 0.15, bodyFill);
         canvas.drawCircle(reelCenter, size.shortestSide * 0.06, outline);
-        canvas.drawLine(
-          Offset(size.width * 0.40, size.height * 0.30),
-          Offset(size.width * 0.58, size.height * 0.22),
-          outline,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.58, size.height * 0.22),
-          Offset(size.width * 0.75, size.height * 0.28),
-          outline,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.58, size.height * 0.24),
-          Offset(size.width * 0.62, size.height * 0.20),
-          detail,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.22, size.height * 0.62),
-          Offset(size.width * 0.56, size.height * 0.62),
-          detail,
-        );
+        canvas.drawLine(Offset(size.width * 0.36, size.height * 0.24),
+            Offset(size.width * 0.36, size.height * 0.14), detail);
+        canvas.drawLine(Offset(size.width * 0.36, size.height * 0.14),
+            Offset(size.width * 0.54, size.height * 0.12), detail);
+        canvas.drawLine(Offset(size.width * 0.54, size.height * 0.12),
+            Offset(size.width * 0.62, size.height * 0.20), detail);
         drawAxles(
-          <double>[size.width * 0.24, size.width * 0.40, size.width * 0.58],
-          size.height * 0.74,
-          size.shortestSide * 0.052,
-        );
+            <double>[size.width * 0.24, size.width * 0.42, size.width * 0.60],
+            size.height * 0.74,
+            size.shortestSide * 0.052);
         break;
       case _EquipmentType.mixingPlant:
-        drawRightCab(
-          Rect.fromLTWH(
-            size.width * 0.70,
-            size.height * 0.36,
-            size.width * 0.16,
-            size.height * 0.22,
-          ),
-        );
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(
-              size.width * 0.46,
-              size.height * 0.38,
-              size.width * 0.20,
-              size.height * 0.20,
-            ),
-            const Radius.circular(4),
-          ),
-          bodyFill,
-        );
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(
-              size.width * 0.46,
-              size.height * 0.38,
-              size.width * 0.20,
-              size.height * 0.20,
-            ),
-            const Radius.circular(4),
-          ),
-          outline,
-        );
-        final tub = Path()
-          ..moveTo(size.width * 0.12, size.height * 0.36)
-          ..lineTo(size.width * 0.38, size.height * 0.36)
-          ..lineTo(size.width * 0.38, size.height * 0.58)
-          ..lineTo(size.width * 0.12, size.height * 0.58)
-          ..close();
-        canvas.drawPath(tub, bodyFill);
-        canvas.drawPath(tub, outline);
+        drawRightCab(Rect.fromLTWH(size.width * 0.72, size.height * 0.36,
+            size.width * 0.14, size.height * 0.22));
+        final blender = Rect.fromLTWH(size.width * 0.46, size.height * 0.38,
+            size.width * 0.20, size.height * 0.20);
+        canvas.drawRect(blender, bodyFill);
+        canvas.drawRect(blender, outline);
+        final tubLeft = Offset(size.width * 0.12, size.height * 0.36);
+        final tubRight = Offset(size.width * 0.38, size.height * 0.36);
+        final tubBottomY = size.height * 0.58;
+        canvas.drawLine(tubLeft, Offset(tubLeft.dx, tubBottomY), outline);
+        canvas.drawLine(tubRight, Offset(tubRight.dx, tubBottomY), outline);
+        canvas.drawLine(Offset(tubLeft.dx, tubBottomY),
+            Offset(tubRight.dx, tubBottomY), outline);
         final spiral = Path()
           ..moveTo(size.width * 0.16, size.height * 0.54)
-          ..quadraticBezierTo(
-            size.width * 0.22,
-            size.height * 0.40,
-            size.width * 0.30,
-            size.height * 0.48,
-          )
-          ..quadraticBezierTo(
-            size.width * 0.34,
-            size.height * 0.54,
-            size.width * 0.36,
-            size.height * 0.44,
-          );
+          ..quadraticBezierTo(size.width * 0.22, size.height * 0.40,
+              size.width * 0.30, size.height * 0.48)
+          ..quadraticBezierTo(size.width * 0.34, size.height * 0.54,
+              size.width * 0.36, size.height * 0.44);
         canvas.drawPath(spiral, detail);
-        canvas.drawLine(
-          Offset(size.width * 0.38, size.height * 0.46),
-          Offset(size.width * 0.46, size.height * 0.46),
-          outline,
-        );
+        canvas.drawLine(Offset(size.width * 0.38, size.height * 0.46),
+            Offset(size.width * 0.46, size.height * 0.46), outline);
         drawAxles(
-          <double>[size.width * 0.28, size.width * 0.52, size.width * 0.74],
-          size.height * 0.74,
-          size.shortestSide * 0.05,
-        );
+            <double>[size.width * 0.28, size.width * 0.52, size.width * 0.74],
+            size.height * 0.74,
+            size.shortestSide * 0.05);
         break;
       case _EquipmentType.pump:
-        canvas.drawLine(
-          Offset(size.width * 0.10, size.height * 0.62),
-          Offset(size.width * 0.88, size.height * 0.62),
-          outline,
-        );
-        drawRightCab(
-          Rect.fromLTWH(
-            size.width * 0.72,
-            size.height * 0.36,
-            size.width * 0.16,
-            size.height * 0.22,
-          ),
-        );
-        final pumpOne = RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            size.width * 0.18,
-            size.height * 0.38,
-            size.width * 0.20,
-            size.height * 0.20,
-          ),
-          const Radius.circular(5),
-        );
-        final pumpTwo = RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            size.width * 0.42,
-            size.height * 0.38,
-            size.width * 0.20,
-            size.height * 0.20,
-          ),
-          const Radius.circular(5),
-        );
-        canvas.drawRRect(pumpOne, bodyFill);
-        canvas.drawRRect(pumpOne, outline);
-        canvas.drawRRect(pumpTwo, bodyFill);
-        canvas.drawRRect(pumpTwo, outline);
-        canvas.drawCircle(
-          Offset(size.width * 0.28, size.height * 0.48),
-          size.shortestSide * 0.055,
-          outline,
-        );
-        canvas.drawCircle(
-          Offset(size.width * 0.52, size.height * 0.48),
-          size.shortestSide * 0.055,
-          outline,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.16, size.height * 0.60),
-          Offset(size.width * 0.70, size.height * 0.60),
-          detail,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.70, size.height * 0.60),
-          Offset(size.width * 0.80, size.height * 0.56),
-          detail,
-        );
+        canvas.drawLine(Offset(size.width * 0.10, size.height * 0.62),
+            Offset(size.width * 0.90, size.height * 0.62), outline);
+        drawRightCab(Rect.fromLTWH(size.width * 0.74, size.height * 0.36,
+            size.width * 0.14, size.height * 0.22));
+        final pumpOne = Rect.fromLTWH(size.width * 0.16, size.height * 0.38,
+            size.width * 0.22, size.height * 0.20);
+        final pumpTwo = Rect.fromLTWH(size.width * 0.42, size.height * 0.38,
+            size.width * 0.22, size.height * 0.20);
+        canvas.drawRect(pumpOne, bodyFill);
+        canvas.drawRect(pumpOne, outline);
+        canvas.drawRect(pumpTwo, bodyFill);
+        canvas.drawRect(pumpTwo, outline);
+        canvas.drawLine(Offset(size.width * 0.18, size.height * 0.58),
+            Offset(size.width * 0.66, size.height * 0.58), detail);
+        for (final x in <double>[0.24, 0.30, 0.50, 0.56]) {
+          canvas.drawLine(Offset(size.width * x, size.height * 0.40),
+              Offset(size.width * x, size.height * 0.56), detail);
+        }
+        canvas.drawLine(Offset(size.width * 0.66, size.height * 0.58),
+            Offset(size.width * 0.80, size.height * 0.54), detail);
         drawAxles(
-          <double>[size.width * 0.22, size.width * 0.46, size.width * 0.68],
-          size.height * 0.75,
-          size.shortestSide * 0.05,
-        );
+            <double>[size.width * 0.22, size.width * 0.46, size.width * 0.70],
+            size.height * 0.75,
+            size.shortestSide * 0.05);
         break;
       case _EquipmentType.crane:
-        final track = RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            size.width * 0.14,
-            size.height * 0.62,
-            size.width * 0.48,
-            size.height * 0.14,
-          ),
-          const Radius.circular(7),
-        );
-        canvas.drawRRect(track, trackFill);
-        canvas.drawRRect(track, outline);
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(
-              size.width * 0.28,
-              size.height * 0.48,
-              size.width * 0.18,
-              size.height * 0.14,
-            ),
-            const Radius.circular(4),
-          ),
-          bodyFill,
-        );
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(
-              size.width * 0.28,
-              size.height * 0.48,
-              size.width * 0.18,
-              size.height * 0.14,
-            ),
-            const Radius.circular(4),
-          ),
-          outline,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.36, size.height * 0.48),
-          Offset(size.width * 0.56, size.height * 0.30),
-          outline,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.56, size.height * 0.30),
-          Offset(size.width * 0.84, size.height * 0.18),
-          outline,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.84, size.height * 0.18),
-          Offset(size.width * 0.90, size.height * 0.28),
-          outline,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.88, size.height * 0.30),
-          Offset(size.width * 0.88, size.height * 0.50),
-          outline,
-        );
+        final track = Rect.fromLTWH(size.width * 0.12, size.height * 0.62,
+            size.width * 0.52, size.height * 0.14);
+        canvas.drawRect(track, bodyFill);
+        canvas.drawRect(track, outline);
+        for (final x in <double>[0.18, 0.26, 0.34, 0.42, 0.50, 0.58]) {
+          drawWheel(Offset(size.width * x, size.height * 0.69),
+              size.shortestSide * 0.025);
+        }
+        final house = Rect.fromLTWH(size.width * 0.28, size.height * 0.46,
+            size.width * 0.18, size.height * 0.16);
+        canvas.drawRect(house, bodyFill);
+        canvas.drawRect(house, outline);
+        canvas.drawLine(Offset(size.width * 0.37, size.height * 0.46),
+            Offset(size.width * 0.58, size.height * 0.28), outline);
+        canvas.drawLine(Offset(size.width * 0.58, size.height * 0.28),
+            Offset(size.width * 0.90, size.height * 0.16), outline);
+        canvas.drawLine(Offset(size.width * 0.88, size.height * 0.18),
+            Offset(size.width * 0.88, size.height * 0.44), detail);
         canvas.drawRect(
-          Rect.fromLTWH(
-            size.width * 0.86,
-            size.height * 0.50,
-            size.width * 0.04,
-            size.height * 0.07,
-          ),
-          bodyFill,
-        );
+            Rect.fromLTWH(size.width * 0.86, size.height * 0.44,
+                size.width * 0.04, size.height * 0.08),
+            bodyFill);
         canvas.drawRect(
-          Rect.fromLTWH(
-            size.width * 0.86,
-            size.height * 0.50,
-            size.width * 0.04,
-            size.height * 0.07,
-          ),
-          outline,
-        );
-        canvas.drawCircle(
-          Offset(size.width * 0.88, size.height * 0.59),
-          size.shortestSide * 0.018,
-          outline,
-        );
+            Rect.fromLTWH(size.width * 0.86, size.height * 0.44,
+                size.width * 0.04, size.height * 0.08),
+            outline);
+        canvas.drawCircle(Offset(size.width * 0.88, size.height * 0.54),
+            size.shortestSide * 0.02, outline);
         break;
       case _EquipmentType.lightPlant:
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(
-              size.width * 0.16,
-              size.height * 0.52,
-              size.width * 0.34,
-              size.height * 0.16,
-            ),
-            const Radius.circular(4),
-          ),
-          bodyFill,
-        );
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(
-              size.width * 0.16,
-              size.height * 0.52,
-              size.width * 0.34,
-              size.height * 0.16,
-            ),
-            const Radius.circular(4),
-          ),
-          outline,
-        );
-        drawAxles(
-          <double>[size.width * 0.22, size.width * 0.44],
-          size.height * 0.76,
-          size.shortestSide * 0.05,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.33, size.height * 0.52),
-          Offset(size.width * 0.33, size.height * 0.18),
-          outline,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.25, size.height * 0.20),
-          Offset(size.width * 0.41, size.height * 0.20),
-          outline,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.29, size.height * 0.16),
-          Offset(size.width * 0.37, size.height * 0.24),
-          detail,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.37, size.height * 0.16),
-          Offset(size.width * 0.29, size.height * 0.24),
-          detail,
-        );
+        final trailer = Rect.fromLTWH(size.width * 0.18, size.height * 0.54,
+            size.width * 0.30, size.height * 0.14);
+        canvas.drawRect(trailer, bodyFill);
+        canvas.drawRect(trailer, outline);
+        drawAxles(<double>[size.width * 0.24, size.width * 0.44],
+            size.height * 0.76, size.shortestSide * 0.05);
+        canvas.drawLine(Offset(size.width * 0.33, size.height * 0.54),
+            Offset(size.width * 0.33, size.height * 0.16), outline);
+        canvas.drawLine(Offset(size.width * 0.24, size.height * 0.18),
+            Offset(size.width * 0.42, size.height * 0.18), outline);
         for (final head in <Offset>[
-          Offset(size.width * 0.22, size.height * 0.16),
-          Offset(size.width * 0.28, size.height * 0.16),
-          Offset(size.width * 0.38, size.height * 0.16),
-          Offset(size.width * 0.44, size.height * 0.16),
+          Offset(size.width * 0.24, size.height * 0.14),
+          Offset(size.width * 0.29, size.height * 0.14),
+          Offset(size.width * 0.37, size.height * 0.14),
+          Offset(size.width * 0.42, size.height * 0.14),
         ]) {
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(
-              Rect.fromCenter(
-                center: head,
-                width: size.width * 0.06,
-                height: size.height * 0.04,
-              ),
-              const Radius.circular(2),
-            ),
-            bodyFill,
-          );
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(
-              Rect.fromCenter(
-                center: head,
-                width: size.width * 0.06,
-                height: size.height * 0.04,
-              ),
-              const Radius.circular(2),
-            ),
-            outline,
-          );
+          final lamp = Rect.fromCenter(
+              center: head,
+              width: size.width * 0.055,
+              height: size.height * 0.038);
+          canvas.drawRect(lamp, bodyFill);
+          canvas.drawRect(lamp, outline);
         }
         break;
       case _EquipmentType.wireline:
-        drawRightCab(
-          Rect.fromLTWH(
-            size.width * 0.72,
-            size.height * 0.38,
-            size.width * 0.16,
-            size.height * 0.20,
-          ),
-        );
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(
-              size.width * 0.52,
-              size.height * 0.40,
-              size.width * 0.16,
-              size.height * 0.18,
-            ),
-            const Radius.circular(4),
-          ),
-          bodyFill,
-        );
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(
-              size.width * 0.52,
-              size.height * 0.40,
-              size.width * 0.16,
-              size.height * 0.18,
-            ),
-            const Radius.circular(4),
-          ),
-          outline,
-        );
-        final housing = RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            size.width * 0.18,
-            size.height * 0.34,
-            size.width * 0.30,
-            size.height * 0.28,
-          ),
-          const Radius.circular(8),
-        );
-        canvas.drawRRect(housing, bodyFill);
-        canvas.drawRRect(housing, outline);
-        canvas.drawLine(
-          Offset(size.width * 0.34, size.height * 0.34),
-          Offset(size.width * 0.34, size.height * 0.20),
-          outline,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.34, size.height * 0.20),
-          Offset(size.width * 0.46, size.height * 0.16),
-          detail,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.46, size.height * 0.16),
-          Offset(size.width * 0.60, size.height * 0.24),
-          detail,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.48, size.height * 0.50),
-          Offset(size.width * 0.52, size.height * 0.50),
-          outline,
-        );
+        canvas.drawLine(Offset(size.width * 0.10, size.height * 0.62),
+            Offset(size.width * 0.90, size.height * 0.62), outline);
+        drawRightCab(Rect.fromLTWH(size.width * 0.74, size.height * 0.38,
+            size.width * 0.14, size.height * 0.20));
+        final operatorCab = Rect.fromLTWH(size.width * 0.56, size.height * 0.40,
+            size.width * 0.14, size.height * 0.18);
+        canvas.drawRect(operatorCab, bodyFill);
+        canvas.drawRect(operatorCab, outline);
+        final wirelineBody = Rect.fromLTWH(size.width * 0.20,
+            size.height * 0.36, size.width * 0.30, size.height * 0.24);
+        canvas.drawRect(wirelineBody, bodyFill);
+        canvas.drawRect(wirelineBody, outline);
+        canvas.drawLine(Offset(size.width * 0.20, size.height * 0.42),
+            Offset(size.width * 0.10, size.height * 0.34), detail);
+        canvas.drawLine(Offset(size.width * 0.10, size.height * 0.34),
+            Offset(size.width * 0.06, size.height * 0.28), detail);
         drawAxles(
-          <double>[size.width * 0.26, size.width * 0.46, size.width * 0.68],
-          size.height * 0.76,
-          size.shortestSide * 0.048,
-        );
+            <double>[size.width * 0.26, size.width * 0.48, size.width * 0.70],
+            size.height * 0.76,
+            size.shortestSide * 0.048);
         break;
       case _EquipmentType.fuelTrailer:
-        drawCab(Rect.fromLTWH(size.width * 0.08, size.height * 0.42,
-            size.width * 0.12, size.height * 0.16));
-        final tank = Path()
-          ..moveTo(size.width * 0.28, size.height * 0.34)
-          ..quadraticBezierTo(size.width * 0.50, size.height * 0.22,
-              size.width * 0.70, size.height * 0.34)
-          ..quadraticBezierTo(size.width * 0.80, size.height * 0.40,
-              size.width * 0.70, size.height * 0.54)
-          ..quadraticBezierTo(size.width * 0.50, size.height * 0.66,
-              size.width * 0.28, size.height * 0.54)
-          ..quadraticBezierTo(size.width * 0.18, size.height * 0.48,
-              size.width * 0.28, size.height * 0.34)
-          ..close();
-        canvas.drawPath(tank, bodyFill);
-        canvas.drawPath(tank, outline);
-        canvas.drawLine(Offset(size.width * 0.44, size.height * 0.26),
-            Offset(size.width * 0.44, size.height * 0.20), outline);
-        canvas.drawLine(Offset(size.width * 0.44, size.height * 0.20),
-            Offset(size.width * 0.50, size.height * 0.20), outline);
-        canvas.drawLine(Offset(size.width * 0.50, size.height * 0.20),
-            Offset(size.width * 0.50, size.height * 0.28), outline);
-        canvas.drawLine(Offset(size.width * 0.20, size.height * 0.54),
-            Offset(size.width * 0.76, size.height * 0.54), detail);
-        drawAxleSet(size.width * 0.28, size.width * 0.52, size.height * 0.76,
-            size.shortestSide * 0.05);
+        canvas.drawRect(
+            Rect.fromLTWH(size.width * 0.18, size.height * 0.40,
+                size.width * 0.54, size.height * 0.18),
+            bodyFill);
+        canvas.drawRect(
+            Rect.fromLTWH(size.width * 0.18, size.height * 0.40,
+                size.width * 0.54, size.height * 0.18),
+            outline);
+        drawAxles(<double>[size.width * 0.30, size.width * 0.56],
+            size.height * 0.76, size.shortestSide * 0.05);
         break;
       case _EquipmentType.chemicalTrailer:
-        drawCab(Rect.fromLTWH(size.width * 0.08, size.height * 0.42,
-            size.width * 0.12, size.height * 0.16));
-        canvas.drawRRect(
-            RRect.fromRectAndRadius(
-                Rect.fromLTWH(size.width * 0.26, size.height * 0.36,
-                    size.width * 0.18, size.height * 0.24),
-                const Radius.circular(4)),
+        canvas.drawRect(
+            Rect.fromLTWH(size.width * 0.18, size.height * 0.38,
+                size.width * 0.24, size.height * 0.22),
             bodyFill);
-        canvas.drawRRect(
-            RRect.fromRectAndRadius(
-                Rect.fromLTWH(size.width * 0.26, size.height * 0.36,
-                    size.width * 0.18, size.height * 0.24),
-                const Radius.circular(4)),
+        canvas.drawRect(
+            Rect.fromLTWH(size.width * 0.18, size.height * 0.38,
+                size.width * 0.24, size.height * 0.22),
             outline);
-        canvas.drawRRect(
-            RRect.fromRectAndRadius(
-                Rect.fromLTWH(size.width * 0.50, size.height * 0.36,
-                    size.width * 0.18, size.height * 0.24),
-                const Radius.circular(4)),
+        canvas.drawRect(
+            Rect.fromLTWH(size.width * 0.48, size.height * 0.38,
+                size.width * 0.24, size.height * 0.22),
             bodyFill);
-        canvas.drawRRect(
-            RRect.fromRectAndRadius(
-                Rect.fromLTWH(size.width * 0.50, size.height * 0.36,
-                    size.width * 0.18, size.height * 0.24),
-                const Radius.circular(4)),
+        canvas.drawRect(
+            Rect.fromLTWH(size.width * 0.48, size.height * 0.38,
+                size.width * 0.24, size.height * 0.22),
             outline);
-        canvas.drawLine(Offset(size.width * 0.35, size.height * 0.30),
-            Offset(size.width * 0.35, size.height * 0.20), outline);
-        canvas.drawLine(Offset(size.width * 0.35, size.height * 0.20),
-            Offset(size.width * 0.57, size.height * 0.20), outline);
-        canvas.drawLine(Offset(size.width * 0.57, size.height * 0.20),
-            Offset(size.width * 0.57, size.height * 0.30), outline);
-        canvas.drawLine(Offset(size.width * 0.18, size.height * 0.58),
-            Offset(size.width * 0.76, size.height * 0.58), detail);
-        canvas.drawRRect(
-            RRect.fromRectAndRadius(
-                Rect.fromLTWH(size.width * 0.58, size.height * 0.24,
-                    size.width * 0.06, size.height * 0.06),
-                const Radius.circular(2)),
-            accentFill);
-        canvas.drawRRect(
-            RRect.fromRectAndRadius(
-                Rect.fromLTWH(size.width * 0.58, size.height * 0.24,
-                    size.width * 0.06, size.height * 0.06),
-                const Radius.circular(2)),
-            outline);
-        drawAxleSet(size.width * 0.24, size.width * 0.48, size.height * 0.76,
-            size.shortestSide * 0.05);
-        drawAxleSet(size.width * 0.56, size.width * 0.72, size.height * 0.76,
-            size.shortestSide * 0.05);
+        drawAxles(<double>[size.width * 0.26, size.width * 0.56],
+            size.height * 0.76, size.shortestSide * 0.05);
         break;
       case _EquipmentType.nitrogen:
         final tank = RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            size.width * 0.12,
-            size.height * 0.34,
-            size.width * 0.36,
-            size.height * 0.24,
-          ),
-          const Radius.circular(14),
-        );
+            Rect.fromLTWH(size.width * 0.10, size.height * 0.34,
+                size.width * 0.30, size.height * 0.24),
+            const Radius.circular(12));
         canvas.drawRRect(tank, bodyFill);
         canvas.drawRRect(tank, outline);
-        drawCab(
-          Rect.fromLTWH(
-            size.width * 0.50,
-            size.height * 0.36,
-            size.width * 0.16,
-            size.height * 0.22,
-          ),
-        );
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(
-              size.width * 0.68,
-              size.height * 0.40,
-              size.width * 0.16,
-              size.height * 0.16,
-            ),
-            const Radius.circular(4),
-          ),
-          bodyFill,
-        );
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(
-              size.width * 0.68,
-              size.height * 0.40,
-              size.width * 0.16,
-              size.height * 0.16,
-            ),
-            const Radius.circular(4),
-          ),
-          outline,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.78, size.height * 0.40),
-          Offset(size.width * 0.88, size.height * 0.32),
-          outline,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.88, size.height * 0.32),
-          Offset(size.width * 0.88, size.height * 0.22),
-          outline,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.30, size.height * 0.32),
-          Offset(size.width * 0.30, size.height * 0.24),
-          outline,
-        );
-        canvas.drawLine(
-          Offset(size.width * 0.30, size.height * 0.24),
-          Offset(size.width * 0.38, size.height * 0.24),
-          outline,
-        );
+        final cab = Rect.fromLTWH(size.width * 0.44, size.height * 0.36,
+            size.width * 0.16, size.height * 0.22);
+        canvas.drawRect(cab, bodyFill);
+        canvas.drawRect(cab, outline);
+        final pump = Rect.fromLTWH(size.width * 0.64, size.height * 0.40,
+            size.width * 0.22, size.height * 0.16);
+        canvas.drawRect(pump, bodyFill);
+        canvas.drawRect(pump, outline);
+        canvas.drawLine(Offset(size.width * 0.74, size.height * 0.40),
+            Offset(size.width * 0.88, size.height * 0.30), outline);
         drawAxles(
-          <double>[size.width * 0.24, size.width * 0.48, size.width * 0.72],
-          size.height * 0.75,
-          size.shortestSide * 0.05,
-        );
+            <double>[size.width * 0.22, size.width * 0.50, size.width * 0.76],
+            size.height * 0.75,
+            size.shortestSide * 0.05);
         break;
       case _EquipmentType.generator:
-        drawCab(Rect.fromLTWH(size.width * 0.08, size.height * 0.44,
-            size.width * 0.12, size.height * 0.14));
-        canvas.drawRRect(
-            RRect.fromRectAndRadius(
-                Rect.fromLTWH(size.width * 0.24, size.height * 0.34,
-                    size.width * 0.40, size.height * 0.26),
-                const Radius.circular(4)),
-            bodyFill);
-        canvas.drawRRect(
-            RRect.fromRectAndRadius(
-                Rect.fromLTWH(size.width * 0.24, size.height * 0.34,
-                    size.width * 0.40, size.height * 0.26),
-                const Radius.circular(4)),
-            outline);
-        canvas.drawRect(
-            Rect.fromLTWH(size.width * 0.28, size.height * 0.40,
-                size.width * 0.24, size.height * 0.16),
-            accentFill);
-        canvas.drawRect(
-            Rect.fromLTWH(size.width * 0.28, size.height * 0.40,
-                size.width * 0.24, size.height * 0.16),
-            outline);
+        final generatorBody = Rect.fromLTWH(size.width * 0.22,
+            size.height * 0.36, size.width * 0.44, size.height * 0.24);
+        canvas.drawRect(generatorBody, bodyFill);
+        canvas.drawRect(generatorBody, outline);
         for (var i = 0; i < 4; i++) {
-          final x = size.width * (0.30 + i * 0.05);
+          final x = size.width * (0.28 + i * 0.08);
           canvas.drawLine(Offset(x, size.height * 0.40),
               Offset(x, size.height * 0.56), detail);
         }
-        canvas.drawRect(
-            Rect.fromLTWH(size.width * 0.66, size.height * 0.38,
-                size.width * 0.06, size.height * 0.22),
-            bodyFill);
-        canvas.drawRect(
-            Rect.fromLTWH(size.width * 0.66, size.height * 0.38,
-                size.width * 0.06, size.height * 0.22),
-            outline);
-        canvas.drawLine(Offset(size.width * 0.69, size.height * 0.38),
-            Offset(size.width * 0.72, size.height * 0.24), outline);
-        canvas.drawLine(Offset(size.width * 0.72, size.height * 0.24),
-            Offset(size.width * 0.78, size.height * 0.24), outline);
-        canvas.drawLine(Offset(size.width * 0.78, size.height * 0.24),
-            Offset(size.width * 0.78, size.height * 0.34), outline);
-        canvas.drawLine(Offset(size.width * 0.78, size.height * 0.34),
-            Offset(size.width * 0.74, size.height * 0.38), outline);
-        canvas.drawLine(Offset(size.width * 0.62, size.height * 0.42),
-            Offset(size.width * 0.76, size.height * 0.42), darkDetail);
-        drawWheel(Offset(size.width * 0.24, size.height * 0.74),
-            size.shortestSide * 0.05);
-        drawWheel(Offset(size.width * 0.50, size.height * 0.74),
-            size.shortestSide * 0.05);
+        drawAxles(<double>[size.width * 0.30, size.width * 0.58],
+            size.height * 0.74, size.shortestSide * 0.05);
         break;
       default:
         break;
