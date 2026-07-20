@@ -2258,6 +2258,18 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           _AnchorDefinition('runEnd', 0.5, 0.92),
           _AnchorDefinition('branch', 0.08, 0.5),
         ];
+      case _EquipmentType.coilTubingUnit:
+      case _EquipmentType.mixingPlant:
+      case _EquipmentType.pump:
+      case _EquipmentType.crane:
+      case _EquipmentType.lightPlant:
+      case _EquipmentType.wireline:
+      case _EquipmentType.dateVan:
+      case _EquipmentType.fuelTrailer:
+      case _EquipmentType.chemicalTrailer:
+      case _EquipmentType.nitrogen:
+      case _EquipmentType.generator:
+        return const <_AnchorDefinition>[];
       case _EquipmentType.elbowUpRight:
         return const <_AnchorDefinition>[
           _AnchorDefinition('inlet', 0.5, 0.92),
@@ -5873,6 +5885,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           height: original.height,
           properties: _clonePropertiesWithoutConnections(original.properties),
           rotationTurns: original.rotationTurns,
+          rotationDegrees: original.rotationDegrees,
           locked: false,
         ));
         _selectedIds.add(newId);
@@ -5899,6 +5912,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         height: item.height,
         properties: _clonePropertiesWithoutConnections(item.properties),
         rotationTurns: item.rotationTurns,
+        rotationDegrees: item.rotationDegrees,
         locked: false,
       ));
       _selectedIds
@@ -6381,6 +6395,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           height: item.height,
           properties: Map<String, String>.from(item.properties),
           rotationTurns: item.rotationTurns,
+          rotationDegrees: item.rotationDegrees,
           locked: false,
         ));
       }
@@ -6895,6 +6910,20 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         _EquipmentType.teeDown,
         _EquipmentType.teeLeft,
         _EquipmentType.bypass,
+      ];
+
+  List<_EquipmentType> get _completionsTypes => const [
+        _EquipmentType.coilTubingUnit,
+        _EquipmentType.mixingPlant,
+        _EquipmentType.pump,
+        _EquipmentType.crane,
+        _EquipmentType.lightPlant,
+        _EquipmentType.wireline,
+        _EquipmentType.dateVan,
+        _EquipmentType.fuelTrailer,
+        _EquipmentType.chemicalTrailer,
+        _EquipmentType.nitrogen,
+        _EquipmentType.generator,
       ];
 
   double _dialogWidth(BuildContext context, {double max = 460}) {
@@ -8471,7 +8500,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     if (selected.isEmpty) return;
     _runHistoryChange(() {
       for (final item in selected) {
-        item.rotationTurns = (item.rotationTurns + 1) % 4;
+        if (item.type.isCompletions) {
+          item.rotationDegrees = (item.rotationDegrees + 15) % 360;
+          item.rotationTurns = (item.rotationDegrees ~/ 90) % 4;
+        } else {
+          item.rotationTurns = (item.rotationTurns + 1) % 4;
+          item.rotationDegrees = item.rotationTurns * 90.0;
+        }
         if (!item.type.isIron ||
             item.type.name.startsWith('elbow') ||
             item.type.name.startsWith('tee')) {
@@ -8685,6 +8720,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final item = _selectedItem;
     if (item == null || item.type.isIron) return;
     final fields = _propertyFields(item.type);
+    final rotationController = item.type.isCompletions
+        ? TextEditingController(
+            text: item.rotationDegrees.toStringAsFixed(0),
+          )
+        : null;
     final controllers = <String, TextEditingController>{
       for (final field in fields)
         field.key:
@@ -8701,6 +8741,18 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (rotationController != null) ...[
+                  TextField(
+                    controller: rotationController,
+                    decoration: const InputDecoration(
+                      labelText: 'Rotation Degrees',
+                      helperText: '0 to 359 degrees',
+                    ),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                  ),
+                  const SizedBox(height: 10),
+                ],
                 for (final field in fields) ...[
                   TextField(
                     controller: controllers[field.key],
@@ -8732,8 +8784,16 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
           ..addEntries(controllers.entries
               .where((e) => e.value.text.trim().isNotEmpty)
               .map((e) => MapEntry(e.key, e.value.text.trim())));
+        if (rotationController != null) {
+          final rotation = double.tryParse(rotationController.text.trim());
+          if (rotation != null) {
+            item.rotationDegrees = rotation % 360;
+            item.rotationTurns = (item.rotationDegrees ~/ 90) % 4;
+          }
+        }
       });
     }
+    rotationController?.dispose();
     for (final c in controllers.values) {
       c.dispose();
     }
@@ -9382,6 +9442,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       MapEntry<String, _DrawerLibrarySection>(
           'Equipment', _DrawerLibrarySection.equipment),
       MapEntry<String, _DrawerLibrarySection>(
+          'Completions', _DrawerLibrarySection.completions),
+      MapEntry<String, _DrawerLibrarySection>(
           'Iron', _DrawerLibrarySection.iron),
       MapEntry<String, _DrawerLibrarySection>(
           'Tees', _DrawerLibrarySection.tees),
@@ -9684,6 +9746,35 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     );
   }
 
+  Widget _completionsCategoryBody({required bool isMobile}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Completions',
+          style: TextStyle(
+            color: Color(0xFFCDA56A),
+            fontWeight: FontWeight.w700,
+            fontSize: 15,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final type in _completionsTypes)
+              _equipmentVariantButton(
+                isMobile: isMobile,
+                label: type.label,
+                type: type,
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _libraryCategoryBody({required bool isMobile}) {
     List<_EquipmentType> types;
     var outlined = false;
@@ -9692,6 +9783,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     switch (_mobileDrawerSection) {
       case _DrawerLibrarySection.equipment:
         return _equipmentCategoryBody(isMobile: isMobile);
+      case _DrawerLibrarySection.completions:
+        return _completionsCategoryBody(isMobile: isMobile);
       case _DrawerLibrarySection.iron:
         types = const <_EquipmentType>[];
         outlined = true;
@@ -12219,7 +12312,15 @@ enum _LayoutAlign { left, right, top, bottom, horizontalCenter, verticalCenter }
 
 enum _LayoutDistribution { horizontal, vertical }
 
-enum _DrawerLibrarySection { equipment, iron, tees, nineties, bypass, labels }
+enum _DrawerLibrarySection {
+  equipment,
+  completions,
+  iron,
+  tees,
+  nineties,
+  bypass,
+  labels,
+}
 
 class _AnchorDefinition {
   final String id;
@@ -12556,6 +12657,17 @@ enum _EquipmentType {
   teeDown,
   teeLeft,
   bypass,
+  coilTubingUnit,
+  mixingPlant,
+  pump,
+  crane,
+  lightPlant,
+  wireline,
+  dateVan,
+  fuelTrailer,
+  chemicalTrailer,
+  nitrogen,
+  generator,
 }
 
 extension _EquipmentTypeInfo on _EquipmentType {
@@ -12565,8 +12677,21 @@ extension _EquipmentTypeInfo on _EquipmentType {
       name.startsWith('tee') ||
       this == _EquipmentType.bypass;
 
+  bool get isCompletions =>
+      this == _EquipmentType.coilTubingUnit ||
+      this == _EquipmentType.mixingPlant ||
+      this == _EquipmentType.pump ||
+      this == _EquipmentType.crane ||
+      this == _EquipmentType.lightPlant ||
+      this == _EquipmentType.wireline ||
+      this == _EquipmentType.dateVan ||
+      this == _EquipmentType.fuelTrailer ||
+      this == _EquipmentType.chemicalTrailer ||
+      this == _EquipmentType.nitrogen ||
+      this == _EquipmentType.generator;
+
   bool get usesCompactEquipmentFootprint =>
-      !isIron && this != _EquipmentType.facilities;
+      !isIron && !isCompletions && this != _EquipmentType.facilities;
 
   String get label {
     switch (this) {
@@ -12618,6 +12743,28 @@ extension _EquipmentTypeInfo on _EquipmentType {
         return 'Tee Left';
       case _EquipmentType.bypass:
         return 'Bypass';
+      case _EquipmentType.coilTubingUnit:
+        return 'Coil Tubing Unit';
+      case _EquipmentType.mixingPlant:
+        return 'Mixing Plant';
+      case _EquipmentType.pump:
+        return 'Pump';
+      case _EquipmentType.crane:
+        return 'Crane';
+      case _EquipmentType.lightPlant:
+        return 'Light Plant';
+      case _EquipmentType.wireline:
+        return 'Wireline';
+      case _EquipmentType.dateVan:
+        return 'Date Van';
+      case _EquipmentType.fuelTrailer:
+        return 'Fuel Trailer';
+      case _EquipmentType.chemicalTrailer:
+        return 'Chemical Trailer';
+      case _EquipmentType.nitrogen:
+        return 'Nitrogen';
+      case _EquipmentType.generator:
+        return 'Generator';
     }
   }
 
@@ -12664,6 +12811,28 @@ extension _EquipmentTypeInfo on _EquipmentType {
         return Icons.call_split;
       case _EquipmentType.bypass:
         return Icons.alt_route;
+      case _EquipmentType.coilTubingUnit:
+        return Icons.autorenew;
+      case _EquipmentType.mixingPlant:
+        return Icons.construction;
+      case _EquipmentType.pump:
+        return Icons.water;
+      case _EquipmentType.crane:
+        return Icons.architecture;
+      case _EquipmentType.lightPlant:
+        return Icons.lightbulb;
+      case _EquipmentType.wireline:
+        return Icons.lan;
+      case _EquipmentType.dateVan:
+        return Icons.local_shipping;
+      case _EquipmentType.fuelTrailer:
+        return Icons.local_gas_station;
+      case _EquipmentType.chemicalTrailer:
+        return Icons.science;
+      case _EquipmentType.nitrogen:
+        return Icons.air;
+      case _EquipmentType.generator:
+        return Icons.electrical_services;
     }
   }
 
@@ -12681,6 +12850,17 @@ extension _EquipmentTypeInfo on _EquipmentType {
     if (this == _EquipmentType.testSeparator) return 36;
     if (this == _EquipmentType.flare) return 32;
     if (this == _EquipmentType.compressor) return 36;
+    if (this == _EquipmentType.coilTubingUnit) return 98;
+    if (this == _EquipmentType.mixingPlant) return 92;
+    if (this == _EquipmentType.pump) return 72;
+    if (this == _EquipmentType.crane) return 92;
+    if (this == _EquipmentType.lightPlant) return 86;
+    if (this == _EquipmentType.wireline) return 94;
+    if (this == _EquipmentType.dateVan) return 80;
+    if (this == _EquipmentType.fuelTrailer) return 94;
+    if (this == _EquipmentType.chemicalTrailer) return 96;
+    if (this == _EquipmentType.nitrogen) return 84;
+    if (this == _EquipmentType.generator) return 78;
     if (this == _EquipmentType.ironHorizontal) return 150;
     if (this == _EquipmentType.ironVertical) return 28;
     if (this == _EquipmentType.bypass) return 30;
@@ -12704,6 +12884,17 @@ extension _EquipmentTypeInfo on _EquipmentType {
     if (this == _EquipmentType.testSeparator) return 28;
     if (this == _EquipmentType.flare) return 28;
     if (this == _EquipmentType.compressor) return 28;
+    if (this == _EquipmentType.coilTubingUnit) return 54;
+    if (this == _EquipmentType.mixingPlant) return 50;
+    if (this == _EquipmentType.pump) return 38;
+    if (this == _EquipmentType.crane) return 46;
+    if (this == _EquipmentType.lightPlant) return 56;
+    if (this == _EquipmentType.wireline) return 50;
+    if (this == _EquipmentType.dateVan) return 34;
+    if (this == _EquipmentType.fuelTrailer) return 36;
+    if (this == _EquipmentType.chemicalTrailer) return 36;
+    if (this == _EquipmentType.nitrogen) return 38;
+    if (this == _EquipmentType.generator) return 42;
     if (this == _EquipmentType.ironHorizontal) return 24;
     if (this == _EquipmentType.ironVertical) return 150;
     if (this == _EquipmentType.bypass) return 32;
@@ -12769,6 +12960,7 @@ class _LayoutItem {
   double height;
   final Map<String, String> properties;
   int rotationTurns;
+  double rotationDegrees;
   bool locked;
 
   _LayoutItem(
@@ -12780,6 +12972,7 @@ class _LayoutItem {
       required this.height,
       Map<String, String>? properties,
       this.rotationTurns = 0,
+      this.rotationDegrees = 0,
       this.locked = false})
       : properties = properties ?? <String, String>{};
 
@@ -12792,6 +12985,7 @@ class _LayoutItem {
         'height': height,
         'properties': properties,
         'rotationTurns': rotationTurns,
+        'rotationDegrees': rotationDegrees,
         'locked': locked
       };
 
@@ -12907,6 +13101,8 @@ class _LayoutItem {
       height: height,
       properties: Map<String, String>.from(json['properties'] as Map? ?? {}),
       rotationTurns: json['rotationTurns'] as int? ?? 0,
+      rotationDegrees: (json['rotationDegrees'] as num?)?.toDouble() ??
+          (((json['rotationTurns'] as int?) ?? 0) * 90).toDouble(),
       locked: json['locked'] as bool? ?? false,
     );
   }
@@ -13024,7 +13220,399 @@ class _EquipmentSymbol extends StatelessWidget {
         ),
       );
     }
+    if (type.isCompletions) {
+      return SizedBox(
+        key: symbolKey,
+        width: size,
+        height: size,
+        child: CustomPaint(
+          painter: _CompletionsArtworkPainter(
+            type: type,
+            color: color,
+            rotationDegrees: 0,
+          ),
+        ),
+      );
+    }
     return Icon(type.icon, key: symbolKey, color: color, size: size);
+  }
+}
+
+class _CompletionsArtworkPainter extends CustomPainter {
+  final _EquipmentType type;
+  final Color color;
+  final double rotationDegrees;
+
+  const _CompletionsArtworkPainter({
+    required this.type,
+    required this.color,
+    required this.rotationDegrees,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(rotationDegrees * math.pi / 180);
+    canvas.translate(-center.dx, -center.dy);
+
+    final bodyFill = Paint()
+      ..color = const Color(0xFF1A1D22)
+      ..style = PaintingStyle.fill;
+    final outline = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = (size.shortestSide * 0.055).clamp(1.2, 2.2)
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final detail = Paint()
+      ..color = color.withValues(alpha: 0.92)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = (size.shortestSide * 0.035).clamp(0.9, 1.6)
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final fill = Paint()
+      ..color = color.withValues(alpha: 0.18)
+      ..style = PaintingStyle.fill;
+
+    void drawTruckCab(Rect cabRect) {
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(cabRect, const Radius.circular(6)), bodyFill);
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(cabRect, const Radius.circular(6)), outline);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(cabRect.left + 8, cabRect.top + 7, cabRect.width * 0.33,
+              cabRect.height * 0.33),
+          const Radius.circular(2),
+        ),
+        fill,
+      );
+      canvas.drawLine(
+        Offset(cabRect.right - 10, cabRect.top + 8),
+        Offset(cabRect.right - 3, cabRect.top + 8),
+        detail,
+      );
+    }
+
+    void drawWheel(double x, double y, double radius) {
+      canvas.drawCircle(Offset(x, y), radius, outline);
+      canvas.drawCircle(Offset(x, y), radius * 0.45, fill);
+    }
+
+    switch (type) {
+      case _EquipmentType.coilTubingUnit:
+        final trailer = Rect.fromLTWH(size.width * 0.16, size.height * 0.34,
+            size.width * 0.56, size.height * 0.30);
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(trailer, const Radius.circular(6)),
+            bodyFill);
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(trailer, const Radius.circular(6)),
+            outline);
+        canvas.drawCircle(Offset(size.width * 0.46, size.height * 0.49),
+            size.shortestSide * 0.16, outline);
+        canvas.drawCircle(Offset(size.width * 0.46, size.height * 0.49),
+            size.shortestSide * 0.10, fill);
+        canvas.drawLine(Offset(size.width * 0.46, size.height * 0.33),
+            Offset(size.width * 0.46, size.height * 0.16), outline);
+        canvas.drawLine(Offset(size.width * 0.46, size.height * 0.16),
+            Offset(size.width * 0.73, size.height * 0.16), outline);
+        drawWheel(
+            size.width * 0.24, size.height * 0.67, size.shortestSide * 0.075);
+        drawWheel(
+            size.width * 0.63, size.height * 0.67, size.shortestSide * 0.075);
+        break;
+      case _EquipmentType.mixingPlant:
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.16, size.height * 0.28,
+                size.width * 0.52, size.height * 0.34),
+            const Radius.circular(5),
+          ),
+          bodyFill,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.16, size.height * 0.28,
+                size.width * 0.52, size.height * 0.34),
+            const Radius.circular(5),
+          ),
+          outline,
+        );
+        canvas.drawLine(Offset(size.width * 0.42, size.height * 0.28),
+            Offset(size.width * 0.42, size.height * 0.13), outline);
+        canvas.drawLine(Offset(size.width * 0.34, size.height * 0.42),
+            Offset(size.width * 0.76, size.height * 0.42), outline);
+        canvas.drawLine(Offset(size.width * 0.58, size.height * 0.28),
+            Offset(size.width * 0.74, size.height * 0.28), outline);
+        drawWheel(
+            size.width * 0.27, size.height * 0.67, size.shortestSide * 0.07);
+        drawWheel(
+            size.width * 0.58, size.height * 0.67, size.shortestSide * 0.07);
+        break;
+      case _EquipmentType.pump:
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.18, size.height * 0.28,
+                size.width * 0.56, size.height * 0.28),
+            const Radius.circular(5),
+          ),
+          bodyFill,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.18, size.height * 0.28,
+                size.width * 0.56, size.height * 0.28),
+            const Radius.circular(5),
+          ),
+          outline,
+        );
+        canvas.drawCircle(Offset(size.width * 0.46, size.height * 0.42),
+            size.shortestSide * 0.10, fill);
+        canvas.drawCircle(Offset(size.width * 0.46, size.height * 0.42),
+            size.shortestSide * 0.10, outline);
+        canvas.drawLine(Offset(size.width * 0.70, size.height * 0.42),
+            Offset(size.width * 0.85, size.height * 0.42), outline);
+        drawWheel(
+            size.width * 0.28, size.height * 0.66, size.shortestSide * 0.06);
+        drawWheel(
+            size.width * 0.61, size.height * 0.66, size.shortestSide * 0.06);
+        break;
+      case _EquipmentType.crane:
+        canvas.drawLine(Offset(size.width * 0.18, size.height * 0.66),
+            Offset(size.width * 0.82, size.height * 0.66), outline);
+        canvas.drawLine(Offset(size.width * 0.26, size.height * 0.66),
+            Offset(size.width * 0.26, size.height * 0.40), outline);
+        canvas.drawLine(Offset(size.width * 0.26, size.height * 0.40),
+            Offset(size.width * 0.66, size.height * 0.22), outline);
+        canvas.drawLine(Offset(size.width * 0.66, size.height * 0.22),
+            Offset(size.width * 0.74, size.height * 0.34), outline);
+        canvas.drawLine(Offset(size.width * 0.66, size.height * 0.22),
+            Offset(size.width * 0.80, size.height * 0.18), outline);
+        canvas.drawLine(Offset(size.width * 0.80, size.height * 0.18),
+            Offset(size.width * 0.86, size.height * 0.30), outline);
+        canvas.drawLine(Offset(size.width * 0.86, size.height * 0.30),
+            Offset(size.width * 0.86, size.height * 0.48), outline);
+        canvas.drawLine(Offset(size.width * 0.84, size.height * 0.48),
+            Offset(size.width * 0.88, size.height * 0.48), outline);
+        drawWheel(
+            size.width * 0.32, size.height * 0.78, size.shortestSide * 0.055);
+        drawWheel(
+            size.width * 0.66, size.height * 0.78, size.shortestSide * 0.055);
+        break;
+      case _EquipmentType.lightPlant:
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.16, size.height * 0.48,
+                size.width * 0.48, size.height * 0.22),
+            const Radius.circular(4),
+          ),
+          bodyFill,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.16, size.height * 0.48,
+                size.width * 0.48, size.height * 0.22),
+            const Radius.circular(4),
+          ),
+          outline,
+        );
+        canvas.drawLine(Offset(size.width * 0.34, size.height * 0.48),
+            Offset(size.width * 0.34, size.height * 0.18), outline);
+        canvas.drawLine(Offset(size.width * 0.34, size.height * 0.18),
+            Offset(size.width * 0.48, size.height * 0.18), outline);
+        canvas.drawLine(Offset(size.width * 0.48, size.height * 0.18),
+            Offset(size.width * 0.48, size.height * 0.30), outline);
+        canvas.drawCircle(Offset(size.width * 0.50, size.height * 0.20),
+            size.shortestSide * 0.05, fill);
+        drawWheel(
+            size.width * 0.28, size.height * 0.73, size.shortestSide * 0.06);
+        drawWheel(
+            size.width * 0.58, size.height * 0.73, size.shortestSide * 0.06);
+        break;
+      case _EquipmentType.wireline:
+        drawTruckCab(Rect.fromLTWH(size.width * 0.16, size.height * 0.40,
+            size.width * 0.22, size.height * 0.18));
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.38, size.height * 0.34,
+                size.width * 0.28, size.height * 0.24),
+            const Radius.circular(5),
+          ),
+          bodyFill,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.38, size.height * 0.34,
+                size.width * 0.28, size.height * 0.24),
+            const Radius.circular(5),
+          ),
+          outline,
+        );
+        canvas.drawLine(Offset(size.width * 0.52, size.height * 0.34),
+            Offset(size.width * 0.52, size.height * 0.14), outline);
+        canvas.drawCircle(Offset(size.width * 0.52, size.height * 0.14),
+            size.shortestSide * 0.06, outline);
+        canvas.drawLine(Offset(size.width * 0.52, size.height * 0.20),
+            Offset(size.width * 0.73, size.height * 0.20), outline);
+        drawWheel(
+            size.width * 0.24, size.height * 0.67, size.shortestSide * 0.055);
+        drawWheel(
+            size.width * 0.56, size.height * 0.67, size.shortestSide * 0.055);
+        break;
+      case _EquipmentType.dateVan:
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.16, size.height * 0.34,
+                size.width * 0.56, size.height * 0.28),
+            const Radius.circular(5),
+          ),
+          bodyFill,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.16, size.height * 0.34,
+                size.width * 0.56, size.height * 0.28),
+            const Radius.circular(5),
+          ),
+          outline,
+        );
+        canvas.drawLine(Offset(size.width * 0.30, size.height * 0.42),
+            Offset(size.width * 0.46, size.height * 0.42), detail);
+        canvas.drawLine(Offset(size.width * 0.30, size.height * 0.48),
+            Offset(size.width * 0.46, size.height * 0.48), detail);
+        drawWheel(
+            size.width * 0.28, size.height * 0.67, size.shortestSide * 0.06);
+        drawWheel(
+            size.width * 0.58, size.height * 0.67, size.shortestSide * 0.06);
+        break;
+      case _EquipmentType.fuelTrailer:
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.18, size.height * 0.34,
+                size.width * 0.52, size.height * 0.26),
+            const Radius.circular(12),
+          ),
+          bodyFill,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.18, size.height * 0.34,
+                size.width * 0.52, size.height * 0.26),
+            const Radius.circular(12),
+          ),
+          outline,
+        );
+        canvas.drawLine(Offset(size.width * 0.70, size.height * 0.44),
+            Offset(size.width * 0.84, size.height * 0.44), outline);
+        drawWheel(
+            size.width * 0.30, size.height * 0.67, size.shortestSide * 0.06);
+        drawWheel(
+            size.width * 0.58, size.height * 0.67, size.shortestSide * 0.06);
+        break;
+      case _EquipmentType.chemicalTrailer:
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.18, size.height * 0.34,
+                size.width * 0.50, size.height * 0.26),
+            const Radius.circular(6),
+          ),
+          bodyFill,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.18, size.height * 0.34,
+                size.width * 0.50, size.height * 0.26),
+            const Radius.circular(6),
+          ),
+          outline,
+        );
+        final diamond = Path()
+          ..moveTo(size.width * 0.54, size.height * 0.38)
+          ..lineTo(size.width * 0.61, size.height * 0.45)
+          ..lineTo(size.width * 0.54, size.height * 0.52)
+          ..lineTo(size.width * 0.47, size.height * 0.45)
+          ..close();
+        canvas.drawPath(diamond, fill);
+        canvas.drawPath(diamond, outline);
+        drawWheel(
+            size.width * 0.30, size.height * 0.67, size.shortestSide * 0.06);
+        drawWheel(
+            size.width * 0.56, size.height * 0.67, size.shortestSide * 0.06);
+        break;
+      case _EquipmentType.nitrogen:
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.18, size.height * 0.32,
+                size.width * 0.54, size.height * 0.28),
+            const Radius.circular(16),
+          ),
+          bodyFill,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.18, size.height * 0.32,
+                size.width * 0.54, size.height * 0.28),
+            const Radius.circular(16),
+          ),
+          outline,
+        );
+        canvas.drawLine(Offset(size.width * 0.72, size.height * 0.42),
+            Offset(size.width * 0.86, size.height * 0.42), outline);
+        canvas.drawCircle(Offset(size.width * 0.46, size.height * 0.45),
+            size.shortestSide * 0.07, fill);
+        canvas.drawCircle(Offset(size.width * 0.46, size.height * 0.45),
+            size.shortestSide * 0.07, outline);
+        drawWheel(
+            size.width * 0.30, size.height * 0.67, size.shortestSide * 0.06);
+        drawWheel(
+            size.width * 0.58, size.height * 0.67, size.shortestSide * 0.06);
+        break;
+      case _EquipmentType.generator:
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.18, size.height * 0.34,
+                size.width * 0.48, size.height * 0.28),
+            const Radius.circular(5),
+          ),
+          bodyFill,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(size.width * 0.18, size.height * 0.34,
+                size.width * 0.48, size.height * 0.28),
+            const Radius.circular(5),
+          ),
+          outline,
+        );
+        for (var i = 0; i < 3; i++) {
+          final y = size.height * (0.40 + i * 0.06);
+          canvas.drawLine(Offset(size.width * 0.24, y),
+              Offset(size.width * 0.58, y), detail);
+        }
+        canvas.drawLine(Offset(size.width * 0.30, size.height * 0.26),
+            Offset(size.width * 0.40, size.height * 0.18), outline);
+        canvas.drawLine(Offset(size.width * 0.40, size.height * 0.18),
+            Offset(size.width * 0.58, size.height * 0.18), outline);
+        drawWheel(
+            size.width * 0.28, size.height * 0.67, size.shortestSide * 0.055);
+        drawWheel(
+            size.width * 0.54, size.height * 0.67, size.shortestSide * 0.055);
+        break;
+      default:
+        break;
+    }
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _CompletionsArtworkPainter oldDelegate) {
+    return oldDelegate.type != type ||
+        oldDelegate.color != color ||
+        oldDelegate.rotationDegrees != rotationDegrees;
   }
 }
 
@@ -13100,7 +13688,8 @@ class _LayoutTile extends StatelessWidget {
         item.type == _EquipmentType.plugCatcher ||
         item.type == _EquipmentType.flowbackTank ||
         item.type == _EquipmentType.testSeparator ||
-        item.type == _EquipmentType.facilities;
+        item.type == _EquipmentType.facilities ||
+        item.type.isCompletions;
   }
 
   double get _labelBottomOffset {
@@ -13163,6 +13752,7 @@ class _LayoutTile extends StatelessWidget {
             child: CustomPaint(
               painter: _ShapePainter(item.type,
                   turns: item.rotationTurns,
+                  rotationDegrees: item.rotationDegrees,
                   ironSize: item.ironSize,
                   properties: item.properties,
                   renderStraightIronInternally: renderStraightIronInternally),
@@ -13266,12 +13856,14 @@ class _LayoutTile extends StatelessWidget {
 class _ShapePainter extends CustomPainter {
   final _EquipmentType type;
   final int turns;
+  final double rotationDegrees;
   final String ironSize;
   final Map<String, String> properties;
   final bool renderStraightIronInternally;
 
   _ShapePainter(this.type,
       {this.turns = 0,
+      this.rotationDegrees = 0,
       this.ironSize = '3',
       Map<String, String>? properties,
       this.renderStraightIronInternally = true})
@@ -13300,9 +13892,12 @@ class _ShapePainter extends CustomPainter {
       ..strokeCap = StrokeCap.square
       ..strokeJoin = StrokeJoin.miter;
 
-    if (turns % 4 != 0) {
+    final rotationRadians = rotationDegrees != 0
+        ? rotationDegrees * math.pi / 180
+        : (turns % 4) * 1.57079632679;
+    if (rotationRadians != 0) {
       canvas.translate(size.width / 2, size.height / 2);
-      canvas.rotate((turns % 4) * 1.57079632679);
+      canvas.rotate(rotationRadians);
       canvas.translate(-size.width / 2, -size.height / 2);
     }
 
@@ -13699,6 +14294,15 @@ class _ShapePainter extends CustomPainter {
       return;
     }
 
+    if (type.isCompletions) {
+      _CompletionsArtworkPainter(
+        type: type,
+        color: const Color(0xFFCDA56A),
+        rotationDegrees: 0,
+      ).paint(canvas, size);
+      return;
+    }
+
     if (type == _EquipmentType.wellhead) {
       final topY = size.height * .18;
       final branchY = size.height * .4;
@@ -13758,6 +14362,7 @@ class _ShapePainter extends CustomPainter {
   bool shouldRepaint(covariant _ShapePainter oldDelegate) =>
       oldDelegate.type != type ||
       oldDelegate.turns != turns ||
+      oldDelegate.rotationDegrees != rotationDegrees ||
       oldDelegate.ironSize != ironSize ||
       oldDelegate.properties != properties ||
       oldDelegate.renderStraightIronInternally != renderStraightIronInternally;
