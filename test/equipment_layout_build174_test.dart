@@ -71,16 +71,16 @@ void main() {
     await tester.pumpAndSettle();
 
     for (final label in const <String>[
-      'Coil Tubing Unit',
+      'Coiled Tubing Unit',
       'Mixing Plant',
-      'Pump',
+      'Pressure Pump',
       'Crane',
       'Light Plant',
-      'Wireline',
-      'Date Van',
+      'Wireline Unit',
+      'Data Van',
       'Fuel Trailer',
       'Chemical Trailer',
-      'Nitrogen',
+      'Nitrogen Unit',
       'Generator',
     ]) {
       expect(find.widgetWithText(FilledButton, label), findsOneWidget);
