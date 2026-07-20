@@ -24,6 +24,7 @@ import 'package:wellwerks/screens/production_inventory_screen.dart';
 import 'package:wellwerks/screens/shift_report_screen.dart';
 import 'package:wellwerks/screens/text_update_screen.dart';
 import 'package:wellwerks/services/active_company_service.dart';
+import 'package:wellwerks/services/active_workflow_mode_service.dart';
 import 'package:wellwerks/services/app_settings_service.dart';
 import 'package:wellwerks/services/job_history_service.dart';
 import 'package:wellwerks/services/job_box_inventory_service.dart';
@@ -150,7 +151,7 @@ void main() {
     expect(find.text('Active Company'), findsOneWidget);
     expect(find.textContaining('Active Job: Horse Pad • Horse 16-2H • Day'),
         findsOneWidget);
-    expect(find.text('Active Job'), findsNothing);
+    expect(find.text('Active Job'), findsOneWidget);
     expect(find.text('Continue Active Job'), findsNothing);
     expect(find.text('ACTIVE'), findsNothing);
     expect(find.text('Manage / Edit Job'), findsNothing);
@@ -160,7 +161,7 @@ void main() {
     await tester.tap(find.byTooltip('Expand details'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Active Job'), findsOneWidget);
+    expect(find.text('Active Job'), findsWidgets);
     expect(find.text('Continue Active Job'), findsOneWidget);
     expect(find.text('ACTIVE'), findsOneWidget);
     expect(find.text('Reset Active Job'), findsOneWidget);
@@ -182,6 +183,70 @@ void main() {
     expect(find.text('Continue Active Job'), findsNothing);
     expect(find.text('ACTIVE'), findsNothing);
     expect(find.textContaining('Active Job:'), findsNothing);
+  });
+
+  testWidgets('Build 171 Home keeps permanent module order for all workflows',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final modeService = ActiveWorkflowModeService.instance;
+
+    Future<void> pumpForMode(ActiveWorkflowMode mode) async {
+      await modeService.setMode(mode);
+      await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
+      await tester.pumpAndSettle();
+
+      Future<void> expectVisibleText(String text) async {
+        await tester.scrollUntilVisible(
+          find.text(text),
+          250,
+          scrollable: find.byType(Scrollable).first,
+        );
+        expect(find.text(text), findsOneWidget);
+      }
+
+      await expectVisibleText('Production');
+      await expectVisibleText('Completions');
+      await expectVisibleText('Charts');
+      await expectVisibleText('Rig-Up');
+      await expectVisibleText('JSA');
+      await expectVisibleText('History');
+      expect(find.text('Drillout').hitTestable(), findsNothing);
+      expect(find.text('Cleanout').hitTestable(), findsNothing);
+    }
+
+    await pumpForMode(ActiveWorkflowMode.production);
+    await pumpForMode(ActiveWorkflowMode.drillout);
+    await pumpForMode(ActiveWorkflowMode.cleanout);
+  });
+
+  testWidgets('Build 171 Completions includes shared Drillout / Cleanout tool',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await ActiveWorkflowModeService.instance
+        .setMode(ActiveWorkflowMode.cleanout);
+
+    await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Completions'));
+    await tester.pumpAndSettle();
+
+    Future<void> expectToolVisible(String text) async {
+      await tester.scrollUntilVisible(
+        find.text(text),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text(text), findsOneWidget);
+    }
+
+    await expectToolVisible('Drillout / Cleanout');
+    await expectToolVisible('Rate Calculator');
+    await expectToolVisible('Gas Accum Calculator');
+    await expectToolVisible('Bottoms Up Calculator');
+    await expectToolVisible('Multiple Choke Calculator');
+    await expectToolVisible('Conversion Calculator');
+    await expectToolVisible('Chlorides Calculator');
   });
 
   test('Well name precedence replaces placeholders with lease names', () {
@@ -455,7 +520,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: EquipmentLayoutScreen()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Active Job'), findsOneWidget);
+    expect(find.text('Active Job'), findsWidgets);
     expect(find.textContaining('Pad: Layout Pad'), findsOneWidget);
     expect(find.textContaining('Well: Layout 1'), findsOneWidget);
     expect(find.textContaining('Shift: Day'), findsOneWidget);
@@ -508,7 +573,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: PressureEntryScreen()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Active Job'), findsOneWidget);
+    expect(find.text('Active Job'), findsWidgets);
     expect(find.textContaining('Continental Resources'), findsWidgets);
     expect(find.textContaining('Pad: Bow Pad'), findsOneWidget);
     expect(find.textContaining('Well: Bow 21-3'), findsOneWidget);
@@ -863,7 +928,7 @@ void main() {
 
     await tester.pumpWidget(const MaterialApp(home: ShiftReportScreen()));
     await tester.pumpAndSettle();
-    expect(find.text('Active Job'), findsOneWidget);
+    expect(find.text('Active Job'), findsWidgets);
     expect(find.textContaining('Pad: Bow Pad'), findsOneWidget);
     expect(find.textContaining('Well: Bow 21-3'), findsOneWidget);
     expect(find.textContaining('Shift: Day'), findsOneWidget);
@@ -872,7 +937,7 @@ void main() {
 
     await tester.pumpWidget(const MaterialApp(home: TextUpdateScreen()));
     await tester.pumpAndSettle();
-    expect(find.text('Active Job'), findsOneWidget);
+    expect(find.text('Active Job'), findsWidgets);
     expect(find.byType(TextField), findsNothing);
   });
 
@@ -1635,7 +1700,7 @@ void main() {
     await tester.tap(find.text('Current JSA'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Active Job'), findsOneWidget);
+    expect(find.text('Active Job'), findsWidgets);
     expect(
       find.text('JSA will save under this active job.'),
       findsOneWidget,

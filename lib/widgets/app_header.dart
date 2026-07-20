@@ -168,7 +168,7 @@ class _ActiveJobModeBannerState extends State<_ActiveJobModeBanner> {
       child: Row(
         children: [
           Text(
-            'Job',
+            'Active Job',
             style: TextStyle(
               color: colors.primary,
               fontWeight: FontWeight.w700,

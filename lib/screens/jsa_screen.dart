@@ -12,6 +12,7 @@ import '../models/jsa_draft.dart';
 import '../models/jsa_template.dart';
 import '../services/jsa_export_service.dart';
 import '../services/active_company_service.dart';
+import '../services/active_workflow_mode_service.dart';
 import '../services/job_profile_defaults_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/jsa_storage_service.dart';
@@ -95,6 +96,7 @@ class _JsaScreenState extends State<JsaScreen>
   bool _hasLoadedDraft = false;
   final _settingsService = AppSettingsService();
   final _activeCompanyService = ActiveCompanyService.instance;
+  final _workflowModeService = ActiveWorkflowModeService.instance;
   late final TabController _tabController;
   late AppSettingsData _settings;
 
@@ -147,6 +149,7 @@ class _JsaScreenState extends State<JsaScreen>
     final requestedJobId = widget.initialActiveJobId?.trim() ?? '';
     final requestedDate = widget.initialDate?.trim() ?? '';
     final liveActiveJob = await _jobStorage.loadActiveJob();
+    final workflow = await _workflowModeService.ensureLoaded();
     final targetJob = requestedJobId.isNotEmpty
         ? await _jobStorage.loadJobById(requestedJobId)
         : liveActiveJob;
@@ -165,6 +168,8 @@ class _JsaScreenState extends State<JsaScreen>
       if (draft != null) {
         _hasLoadedDraft = true;
         _applyDraft(draft);
+      } else {
+        _applyActiveJobDefaults(targetJob, workflow);
       }
       if (targetJob != null) {
         final normalized =
@@ -174,6 +179,72 @@ class _JsaScreenState extends State<JsaScreen>
         }
       }
     });
+  }
+
+  void _applyActiveJobDefaults(
+    JobSetup? targetJob,
+    ActiveWorkflowMode workflow,
+  ) {
+    if (targetJob != null) {
+      final pad = targetJob.padName.trim();
+      if (pad.isNotEmpty) {
+        _location.text = pad;
+      }
+      final well = targetJob.primaryWell.trim();
+      if (well.isNotEmpty) {
+        _wellName.text = well;
+      }
+    }
+
+    if (workflow == ActiveWorkflowMode.production) {
+      return;
+    }
+
+    if (_stepsEditor.text.trim().isNotEmpty ||
+        _hazardsEditor.text.trim().isNotEmpty ||
+        _recommendationsEditor.text.trim().isNotEmpty) {
+      return;
+    }
+
+    if (workflow == ActiveWorkflowMode.cleanout) {
+      _selectedTemplateId = 'cleanout_default';
+      _selectedTemplateName = 'Cleanout';
+      _stepsEditor.text = _editorTextFromLines(const [
+        'STEP 1',
+        '• Review cleanout plan and communication roles',
+        'STEP 2',
+        '• Verify iron-up, pump path, and containment',
+        'STEP 3',
+        '• Monitor pressure, returns, and tank levels during cleanout',
+      ]);
+      _hazardsEditor.text = _editorTextFromLines(const [
+        'STEP 1',
+        '• High pressure and stored energy',
+        'STEP 2',
+        '• Pressurized fluid release and slippery surfaces',
+        'STEP 3',
+        '• Unexpected plugging, vibration, and equipment movement',
+      ]);
+      _recommendationsEditor.text = _editorTextFromLines(const [
+        'STEP 1',
+        '• Confirm line of fire controls and stop-work triggers',
+        'STEP 2',
+        '• Open/close valves slowly and verify flow path',
+        'STEP 3',
+        '• Isolate and bleed pressure before troubleshooting',
+      ]);
+      return;
+    }
+
+    final drillout = JsaBuiltInTemplates.byId('drillout');
+    if (drillout != null) {
+      _selectedTemplateId = drillout.id;
+      _selectedTemplateName = drillout.name;
+      _stepsEditor.text = _editorTextFromLines(drillout.basicJobSteps);
+      _hazardsEditor.text = _editorTextFromLines(drillout.hazards);
+      _recommendationsEditor.text =
+          _editorTextFromLines(drillout.recommendedActions);
+    }
   }
 
   Future<void> _loadSettingsAndAutoFill() async {

@@ -62,10 +62,9 @@ class TankChartsMenuScreen extends StatelessWidget {
           ),
           ToolCard(
             icon: Icons.table_chart,
-            title: 'Flowback Gas Tank',
-            subtitle: 'Flowback gas tank strapping chart',
-            onTap: () =>
-                _open(context, 'Flowback Gas Tank', flowbackGasTankChart),
+            title: 'Gas Tank',
+            subtitle: 'Menard gas tank stick chart',
+            onTap: () => _open(context, 'Gas Tank', menardGasTankChart),
           ),
           ToolCard(
             icon: Icons.table_chart,

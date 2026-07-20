@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/tank_charts.dart';
 import '../models/job_setup.dart';
 import '../services/active_company_service.dart';
+import '../services/active_workflow_mode_service.dart';
 import '../services/app_settings_service.dart';
 import '../services/job_profile_defaults_service.dart';
 import '../services/job_storage_service.dart';
@@ -24,7 +25,12 @@ enum _DrilloutGaugeTarget { primary, gas1, gas2, water1, water2 }
 enum _DrilloutMode { shiftChange, update }
 
 class DrilloutShiftChangeScreen extends StatefulWidget {
-  const DrilloutShiftChangeScreen({super.key});
+  const DrilloutShiftChangeScreen({
+    super.key,
+    this.initialWorkflow,
+  });
+
+  final ActiveWorkflowMode? initialWorkflow;
 
   @override
   State<DrilloutShiftChangeScreen> createState() =>
@@ -39,6 +45,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   final _jobStorage = JobStorageService();
   final _settingsService = AppSettingsService();
   final _activeCompanyService = ActiveCompanyService.instance;
+  final _workflowModeService = ActiveWorkflowModeService.instance;
 
   final _customer = TextEditingController();
   final _wellName = TextEditingController();
@@ -74,6 +81,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   DateTime _selectedTime = DateTime(2000, 1, 1, _defaultShiftHour);
   String _editedText = '';
   _DrilloutMode _mode = _DrilloutMode.shiftChange;
+  ActiveWorkflowMode _workflow = ActiveWorkflowMode.drillout;
 
   bool _includeRateOverride = false;
   bool _includeSurfaceTotalFluid = false;
@@ -140,6 +148,8 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     final activeJob = await _jobStorage.loadActiveJob();
     final settings = await _settingsService.load();
     final activeCompany = await _activeCompanyService.ensureLoaded();
+    final savedWorkflow =
+        widget.initialWorkflow ?? await _workflowModeService.ensureLoaded();
     final prefs = await SharedPreferences.getInstance();
 
     final scopedKey = activeJob == null || activeJob.id.trim().isEmpty
@@ -206,6 +216,9 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     if (!mounted) return;
     setState(() {
       _activeJob = activeJob;
+      _workflow = savedWorkflow == ActiveWorkflowMode.cleanout
+          ? ActiveWorkflowMode.cleanout
+          : ActiveWorkflowMode.drillout;
       _textTimeFormat = settings.textTimeFormat;
       _customer.text = customerText;
       _wellName.text = wellText;
@@ -376,6 +389,11 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
 
   String get _modeLabel =>
       _mode == _DrilloutMode.update ? 'Update' : 'Shift Change';
+
+  String get _workflowLabel =>
+      _workflow == ActiveWorkflowMode.cleanout ? 'Cleanout' : 'Drillout';
+
+  String get _workflowTitle => '$_workflowLabel Shift Change / Update';
 
   Future<void> _clearSavedSetup() async {
     final prefs = await SharedPreferences.getInstance();
@@ -656,6 +674,9 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     if (gauge == null) {
       return '$label: — / — bbl';
     }
+    if (!chart.supportsGauge(gauge)) {
+      return '$label: ${_fmtTrim(gauge)}" / out of range';
+    }
     return '$label: ${_fmtTrim(gauge)}" / ${chart.barrelsAt(gauge).round()} bbl';
   }
 
@@ -667,7 +688,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
 
     final lines = <String>[];
 
-    lines.add('${_formatTime(_selectedTime)} $_modeLabel');
+    lines.add('${_formatTime(_selectedTime)} $_workflowLabel $_modeLabel');
     if (company.isNotEmpty) lines.add(company);
     if (padName.isNotEmpty) lines.add(padName);
     if (wellName.isNotEmpty) lines.add(wellName);
@@ -722,11 +743,15 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
 
     if (_showGasTank) {
       final gauge = _parseGaugeOrNull(_gas1Gauge.text);
-      lines.add(_inventoryLine('Gas Tank', gauge, flowbackGasTankChart));
+      if (gauge != null) {
+        lines.add(_inventoryLine('Gas Tank', gauge, menardGasTankChart));
+      }
     }
     if (_showGasTank2) {
       final gauge = _parseGaugeOrNull(_gas2Gauge.text);
-      lines.add(_inventoryLine('Gas Tank 2', gauge, flowbackGasTankChart));
+      if (gauge != null) {
+        lines.add(_inventoryLine('Gas Tank 2', gauge, menardGasTankChart));
+      }
     }
     if (_showWaterTank) {
       final gauge = _parseGaugeOrNull(_water1Gauge.text);
@@ -857,7 +882,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
           builder: (context) => AlertDialog(
             title: const Text('Clear Drillout Setup?'),
             content: const Text(
-              'This will remove Company/Customer, Well Name, primary tank selection, optional tank configuration, selected choke, and saved Drillout layout for this active setup.',
+              'This will remove Company/Customer, Well Name, primary tank selection, optional tank configuration, selected choke, and saved Drillout/Cleanout layout for this active setup.',
             ),
             actions: [
               TextButton(
@@ -866,7 +891,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
               ),
               FilledButton(
                 onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Clear Drillout Setup'),
+                child: const Text('Clear Workflow Setup'),
               ),
             ],
           ),
@@ -934,8 +959,11 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     final scheme = Theme.of(context).colorScheme;
     final gauge = _parseGaugeOrNull(controller.text);
     final gaugeText = gauge == null ? '—' : '${_fmtTrim(gauge)}"';
-    final barrelText =
-        gauge == null ? '—' : '${_fmtTrim(chart.barrelsAt(gauge))} bbl';
+    final barrelText = gauge == null
+        ? '—'
+        : (chart.supportsGauge(gauge)
+            ? '${_fmtTrim(chart.barrelsAt(gauge))} bbl'
+            : 'Out of range');
 
     return Card(
       child: Padding(
@@ -1001,8 +1029,8 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const AppHeader(
-        title: 'Drillout Shift Change / Update',
+      appBar: AppHeader(
+        title: _workflowTitle,
         showBack: true,
       ),
       body: Column(
@@ -1017,10 +1045,37 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'DRILLOUT SHIFT CHANGE / UPDATE',
-                          style: TextStyle(
+                        Text(
+                          _workflowTitle.toUpperCase(),
+                          style: const TextStyle(
                               fontWeight: FontWeight.w900, fontSize: 20),
+                        ),
+                        const SizedBox(height: 12),
+                        SegmentedButton<ActiveWorkflowMode>(
+                          key: const Key('drillout-cleanout-workflow-selector'),
+                          style: ButtonStyle(
+                            minimumSize:
+                                WidgetStateProperty.all(const Size(0, 48)),
+                          ),
+                          segments: const [
+                            ButtonSegment<ActiveWorkflowMode>(
+                              value: ActiveWorkflowMode.drillout,
+                              label: Text('Drillout'),
+                            ),
+                            ButtonSegment<ActiveWorkflowMode>(
+                              value: ActiveWorkflowMode.cleanout,
+                              label: Text('Cleanout'),
+                            ),
+                          ],
+                          selected: {_workflow},
+                          onSelectionChanged: (selection) async {
+                            final selected = selection.first;
+                            if (selected == _workflow) return;
+                            setState(() {
+                              _workflow = selected;
+                            });
+                            await _workflowModeService.setMode(selected);
+                          },
                         ),
                         const SizedBox(height: 12),
                         SegmentedButton<_DrilloutMode>(
@@ -1425,7 +1480,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                         if (_showGasTank)
                           _gaugeCard(
                             title: 'Gas Tank',
-                            chart: flowbackGasTankChart,
+                            chart: menardGasTankChart,
                             controller: _gas1Gauge,
                             target: _DrilloutGaugeTarget.gas1,
                           ),
@@ -1441,7 +1496,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                         if (_showGasTank2)
                           _gaugeCard(
                             title: 'Gas Tank 2',
-                            chart: flowbackGasTankChart,
+                            chart: menardGasTankChart,
                             controller: _gas2Gauge,
                             target: _DrilloutGaugeTarget.gas2,
                           ),
@@ -1564,7 +1619,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                       key: const Key('drillout-action-clear-setup'),
                       onPressed: _clearDrilloutSetup,
                       icon: const Icon(Icons.delete_forever),
-                      label: const Text('Clear Drillout Setup'),
+                      label: const Text('Clear Workflow Setup'),
                     ),
                   ],
                 ),

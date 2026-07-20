@@ -33,6 +33,7 @@ import 'settings_screen.dart';
 import 'about_support_screen.dart';
 import 'job_setup_screen.dart';
 import 'drillout_shift_change_screen.dart';
+import 'drillout_cleanout_module_screen.dart';
 import 'flywheel_diesel_tank_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -123,78 +124,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _loading = false;
     });
     _handlePendingRateTimerAction();
-  }
-
-  String get _workflowTitle {
-    switch (_activeWorkflowMode) {
-      case ActiveWorkflowMode.drillout:
-        return 'Drillout';
-      case ActiveWorkflowMode.cleanout:
-        return 'Cleanout';
-      case ActiveWorkflowMode.production:
-        return 'Production';
-    }
-  }
-
-  String get _workflowSubtitle {
-    switch (_activeWorkflowMode) {
-      case ActiveWorkflowMode.drillout:
-        return 'Drillout shift changes and Drillout JSAs';
-      case ActiveWorkflowMode.cleanout:
-        return 'Cleanout text updates, JSAs, and future cleanout tools';
-      case ActiveWorkflowMode.production:
-        return 'Quick Round, reports, text updates, and production setup';
-    }
-  }
-
-  Widget _workflowScreenForMode() {
-    switch (_activeWorkflowMode) {
-      case ActiveWorkflowMode.drillout:
-        return const ModuleMenuScreen(
-          title: 'Drillout',
-          showHomeButton: true,
-          tools: [
-            ModuleTool(
-              icon: Icons.text_snippet_outlined,
-              title: 'Drillout Shift Change / Update',
-              subtitle: 'Build, preview, and copy drillout shift text',
-              screen: DrilloutShiftChangeScreen(),
-            ),
-            ModuleTool(
-              icon: Icons.fact_check,
-              title: 'Drillout JSA',
-              subtitle: 'Build and export a job safety analysis',
-              screen: JsaScreen(),
-            ),
-          ],
-        );
-      case ActiveWorkflowMode.cleanout:
-        return const ModuleMenuScreen(
-          title: 'Cleanout',
-          showHomeButton: true,
-          tools: [
-            ModuleTool(
-              icon: Icons.message,
-              title: 'Cleanout Text Update',
-              subtitle: 'Prepare field-ready cleanout text updates',
-              screen: TextUpdateScreen(),
-            ),
-            ModuleTool(
-              icon: Icons.fact_check,
-              title: 'Cleanout JSA',
-              subtitle: 'Build and export cleanout JSAs',
-              screen: JsaScreen(),
-            ),
-            ModuleTool(
-              icon: Icons.construction,
-              title: 'Future Cleanout Tools',
-              subtitle: 'Reserved for upcoming cleanout workflows',
-            ),
-          ],
-        );
-      case ActiveWorkflowMode.production:
-        return const ProductionDashboardScreen();
-    }
   }
 
   Future<bool> _confirmCompanyChange(String nextCompany) async {
@@ -529,7 +458,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: OutlinedButton.icon(
                           onPressed: () => open(
                             context,
-                            const JobSetupScreen(editActiveOnOpen: true),
+                            _activeWorkflowMode == ActiveWorkflowMode.production
+                                ? const JobSetupScreen(editActiveOnOpen: true)
+                                : DrilloutShiftChangeScreen(
+                                    initialWorkflow: _activeWorkflowMode,
+                                  ),
                           ),
                           icon: const Icon(Icons.edit_outlined),
                           label: const Text('Manage / Edit Job'),
@@ -754,7 +687,14 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.more_vert),
             onSelected: (value) {
               if (value == 'jobSetup') {
-                open(context, const JobSetupScreen());
+                open(
+                  context,
+                  _activeWorkflowMode == ActiveWorkflowMode.production
+                      ? const JobSetupScreen()
+                      : DrilloutShiftChangeScreen(
+                          initialWorkflow: _activeWorkflowMode,
+                        ),
+                );
                 return;
               }
               if (value == 'settings') {
@@ -798,9 +738,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           ToolCard(
             icon: Icons.oil_barrel,
-            title: _workflowTitle,
-            subtitle: _workflowSubtitle,
-            onTap: () => open(context, _workflowScreenForMode()),
+            title: 'Production',
+            subtitle: 'Quick Round, reports, text updates, and setup',
+            onTap: () => open(context, const ProductionDashboardScreen()),
           ),
           _moduleCard(
             context: context,
@@ -834,9 +774,10 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const ModuleTool(
                 icon: Icons.text_snippet_outlined,
-                title: 'Drillout Shift Change / Update',
-                subtitle: 'Build, preview, and copy drillout shift text',
-                screen: DrilloutShiftChangeScreen(),
+                title: 'Drillout / Cleanout',
+                subtitle:
+                    'Shared shift update workflow, JSA, preview, and copy',
+                screen: DrilloutCleanoutModuleScreen(),
               ),
               const ModuleTool(
                 icon: Icons.straighten,

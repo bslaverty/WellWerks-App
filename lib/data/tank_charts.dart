@@ -320,30 +320,60 @@ final TankChart flowbackRoundBottomChart = TankChart(
   points: _flowbackRoundBottomWichita500Points,
 );
 
-const flowbackGasTankChart = TankChart(
-  id: 'flowback_gas_tank',
-  name: 'Flowback Gas Tank',
-  points: [
-    TankPoint(0, 0.0),
-    TankPoint(6, 19.95),
-    TankPoint(12, 44.64),
-    TankPoint(18, 69.12),
-    TankPoint(24, 95.40),
-    TankPoint(30, 121.23),
-    TankPoint(36, 147.06),
-    TankPoint(42, 172.89),
-    TankPoint(48, 198.72),
-    TankPoint(54, 224.55),
-    TankPoint(60, 250.38),
-    TankPoint(66, 276.21),
-    TankPoint(72, 302.04),
-    TankPoint(78, 327.87),
-    TankPoint(84, 353.70),
-    TankPoint(90, 379.53),
-    TankPoint(96, 405.36),
-    TankPoint(102, 431.19),
-    TankPoint(108, 457.02),
-    TankPoint(114, 482.85),
-    TankPoint(120, 508.68),
-  ],
+List<TankPoint> _buildMenardGasTankPoints() {
+  const anchors = <int, double>{
+    0: 0.00,
+    1: 0.53,
+    2: 2.12,
+    10: 34.48,
+    24: 95.10,
+    29: 116.75,
+    36: 147.06,
+    48: 199.02,
+    50: 216.66,
+    60: 264.76,
+    72: 322.48,
+    83: 375.39,
+    96: 437.92,
+    108: 495.64,
+    109: 500.45,
+    110: 505.26,
+  };
+
+  final points = <TankPoint>[];
+  for (int inches = 0; inches <= 110; inches++) {
+    if (anchors.containsKey(inches)) {
+      points.add(TankPoint(inches.toDouble(), anchors[inches]!));
+      continue;
+    }
+
+    int lower = 0;
+    int upper = 110;
+    for (final candidate in anchors.keys) {
+      if (candidate < inches && candidate >= lower) {
+        lower = candidate;
+      }
+      if (candidate > inches && candidate <= upper) {
+        upper = candidate;
+      }
+    }
+
+    final lowValue = anchors[lower]!;
+    final highValue = anchors[upper]!;
+    final span = (upper - lower).toDouble();
+    final ratio = span == 0 ? 0.0 : (inches - lower) / span;
+    final barrels = lowValue + ((highValue - lowValue) * ratio);
+    points.add(TankPoint(inches.toDouble(), barrels));
+  }
+  return List<TankPoint>.unmodifiable(points);
+}
+
+final List<TankPoint> _menardGasTankPoints = _buildMenardGasTankPoints();
+
+final TankChart menardGasTankChart = TankChart(
+  id: 'menard_gas_tank',
+  name: 'Gas Tank - Menard',
+  points: _menardGasTankPoints,
 );
+
+final TankChart flowbackGasTankChart = menardGasTankChart;

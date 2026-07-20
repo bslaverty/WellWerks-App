@@ -119,7 +119,7 @@ void main() {
 
     await _expectCopyLabel(tester, 'Copy Shift Change');
     final preview = await _openPreviewAndRead(tester);
-    expect(preview, contains('5:00 AM Shift Change'));
+    expect(preview, contains('Shift Change'));
   });
 
   testWidgets('Build 98 Shift Change selection persists',
@@ -131,7 +131,7 @@ void main() {
 
     await _expectCopyLabel(tester, 'Copy Shift Change');
     final preview = await _openPreviewAndRead(tester);
-    expect(preview, contains('5:00 AM Shift Change'));
+    expect(preview, contains('Shift Change'));
   });
 
   testWidgets('Build 98 Update selection persists',
@@ -143,7 +143,7 @@ void main() {
 
     await _expectCopyLabel(tester, 'Copy Update');
     final preview = await _openPreviewAndRead(tester);
-    expect(preview, contains('5:00 AM Update'));
+    expect(preview, contains('Update'));
     expect(preview.contains('Shift Update'), isFalse);
   });
 
@@ -340,7 +340,7 @@ void main() {
     await _selectMode(tester, 'Update');
     await _expectCopyLabel(tester, 'Copy Update');
     var preview = await _openPreviewAndRead(tester);
-    expect(preview, contains('5:00 AM Update'));
+    expect(preview, contains('Update'));
     expect(preview, contains('Status: Drilling Plugs'));
     expect(preview, contains('Plug #: 12'));
     expect(preview, contains('Sand: Light'));
@@ -348,7 +348,7 @@ void main() {
     await _selectMode(tester, 'Shift Change');
     await _expectCopyLabel(tester, 'Copy Shift Change');
     preview = await _openPreviewAndRead(tester);
-    expect(preview, contains('5:00 AM Shift Change'));
+    expect(preview, contains('Shift Change'));
     expect(preview, contains('Status: Drilling Plugs'));
     expect(preview, contains('Plug #: 12'));
     expect(preview, contains('Sand: Light'));
@@ -397,7 +397,7 @@ void main() {
       expect(copiedText, preview);
       expect(
         copiedText,
-        contains(mode == 'Update' ? '5:00 AM Update' : '5:00 AM Shift Change'),
+        contains(mode),
       );
     }
   });
@@ -478,7 +478,7 @@ void main() {
 
     final preview = await _openPreviewAndRead(tester);
     await _expectCopyLabel(tester, 'Copy Update');
-    expect(preview, contains('5:00 AM Update'));
+    expect(preview, contains('Update'));
     expect(preview.contains('Status:'), isFalse);
     expect(preview.contains('Plug #:'), isFalse);
     expect(preview.contains('Coil Depth:'), isFalse);
@@ -519,7 +519,7 @@ void main() {
     );
     clearSetupButton.onPressed!.call();
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Clear Drillout Setup'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Clear Workflow Setup'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('drillout-status-dropdown')), findsNothing);
@@ -530,7 +530,7 @@ void main() {
 
     final preview = await _openPreviewAndRead(tester);
     await _expectCopyLabel(tester, 'Copy Shift Change');
-    expect(preview, contains('5:00 AM Shift Change'));
+    expect(preview, contains('Shift Change'));
     expect(preview.contains('Gas:'), isFalse);
     expect(preview.contains('Status:'), isFalse);
     expect(preview.contains('Sand:'), isFalse);

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wellwerks/models/job_setup.dart';
 import 'package:wellwerks/screens/drillout_shift_change_screen.dart';
 import 'package:wellwerks/services/active_company_service.dart';
+import 'package:wellwerks/services/active_workflow_mode_service.dart';
 import 'package:wellwerks/services/job_storage_service.dart';
 
 Future<void> _seedActiveJob() async {
@@ -79,7 +80,32 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     ActiveCompanyService.instance.resetForTest();
+    await ActiveWorkflowModeService.instance.ensureLoaded();
+    await ActiveWorkflowModeService.instance
+        .setMode(ActiveWorkflowMode.drillout);
     await _seedActiveJob();
+  });
+
+  testWidgets('Build 171 compact header shows active workflow label',
+      (WidgetTester tester) async {
+    await ActiveWorkflowModeService.instance
+        .setMode(ActiveWorkflowMode.cleanout);
+    await _pumpScreen(tester);
+
+    expect(find.text('Active Job'), findsOneWidget);
+    expect(find.text('Cleanout'), findsWidgets);
+    expect(find.text('Drillout'), findsWidgets);
+  });
+
+  testWidgets('Build 171 shared workflow screen defaults from Active Job mode',
+      (WidgetTester tester) async {
+    await ActiveWorkflowModeService.instance
+        .setMode(ActiveWorkflowMode.cleanout);
+    await _pumpScreen(tester);
+
+    expect(find.text('CLEANOUT SHIFT CHANGE / UPDATE'), findsOneWidget);
+    final preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('Cleanout Shift Change'));
   });
 
   testWidgets('Build 170 optional drillout fields default to hidden',
