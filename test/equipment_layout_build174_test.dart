@@ -59,7 +59,7 @@ List<Map<String, dynamic>> _itemsFromPayload(Map<String, dynamic> payload) {
 }
 
 void main() {
-  testWidgets('Build 174 completions library shows all 11 items',
+  testWidgets('Build 176 completions library shows official items',
       (WidgetTester tester) async {
     await _pumpLayout(tester);
     await _ensureEquipmentLibraryOpen(tester);
@@ -78,13 +78,14 @@ void main() {
       'Light Plant',
       'Wireline Unit',
       'Data Van',
-      'Fuel Trailer',
-      'Chemical Trailer',
       'Nitrogen Unit',
-      'Generator',
     ]) {
       expect(find.widgetWithText(FilledButton, label), findsOneWidget);
     }
+
+    expect(find.widgetWithText(FilledButton, 'Generator'), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Fuel Trailer'), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Chemical Trailer'), findsNothing);
   });
 
   testWidgets('Build 174 completions rotation degrees persist in layout save',
