@@ -38,21 +38,19 @@ class RateCalculatorMenuScreen extends StatelessWidget {
             ),
             ToolCard(
               icon: Icons.speed,
-              title: 'Flowback Tank - V Bottom',
-              subtitle: 'Flowback V-bottom strapping chart',
-              onTap: () => _open(
-                  context,
-                  const RateCalculatorConfig.chart(
-                      '500 BBL Flowback Tank', 'flowback500')),
+              title: 'V-Bottom',
+              subtitle: 'V-bottom strapping chart',
+              onTap: () => _open(context,
+                  const RateCalculatorConfig.chart('V-Bottom', 'flowback500')),
             ),
             ToolCard(
               icon: Icons.speed,
-              title: 'Flowback Tank - Round Bottom',
-              subtitle: 'Flowback round-bottom strapping chart',
+              title: 'Round Bottom',
+              subtitle: 'Round-bottom strapping chart',
               onTap: () => _open(
                   context,
                   const RateCalculatorConfig.chart(
-                      'Flowback Tank - Round Bottom', 'flowback_round_bottom')),
+                      'Round Bottom', 'flowback_round_bottom')),
             ),
             ToolCard(
               icon: Icons.oil_barrel,

@@ -121,7 +121,7 @@ void main() {
     await _pumpRateCalculator(
       tester,
       const RateCalculatorConfig.chart(
-        'Flowback Tank - Round Bottom',
+        'Round Bottom',
         'flowback_round_bottom',
       ),
     );
@@ -134,7 +134,7 @@ void main() {
 
     expect(
       find.text(
-        'Gauge reading is outside the supported Flowback Tank - Round Bottom chart.',
+        'Gauge reading is outside the supported Round Bottom chart.',
       ),
       findsOneWidget,
     );

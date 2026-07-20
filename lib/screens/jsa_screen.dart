@@ -149,10 +149,13 @@ class _JsaScreenState extends State<JsaScreen>
     final requestedJobId = widget.initialActiveJobId?.trim() ?? '';
     final requestedDate = widget.initialDate?.trim() ?? '';
     final liveActiveJob = await _jobStorage.loadActiveJob();
-    final workflow = await _workflowModeService.ensureLoaded();
     final targetJob = requestedJobId.isNotEmpty
         ? await _jobStorage.loadJobById(requestedJobId)
         : liveActiveJob;
+    final workflow = _resolveWorkflowFromJob(
+      targetJob,
+      await _workflowModeService.ensureLoaded(),
+    );
     final draft = requestedJobId.isNotEmpty || requestedDate.isNotEmpty
         ? await _storage.loadDraft(
             activeJobId: requestedJobId,
@@ -186,6 +189,11 @@ class _JsaScreenState extends State<JsaScreen>
     ActiveWorkflowMode workflow,
   ) {
     if (targetJob != null) {
+      final normalizedCompany =
+          JobProfileDefaultsService().normalizeCompany(targetJob.company);
+      if (normalizedCompany != JobProfileDefaultsService.companyNone) {
+        _company = normalizedCompany;
+      }
       final pad = targetJob.padName.trim();
       if (pad.isNotEmpty) {
         _location.text = pad;
@@ -245,6 +253,16 @@ class _JsaScreenState extends State<JsaScreen>
       _recommendationsEditor.text =
           _editorTextFromLines(drillout.recommendedActions);
     }
+  }
+
+  ActiveWorkflowMode _resolveWorkflowFromJob(
+    JobSetup? job,
+    ActiveWorkflowMode fallback,
+  ) {
+    final raw = (job?.workflow ?? '').trim().toLowerCase();
+    if (raw == 'drillout') return ActiveWorkflowMode.drillout;
+    if (raw == 'cleanout') return ActiveWorkflowMode.cleanout;
+    return fallback;
   }
 
   Future<void> _loadSettingsAndAutoFill() async {
@@ -763,6 +781,15 @@ class _JsaScreenState extends State<JsaScreen>
       );
     }
 
+    final bestIdentifier = activeJob.primaryWell.trim().isNotEmpty
+        ? activeJob.primaryWell.trim()
+        : (activeJob.padName.trim().isNotEmpty
+            ? activeJob.padName.trim()
+            : '-');
+    final workflow = activeJob.workflow.trim().isEmpty
+        ? ActiveWorkflowModeService.labelFor(_workflowModeService.mode.value)
+        : '${activeJob.workflow[0].toUpperCase()}${activeJob.workflow.substring(1)}';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       child: Padding(
@@ -780,6 +807,19 @@ class _JsaScreenState extends State<JsaScreen>
                   ? 'No company entered'
                   : activeJob.company,
               style: TextStyle(color: gold, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              bestIdentifier,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '$workflow • ${activeJob.shift.trim().isEmpty ? '-' : activeJob.shift.trim()} Shift',
+              style: const TextStyle(color: Colors.white70),
             ),
             const SizedBox(height: 8),
             const Text(

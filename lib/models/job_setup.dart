@@ -28,6 +28,8 @@ class JobSetup {
     this.shift = 'Day',
     this.dateStarted = '',
     this.status = 'active',
+    this.workflow = 'production',
+    this.drilloutSetup = const {},
     this.startedAt,
     this.endedAt,
     this.wells = const [],
@@ -72,6 +74,8 @@ class JobSetup {
   final String shift;
   final String dateStarted;
   final String status;
+  final String workflow;
+  final Map<String, dynamic> drilloutSetup;
   final DateTime? startedAt;
   final DateTime? endedAt;
   final List<String> wells;
@@ -218,6 +222,8 @@ class JobSetup {
     String? shift,
     String? dateStarted,
     String? status,
+    String? workflow,
+    Map<String, dynamic>? drilloutSetup,
     Object? startedAt = _unset,
     Object? endedAt = _unset,
     List<String>? wells,
@@ -256,6 +262,8 @@ class JobSetup {
       shift: shift ?? this.shift,
       dateStarted: dateStarted ?? this.dateStarted,
       status: status ?? this.status,
+      workflow: workflow ?? this.workflow,
+      drilloutSetup: drilloutSetup ?? this.drilloutSetup,
       startedAt: startedAt == _unset ? this.startedAt : startedAt as DateTime?,
       endedAt: endedAt == _unset ? this.endedAt : endedAt as DateTime?,
       wells: wells ?? this.wells,
@@ -297,6 +305,8 @@ class JobSetup {
         'shift': shift,
         'dateStarted': dateStarted,
         'status': status,
+        'workflow': workflow,
+        'drilloutSetup': drilloutSetup,
         'startedAt': startedAt?.toIso8601String(),
         'endedAt': endedAt?.toIso8601String(),
         'wells': wells,
@@ -336,6 +346,10 @@ class JobSetup {
         shift: json['shift'] as String? ?? 'Day',
         dateStarted: json['dateStarted'] as String? ?? '',
         status: json['status'] as String? ?? 'active',
+        workflow: _normalizeWorkflow(
+          (json['workflow'] as String?) ?? (json['mode'] as String?) ?? '',
+        ),
+        drilloutSetup: _buildDrilloutSetup(json),
         startedAt: DateTime.tryParse(json['startedAt'] as String? ?? ''),
         endedAt: DateTime.tryParse(json['endedAt'] as String? ?? ''),
         wells: _buildLegacyWells(json),
@@ -427,7 +441,15 @@ class JobSetup {
     if (entryWells.isNotEmpty) {
       return entryWells;
     }
-    return List<String>.from(json['wells'] as List? ?? const []);
+    final wells = List<String>.from(json['wells'] as List? ?? const []);
+    if (wells.isNotEmpty) {
+      return wells;
+    }
+    final legacyWell = (json['wellName'] as String? ?? '').trim();
+    if (legacyWell.isNotEmpty) {
+      return <String>[legacyWell];
+    }
+    return const <String>[];
   }
 
   static List<JobSetupWell> _buildWellEntries(Map<String, dynamic> json) {
@@ -452,6 +474,17 @@ class JobSetup {
     }
 
     final legacy = List<String>.from(json['wells'] as List? ?? const []);
+    if (legacy.isEmpty) {
+      final legacyWell = (json['wellName'] as String? ?? '').trim();
+      if (legacyWell.isNotEmpty) {
+        return <JobSetupWell>[
+          JobSetupWell(
+            id: legacyWellId(legacyWell, 0),
+            name: legacyWell,
+          ),
+        ];
+      }
+    }
     return [
       for (int i = 0; i < legacy.length; i++)
         JobSetupWell(
@@ -459,6 +492,56 @@ class JobSetup {
           name: legacy[i],
         ),
     ];
+  }
+
+  static String _normalizeWorkflow(String raw) {
+    final normalized = raw.trim().toLowerCase();
+    if (normalized == 'drillout' || normalized == 'cleanout') {
+      return normalized;
+    }
+    return 'production';
+  }
+
+  static Map<String, dynamic> _buildDrilloutSetup(Map<String, dynamic> json) {
+    final raw = json['drilloutSetup'];
+    if (raw is Map) {
+      return Map<String, dynamic>.from(raw);
+    }
+    final legacy = <String, dynamic>{};
+    void copyIfPresent(String key) {
+      if (json.containsKey(key)) {
+        legacy[key] = json[key];
+      }
+    }
+
+    for (final key in const <String>[
+      'manifoldPsi',
+      'casingPsi',
+      'pumpPsi',
+      'rateOverride',
+      'surfaceTotalFluid',
+      'waterHauled',
+      'oilHauled',
+      'plugNumber',
+      'status',
+      'coilDepth',
+      'showFlowbackTank',
+      'showWaterTank1',
+      'showWaterTank2',
+      'showSweepTank',
+      'flowbackTankType',
+      'waterTank1Type',
+      'waterTank2Type',
+      'flowbackGauge',
+      'waterTank1Gauge',
+      'waterTank2Gauge',
+      'sweepTankGauge',
+      'wellName',
+      'locationPad',
+    ]) {
+      copyIfPresent(key);
+    }
+    return legacy;
   }
 }
 

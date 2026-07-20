@@ -108,10 +108,18 @@ class WwGaugeField extends StatelessWidget {
         autocorrect: false,
         enableSuggestions: false,
         textInputAction: textInputAction,
+        textAlignVertical: TextAlignVertical.center,
+        style: const TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.2,
+        ),
         decoration: InputDecoration(
           labelText: label,
           hintText: hintText ?? 'Example: 12 3/8',
           helperText: helperText,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           suffixIcon: controller.text.isEmpty
               ? null
               : IconButton(
@@ -122,6 +130,10 @@ class WwGaugeField extends StatelessWidget {
                     onChanged?.call(controller.text);
                   },
                 ),
+          suffixIconConstraints: const BoxConstraints(
+            minHeight: 40,
+            minWidth: 48,
+          ),
           border: OutlineInputBorder(
             borderSide: BorderSide(
               color: active ? accent : colors.outlineVariant,

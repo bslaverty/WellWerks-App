@@ -67,11 +67,10 @@ class RateCalculatorConfig {
       case 'sandx':
         return const RateCalculatorConfig.chart('SandX G3', 'sandx');
       case 'flowback500':
-        return const RateCalculatorConfig.chart(
-            '500 BBL Flowback Tank', 'flowback500');
+        return const RateCalculatorConfig.chart('V-Bottom', 'flowback500');
       case 'flowback_round_bottom':
         return const RateCalculatorConfig.chart(
-            'Flowback Tank - Round Bottom', 'flowback_round_bottom');
+            'Round Bottom', 'flowback_round_bottom');
       case 'production_tank':
         return const RateCalculatorConfig.linear('Production Tank',
             defaultFactor: 1.67);
@@ -95,13 +94,13 @@ class RateCalculatorScreen extends StatefulWidget {
       case 'Flowback':
         return RateCalculatorScreen(
             key: key,
-            config: const RateCalculatorConfig.chart(
-                '500 BBL Flowback Tank', 'flowback500'));
+            config:
+                const RateCalculatorConfig.chart('V-Bottom', 'flowback500'));
       case 'Flowback Round Bottom':
         return RateCalculatorScreen(
             key: key,
             config: const RateCalculatorConfig.chart(
-                'Flowback Tank - Round Bottom', 'flowback_round_bottom'));
+                'Round Bottom', 'flowback_round_bottom'));
       case 'Production Tank':
         return RateCalculatorScreen(
             key: key,
