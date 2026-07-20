@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/job_setup.dart';
 import '../models/production_shift.dart';
+import '../services/active_workflow_mode_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../widgets/app_header.dart';
@@ -27,9 +28,11 @@ class ProductionDashboardScreen extends StatefulWidget {
 class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
   final _jobStorage = JobStorageService();
   final _shiftService = ProductionShiftService();
+  final _workflowModeService = ActiveWorkflowModeService.instance;
 
   ProductionShift _shift = ProductionShift.empty();
   JobSetup? _activeJob;
+  ActiveWorkflowMode _workflowMode = ActiveWorkflowMode.production;
   bool _loading = true;
 
   @override
@@ -53,6 +56,7 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
   Future<void> _load() async {
     var shift = await _shiftService.loadActiveShift();
     final activeJob = await _jobStorage.ensureActiveJobLoaded();
+    final workflowMode = await _workflowModeService.ensureLoaded();
     final resolvedJob =
         activeJob ?? await _jobStorage.resolveProductionActiveJob(shift);
     if (resolvedJob != null && shift.activeJobId != resolvedJob.id) {
@@ -63,6 +67,7 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
     setState(() {
       _shift = shift;
       _activeJob = resolvedJob;
+      _workflowMode = workflowMode;
       _loading = false;
     });
   }
@@ -215,7 +220,8 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          _activeJobCard(context),
+          if (_workflowMode == ActiveWorkflowMode.production)
+            _activeJobCard(context),
           const Text(
             'Production flow: Job Setup -> Quick Round data entry -> Tank Inventory totals/database -> Report/Text/History.',
             style: TextStyle(color: Colors.white70, fontSize: 15),

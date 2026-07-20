@@ -130,9 +130,11 @@ void main() {
     expect(find.text('WellWerks Toolbox'), findsOneWidget);
   });
 
-  testWidgets('Home shows combined company and collapsed active job card',
+  testWidgets('Home shows compact collapsed active job summary',
       (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
+    await ActiveWorkflowModeService.instance
+        .setMode(ActiveWorkflowMode.production);
     final jobStorage = JobStorageService();
     await jobStorage.saveActiveJob(
       JobSetup(
@@ -148,38 +150,41 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Active Company'), findsOneWidget);
-    expect(find.textContaining('Active Job: Horse Pad • Horse 16-2H • Day'),
-        findsOneWidget);
-    expect(find.text('Active Job'), findsOneWidget);
+    expect(find.text('Active Company'), findsNothing);
+    expect(find.text('Mach Energy'), findsOneWidget);
+    expect(find.textContaining('Production • Day Shift'), findsOneWidget);
     expect(find.text('Continue Active Job'), findsNothing);
     expect(find.text('ACTIVE'), findsNothing);
-    expect(find.text('Manage / Edit Job'), findsNothing);
+    expect(find.text('Edit Active Job'), findsNothing);
+    expect(find.text('Start New Job'), findsNothing);
     expect(find.textContaining('Horse Pad • - • Day'), findsNothing);
-    expect(find.text('Reset Active Job'), findsNothing);
+    expect(find.text('End/Clear Active Job'), findsNothing);
 
     await tester.tap(find.byTooltip('Expand details'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Active Job'), findsWidgets);
-    expect(find.text('Continue Active Job'), findsOneWidget);
-    expect(find.text('ACTIVE'), findsOneWidget);
-    expect(find.text('Reset Active Job'), findsOneWidget);
-    expect(find.text('Manage / Edit Job'), findsOneWidget);
+    expect(find.text('Continue Active Job'), findsNothing);
+    expect(find.text('ACTIVE'), findsNothing);
+    expect(find.text('Edit Active Job'), findsOneWidget);
+    expect(find.text('Start New Job'), findsOneWidget);
+    expect(find.text('End/Clear Active Job'), findsOneWidget);
+    expect(find.text('Workflow'), findsOneWidget);
+    expect(find.text('Readiness'), findsOneWidget);
   });
 
-  testWidgets(
-      'Home no active job state keeps company selector and start action',
+  testWidgets('Home no active job state shows compact create action',
       (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
+    await ActiveWorkflowModeService.instance
+        .setMode(ActiveWorkflowMode.production);
     final jobStorage = JobStorageService();
     await jobStorage.clearActiveJob();
     await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Active Company'), findsOneWidget);
+    expect(find.text('Active Company'), findsNothing);
     expect(find.text('No Active Job'), findsOneWidget);
-    expect(find.text('Start Job'), findsOneWidget);
+    expect(find.text('Create New Job >'), findsOneWidget);
     expect(find.text('Continue Active Job'), findsNothing);
     expect(find.text('ACTIVE'), findsNothing);
     expect(find.textContaining('Active Job:'), findsNothing);

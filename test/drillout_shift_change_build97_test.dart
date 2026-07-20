@@ -618,4 +618,63 @@ void main() {
     expect(preview.contains('Gas: 425'), isFalse);
     expect(preview.contains('MCFD'), isFalse);
   });
+
+  testWidgets(
+      'Build 172 preview uses barrels-only inventory lines with sweep tank and total on location',
+      (WidgetTester tester) async {
+    final prefs = await SharedPreferences.getInstance();
+    final activeJob = await JobStorageService().loadActiveJob();
+    final jobId = (activeJob?.id ?? '').trim();
+    final key = jobId.isEmpty
+        ? 'wellwerks_drillout_shift_change_v1'
+        : 'wellwerks_drillout_shift_change_v1:$jobId';
+    await prefs.setString(
+      key,
+      jsonEncode({
+        'primaryTank': 'flowback_round_bottom',
+        'primaryGauge': '100',
+        'showGasTank': true,
+        'gas1Gauge': '100',
+        'showSweepTank': true,
+        'sweepGauge': '100',
+      }),
+    );
+
+    await _pumpScreen(tester);
+
+    final preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('Tank Inventory'));
+    expect(preview, contains('Sweep Tank:'));
+    expect(preview, contains('Total Barrels on Location:'));
+    expect(preview.contains('"'), isFalse);
+  });
+
+  testWidgets('Build 172 persisted sweep tank setup renders gauge card',
+      (WidgetTester tester) async {
+    final prefs = await SharedPreferences.getInstance();
+    final activeJob = await JobStorageService().loadActiveJob();
+    final jobId = (activeJob?.id ?? '').trim();
+    final key = jobId.isEmpty
+        ? 'wellwerks_drillout_shift_change_v1'
+        : 'wellwerks_drillout_shift_change_v1:$jobId';
+    await prefs.setString(
+      key,
+      jsonEncode({
+        'showSweepTank': true,
+        'sweepGauge': '55',
+      }),
+    );
+
+    await _pumpScreen(tester);
+
+    await tester.scrollUntilVisible(
+      find.textContaining('Sweep Tank (Flowback Tank - Round Bottom)'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.textContaining('Sweep Tank (Flowback Tank - Round Bottom)'),
+      findsOneWidget,
+    );
+  });
 }

@@ -20,7 +20,7 @@ import '../widgets/shared_gauge_keypad.dart';
 import '../widgets/time_wheel_picker_sheet.dart';
 import '../widgets/ww_number_field.dart';
 
-enum _DrilloutGaugeTarget { primary, gas1, gas2, water1, water2 }
+enum _DrilloutGaugeTarget { primary, gas1, gas2, water1, water2, sweep }
 
 enum _DrilloutMode { shiftChange, update }
 
@@ -65,6 +65,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   final _gas2Gauge = TextEditingController();
   final _water1Gauge = TextEditingController();
   final _water2Gauge = TextEditingController();
+  final _sweepGauge = TextEditingController();
 
   JobSetup? _activeJob;
   String _primaryTank = 'sandx';
@@ -72,6 +73,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   bool _showGasTank2 = false;
   bool _showWaterTank = false;
   bool _showWaterTank2 = false;
+  bool _showSweepTank = false;
   String _waterTankType = 'flowback_round_bottom';
   String _waterTank2Type = 'flowback_round_bottom';
   _DrilloutGaugeTarget? _activeGaugeTarget;
@@ -227,6 +229,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _showGasTank2 = saved['showGasTank2'] as bool? ?? false;
       _showWaterTank = saved['showWaterTank'] as bool? ?? false;
       _showWaterTank2 = saved['showWaterTank2'] as bool? ?? false;
+      _showSweepTank = saved['showSweepTank'] as bool? ?? false;
       _waterTankType =
           _normalizeWaterTankType(saved['waterTankType'] as String?);
       _waterTank2Type =
@@ -297,6 +300,12 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _plugNumber.text = saved['plugNumber'] as String? ?? '';
       _coilDepth.text = saved['coilDepth'] as String? ?? '';
       _notes.text = saved['notes'] as String? ?? '';
+      _primaryGauge.text = saved['primaryGauge'] as String? ?? '';
+      _gas1Gauge.text = saved['gas1Gauge'] as String? ?? '';
+      _gas2Gauge.text = saved['gas2Gauge'] as String? ?? '';
+      _water1Gauge.text = saved['water1Gauge'] as String? ?? '';
+      _water2Gauge.text = saved['water2Gauge'] as String? ?? '';
+      _sweepGauge.text = saved['sweepGauge'] as String? ?? '';
       _latestCalculatedRate = latestRate;
 
       if (_rate.text.trim().isEmpty && latestRate != null) {
@@ -328,6 +337,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         'showGasTank2': _showGasTank2,
         'showWaterTank': _showWaterTank,
         'showWaterTank2': _showWaterTank2,
+        'showSweepTank': _showSweepTank,
         'waterTankType': _waterTankType,
         'waterTank2Type': _waterTank2Type,
         'selectedHour': _selectedTime.hour,
@@ -359,6 +369,12 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         'gas': _gas,
         'sand': _sand,
         'notes': _notes.text.trim(),
+        'primaryGauge': _primaryGauge.text.trim(),
+        'gas1Gauge': _gas1Gauge.text.trim(),
+        'gas2Gauge': _gas2Gauge.text.trim(),
+        'water1Gauge': _water1Gauge.text.trim(),
+        'water2Gauge': _water2Gauge.text.trim(),
+        'sweepGauge': _sweepGauge.text.trim(),
       }),
     );
   }
@@ -556,6 +572,8 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         return _water1Gauge;
       case _DrilloutGaugeTarget.water2:
         return _water2Gauge;
+      case _DrilloutGaugeTarget.sweep:
+        return _sweepGauge;
       case null:
         return null;
     }
@@ -573,6 +591,8 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         return 'Water Tank';
       case _DrilloutGaugeTarget.water2:
         return 'Water Tank 2';
+      case _DrilloutGaugeTarget.sweep:
+        return 'Sweep Tank';
       case null:
         return '';
     }
@@ -589,6 +609,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     setState(() {
       controller.value = GaugeKeypadInput.insert(controller.value, raw);
     });
+    _saveSetup();
   }
 
   void _backspaceGauge() {
@@ -597,12 +618,14 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     setState(() {
       controller.value = GaugeKeypadInput.backspace(controller.value);
     });
+    _saveSetup();
   }
 
   void _clearActiveGauge() {
     final controller = _activeGaugeController;
     if (controller == null) return;
     setState(controller.clear);
+    _saveSetup();
   }
 
   void _closeGaugeKeypad() {
@@ -672,107 +695,147 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
 
   String _inventoryLine(String label, double? gauge, TankChart chart) {
     if (gauge == null) {
-      return '$label: — / — bbl';
+      return '$label: -';
     }
     if (!chart.supportsGauge(gauge)) {
-      return '$label: ${_fmtTrim(gauge)}" / out of range';
+      return '$label: out of range';
     }
-    return '$label: ${_fmtTrim(gauge)}" / ${chart.barrelsAt(gauge).round()} bbl';
+    return '$label: ${chart.barrelsAt(gauge).round()} bbl';
+  }
+
+  double? _barrelsForGauge(double? gauge, TankChart chart) {
+    if (gauge == null) return null;
+    if (!chart.supportsGauge(gauge)) return null;
+    return chart.barrelsAt(gauge);
   }
 
   String _composeText() {
     final primaryGauge = _parseGaugeOrNull(_primaryGauge.text);
+    final gas1Gauge = _parseGaugeOrNull(_gas1Gauge.text);
+    final gas2Gauge = _parseGaugeOrNull(_gas2Gauge.text);
+    final water1Gauge = _parseGaugeOrNull(_water1Gauge.text);
+    final water2Gauge = _parseGaugeOrNull(_water2Gauge.text);
+    final sweepGauge = _parseGaugeOrNull(_sweepGauge.text);
     final padName = _activeJob?.padName.trim() ?? '';
     final company = _customer.text.trim();
     final wellName = _wellName.text.trim();
 
-    final lines = <String>[];
+    final headerLines = <String>[
+      '${_formatTime(_selectedTime)} $_workflowLabel $_modeLabel',
+    ];
+    if (company.isNotEmpty) headerLines.add(company);
+    if (padName.isNotEmpty) headerLines.add(padName);
+    if (wellName.isNotEmpty) headerLines.add(wellName);
 
-    lines.add('${_formatTime(_selectedTime)} $_workflowLabel $_modeLabel');
-    if (company.isNotEmpty) lines.add(company);
-    if (padName.isNotEmpty) lines.add(padName);
-    if (wellName.isNotEmpty) lines.add(wellName);
-
+    final detailLines = <String>[];
     if (_showStatus && (_status ?? '').trim().isNotEmpty) {
-      lines.add('Status: ${_status!.trim()}');
+      detailLines.add('Status: ${_status!.trim()}');
     }
     if (_showStatus && _showPlugNumber && _hasEnteredValue(_plugNumber.text)) {
-      lines.add('Plug #: ${_plugNumber.text.trim()}');
+      detailLines.add('Plug #: ${_plugNumber.text.trim()}');
     }
     if (_showStatus && _showCoilDepth && _hasEnteredValue(_coilDepth.text)) {
-      lines.add('Coil Depth: ${_coilDepth.text.trim()} ft');
+      detailLines.add('Coil Depth: ${_coilDepth.text.trim()} ft');
     }
     if (_showGas) {
       final gasValue = (_gas ?? '').trim();
-      lines.add('Gas: ${gasValue.isEmpty ? '-' : gasValue}');
+      detailLines.add('Gas: ${gasValue.isEmpty ? '-' : gasValue}');
     }
     if (_showSand) {
       final sandValue = (_sand ?? '').trim();
-      lines.add('Sand: ${sandValue.isEmpty ? '-' : sandValue}');
+      detailLines.add('Sand: ${sandValue.isEmpty ? '-' : sandValue}');
     }
     if (!_choke.isNone) {
-      lines.add('Choke: ${formatChokeDisplay(_choke)}');
+      detailLines.add('Choke: ${formatChokeDisplay(_choke)}');
     }
 
-    lines.add('Rate: ${_fmtTrim(_resolvedRateBblPerMin())} BBL/min');
+    detailLines.add('Rate: ${_fmtTrim(_resolvedRateBblPerMin())} BBL/min');
 
     if (_includeManifoldPsi && _hasEnteredValue(_manifoldPsi.text)) {
-      lines.add('Manifold PSI: ${_manifoldPsi.text.trim()}');
+      detailLines.add('Manifold PSI: ${_manifoldPsi.text.trim()}');
     }
     if (_includeCasingPsi && _hasEnteredValue(_casingPsi.text)) {
-      lines.add('Casing PSI: ${_casingPsi.text.trim()}');
+      detailLines.add('Casing PSI: ${_casingPsi.text.trim()}');
     }
     if (_includePumpPsi && _hasEnteredValue(_pumpPsi.text)) {
-      lines.add('Pump PSI: ${_pumpPsi.text.trim()}');
+      detailLines.add('Pump PSI: ${_pumpPsi.text.trim()}');
     }
     if (_includeSurfaceTotalFluid &&
         _hasEnteredValue(_surfaceTotalFluid.text)) {
-      lines.add(
+      detailLines.add(
           'Surface Total Fluid: ${_fmtWholeBbl(_surfaceTotalFluid.text)} bbl');
     }
     if (_includeWaterHauled && _hasEnteredValue(_waterHauled.text)) {
-      lines.add('Water Hauled: ${_fmtWholeBbl(_waterHauled.text)} bbl');
+      detailLines.add('Water Hauled: ${_fmtWholeBbl(_waterHauled.text)} bbl');
     }
     if (_includeOilHauled && _hasEnteredValue(_oilHauled.text)) {
-      lines.add('Oil Hauled: ${_fmtWholeBbl(_oilHauled.text)} bbl');
+      detailLines.add('Oil Hauled: ${_fmtWholeBbl(_oilHauled.text)} bbl');
     }
 
-    lines.add('Tank Inventory');
-    lines.add(
+    final inventoryLines = <String>['Tank Inventory'];
+    inventoryLines.add(
         _inventoryLine(_primaryTankLabel(), primaryGauge, _primaryChart()));
 
+    double totalBarrels = 0;
+    var hasTotal = false;
+    void addTotal(double? value) {
+      if (value == null) return;
+      hasTotal = true;
+      totalBarrels += value;
+    }
+
+    addTotal(_barrelsForGauge(primaryGauge, _primaryChart()));
+
     if (_showGasTank) {
-      final gauge = _parseGaugeOrNull(_gas1Gauge.text);
-      if (gauge != null) {
-        lines.add(_inventoryLine('Gas Tank', gauge, menardGasTankChart));
-      }
+      inventoryLines
+          .add(_inventoryLine('Gas Tank', gas1Gauge, menardGasTankChart));
+      addTotal(_barrelsForGauge(gas1Gauge, menardGasTankChart));
     }
     if (_showGasTank2) {
-      final gauge = _parseGaugeOrNull(_gas2Gauge.text);
-      if (gauge != null) {
-        lines.add(_inventoryLine('Gas Tank 2', gauge, menardGasTankChart));
-      }
+      inventoryLines
+          .add(_inventoryLine('Gas Tank 2', gas2Gauge, menardGasTankChart));
+      addTotal(_barrelsForGauge(gas2Gauge, menardGasTankChart));
     }
     if (_showWaterTank) {
-      final gauge = _parseGaugeOrNull(_water1Gauge.text);
-      lines.add(_inventoryLine(
-          'Water Tank', gauge, _flowbackWaterChart(_waterTankType)));
+      inventoryLines.add(_inventoryLine(
+          'Water Tank', water1Gauge, _flowbackWaterChart(_waterTankType)));
+      addTotal(
+          _barrelsForGauge(water1Gauge, _flowbackWaterChart(_waterTankType)));
     }
     if (_showWaterTank2) {
-      final gauge = _parseGaugeOrNull(_water2Gauge.text);
-      lines.add(_inventoryLine(
-          'Water Tank 2', gauge, _flowbackWaterChart(_waterTank2Type)));
+      inventoryLines.add(_inventoryLine(
+          'Water Tank 2', water2Gauge, _flowbackWaterChart(_waterTank2Type)));
+      addTotal(
+          _barrelsForGauge(water2Gauge, _flowbackWaterChart(_waterTank2Type)));
+    }
+    if (_showSweepTank) {
+      inventoryLines.add(
+          _inventoryLine('Sweep Tank', sweepGauge, flowbackRoundBottomChart));
+      addTotal(_barrelsForGauge(sweepGauge, flowbackRoundBottomChart));
     }
 
-    if (_hasEnteredValue(_notes.text)) {
-      lines.add('Notes: ${_notes.text.trim()}');
-    }
+    inventoryLines.add(
+      hasTotal
+          ? 'Total Barrels on Location: ${totalBarrels.round()} bbl'
+          : 'Total Barrels on Location: -',
+    );
 
-    return lines.where((line) => line.trim().isNotEmpty).join('\n');
+    final blocks = <String>[
+      headerLines.where((line) => line.trim().isNotEmpty).join('\n'),
+      if (detailLines.isNotEmpty) detailLines.join('\n'),
+      inventoryLines.join('\n'),
+      if (_hasEnteredValue(_notes.text)) 'Notes: ${_notes.text.trim()}',
+    ];
+
+    return blocks.where((block) => block.trim().isNotEmpty).join('\n\n');
+  }
+
+  String _currentOutputText() {
+    return _editedText.trim().isNotEmpty ? _editedText : _composeText();
   }
 
   Future<void> _preview() async {
-    final text = _editedText.trim().isNotEmpty ? _editedText : _composeText();
+    final text = _currentOutputText();
     if (!mounted) return;
     await showDialog<void>(
       context: context,
@@ -819,7 +882,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   }
 
   Future<void> _copy() async {
-    final text = _editedText.trim().isNotEmpty ? _editedText : _composeText();
+    final text = _currentOutputText();
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -864,6 +927,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _gas2Gauge.clear();
       _water1Gauge.clear();
       _water2Gauge.clear();
+      _sweepGauge.clear();
       _status = null;
       _gas = null;
       _sand = null;
@@ -907,6 +971,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _showGasTank2 = false;
       _showWaterTank = false;
       _showWaterTank2 = false;
+      _showSweepTank = false;
       _waterTankType = 'flowback_round_bottom';
       _waterTank2Type = 'flowback_round_bottom';
       _choke = const ChokeSelection(type: ChokeTypes.none);
@@ -942,6 +1007,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _gas2Gauge.clear();
       _water1Gauge.clear();
       _water2Gauge.clear();
+      _sweepGauge.clear();
       _editedText = '';
       _activeGaugeTarget = null;
     });
@@ -986,7 +1052,10 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
               hintText: '30.25',
               active: _activeGaugeTarget == target,
               onTap: () => _setActiveGauge(target),
-              onChanged: (_) => setState(() {}),
+              onChanged: (_) {
+                setState(() {});
+                _saveSetup();
+              },
             ),
             Text(
               'Gauge: $gaugeText   •   Barrels: $barrelText',
@@ -1023,6 +1092,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     _gas2Gauge.dispose();
     _water1Gauge.dispose();
     _water2Gauge.dispose();
+    _sweepGauge.dispose();
     super.dispose();
   }
 
@@ -1583,6 +1653,23 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                                 target: _DrilloutGaugeTarget.water2,
                               ),
                             ],
+                          ),
+                        SwitchListTile.adaptive(
+                          value: _showSweepTank,
+                          onChanged: (value) {
+                            setState(() => _showSweepTank = value);
+                            _saveSetup();
+                          },
+                          title: const Text('Sweep Tank'),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        if (_showSweepTank)
+                          _gaugeCard(
+                            title:
+                                'Sweep Tank (${_waterTypeLabel('flowback_round_bottom')})',
+                            chart: flowbackRoundBottomChart,
+                            controller: _sweepGauge,
+                            target: _DrilloutGaugeTarget.sweep,
                           ),
                       ],
                     ),

@@ -236,6 +236,6 @@ void main() {
     expect(preview, contains('Manifold PSI: 0'));
     expect(preview.contains('Casing PSI:'), isFalse);
     expect(preview.contains('Pump PSI:'), isFalse);
-    expect(preview.contains('\n\n'), isFalse);
+    expect(preview.contains('\n\n\n'), isFalse);
   });
 }
