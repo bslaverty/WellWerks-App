@@ -5951,6 +5951,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _selectedIds.clear();
       _nextId = 1;
     });
+
+    // Persist the cleared working canvas immediately so stale layouts
+    // are not restored after app restart.
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        'wellwerks_layout_designer_v2', jsonEncode(_payload()));
+    await prefs.remove('wellwerks_layout_designer_v1');
   }
 
   Map<String, dynamic> _inventorySnapshot() {
@@ -13383,12 +13390,13 @@ class _CompletionsArtworkPainter extends CustomPainter {
         canvas.drawCircle(reelCenter, size.shortestSide * 0.22, outline);
         canvas.drawCircle(reelCenter, size.shortestSide * 0.15, bodyFill);
         canvas.drawCircle(reelCenter, size.shortestSide * 0.06, outline);
+        // Tubing exits from the top of the reel and extends outward.
         canvas.drawLine(Offset(size.width * 0.36, size.height * 0.24),
-            Offset(size.width * 0.36, size.height * 0.14), detail);
-        canvas.drawLine(Offset(size.width * 0.36, size.height * 0.14),
-            Offset(size.width * 0.54, size.height * 0.12), detail);
-        canvas.drawLine(Offset(size.width * 0.54, size.height * 0.12),
-            Offset(size.width * 0.62, size.height * 0.20), detail);
+            Offset(size.width * 0.36, size.height * 0.13), detail);
+        canvas.drawLine(Offset(size.width * 0.36, size.height * 0.13),
+            Offset(size.width * 0.20, size.height * 0.10), detail);
+        canvas.drawLine(Offset(size.width * 0.20, size.height * 0.10),
+            Offset(size.width * 0.12, size.height * 0.15), detail);
         drawAxles(
             <double>[size.width * 0.24, size.width * 0.42, size.width * 0.60],
             size.height * 0.74,
@@ -13449,56 +13457,68 @@ class _CompletionsArtworkPainter extends CustomPainter {
             size.shortestSide * 0.05);
         break;
       case _EquipmentType.crane:
-        final track = Rect.fromLTWH(size.width * 0.12, size.height * 0.62,
-            size.width * 0.52, size.height * 0.14);
-        canvas.drawRect(track, bodyFill);
-        canvas.drawRect(track, outline);
-        for (final x in <double>[0.18, 0.26, 0.34, 0.42, 0.50, 0.58]) {
-          drawWheel(Offset(size.width * x, size.height * 0.69),
-              size.shortestSide * 0.025);
-        }
-        final house = Rect.fromLTWH(size.width * 0.28, size.height * 0.46,
-            size.width * 0.18, size.height * 0.16);
-        canvas.drawRect(house, bodyFill);
-        canvas.drawRect(house, outline);
-        canvas.drawLine(Offset(size.width * 0.37, size.height * 0.46),
-            Offset(size.width * 0.58, size.height * 0.28), outline);
-        canvas.drawLine(Offset(size.width * 0.58, size.height * 0.28),
-            Offset(size.width * 0.90, size.height * 0.16), outline);
-        canvas.drawLine(Offset(size.width * 0.88, size.height * 0.18),
-            Offset(size.width * 0.88, size.height * 0.44), detail);
+        final chassis = Rect.fromLTWH(size.width * 0.12, size.height * 0.58,
+            size.width * 0.74, size.height * 0.10);
+        canvas.drawRect(chassis, bodyFill);
+        canvas.drawRect(chassis, outline);
+        final frontCab = Rect.fromLTWH(size.width * 0.74, size.height * 0.40,
+            size.width * 0.14, size.height * 0.18);
+        canvas.drawRect(frontCab, bodyFill);
+        canvas.drawRect(frontCab, outline);
+        final craneBody = Rect.fromLTWH(size.width * 0.38, size.height * 0.42,
+            size.width * 0.26, size.height * 0.16);
+        canvas.drawRect(craneBody, bodyFill);
+        canvas.drawRect(craneBody, outline);
+        final boom = Path()
+          ..moveTo(size.width * 0.46, size.height * 0.44)
+          ..lineTo(size.width * 0.86, size.height * 0.20)
+          ..lineTo(size.width * 0.89, size.height * 0.24)
+          ..lineTo(size.width * 0.49, size.height * 0.48)
+          ..close();
+        canvas.drawPath(boom, bodyFill);
+        canvas.drawPath(boom, outline);
+        canvas.drawLine(Offset(size.width * 0.89, size.height * 0.24),
+            Offset(size.width * 0.89, size.height * 0.40), detail);
         canvas.drawRect(
-            Rect.fromLTWH(size.width * 0.86, size.height * 0.44,
-                size.width * 0.04, size.height * 0.08),
+            Rect.fromLTWH(size.width * 0.87, size.height * 0.40,
+                size.width * 0.04, size.height * 0.07),
             bodyFill);
         canvas.drawRect(
-            Rect.fromLTWH(size.width * 0.86, size.height * 0.44,
-                size.width * 0.04, size.height * 0.08),
+            Rect.fromLTWH(size.width * 0.87, size.height * 0.40,
+                size.width * 0.04, size.height * 0.07),
             outline);
-        canvas.drawCircle(Offset(size.width * 0.88, size.height * 0.54),
-            size.shortestSide * 0.02, outline);
+        canvas.drawCircle(Offset(size.width * 0.89, size.height * 0.49),
+            size.shortestSide * 0.018, outline);
+        drawAxles(<double>[
+          size.width * 0.20,
+          size.width * 0.36,
+          size.width * 0.56,
+          size.width * 0.74
+        ], size.height * 0.74, size.shortestSide * 0.04);
         break;
       case _EquipmentType.lightPlant:
-        final trailer = Rect.fromLTWH(size.width * 0.18, size.height * 0.54,
-            size.width * 0.30, size.height * 0.14);
+        final trailer = Rect.fromLTWH(size.width * 0.20, size.height * 0.56,
+            size.width * 0.26, size.height * 0.12);
         canvas.drawRect(trailer, bodyFill);
         canvas.drawRect(trailer, outline);
-        drawAxles(<double>[size.width * 0.24, size.width * 0.44],
-            size.height * 0.76, size.shortestSide * 0.05);
-        canvas.drawLine(Offset(size.width * 0.33, size.height * 0.54),
+        canvas.drawLine(Offset(size.width * 0.46, size.height * 0.62),
+            Offset(size.width * 0.58, size.height * 0.62), outline);
+        drawAxles(<double>[size.width * 0.24, size.width * 0.42],
+            size.height * 0.75, size.shortestSide * 0.042);
+        canvas.drawLine(Offset(size.width * 0.33, size.height * 0.56),
             Offset(size.width * 0.33, size.height * 0.16), outline);
-        canvas.drawLine(Offset(size.width * 0.24, size.height * 0.18),
-            Offset(size.width * 0.42, size.height * 0.18), outline);
+        canvas.drawLine(Offset(size.width * 0.22, size.height * 0.16),
+            Offset(size.width * 0.44, size.height * 0.16), outline);
         for (final head in <Offset>[
-          Offset(size.width * 0.24, size.height * 0.14),
-          Offset(size.width * 0.29, size.height * 0.14),
-          Offset(size.width * 0.37, size.height * 0.14),
-          Offset(size.width * 0.42, size.height * 0.14),
+          Offset(size.width * 0.24, size.height * 0.12),
+          Offset(size.width * 0.30, size.height * 0.12),
+          Offset(size.width * 0.36, size.height * 0.12),
+          Offset(size.width * 0.42, size.height * 0.12),
         ]) {
           final lamp = Rect.fromCenter(
               center: head,
-              width: size.width * 0.055,
-              height: size.height * 0.038);
+              width: size.width * 0.050,
+              height: size.height * 0.034);
           canvas.drawRect(lamp, bodyFill);
           canvas.drawRect(lamp, outline);
         }
@@ -13508,18 +13528,14 @@ class _CompletionsArtworkPainter extends CustomPainter {
             Offset(size.width * 0.90, size.height * 0.62), outline);
         drawRightCab(Rect.fromLTWH(size.width * 0.74, size.height * 0.38,
             size.width * 0.14, size.height * 0.20));
-        final operatorCab = Rect.fromLTWH(size.width * 0.56, size.height * 0.40,
-            size.width * 0.14, size.height * 0.18);
-        canvas.drawRect(operatorCab, bodyFill);
-        canvas.drawRect(operatorCab, outline);
-        final wirelineBody = Rect.fromLTWH(size.width * 0.20,
-            size.height * 0.36, size.width * 0.30, size.height * 0.24);
+        final wirelineBody = Rect.fromLTWH(size.width * 0.34,
+            size.height * 0.36, size.width * 0.34, size.height * 0.24);
         canvas.drawRect(wirelineBody, bodyFill);
         canvas.drawRect(wirelineBody, outline);
-        canvas.drawLine(Offset(size.width * 0.20, size.height * 0.42),
-            Offset(size.width * 0.10, size.height * 0.34), detail);
-        canvas.drawLine(Offset(size.width * 0.10, size.height * 0.34),
-            Offset(size.width * 0.06, size.height * 0.28), detail);
+        canvas.drawLine(Offset(size.width * 0.34, size.height * 0.42),
+            Offset(size.width * 0.22, size.height * 0.34), detail);
+        canvas.drawLine(Offset(size.width * 0.22, size.height * 0.34),
+            Offset(size.width * 0.18, size.height * 0.28), detail);
         drawAxles(
             <double>[size.width * 0.26, size.width * 0.48, size.width * 0.70],
             size.height * 0.76,

@@ -397,9 +397,9 @@ Future<void> _pumpLayout(
 }
 
 void main() {
-  test('Build number is 177', () async {
+  test('Build number is 178', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+177'));
+    expect(pubspec, contains('version: 1.0.1+178'));
   });
 
   testWidgets('Selected bypass shows built-in lead handles', (tester) async {
