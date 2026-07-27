@@ -106,6 +106,37 @@ Future<void> _expectCopyLabel(WidgetTester tester, String label) async {
   expect(find.widgetWithText(OutlinedButton, label), findsOneWidget);
 }
 
+Future<String> _jobScopedShiftKey() async {
+  final activeJob = await JobStorageService().loadActiveJob();
+  final jobId = (activeJob?.id ?? '').trim();
+  return jobId.isEmpty
+      ? 'wellwerks_drillout_shift_change_v1'
+      : 'wellwerks_drillout_shift_change_v1:$jobId';
+}
+
+Future<void> _seedShiftSetup(Map<String, dynamic> setup) async {
+  final prefs = await SharedPreferences.getInstance();
+  final key = await _jobScopedShiftKey();
+  await prefs.setString(key, jsonEncode(setup));
+}
+
+Future<String> _copyAndRead(WidgetTester tester) async {
+  await tester.scrollUntilVisible(
+    find.byKey(const Key('drillout-action-copy')),
+    240,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+  final copyButton = tester.widget<OutlinedButton>(
+    find.byKey(const Key('drillout-action-copy')),
+  );
+  copyButton.onPressed!.call();
+  await tester.pumpAndSettle();
+
+  final clip = await Clipboard.getData('text/plain');
+  return clip?.text ?? '';
+}
+
 void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
@@ -649,5 +680,172 @@ void main() {
     expect(preview, contains('Sweep Tank 1:'));
     expect(preview, contains('Total On Location:'));
     expect(preview, contains('- -'));
+  });
+
+  testWidgets(
+      'Build 180 reported bug case includes Flowback Tank 2 and corrected total in preview and copy',
+      (WidgetTester tester) async {
+    await _seedShiftSetup({
+      'tankConfigurationV1': {
+        'sandTankType': 'fs3',
+        'flowbackTankTypes': [
+          'flowback_v_bottom',
+          'flowback_round_bottom',
+        ],
+        'sweepTankTypes': [
+          'flowback_round_bottom',
+          'flowback_round_bottom',
+        ],
+        'gaugesByRole': {
+          'sand_tank': '32',
+          'flowback_tank_1': '3',
+          'flowback_tank_2': '31',
+          'sweep_tank_1': '31',
+          'sweep_tank_2': '31',
+        },
+      },
+    });
+
+    await _pumpScreen(tester);
+
+    final preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('Sand Tank:'));
+    expect(preview, contains('Flowback Tank 1:'));
+    expect(preview, contains('Flowback Tank 2:'));
+    expect(preview, contains('Sweep Tank 1:'));
+    expect(preview, contains('Sweep Tank 2:'));
+    expect(preview, contains('Flowback Tank 1:'));
+    expect(preview, contains('3" -'));
+    expect(preview, contains('31" - 141 bbl'));
+    expect(preview, contains('Total On Location: 603 bbl'));
+
+    String copiedText = '';
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (methodCall) async {
+        if (methodCall.method == 'Clipboard.setData') {
+          final args = methodCall.arguments;
+          if (args is Map) {
+            copiedText = (args['text'] as String?) ?? '';
+          }
+          return null;
+        }
+        if (methodCall.method == 'Clipboard.getData') {
+          return <String, dynamic>{'text': copiedText};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+
+    final copied = await _copyAndRead(tester);
+    expect(copied, preview);
+    expect(copied, contains('Flowback Tank 2:'));
+    expect(copied, contains('Total On Location: 603 bbl'));
+  });
+
+  testWidgets(
+      'Build 180 missing middle reading still includes Flowback Tank 3 and totals only populated tanks',
+      (WidgetTester tester) async {
+    await _seedShiftSetup({
+      'tankConfigurationV1': {
+        'sandTankType': 'sandx',
+        'flowbackTankTypes': [
+          'flowback_round_bottom',
+          'flowback_round_bottom',
+          'flowback_round_bottom',
+        ],
+        'sweepTankTypes': [],
+        'gaugesByRole': {
+          'sand_tank': '',
+          'flowback_tank_1': '3',
+          'flowback_tank_2': '',
+          'flowback_tank_3': '31',
+        },
+      },
+    });
+
+    await _pumpScreen(tester);
+
+    final preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('Flowback Tank 1:'));
+    expect(preview, contains('Flowback Tank 2:'));
+    expect(preview, contains('Flowback Tank 3:'));
+    expect(preview, contains('Flowback Tank 1:'));
+    expect(preview, contains('3" -'));
+    expect(preview, contains('Flowback Tank 2:        - -       -'));
+    expect(preview, contains('31" - 141 bbl'));
+    expect(preview, contains('Total On Location: 154 bbl'));
+  });
+
+  testWidgets(
+      'Build 180 disabled sweep tank does not appear or contribute after reopen',
+      (WidgetTester tester) async {
+    await _seedShiftSetup({
+      'tankConfigurationV1': {
+        'sandTankType': 'sandx',
+        'flowbackTankTypes': [],
+        'sweepTankTypes': ['flowback_round_bottom'],
+        'gaugesByRole': {
+          'sweep_tank_1': '31',
+          'sweep_tank_2': '31',
+        },
+      },
+    });
+
+    await _pumpScreen(tester);
+    var preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('Sweep Tank 1:'));
+    expect(preview.contains('Sweep Tank 2:'), isFalse);
+    expect(preview, contains('Total On Location: 141 bbl'));
+
+    await _pumpScreen(tester);
+    preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('Sweep Tank 1:'));
+    expect(preview.contains('Sweep Tank 2:'), isFalse);
+    expect(preview, contains('Total On Location: 141 bbl'));
+  });
+
+  testWidgets('Build 180 maximum tanks all appear once and contribute to total',
+      (WidgetTester tester) async {
+    await _seedShiftSetup({
+      'tankConfigurationV1': {
+        'sandTankType': 'flowback_round_bottom',
+        'flowbackTankTypes': [
+          'flowback_round_bottom',
+          'flowback_round_bottom',
+          'flowback_round_bottom',
+        ],
+        'sweepTankTypes': [
+          'flowback_round_bottom',
+          'flowback_round_bottom',
+          'flowback_round_bottom',
+        ],
+        'gaugesByRole': {
+          'sand_tank': '31',
+          'flowback_tank_1': '31',
+          'flowback_tank_2': '31',
+          'flowback_tank_3': '31',
+          'sweep_tank_1': '31',
+          'sweep_tank_2': '31',
+          'sweep_tank_3': '31',
+        },
+      },
+    });
+
+    await _pumpScreen(tester);
+
+    final preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('Sand Tank:'));
+    expect(preview, contains('Flowback Tank 1:'));
+    expect(preview, contains('Flowback Tank 2:'));
+    expect(preview, contains('Flowback Tank 3:'));
+    expect(preview, contains('Sweep Tank 1:'));
+    expect(preview, contains('Sweep Tank 2:'));
+    expect(preview, contains('Sweep Tank 3:'));
+    expect(preview, contains('Total On Location: 985 bbl'));
   });
 }

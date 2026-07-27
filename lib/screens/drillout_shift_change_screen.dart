@@ -383,6 +383,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   Future<void> _saveSetup() async {
     final prefs = await SharedPreferences.getInstance();
     final roleGauges = <String, String>{
+      ..._tankConfig.gaugesByRole,
       DrilloutTankCatalog.roleSandTank: _primaryGauge.text.trim(),
       DrilloutTankCatalog.roleFlowback1: _water1Gauge.text.trim(),
       DrilloutTankCatalog.roleFlowback2: _water2Gauge.text.trim(),
@@ -390,7 +391,6 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       DrilloutTankCatalog.roleSweep1: _sweepGauge.text.trim(),
       DrilloutTankCatalog.roleSweep2: _sweep2Gauge.text.trim(),
       DrilloutTankCatalog.roleSweep3: _sweep3Gauge.text.trim(),
-      ..._tankConfig.gaugesByRole,
     };
     final configWithGauges = _tankConfig.copyWith(gaugesByRole: roleGauges);
     final legacyCompat = configWithGauges.toLegacyCompatJson();
@@ -826,6 +826,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
 
   List<DrilloutTankSelection> _activeTankSelections() {
     final gauges = <String, String>{
+      ..._tankConfig.gaugesByRole,
       DrilloutTankCatalog.roleSandTank: _primaryGauge.text.trim(),
       DrilloutTankCatalog.roleFlowback1: _water1Gauge.text.trim(),
       DrilloutTankCatalog.roleFlowback2: _water2Gauge.text.trim(),
@@ -833,7 +834,6 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       DrilloutTankCatalog.roleSweep1: _sweepGauge.text.trim(),
       DrilloutTankCatalog.roleSweep2: _sweep2Gauge.text.trim(),
       DrilloutTankCatalog.roleSweep3: _sweep3Gauge.text.trim(),
-      ..._tankConfig.gaugesByRole,
     };
     return _tankConfig.copyWith(gaugesByRole: gauges).activeSelections;
   }

@@ -342,11 +342,11 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     };
 
     final roleGauges = <String, String>{
+      ..._tankConfig.gaugesByRole,
       DrilloutTankCatalog.roleSandTank: _flowbackGauge.text.trim(),
       DrilloutTankCatalog.roleFlowback1: _waterTank1Gauge.text.trim(),
       DrilloutTankCatalog.roleFlowback2: _waterTank2Gauge.text.trim(),
       DrilloutTankCatalog.roleSweep1: _sweepTankGauge.text.trim(),
-      ..._tankConfig.gaugesByRole,
     };
 
     final configWithGauges = _tankConfig.copyWith(gaugesByRole: roleGauges);
