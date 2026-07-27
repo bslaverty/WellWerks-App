@@ -83,6 +83,10 @@ class JsaDraft {
     this.weatherTemperature = '',
     this.weatherConditions = '',
     this.weatherWind = '',
+    this.emergencyHospitalName = '',
+    this.emergencyHospitalAddress = '',
+    this.emergencyHospitalCoordinates = '',
+    this.emergencyHospitalIsManual = false,
   }) : tasks = tasks ?? (task.isEmpty ? <String>[] : <String>[task]);
 
   String activeJobId;
@@ -106,6 +110,10 @@ class JsaDraft {
   String weatherTemperature;
   String weatherConditions;
   String weatherWind;
+  String emergencyHospitalName;
+  String emergencyHospitalAddress;
+  String emergencyHospitalCoordinates;
+  bool emergencyHospitalIsManual;
 
   Map<String, dynamic> toJson() => {
         'activeJobId': activeJobId,
@@ -129,6 +137,10 @@ class JsaDraft {
         'weatherTemperature': weatherTemperature,
         'weatherConditions': weatherConditions,
         'weatherWind': weatherWind,
+        'emergencyHospitalName': emergencyHospitalName,
+        'emergencyHospitalAddress': emergencyHospitalAddress,
+        'emergencyHospitalCoordinates': emergencyHospitalCoordinates,
+        'emergencyHospitalIsManual': emergencyHospitalIsManual,
       };
 
   factory JsaDraft.fromJson(Map<String, dynamic> json) => JsaDraft(
@@ -160,5 +172,12 @@ class JsaDraft {
         weatherTemperature: json['weatherTemperature'] as String? ?? '',
         weatherConditions: json['weatherConditions'] as String? ?? '',
         weatherWind: json['weatherWind'] as String? ?? '',
+        emergencyHospitalName: json['emergencyHospitalName'] as String? ?? '',
+        emergencyHospitalAddress:
+            json['emergencyHospitalAddress'] as String? ?? '',
+        emergencyHospitalCoordinates:
+            json['emergencyHospitalCoordinates'] as String? ?? '',
+        emergencyHospitalIsManual:
+            json['emergencyHospitalIsManual'] as bool? ?? false,
       );
 }

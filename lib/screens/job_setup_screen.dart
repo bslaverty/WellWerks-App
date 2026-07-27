@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../models/drillout_tank_configuration.dart';
 import '../models/job_setup.dart';
 import '../services/active_company_service.dart';
 import '../services/active_workflow_mode_service.dart';
@@ -87,14 +88,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   final _drilloutStatus = TextEditingController();
   final _drilloutCoilDepth = TextEditingController();
 
-  bool _showFlowbackTank = true;
-  bool _showWaterTank1 = false;
-  bool _showWaterTank2 = false;
-  bool _showSweepTank = false;
-
-  String _flowbackTankType = 'flowback_round_bottom';
-  String _waterTank1Type = 'flowback_round_bottom';
-  String _waterTank2Type = 'flowback_round_bottom';
+  DrilloutTankConfiguration _tankConfig = DrilloutTankConfiguration.defaults;
 
   final _flowbackGauge = TextEditingController();
   final _waterTank1Gauge = TextEditingController();
@@ -293,23 +287,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     _drilloutStatus.text = _legacyString(setup['status']);
     _drilloutCoilDepth.text = _legacyString(setup['coilDepth']);
 
-    _showFlowbackTank = _legacyBool(setup['showFlowbackTank'], fallback: true);
-    _showWaterTank1 = _legacyBool(setup['showWaterTank1']);
-    _showWaterTank2 = _legacyBool(setup['showWaterTank2']);
-    _showSweepTank = _legacyBool(setup['showSweepTank']);
-
-    _flowbackTankType = _legacyString(
-      setup['flowbackTankType'],
-      fallback: 'flowback_round_bottom',
-    );
-    _waterTank1Type = _legacyString(
-      setup['waterTank1Type'],
-      fallback: 'flowback_round_bottom',
-    );
-    _waterTank2Type = _legacyString(
-      setup['waterTank2Type'],
-      fallback: 'flowback_round_bottom',
-    );
+    _tankConfig = DrilloutTankConfiguration.fromDrilloutSetup(setup);
 
     _flowbackGauge.text = _legacyString(setup['flowbackGauge']);
     _waterTank1Gauge.text = _legacyString(setup['waterTank1Gauge']);
@@ -326,16 +304,6 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     return text.isEmpty ? fallback : text;
   }
 
-  bool _legacyBool(dynamic value, {bool fallback = false}) {
-    if (value is bool) return value;
-    if (value is String) {
-      final normalized = value.trim().toLowerCase();
-      if (normalized == 'true') return true;
-      if (normalized == 'false') return false;
-    }
-    return fallback;
-  }
-
   void _resetDrilloutSetupForNewJob() {
     final active = _activeJob;
     _drilloutWellName.text = active?.primaryWell ?? '';
@@ -349,13 +317,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     _drilloutPlugNumber.clear();
     _drilloutStatus.clear();
     _drilloutCoilDepth.clear();
-    _showFlowbackTank = true;
-    _showWaterTank1 = false;
-    _showWaterTank2 = false;
-    _showSweepTank = false;
-    _flowbackTankType = 'flowback_round_bottom';
-    _waterTank1Type = 'flowback_round_bottom';
-    _waterTank2Type = 'flowback_round_bottom';
+    _tankConfig = DrilloutTankConfiguration.defaults;
     _flowbackGauge.clear();
     _waterTank1Gauge.clear();
     _waterTank2Gauge.clear();
@@ -363,7 +325,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   Map<String, dynamic> _buildDrilloutSetupPayload() {
-    return <String, dynamic>{
+    final payload = <String, dynamic>{
       'wellName': _drilloutWellName.text.trim(),
       'locationPad': padName.text.trim(),
       'manifoldPsi': _drilloutManifoldPsi.text.trim(),
@@ -376,18 +338,136 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       'plugNumber': _drilloutPlugNumber.text.trim(),
       'status': _drilloutStatus.text.trim(),
       'coilDepth': _drilloutCoilDepth.text.trim(),
-      'showFlowbackTank': _showFlowbackTank,
-      'showWaterTank1': _showWaterTank1,
-      'showWaterTank2': _showWaterTank2,
-      'showSweepTank': _showSweepTank,
-      'flowbackTankType': _flowbackTankType,
-      'waterTank1Type': _waterTank1Type,
-      'waterTank2Type': _waterTank2Type,
-      'flowbackGauge': _flowbackGauge.text.trim(),
-      'waterTank1Gauge': _waterTank1Gauge.text.trim(),
-      'waterTank2Gauge': _waterTank2Gauge.text.trim(),
-      'sweepTankGauge': _sweepTankGauge.text.trim(),
+      'tankConfigurationV1': _tankConfig.toJson(),
     };
+
+    final roleGauges = <String, String>{
+      DrilloutTankCatalog.roleSandTank: _flowbackGauge.text.trim(),
+      DrilloutTankCatalog.roleFlowback1: _waterTank1Gauge.text.trim(),
+      DrilloutTankCatalog.roleFlowback2: _waterTank2Gauge.text.trim(),
+      DrilloutTankCatalog.roleSweep1: _sweepTankGauge.text.trim(),
+      ..._tankConfig.gaugesByRole,
+    };
+
+    final configWithGauges = _tankConfig.copyWith(gaugesByRole: roleGauges);
+    payload['tankConfigurationV1'] = configWithGauges.toJson();
+    payload.addAll(configWithGauges.toLegacyCompatJson());
+    return payload;
+  }
+
+  List<DropdownMenuItem<String>> _tankTypeItemsForRole(String roleId) {
+    final role = DrilloutTankCatalog.roleById(roleId);
+    return role.allowedTypeIds
+        .map(
+          (typeId) => DropdownMenuItem<String>(
+            value: typeId,
+            child: Text(DrilloutTankCatalog.typeById(typeId).label),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> _setFlowbackTankCount(int count) async {
+    final current = _tankConfig.flowbackCount;
+    if (count >= current) {
+      final next = List<String>.from(_tankConfig.flowbackTankTypes);
+      while (next.length < count) {
+        next.add(DrilloutTankCatalog.typeFlowbackRoundBottom);
+      }
+      setState(() {
+        _tankConfig = _tankConfig.copyWith(flowbackTankTypes: next);
+      });
+      return;
+    }
+
+    final removedRoles = DrilloutTankCatalog.flowbackRoleIds.sublist(count);
+    final confirmed = await _confirmTankRoleReduction(removedRoles);
+    if (!confirmed) return;
+
+    setState(() {
+      _tankConfig = _tankConfig.copyWith(
+        flowbackTankTypes: _tankConfig.flowbackTankTypes.sublist(0, count),
+      );
+    });
+  }
+
+  Future<void> _setSweepTankCount(int count) async {
+    final current = _tankConfig.sweepCount;
+    if (count >= current) {
+      final next = List<String>.from(_tankConfig.sweepTankTypes);
+      while (next.length < count) {
+        next.add(DrilloutTankCatalog.typeFlowbackRoundBottom);
+      }
+      setState(() {
+        _tankConfig = _tankConfig.copyWith(sweepTankTypes: next);
+      });
+      return;
+    }
+
+    final removedRoles = DrilloutTankCatalog.sweepRoleIds.sublist(count);
+    final confirmed = await _confirmTankRoleReduction(removedRoles);
+    if (!confirmed) return;
+
+    setState(() {
+      _tankConfig = _tankConfig.copyWith(
+        sweepTankTypes: _tankConfig.sweepTankTypes.sublist(0, count),
+      );
+    });
+  }
+
+  Future<bool> _confirmTankRoleReduction(List<String> removedRoleIds) async {
+    bool hasData = false;
+    for (final roleId in removedRoleIds) {
+      if ((_tankConfig.gaugesByRole[roleId] ?? '').trim().isNotEmpty) {
+        hasData = true;
+        break;
+      }
+    }
+
+    if (!hasData) {
+      if (removedRoleIds.contains(DrilloutTankCatalog.roleFlowback3) &&
+          _waterTank2Gauge.text.trim().isNotEmpty) {
+        hasData = true;
+      }
+      if (removedRoleIds.contains(DrilloutTankCatalog.roleFlowback2) &&
+          _waterTank1Gauge.text.trim().isNotEmpty) {
+        hasData = true;
+      }
+      if (removedRoleIds.contains(DrilloutTankCatalog.roleSandTank) &&
+          _flowbackGauge.text.trim().isNotEmpty) {
+        hasData = true;
+      }
+      if (removedRoleIds.contains(DrilloutTankCatalog.roleSweep1) &&
+          _sweepTankGauge.text.trim().isNotEmpty) {
+        hasData = true;
+      }
+    }
+
+    if (!hasData) return true;
+
+    final labels = removedRoleIds
+        .map((id) => DrilloutTankCatalog.roleById(id).label)
+        .join(', ');
+    final decision = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove Tank Slots?'),
+        content: Text(
+          'Reducing tank quantity will remove $labels and any associated readings/history for those roles. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    return decision ?? false;
   }
 
   String _workflowStorageValue() {
@@ -1534,87 +1614,95 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
             fontWeight: FontWeight.w700,
           ),
         ),
-        SwitchListTile.adaptive(
-          title: const Text('Flowback Tank'),
-          value: _showFlowbackTank,
-          onChanged: (value) => setState(() => _showFlowbackTank = value),
-          contentPadding: EdgeInsets.zero,
+        DropdownButtonFormField<String>(
+          key: const Key('tank-config-sand-type'),
+          initialValue: _tankConfig.sandTankType,
+          decoration: const InputDecoration(labelText: 'Sand Tank Type'),
+          items: _tankTypeItemsForRole(DrilloutTankCatalog.roleSandTank),
+          onChanged: (value) {
+            if (value == null) return;
+            setState(() {
+              _tankConfig = _tankConfig.copyWith(sandTankType: value);
+            });
+          },
         ),
-        if (_showFlowbackTank)
-          DropdownButtonFormField<String>(
-            initialValue: _flowbackTankType,
-            decoration: const InputDecoration(labelText: 'Flowback Tank Type'),
-            items: const [
-              DropdownMenuItem(
-                value: 'flowback_round_bottom',
-                child: Text('Round Bottom'),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<int>(
+          key: const Key('tank-config-flowback-count'),
+          initialValue: _tankConfig.flowbackCount,
+          decoration:
+              const InputDecoration(labelText: 'Flowback Tank Quantity'),
+          items: const [
+            DropdownMenuItem<int>(value: 0, child: Text('0')),
+            DropdownMenuItem<int>(value: 1, child: Text('1')),
+            DropdownMenuItem<int>(value: 2, child: Text('2')),
+            DropdownMenuItem<int>(value: 3, child: Text('3')),
+          ],
+          onChanged: (value) {
+            if (value == null) return;
+            _setFlowbackTankCount(value);
+          },
+        ),
+        for (int i = 0; i < _tankConfig.flowbackCount; i++)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: DropdownButtonFormField<String>(
+              key: Key('tank-config-flowback-type-$i'),
+              initialValue: _tankConfig.flowbackTankTypes[i],
+              decoration: InputDecoration(
+                labelText: 'Flowback Tank ${i + 1} Type',
               ),
-              DropdownMenuItem(
-                value: 'flowback500',
-                child: Text('V-Bottom'),
+              items: _tankTypeItemsForRole(
+                DrilloutTankCatalog.flowbackRoleIds[i],
               ),
-            ],
-            onChanged: (value) {
-              if (value == null) return;
-              setState(() => _flowbackTankType = value);
-            },
+              onChanged: (value) {
+                if (value == null) return;
+                final types = List<String>.from(_tankConfig.flowbackTankTypes);
+                types[i] = value;
+                setState(() {
+                  _tankConfig = _tankConfig.copyWith(flowbackTankTypes: types);
+                });
+              },
+            ),
           ),
-        SwitchListTile.adaptive(
-          title: const Text('Water Tank 1'),
-          value: _showWaterTank1,
-          onChanged: (value) => setState(() => _showWaterTank1 = value),
-          contentPadding: EdgeInsets.zero,
+        const SizedBox(height: 10),
+        DropdownButtonFormField<int>(
+          key: const Key('tank-config-sweep-count'),
+          initialValue: _tankConfig.sweepCount,
+          decoration: const InputDecoration(labelText: 'Sweep Tank Quantity'),
+          items: const [
+            DropdownMenuItem<int>(value: 0, child: Text('0')),
+            DropdownMenuItem<int>(value: 1, child: Text('1')),
+            DropdownMenuItem<int>(value: 2, child: Text('2')),
+            DropdownMenuItem<int>(value: 3, child: Text('3')),
+          ],
+          onChanged: (value) {
+            if (value == null) return;
+            _setSweepTankCount(value);
+          },
         ),
-        if (_showWaterTank1)
-          DropdownButtonFormField<String>(
-            initialValue: _waterTank1Type,
-            decoration: const InputDecoration(labelText: 'Water Tank 1 Type'),
-            items: const [
-              DropdownMenuItem(
-                value: 'flowback_round_bottom',
-                child: Text('Round Bottom'),
+        for (int i = 0; i < _tankConfig.sweepCount; i++)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: DropdownButtonFormField<String>(
+              key: Key('tank-config-sweep-type-$i'),
+              initialValue: _tankConfig.sweepTankTypes[i],
+              decoration: InputDecoration(
+                labelText: 'Sweep Tank ${i + 1} Type',
               ),
-              DropdownMenuItem(
-                value: 'flowback500',
-                child: Text('V-Bottom'),
+              items: _tankTypeItemsForRole(
+                DrilloutTankCatalog.sweepRoleIds[i],
               ),
-            ],
-            onChanged: (value) {
-              if (value == null) return;
-              setState(() => _waterTank1Type = value);
-            },
+              onChanged: (value) {
+                if (value == null) return;
+                final types = List<String>.from(_tankConfig.sweepTankTypes);
+                types[i] = value;
+                setState(() {
+                  _tankConfig = _tankConfig.copyWith(sweepTankTypes: types);
+                });
+              },
+            ),
           ),
-        SwitchListTile.adaptive(
-          title: const Text('Water Tank 2'),
-          value: _showWaterTank2,
-          onChanged: (value) => setState(() => _showWaterTank2 = value),
-          contentPadding: EdgeInsets.zero,
-        ),
-        if (_showWaterTank2)
-          DropdownButtonFormField<String>(
-            initialValue: _waterTank2Type,
-            decoration: const InputDecoration(labelText: 'Water Tank 2 Type'),
-            items: const [
-              DropdownMenuItem(
-                value: 'flowback_round_bottom',
-                child: Text('Round Bottom'),
-              ),
-              DropdownMenuItem(
-                value: 'flowback500',
-                child: Text('V-Bottom'),
-              ),
-            ],
-            onChanged: (value) {
-              if (value == null) return;
-              setState(() => _waterTank2Type = value);
-            },
-          ),
-        SwitchListTile.adaptive(
-          title: const Text('Sweep Tank'),
-          value: _showSweepTank,
-          onChanged: (value) => setState(() => _showSweepTank = value),
-          contentPadding: EdgeInsets.zero,
-        ),
         const SizedBox(height: 20),
         FilledButton.icon(
           onPressed: _save,

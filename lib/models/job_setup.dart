@@ -1,3 +1,5 @@
+import 'drillout_tank_configuration.dart';
+
 class JobSetup {
   static const _unset = Object();
   static final RegExp _placeholderWellPattern =
@@ -505,7 +507,11 @@ class JobSetup {
   static Map<String, dynamic> _buildDrilloutSetup(Map<String, dynamic> json) {
     final raw = json['drilloutSetup'];
     if (raw is Map) {
-      return Map<String, dynamic>.from(raw);
+      final setup = Map<String, dynamic>.from(raw);
+      final config = DrilloutTankConfiguration.fromDrilloutSetup(setup);
+      setup['tankConfigurationV1'] = config.toJson();
+      setup.addAll(config.toLegacyCompatJson());
+      return setup;
     }
     final legacy = <String, dynamic>{};
     void copyIfPresent(String key) {
@@ -541,6 +547,9 @@ class JobSetup {
     ]) {
       copyIfPresent(key);
     }
+    final config = DrilloutTankConfiguration.fromDrilloutSetup(legacy);
+    legacy['tankConfigurationV1'] = config.toJson();
+    legacy.addAll(config.toLegacyCompatJson());
     return legacy;
   }
 }

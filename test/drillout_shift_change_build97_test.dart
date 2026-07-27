@@ -644,10 +644,10 @@ void main() {
 
     final preview = await _openPreviewAndRead(tester);
     expect(preview, contains('Tank Inventory'));
-    expect(preview, contains('Flowback Tank:'));
-    expect(preview, contains('Water Tank 1:'));
-    expect(preview, contains('Sweep Tank:'));
+    expect(preview, contains('Sand Tank:'));
+    expect(preview, contains('Flowback Tank 1:'));
+    expect(preview, contains('Sweep Tank 1:'));
     expect(preview, contains('Total On Location:'));
-    expect(preview, contains('" - '));
+    expect(preview, contains('- -'));
   });
 }

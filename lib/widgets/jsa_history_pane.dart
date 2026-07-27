@@ -225,6 +225,8 @@ class _JsaHistoryPaneState extends State<JsaHistoryPane> {
     final company = draft.company.trim();
     final location = draft.location.trim();
     final wellName = draft.wellName.trim();
+    final hospitalName = draft.emergencyHospitalName.trim();
+    final hospitalAddress = draft.emergencyHospitalAddress.trim();
     final colorScheme = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -281,6 +283,18 @@ class _JsaHistoryPaneState extends State<JsaHistoryPane> {
               'Well: ${wellName.isEmpty ? '-' : wellName}',
               style: TextStyle(color: colorScheme.onSurfaceVariant),
             ),
+            const SizedBox(height: 4),
+            Text(
+              'Emergency Hospital: ${hospitalName.isEmpty ? '-' : hospitalName}',
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
+            ),
+            if (hospitalAddress.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Hospital Address: $hospitalAddress',
+                style: TextStyle(color: colorScheme.onSurfaceVariant),
+              ),
+            ],
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,

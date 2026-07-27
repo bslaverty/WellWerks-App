@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/tank_charts.dart';
+import '../models/drillout_tank_configuration.dart';
 import '../models/job_setup.dart';
 import '../services/active_company_service.dart';
 import '../services/active_workflow_mode_service.dart';
@@ -20,7 +21,17 @@ import '../widgets/shared_gauge_keypad.dart';
 import '../widgets/time_wheel_picker_sheet.dart';
 import '../widgets/ww_number_field.dart';
 
-enum _DrilloutGaugeTarget { primary, gas1, gas2, water1, water2, sweep }
+enum _DrilloutGaugeTarget {
+  primary,
+  gas1,
+  gas2,
+  water1,
+  water2,
+  flowback3,
+  sweep,
+  sweep2,
+  sweep3,
+}
 
 enum _DrilloutMode { shiftChange, update }
 
@@ -66,16 +77,14 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   final _water1Gauge = TextEditingController();
   final _water2Gauge = TextEditingController();
   final _sweepGauge = TextEditingController();
+  final _flowback3Gauge = TextEditingController();
+  final _sweep2Gauge = TextEditingController();
+  final _sweep3Gauge = TextEditingController();
 
   JobSetup? _activeJob;
-  String _primaryTank = 'sandx';
+  DrilloutTankConfiguration _tankConfig = DrilloutTankConfiguration.defaults;
   bool _showGasTank = false;
   bool _showGasTank2 = false;
-  bool _showWaterTank = false;
-  bool _showWaterTank2 = false;
-  bool _showSweepTank = false;
-  String _waterTankType = 'flowback_round_bottom';
-  String _waterTank2Type = 'flowback_round_bottom';
   _DrilloutGaugeTarget? _activeGaugeTarget;
 
   ChokeSelection _choke = const ChokeSelection(type: ChokeTypes.none);
@@ -224,6 +233,25 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         ? const ChokeSelection(type: ChokeTypes.none)
         : ChokeSelection(type: savedType, size64: savedSize.clamp(2, 64));
 
+    final combinedSetup = <String, dynamic>{
+      ...jobSetup,
+      ...saved,
+    };
+    final hasLegacyTankOverrides = saved.containsKey('primaryTank') ||
+        saved.containsKey('flowbackTankType') ||
+        saved.containsKey('showWaterTank') ||
+        saved.containsKey('showWaterTank1') ||
+        saved.containsKey('showWaterTank2') ||
+        saved.containsKey('showSweepTank') ||
+        saved.containsKey('waterTankType') ||
+        saved.containsKey('waterTank1Type') ||
+        saved.containsKey('waterTank2Type');
+    if (hasLegacyTankOverrides) {
+      combinedSetup.remove('tankConfigurationV1');
+    }
+    final loadedTankConfig =
+        DrilloutTankConfiguration.fromDrilloutSetup(combinedSetup);
+
     final savedHourRaw = saved['selectedHour'];
     final savedHour =
         savedHourRaw is int && savedHourRaw >= 0 && savedHourRaw <= 23
@@ -239,20 +267,9 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _textTimeFormat = settings.textTimeFormat;
       _customer.text = customerText;
       _wellName.text = wellText;
-      _primaryTank =
-          _normalizePrimaryTank(resolveValue('primaryTank') as String?);
+      _tankConfig = loadedTankConfig;
       _showGasTank = false;
       _showGasTank2 = false;
-      _showWaterTank = resolveValue('showWaterTank') as bool? ??
-          resolveValue('showWaterTank1') as bool? ??
-          false;
-      _showWaterTank2 = resolveValue('showWaterTank2') as bool? ?? false;
-      _showSweepTank = resolveValue('showSweepTank') as bool? ?? false;
-      _waterTankType = _normalizeWaterTankType(
-          (resolveValue('waterTankType') as String?) ??
-              (resolveValue('waterTank1Type') as String?));
-      _waterTank2Type =
-          _normalizeWaterTankType(resolveValue('waterTank2Type') as String?);
       _choke = normalizedChoke;
       _selectedTime = DateTime(2000, 1, 1, savedHour);
       _mode = _modeFromStorage(saved['mode'] as String?);
@@ -319,16 +336,31 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _plugNumber.text = resolveValue('plugNumber') as String? ?? '';
       _coilDepth.text = resolveValue('coilDepth') as String? ?? '';
       _notes.text = resolveValue('notes') as String? ?? '';
-      _primaryGauge.text = (resolveValue('primaryGauge') as String?) ??
-          (resolveValue('flowbackGauge') as String?) ??
-          '';
+      _primaryGauge.text =
+          loadedTankConfig.gaugesByRole[DrilloutTankCatalog.roleSandTank] ??
+              (resolveValue('primaryGauge') as String?) ??
+              (resolveValue('flowbackGauge') as String?) ??
+              '';
       _gas1Gauge.text = saved['gas1Gauge'] as String? ?? '';
       _gas2Gauge.text = saved['gas2Gauge'] as String? ?? '';
-      _water1Gauge.text = (resolveValue('water1Gauge') as String?) ??
-          (resolveValue('waterTank1Gauge') as String?) ??
-          '';
-      _water2Gauge.text = saved['water2Gauge'] as String? ?? '';
-      _sweepGauge.text = saved['sweepGauge'] as String? ?? '';
+      _water1Gauge.text =
+          loadedTankConfig.gaugesByRole[DrilloutTankCatalog.roleFlowback1] ??
+              (resolveValue('water1Gauge') as String?) ??
+              (resolveValue('waterTank1Gauge') as String?) ??
+              '';
+      _water2Gauge.text =
+          loadedTankConfig.gaugesByRole[DrilloutTankCatalog.roleFlowback2] ??
+              (saved['water2Gauge'] as String? ?? '');
+      _flowback3Gauge.text =
+          loadedTankConfig.gaugesByRole[DrilloutTankCatalog.roleFlowback3] ??
+              '';
+      _sweepGauge.text =
+          loadedTankConfig.gaugesByRole[DrilloutTankCatalog.roleSweep1] ??
+              (saved['sweepGauge'] as String? ?? '');
+      _sweep2Gauge.text =
+          loadedTankConfig.gaugesByRole[DrilloutTankCatalog.roleSweep2] ?? '';
+      _sweep3Gauge.text =
+          loadedTankConfig.gaugesByRole[DrilloutTankCatalog.roleSweep3] ?? '';
       _latestCalculatedRate = latestRate;
 
       if (_rate.text.trim().isEmpty && latestRate != null) {
@@ -350,19 +382,32 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
 
   Future<void> _saveSetup() async {
     final prefs = await SharedPreferences.getInstance();
+    final roleGauges = <String, String>{
+      DrilloutTankCatalog.roleSandTank: _primaryGauge.text.trim(),
+      DrilloutTankCatalog.roleFlowback1: _water1Gauge.text.trim(),
+      DrilloutTankCatalog.roleFlowback2: _water2Gauge.text.trim(),
+      DrilloutTankCatalog.roleFlowback3: _flowback3Gauge.text.trim(),
+      DrilloutTankCatalog.roleSweep1: _sweepGauge.text.trim(),
+      DrilloutTankCatalog.roleSweep2: _sweep2Gauge.text.trim(),
+      DrilloutTankCatalog.roleSweep3: _sweep3Gauge.text.trim(),
+      ..._tankConfig.gaugesByRole,
+    };
+    final configWithGauges = _tankConfig.copyWith(gaugesByRole: roleGauges);
+    final legacyCompat = configWithGauges.toLegacyCompatJson();
     await prefs.setString(
       _jobScopedKey,
       jsonEncode({
         'customer': _customer.text.trim(),
         'wellName': _wellName.text.trim(),
-        'primaryTank': _primaryTank,
+        'primaryTank': legacyCompat['flowbackTankType'],
         'showGasTank': _showGasTank,
         'showGasTank2': _showGasTank2,
-        'showWaterTank': _showWaterTank,
-        'showWaterTank2': _showWaterTank2,
-        'showSweepTank': _showSweepTank,
-        'waterTankType': _waterTankType,
-        'waterTank2Type': _waterTank2Type,
+        'showWaterTank': legacyCompat['showWaterTank1'],
+        'showWaterTank2': legacyCompat['showWaterTank2'],
+        'showSweepTank': legacyCompat['showSweepTank'],
+        'waterTankType': legacyCompat['waterTank1Type'],
+        'waterTank2Type': legacyCompat['waterTank2Type'],
+        'tankConfigurationV1': configWithGauges.toJson(),
         'selectedHour': _selectedTime.hour,
         'mode': _modeStorageValue,
         'chokeType': _choke.type,
@@ -397,7 +442,11 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         'gas2Gauge': _gas2Gauge.text.trim(),
         'water1Gauge': _water1Gauge.text.trim(),
         'water2Gauge': _water2Gauge.text.trim(),
+        'flowback3Gauge': _flowback3Gauge.text.trim(),
         'sweepGauge': _sweepGauge.text.trim(),
+        'sweep2Gauge': _sweep2Gauge.text.trim(),
+        'sweep3Gauge': _sweep3Gauge.text.trim(),
+        ...legacyCompat,
       }),
     );
 
@@ -436,17 +485,15 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
             'plugNumber': _plugNumber.text.trim(),
             'status': _status ?? '',
             'coilDepth': _coilDepth.text.trim(),
-            'showFlowbackTank': true,
-            'showWaterTank1': _showWaterTank,
-            'showWaterTank2': _showWaterTank2,
-            'showSweepTank': _showSweepTank,
-            'flowbackTankType': _primaryTank,
-            'waterTank1Type': _waterTankType,
-            'waterTank2Type': _waterTank2Type,
+            'tankConfigurationV1': configWithGauges.toJson(),
             'flowbackGauge': _primaryGauge.text.trim(),
             'waterTank1Gauge': _water1Gauge.text.trim(),
             'waterTank2Gauge': _water2Gauge.text.trim(),
+            'flowback3Gauge': _flowback3Gauge.text.trim(),
             'sweepTankGauge': _sweepGauge.text.trim(),
+            'sweep2Gauge': _sweep2Gauge.text.trim(),
+            'sweep3Gauge': _sweep3Gauge.text.trim(),
+            ...legacyCompat,
           },
         ),
       );
@@ -597,35 +644,19 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     return parsed;
   }
 
-  String _normalizePrimaryTank(String? raw) {
-    switch ((raw ?? '').trim()) {
-      case 'fs3':
-        return 'fs3';
-      case 'flowback500':
-        return 'flowback500';
-      case 'flowback_round_bottom':
-        return 'flowback_round_bottom';
-      case 'sand_tank':
-      case 'sandx':
+  TankChart _chartForType(String typeId) {
+    final normalized = DrilloutTankCatalog.normalizeLegacyType(typeId);
+    switch (normalized) {
+      case DrilloutTankCatalog.typeFs3:
+        return fs3Chart;
+      case DrilloutTankCatalog.typeFlowbackVBottom:
+        return flowback500Chart;
+      case DrilloutTankCatalog.typeFlowbackRoundBottom:
+        return flowbackRoundBottomChart;
+      case DrilloutTankCatalog.typeSandX:
       default:
-        return 'sandx';
+        return sandXChart;
     }
-  }
-
-  String _normalizeWaterTankType(String? raw) {
-    switch ((raw ?? '').trim()) {
-      case 'flowback500':
-        return 'flowback500';
-      case 'flowback_round_bottom':
-      default:
-        return 'flowback_round_bottom';
-    }
-  }
-
-  TankChart _flowbackWaterChart(String typeId) {
-    return typeId == 'flowback500'
-        ? flowback500Chart
-        : flowbackRoundBottomChart;
   }
 
   TextEditingController? get _activeGaugeController {
@@ -640,8 +671,14 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         return _water1Gauge;
       case _DrilloutGaugeTarget.water2:
         return _water2Gauge;
+      case _DrilloutGaugeTarget.flowback3:
+        return _flowback3Gauge;
       case _DrilloutGaugeTarget.sweep:
         return _sweepGauge;
+      case _DrilloutGaugeTarget.sweep2:
+        return _sweep2Gauge;
+      case _DrilloutGaugeTarget.sweep3:
+        return _sweep3Gauge;
       case null:
         return null;
     }
@@ -650,17 +687,29 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   String get _activeGaugeLabel {
     switch (_activeGaugeTarget) {
       case _DrilloutGaugeTarget.primary:
-        return _primaryTankLabel();
+        return DrilloutTankCatalog.roleById(DrilloutTankCatalog.roleSandTank)
+            .label;
       case _DrilloutGaugeTarget.gas1:
         return 'Gas Tank';
       case _DrilloutGaugeTarget.gas2:
         return 'Gas Tank 2';
       case _DrilloutGaugeTarget.water1:
-        return 'Water Tank 1';
+        return DrilloutTankCatalog.roleById(DrilloutTankCatalog.roleFlowback1)
+            .label;
       case _DrilloutGaugeTarget.water2:
-        return 'Water Tank 2';
+        return DrilloutTankCatalog.roleById(DrilloutTankCatalog.roleFlowback2)
+            .label;
+      case _DrilloutGaugeTarget.flowback3:
+        return 'Flowback Tank 3';
       case _DrilloutGaugeTarget.sweep:
-        return 'Sweep Tank';
+        return DrilloutTankCatalog.roleById(DrilloutTankCatalog.roleSweep1)
+            .label;
+      case _DrilloutGaugeTarget.sweep2:
+        return DrilloutTankCatalog.roleById(DrilloutTankCatalog.roleSweep2)
+            .label;
+      case _DrilloutGaugeTarget.sweep3:
+        return DrilloutTankCatalog.roleById(DrilloutTankCatalog.roleSweep3)
+            .label;
       case null:
         return '';
     }
@@ -733,22 +782,164 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     );
   }
 
-  TankChart _primaryChart() {
-    switch (_primaryTank) {
-      case 'fs3':
-        return fs3Chart;
-      case 'flowback500':
-        return flowback500Chart;
-      case 'flowback_round_bottom':
-        return flowbackRoundBottomChart;
-      case 'sandx':
+  TextEditingController? _gaugeControllerForRole(String roleId) {
+    switch (roleId) {
+      case DrilloutTankCatalog.roleSandTank:
+        return _primaryGauge;
+      case DrilloutTankCatalog.roleFlowback1:
+        return _water1Gauge;
+      case DrilloutTankCatalog.roleFlowback2:
+        return _water2Gauge;
+      case DrilloutTankCatalog.roleFlowback3:
+        return _flowback3Gauge;
+      case DrilloutTankCatalog.roleSweep1:
+        return _sweepGauge;
+      case DrilloutTankCatalog.roleSweep2:
+        return _sweep2Gauge;
+      case DrilloutTankCatalog.roleSweep3:
+        return _sweep3Gauge;
       default:
-        return sandXChart;
+        return null;
     }
   }
 
-  String _primaryTankLabel() {
-    return 'Flowback Tank';
+  _DrilloutGaugeTarget _targetForRole(String roleId) {
+    switch (roleId) {
+      case DrilloutTankCatalog.roleSandTank:
+        return _DrilloutGaugeTarget.primary;
+      case DrilloutTankCatalog.roleFlowback1:
+        return _DrilloutGaugeTarget.water1;
+      case DrilloutTankCatalog.roleFlowback2:
+        return _DrilloutGaugeTarget.water2;
+      case DrilloutTankCatalog.roleFlowback3:
+        return _DrilloutGaugeTarget.flowback3;
+      case DrilloutTankCatalog.roleSweep1:
+        return _DrilloutGaugeTarget.sweep;
+      case DrilloutTankCatalog.roleSweep2:
+        return _DrilloutGaugeTarget.sweep2;
+      case DrilloutTankCatalog.roleSweep3:
+        return _DrilloutGaugeTarget.sweep3;
+      default:
+        return _DrilloutGaugeTarget.primary;
+    }
+  }
+
+  List<DrilloutTankSelection> _activeTankSelections() {
+    final gauges = <String, String>{
+      DrilloutTankCatalog.roleSandTank: _primaryGauge.text.trim(),
+      DrilloutTankCatalog.roleFlowback1: _water1Gauge.text.trim(),
+      DrilloutTankCatalog.roleFlowback2: _water2Gauge.text.trim(),
+      DrilloutTankCatalog.roleFlowback3: _flowback3Gauge.text.trim(),
+      DrilloutTankCatalog.roleSweep1: _sweepGauge.text.trim(),
+      DrilloutTankCatalog.roleSweep2: _sweep2Gauge.text.trim(),
+      DrilloutTankCatalog.roleSweep3: _sweep3Gauge.text.trim(),
+      ..._tankConfig.gaugesByRole,
+    };
+    return _tankConfig.copyWith(gaugesByRole: gauges).activeSelections;
+  }
+
+  List<DropdownMenuItem<String>> _tankTypeItemsForRole(String roleId) {
+    final role = DrilloutTankCatalog.roleById(roleId);
+    return role.allowedTypeIds
+        .map(
+          (typeId) => DropdownMenuItem<String>(
+            value: typeId,
+            child: Text(DrilloutTankCatalog.typeById(typeId).label),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<bool> _confirmTankRoleReduction(List<String> removedRoleIds) async {
+    bool hasData = false;
+    for (final roleId in removedRoleIds) {
+      final controller = _gaugeControllerForRole(roleId);
+      if (controller != null && controller.text.trim().isNotEmpty) {
+        hasData = true;
+        break;
+      }
+      if ((_tankConfig.gaugesByRole[roleId] ?? '').trim().isNotEmpty) {
+        hasData = true;
+        break;
+      }
+    }
+    if (!hasData) return true;
+
+    final labels = removedRoleIds
+        .map((id) => DrilloutTankCatalog.roleById(id).label)
+        .join(', ');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove Tank Slots?'),
+        content: Text(
+          'Reducing tank quantity will remove $labels and any associated readings/history for those roles. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  Future<void> _setFlowbackTankCount(int count) async {
+    final current = _tankConfig.flowbackCount;
+    if (count >= current) {
+      final next = List<String>.from(_tankConfig.flowbackTankTypes);
+      while (next.length < count) {
+        next.add(DrilloutTankCatalog.typeFlowbackRoundBottom);
+      }
+      setState(() {
+        _tankConfig = _tankConfig.copyWith(flowbackTankTypes: next);
+      });
+      _saveSetup();
+      return;
+    }
+
+    final removedRoles = DrilloutTankCatalog.flowbackRoleIds.sublist(count);
+    final confirmed = await _confirmTankRoleReduction(removedRoles);
+    if (!confirmed) return;
+
+    setState(() {
+      _tankConfig = _tankConfig.copyWith(
+        flowbackTankTypes: _tankConfig.flowbackTankTypes.sublist(0, count),
+      );
+    });
+    _saveSetup();
+  }
+
+  Future<void> _setSweepTankCount(int count) async {
+    final current = _tankConfig.sweepCount;
+    if (count >= current) {
+      final next = List<String>.from(_tankConfig.sweepTankTypes);
+      while (next.length < count) {
+        next.add(DrilloutTankCatalog.typeFlowbackRoundBottom);
+      }
+      setState(() {
+        _tankConfig = _tankConfig.copyWith(sweepTankTypes: next);
+      });
+      _saveSetup();
+      return;
+    }
+
+    final removedRoles = DrilloutTankCatalog.sweepRoleIds.sublist(count);
+    final confirmed = await _confirmTankRoleReduction(removedRoles);
+    if (!confirmed) return;
+
+    setState(() {
+      _tankConfig = _tankConfig.copyWith(
+        sweepTankTypes: _tankConfig.sweepTankTypes.sublist(0, count),
+      );
+    });
+    _saveSetup();
   }
 
   double? _barrelsForGauge(double? gauge, TankChart chart) {
@@ -758,10 +949,6 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   }
 
   String _composeText() {
-    final primaryGauge = _parseGaugeOrNull(_primaryGauge.text);
-    final water1Gauge = _parseGaugeOrNull(_water1Gauge.text);
-    final water2Gauge = _parseGaugeOrNull(_water2Gauge.text);
-    final sweepGauge = _parseGaugeOrNull(_sweepGauge.text);
     final padName = _activeJob?.padName.trim() ?? '';
     final company = _customer.text.trim();
     final wellName = _wellName.text.trim();
@@ -818,27 +1005,15 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       detailLines.add('Oil Hauled: ${_fmtWholeBbl(_oilHauled.text)} bbl');
     }
 
-    final tankRows = <({String label, double? gauge, TankChart chart})>[
-      (label: 'Flowback Tank', gauge: primaryGauge, chart: _primaryChart()),
-      if (_showWaterTank)
-        (
-          label: 'Water Tank 1',
-          gauge: water1Gauge,
-          chart: _flowbackWaterChart(_waterTankType),
-        ),
-      if (_showWaterTank2)
-        (
-          label: 'Water Tank 2',
-          gauge: water2Gauge,
-          chart: _flowbackWaterChart(_waterTank2Type),
-        ),
-      if (_showSweepTank)
-        (
-          label: 'Sweep Tank',
-          gauge: sweepGauge,
-          chart: flowbackRoundBottomChart
-        ),
-    ];
+    final tankRows = <({String label, double? gauge, TankChart chart})>[];
+    for (final selection in _activeTankSelections()) {
+      final role = DrilloutTankCatalog.roleById(selection.roleId);
+      tankRows.add((
+        label: role.label,
+        gauge: _parseGaugeOrNull(selection.gauge),
+        chart: _chartForType(selection.typeId),
+      ));
+    }
 
     final maxLabel = tankRows.isEmpty
         ? 0
@@ -991,7 +1166,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
           builder: (context) => AlertDialog(
             title: const Text('Clear Drillout Setup?'),
             content: const Text(
-              'This will remove Company/Customer, Well Name, primary tank selection, optional tank configuration, selected choke, and saved Drillout/Cleanout layout for this active setup.',
+              'This will remove Company/Customer, Well Name, tank configuration, selected choke, and saved Drillout/Cleanout layout for this active setup.',
             ),
             actions: [
               TextButton(
@@ -1011,14 +1186,9 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     setState(() {
       _customer.clear();
       _wellName.clear();
-      _primaryTank = 'sandx';
+      _tankConfig = DrilloutTankConfiguration.defaults;
       _showGasTank = false;
       _showGasTank2 = false;
-      _showWaterTank = false;
-      _showWaterTank2 = false;
-      _showSweepTank = false;
-      _waterTankType = 'flowback_round_bottom';
-      _waterTank2Type = 'flowback_round_bottom';
       _choke = const ChokeSelection(type: ChokeTypes.none);
       _includeRateOverride = false;
       _includeSurfaceTotalFluid = false;
@@ -1052,7 +1222,10 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _gas2Gauge.clear();
       _water1Gauge.clear();
       _water2Gauge.clear();
+      _flowback3Gauge.clear();
       _sweepGauge.clear();
+      _sweep2Gauge.clear();
+      _sweep3Gauge.clear();
       _editedText = '';
       _activeGaugeTarget = null;
     });
@@ -1137,7 +1310,10 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     _gas2Gauge.dispose();
     _water1Gauge.dispose();
     _water2Gauge.dispose();
+    _flowback3Gauge.dispose();
     _sweepGauge.dispose();
+    _sweep2Gauge.dispose();
+    _sweep3Gauge.dispose();
     super.dispose();
   }
 
@@ -1555,131 +1731,154 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                         ),
                         const SizedBox(height: 10),
                         DropdownButtonFormField<String>(
-                          initialValue: _primaryTank,
+                          key: const Key('drillout-tank-sand-type'),
+                          initialValue: _tankConfig.sandTankType,
                           decoration: const InputDecoration(
-                            labelText: 'Flowback Tank Type',
+                              labelText: 'Sand Tank Type'),
+                          items: _tankTypeItemsForRole(
+                            DrilloutTankCatalog.roleSandTank,
                           ),
-                          items: const [
-                            DropdownMenuItem(
-                                value: 'sandx', child: Text('SandX')),
-                            DropdownMenuItem(value: 'fs3', child: Text('FS3')),
-                            DropdownMenuItem(
-                                value: 'flowback500',
-                                child: Text('Flowback Tank - V Bottom')),
-                            DropdownMenuItem(
-                                value: 'flowback_round_bottom',
-                                child: Text('Flowback Tank - Round Bottom')),
-                          ],
                           onChanged: (value) {
                             if (value == null) return;
-                            setState(() => _primaryTank = value);
+                            setState(() {
+                              _tankConfig = _tankConfig.copyWith(
+                                sandTankType: value,
+                              );
+                            });
                             _saveSetup();
                           },
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
                         _gaugeCard(
-                          title: 'Flowback Tank',
-                          chart: _primaryChart(),
+                          title: DrilloutTankCatalog.roleById(
+                            DrilloutTankCatalog.roleSandTank,
+                          ).label,
+                          chart: _chartForType(_tankConfig.sandTankType),
                           controller: _primaryGauge,
                           target: _DrilloutGaugeTarget.primary,
                         ),
-                        SwitchListTile.adaptive(
-                          value: _showWaterTank,
+                        const SizedBox(height: 10),
+                        DropdownButtonFormField<int>(
+                          key: const Key('drillout-tank-flowback-count'),
+                          initialValue: _tankConfig.flowbackCount,
+                          decoration: const InputDecoration(
+                            labelText: 'Flowback Tank Quantity',
+                          ),
+                          items: const [
+                            DropdownMenuItem<int>(value: 0, child: Text('0')),
+                            DropdownMenuItem<int>(value: 1, child: Text('1')),
+                            DropdownMenuItem<int>(value: 2, child: Text('2')),
+                            DropdownMenuItem<int>(value: 3, child: Text('3')),
+                          ],
                           onChanged: (value) {
-                            setState(() => _showWaterTank = value);
-                            _saveSetup();
+                            if (value == null) return;
+                            _setFlowbackTankCount(value);
                           },
-                          title: const Text('Water Tank 1'),
-                          contentPadding: EdgeInsets.zero,
                         ),
-                        if (_showWaterTank)
+                        for (int i = 0; i < _tankConfig.flowbackCount; i++)
                           Column(
                             children: [
+                              const SizedBox(height: 8),
                               DropdownButtonFormField<String>(
-                                initialValue: _waterTankType,
-                                decoration: const InputDecoration(
-                                  labelText: 'Water Tank Type',
+                                key: Key('drillout-tank-flowback-type-$i'),
+                                initialValue: _tankConfig.flowbackTankTypes[i],
+                                decoration: InputDecoration(
+                                  labelText: 'Flowback Tank ${i + 1} Type',
                                 ),
-                                items: const [
-                                  DropdownMenuItem(
-                                      value: 'flowback500',
-                                      child: Text('Flowback Tank - V Bottom')),
-                                  DropdownMenuItem(
-                                      value: 'flowback_round_bottom',
-                                      child:
-                                          Text('Flowback Tank - Round Bottom')),
-                                ],
+                                items: _tankTypeItemsForRole(
+                                  DrilloutTankCatalog.flowbackRoleIds[i],
+                                ),
                                 onChanged: (value) {
                                   if (value == null) return;
-                                  setState(() => _waterTankType = value);
+                                  final types = List<String>.from(
+                                      _tankConfig.flowbackTankTypes);
+                                  types[i] = value;
+                                  setState(() {
+                                    _tankConfig = _tankConfig.copyWith(
+                                      flowbackTankTypes: types,
+                                    );
+                                  });
                                   _saveSetup();
                                 },
                               ),
                               const SizedBox(height: 8),
                               _gaugeCard(
-                                title: 'Water Tank 1',
-                                chart: _flowbackWaterChart(_waterTankType),
-                                controller: _water1Gauge,
-                                target: _DrilloutGaugeTarget.water1,
+                                title: DrilloutTankCatalog.roleById(
+                                  DrilloutTankCatalog.flowbackRoleIds[i],
+                                ).label,
+                                chart: _chartForType(
+                                  _tankConfig.flowbackTankTypes[i],
+                                ),
+                                controller: _gaugeControllerForRole(
+                                      DrilloutTankCatalog.flowbackRoleIds[i],
+                                    ) ??
+                                    _water1Gauge,
+                                target: _targetForRole(
+                                  DrilloutTankCatalog.flowbackRoleIds[i],
+                                ),
                               ),
                             ],
                           ),
-                        SwitchListTile.adaptive(
-                          value: _showWaterTank2,
+                        const SizedBox(height: 10),
+                        DropdownButtonFormField<int>(
+                          key: const Key('drillout-tank-sweep-count'),
+                          initialValue: _tankConfig.sweepCount,
+                          decoration: const InputDecoration(
+                            labelText: 'Sweep Tank Quantity',
+                          ),
+                          items: const [
+                            DropdownMenuItem<int>(value: 0, child: Text('0')),
+                            DropdownMenuItem<int>(value: 1, child: Text('1')),
+                            DropdownMenuItem<int>(value: 2, child: Text('2')),
+                            DropdownMenuItem<int>(value: 3, child: Text('3')),
+                          ],
                           onChanged: (value) {
-                            setState(() => _showWaterTank2 = value);
-                            _saveSetup();
+                            if (value == null) return;
+                            _setSweepTankCount(value);
                           },
-                          title: const Text('Water Tank 2'),
-                          contentPadding: EdgeInsets.zero,
                         ),
-                        if (_showWaterTank2)
+                        for (int i = 0; i < _tankConfig.sweepCount; i++)
                           Column(
                             children: [
+                              const SizedBox(height: 8),
                               DropdownButtonFormField<String>(
-                                initialValue: _waterTank2Type,
-                                decoration: const InputDecoration(
-                                  labelText: 'Water Tank 2 Type',
+                                key: Key('drillout-tank-sweep-type-$i'),
+                                initialValue: _tankConfig.sweepTankTypes[i],
+                                decoration: InputDecoration(
+                                  labelText: 'Sweep Tank ${i + 1} Type',
                                 ),
-                                items: const [
-                                  DropdownMenuItem(
-                                      value: 'flowback500',
-                                      child: Text('Flowback Tank - V Bottom')),
-                                  DropdownMenuItem(
-                                      value: 'flowback_round_bottom',
-                                      child:
-                                          Text('Flowback Tank - Round Bottom')),
-                                ],
+                                items: _tankTypeItemsForRole(
+                                  DrilloutTankCatalog.sweepRoleIds[i],
+                                ),
                                 onChanged: (value) {
                                   if (value == null) return;
-                                  setState(() => _waterTank2Type = value);
+                                  final types = List<String>.from(
+                                      _tankConfig.sweepTankTypes);
+                                  types[i] = value;
+                                  setState(() {
+                                    _tankConfig = _tankConfig.copyWith(
+                                      sweepTankTypes: types,
+                                    );
+                                  });
                                   _saveSetup();
                                 },
                               ),
                               const SizedBox(height: 8),
                               _gaugeCard(
-                                title: 'Water Tank 2',
-                                chart: _flowbackWaterChart(_waterTank2Type),
-                                controller: _water2Gauge,
-                                target: _DrilloutGaugeTarget.water2,
+                                title: DrilloutTankCatalog.roleById(
+                                  DrilloutTankCatalog.sweepRoleIds[i],
+                                ).label,
+                                chart: _chartForType(
+                                    _tankConfig.sweepTankTypes[i]),
+                                controller: _gaugeControllerForRole(
+                                      DrilloutTankCatalog.sweepRoleIds[i],
+                                    ) ??
+                                    _sweepGauge,
+                                target: _targetForRole(
+                                  DrilloutTankCatalog.sweepRoleIds[i],
+                                ),
                               ),
                             ],
-                          ),
-                        SwitchListTile.adaptive(
-                          value: _showSweepTank,
-                          onChanged: (value) {
-                            setState(() => _showSweepTank = value);
-                            _saveSetup();
-                          },
-                          title: const Text('Sweep Tank'),
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        if (_showSweepTank)
-                          _gaugeCard(
-                            title: 'Sweep Tank',
-                            chart: flowbackRoundBottomChart,
-                            controller: _sweepGauge,
-                            target: _DrilloutGaugeTarget.sweep,
                           ),
                       ],
                     ),

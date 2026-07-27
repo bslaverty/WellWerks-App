@@ -290,6 +290,18 @@ class JsaExportService {
       <String>['City', _safe(cityState.city)],
       <String>['State', _safe(cityState.state)],
       <String>['GPS Coordinates', _safe(draft.gpsCoordinates)],
+      <String>[
+        'Emergency Hospital / ED',
+        _safe(draft.emergencyHospitalName),
+      ],
+      <String>[
+        'Hospital Address',
+        _safe(draft.emergencyHospitalAddress),
+      ],
+      <String>[
+        'Hospital Coordinates',
+        _safe(draft.emergencyHospitalCoordinates),
+      ],
       <String>['Temperature', _safe(draft.weatherTemperature)],
       <String>['Wind', _safe(draft.weatherWind)],
       <String>['Conditions', _safe(draft.weatherConditions)],

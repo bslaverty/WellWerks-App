@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -6,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:signature/signature.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/job_setup.dart';
 import '../models/jsa_draft.dart';
@@ -69,6 +71,8 @@ class _JsaScreenState extends State<JsaScreen>
   final _weatherTemperature = TextEditingController();
   final _weatherConditions = TextEditingController();
   final _weatherWind = TextEditingController();
+  final _emergencyHospitalName = TextEditingController();
+  final _emergencyHospitalAddress = TextEditingController();
   final _stepsEditor = TextEditingController();
   final _hazardsEditor = TextEditingController();
   final _recommendationsEditor = TextEditingController();
@@ -92,7 +96,10 @@ class _JsaScreenState extends State<JsaScreen>
   TimeOfDay _time = TimeOfDay.now();
   bool _exporting = false;
   bool _weatherLoading = false;
+  bool _hospitalLoading = false;
   Position? _currentPosition;
+  String _emergencyHospitalCoordinates = '';
+  bool _emergencyHospitalIsManual = false;
   bool _hasLoadedDraft = false;
   final _settingsService = AppSettingsService();
   final _activeCompanyService = ActiveCompanyService.instance;
@@ -332,6 +339,235 @@ class _JsaScreenState extends State<JsaScreen>
     return '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
   }
 
+  String _formatCoordinates(double lat, double lon) {
+    return '${lat.toStringAsFixed(5)}, ${lon.toStringAsFixed(5)}';
+  }
+
+  ({double lat, double lon})? _parseCoordinates(String raw) {
+    final parts = raw.split(',');
+    if (parts.length != 2) return null;
+    final lat = double.tryParse(parts[0].trim());
+    final lon = double.tryParse(parts[1].trim());
+    if (lat == null || lon == null) return null;
+    return (lat: lat, lon: lon);
+  }
+
+  String _composeHospitalAddress(Map<String, dynamic> tags) {
+    final lineParts = <String>[];
+    final houseNumber = (tags['addr:housenumber'] ?? '').toString().trim();
+    final street = (tags['addr:street'] ?? '').toString().trim();
+    final city =
+        (tags['addr:city'] ?? tags['addr:town'] ?? tags['addr:village'] ?? '')
+            .toString()
+            .trim();
+    final state = (tags['addr:state'] ?? '').toString().trim();
+    final postcode = (tags['addr:postcode'] ?? '').toString().trim();
+
+    final streetLine =
+        [houseNumber, street].where((item) => item.isNotEmpty).join(' ').trim();
+    if (streetLine.isNotEmpty) lineParts.add(streetLine);
+
+    final cityState =
+        [city, state].where((item) => item.isNotEmpty).join(', ').trim();
+    if (cityState.isNotEmpty) {
+      if (postcode.isNotEmpty) {
+        lineParts.add('$cityState $postcode');
+      } else {
+        lineParts.add(cityState);
+      }
+    } else if (postcode.isNotEmpty) {
+      lineParts.add(postcode);
+    }
+
+    return lineParts.join(' • ');
+  }
+
+  bool _isHospitalOrEmergencyDepartment(Map<String, dynamic> tags) {
+    final amenity = (tags['amenity'] ?? '').toString().trim().toLowerCase();
+    final healthcare =
+        (tags['healthcare'] ?? '').toString().trim().toLowerCase();
+    final emergency = (tags['emergency'] ?? '').toString().trim().toLowerCase();
+
+    if (amenity == 'hospital') return true;
+    if (healthcare == 'hospital') return true;
+    if (emergency == 'department' || emergency == 'hospital') return true;
+    return false;
+  }
+
+  Future<void> _refreshNearestHospital({
+    Position? position,
+    bool forceReplace = true,
+    bool showFeedbackOnFailure = true,
+  }) async {
+    if (_hospitalLoading) return;
+    setState(() => _hospitalLoading = true);
+
+    try {
+      final anchor = position ?? _currentPosition ?? await _ensurePosition();
+      _currentPosition = anchor;
+
+      final overpassQuery = '''
+[out:json][timeout:20];
+(
+  nwr(around:50000,${anchor.latitude},${anchor.longitude})["amenity"="hospital"];
+  nwr(around:50000,${anchor.latitude},${anchor.longitude})["healthcare"="hospital"];
+  nwr(around:50000,${anchor.latitude},${anchor.longitude})["emergency"="department"];
+  nwr(around:50000,${anchor.latitude},${anchor.longitude})["emergency"="hospital"];
+);
+out center tags;
+''';
+
+      final response = await http.post(
+        Uri.parse('https://overpass-api.de/api/interpreter'),
+        headers: const {
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'User-Agent': 'WellWerks/1.0',
+        },
+        body: 'data=${Uri.encodeQueryComponent(overpassQuery)}',
+      );
+
+      if (response.statusCode != 200) {
+        throw StateError('Unable to fetch hospital data.');
+      }
+
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      final elements = (decoded['elements'] as List? ?? const <dynamic>[])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+
+      final candidates = <({
+        String name,
+        String address,
+        String coordinates,
+        double distance,
+      })>[];
+
+      for (final element in elements) {
+        final tags = (element['tags'] as Map?) == null
+            ? <String, dynamic>{}
+            : Map<String, dynamic>.from(element['tags'] as Map);
+        if (!_isHospitalOrEmergencyDepartment(tags)) continue;
+
+        final lat = (element['lat'] as num?)?.toDouble() ??
+            (element['center'] is Map
+                ? ((element['center'] as Map)['lat'] as num?)?.toDouble()
+                : null);
+        final lon = (element['lon'] as num?)?.toDouble() ??
+            (element['center'] is Map
+                ? ((element['center'] as Map)['lon'] as num?)?.toDouble()
+                : null);
+        if (lat == null || lon == null) continue;
+
+        final name = (tags['name'] ?? '').toString().trim();
+        if (name.isEmpty) continue;
+
+        final distance = Geolocator.distanceBetween(
+          anchor.latitude,
+          anchor.longitude,
+          lat,
+          lon,
+        );
+
+        candidates.add((
+          name: name,
+          address: _composeHospitalAddress(tags),
+          coordinates: _formatCoordinates(lat, lon),
+          distance: distance,
+        ));
+      }
+
+      if (candidates.isEmpty) {
+        if (showFeedbackOnFailure && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content:
+                  Text('No nearby hospital or emergency department found.'),
+            ),
+          );
+        }
+        return;
+      }
+
+      candidates.sort((a, b) => a.distance.compareTo(b.distance));
+      final nearest = candidates.first;
+
+      if (!forceReplace && _emergencyHospitalIsManual) {
+        return;
+      }
+
+      _emergencyHospitalName.text = nearest.name;
+      _emergencyHospitalAddress.text = nearest.address;
+      _emergencyHospitalCoordinates = nearest.coordinates;
+      _emergencyHospitalIsManual = false;
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (err) {
+      if (showFeedbackOnFailure && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to refresh emergency hospital: $err')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _hospitalLoading = false);
+      }
+    }
+  }
+
+  Future<void> _openHospitalDirections() async {
+    final name = _emergencyHospitalName.text.trim();
+    final address = _emergencyHospitalAddress.text.trim();
+    final coords = _parseCoordinates(_emergencyHospitalCoordinates);
+
+    if (name.isEmpty && address.isEmpty && coords == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No emergency hospital destination set.')),
+      );
+      return;
+    }
+
+    final destinationLabel =
+        [name, address].where((item) => item.isNotEmpty).join(', ').trim();
+
+    final googleDestination =
+        coords == null ? destinationLabel : '${coords.lat},${coords.lon}';
+    final googleUri = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=${Uri.encodeComponent(googleDestination)}',
+    );
+
+    Uri? appleUri;
+    if (Platform.isIOS) {
+      final appleDestination =
+          coords == null ? destinationLabel : '${coords.lat},${coords.lon}';
+      appleUri = Uri.parse(
+        'https://maps.apple.com/?daddr=${Uri.encodeComponent(appleDestination)}&dirflg=d',
+      );
+    }
+
+    bool launched = false;
+    if (appleUri != null) {
+      launched = await launchUrl(
+        appleUri,
+        mode: LaunchMode.externalApplication,
+      );
+    }
+    if (!launched) {
+      launched = await launchUrl(
+        googleUri,
+        mode: LaunchMode.externalApplication,
+      );
+    }
+
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open directions app.')),
+      );
+    }
+  }
+
   String _countyFromAddress(Map<String, dynamic> address) {
     return (address['county'] ?? address['state_district'] ?? '')
         .toString()
@@ -454,6 +690,12 @@ class _JsaScreenState extends State<JsaScreen>
           weatherCode == null ? '' : _weatherConditionFromCode(weatherCode);
       _weatherWind.text =
           windSpeed == null ? '' : '${windSpeed.toStringAsFixed(1)} mph';
+
+      await _refreshNearestHospital(
+        position: position,
+        forceReplace: !_emergencyHospitalIsManual,
+        showFeedbackOnFailure: false,
+      );
     } catch (err) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -512,6 +754,10 @@ class _JsaScreenState extends State<JsaScreen>
     _weatherTemperature.clear();
     _weatherConditions.clear();
     _weatherWind.clear();
+    _emergencyHospitalName.clear();
+    _emergencyHospitalAddress.clear();
+    _emergencyHospitalCoordinates = '';
+    _emergencyHospitalIsManual = false;
     _stepsEditor.clear();
     _hazardsEditor.clear();
     _recommendationsEditor.clear();
@@ -554,6 +800,10 @@ class _JsaScreenState extends State<JsaScreen>
     _weatherTemperature.text = draft.weatherTemperature;
     _weatherConditions.text = draft.weatherConditions;
     _weatherWind.text = draft.weatherWind;
+    _emergencyHospitalName.text = draft.emergencyHospitalName;
+    _emergencyHospitalAddress.text = draft.emergencyHospitalAddress;
+    _emergencyHospitalCoordinates = draft.emergencyHospitalCoordinates;
+    _emergencyHospitalIsManual = draft.emergencyHospitalIsManual;
     _stepsEditor.text = _editorTextFromLines(draft.steps);
     _hazardsEditor.text = _editorTextFromLines(draft.hazards);
     _recommendationsEditor.text = _editorTextFromLines(draft.recommendations);
@@ -593,6 +843,8 @@ class _JsaScreenState extends State<JsaScreen>
     _weatherTemperature.dispose();
     _weatherConditions.dispose();
     _weatherWind.dispose();
+    _emergencyHospitalName.dispose();
+    _emergencyHospitalAddress.dispose();
     _stepsEditor.dispose();
     _hazardsEditor.dispose();
     _recommendationsEditor.dispose();
@@ -674,6 +926,10 @@ class _JsaScreenState extends State<JsaScreen>
       weatherTemperature: _weatherTemperature.text.trim(),
       weatherConditions: _weatherConditions.text.trim(),
       weatherWind: _weatherWind.text.trim(),
+      emergencyHospitalName: _emergencyHospitalName.text.trim(),
+      emergencyHospitalAddress: _emergencyHospitalAddress.text.trim(),
+      emergencyHospitalCoordinates: _emergencyHospitalCoordinates.trim(),
+      emergencyHospitalIsManual: _emergencyHospitalIsManual,
     );
   }
 
@@ -1104,8 +1360,8 @@ class _JsaScreenState extends State<JsaScreen>
             const SizedBox(width: 10),
             IconButton.filled(
               onPressed: _copyGpsCoordinates,
-              icon: const Icon(Icons.copy),
-              tooltip: 'Copy GPS Coordinates',
+              icon: const Icon(Icons.content_copy),
+              tooltip: 'Copy GPS coordinates',
             ),
           ],
         ),
@@ -1146,6 +1402,69 @@ class _JsaScreenState extends State<JsaScreen>
                 : const Icon(Icons.cloud_sync_outlined),
             label: const Text('Refresh Weather'),
           ),
+        ),
+        const SizedBox(height: 18),
+        _section('Emergency Information'),
+        TextField(
+          controller: _emergencyHospitalName,
+          decoration: const InputDecoration(
+            labelText: 'Nearest Hospital / ED',
+            helperText:
+                'Auto-filled from nearby hospital or emergency department. You can edit manually.',
+          ),
+          onChanged: (_) {
+            if (!_emergencyHospitalIsManual) {
+              setState(() => _emergencyHospitalIsManual = true);
+            }
+          },
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _emergencyHospitalAddress,
+          decoration: const InputDecoration(
+            labelText: 'Hospital Address',
+            helperText: 'Optional destination details for navigation.',
+          ),
+          onChanged: (_) {
+            if (!_emergencyHospitalIsManual) {
+              setState(() => _emergencyHospitalIsManual = true);
+            }
+          },
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _emergencyHospitalCoordinates.trim().isEmpty
+              ? (_emergencyHospitalIsManual
+                  ? 'Destination manually entered.'
+                  : 'Destination coordinates unavailable.')
+              : 'Destination coordinates: $_emergencyHospitalCoordinates',
+          style:
+              TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            OutlinedButton.icon(
+              onPressed: _hospitalLoading ? null : _openHospitalDirections,
+              icon: const Icon(Icons.directions_outlined),
+              label: const Text('Open Directions'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _hospitalLoading
+                  ? null
+                  : () => _refreshNearestHospital(forceReplace: true),
+              icon: _hospitalLoading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.local_hospital_outlined),
+              label: const Text('Refresh Hospital'),
+            ),
+          ],
         ),
         const SizedBox(height: 18),
         _section('JSA Job Content'),
