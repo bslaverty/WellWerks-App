@@ -55,6 +55,7 @@ class ActiveJobSharePackage {
 class ActiveJobShareService {
   static const currentSchemaVersion = '1.0.0';
   static const currentFileType = 'wellwerks_job_setup';
+  static const legacyFileType = 'wellwerks_active_job';
 
   Future<ActiveJobSharePackage> buildPackage({
     required JobSetup activeJob,
@@ -87,7 +88,7 @@ class ActiveJobShareService {
     }
     final map = Map<String, dynamic>.from(decoded);
     final fileType = map['fileType'] as String? ?? '';
-    if (fileType != currentFileType) {
+    if (fileType != currentFileType && fileType != legacyFileType) {
       throw const FormatException('Unsupported active job file type.');
     }
     final schemaVersion = map['schemaVersion'] as String? ?? '';

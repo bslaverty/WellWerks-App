@@ -52,4 +52,14 @@ void main() {
     const raw = '{"fileType":"wrong_type","schemaVersion":"1.0.0"}';
     expect(() => service.decodePackage(raw), throwsFormatException);
   });
+
+  test('Build 183 import accepts legacy active job file type', () {
+    final service = ActiveJobShareService();
+    const raw =
+        '{"fileType":"wellwerks_active_job","schemaVersion":"1.0.0","workflow":"production","jobData":{"company":"Mach Energy"}}';
+
+    final decoded = service.decodePackage(raw);
+    expect(decoded.fileType, 'wellwerks_active_job');
+    expect(decoded.workflow, 'production');
+  });
 }

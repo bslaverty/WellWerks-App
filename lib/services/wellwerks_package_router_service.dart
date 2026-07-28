@@ -24,6 +24,7 @@ class WellWerksPackageRouterService {
   const WellWerksPackageRouterService();
 
   static const fileTypeJobSetup = 'wellwerks_job_setup';
+  static const fileTypeLegacyActiveJob = 'wellwerks_active_job';
   static const fileTypeProductionHandoff = 'wellwerks_production_handoff';
   static const fileTypeDrilloutHandoff = 'wellwerks_drillout_handoff';
 
@@ -62,6 +63,7 @@ class WellWerksPackageRouterService {
   WellWerksPackageType? _typeForFileType(String fileType) {
     switch (fileType.trim()) {
       case fileTypeJobSetup:
+      case fileTypeLegacyActiveJob:
         return WellWerksPackageType.jobSetup;
       case fileTypeProductionHandoff:
         return WellWerksPackageType.productionHandoff;

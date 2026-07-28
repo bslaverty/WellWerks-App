@@ -17,6 +17,12 @@ void main() {
     expect(header.type, WellWerksPackageType.productionHandoff);
   });
 
+  test('Build 183 router maps legacy active job type to job setup', () {
+    const raw = '{"fileType":"wellwerks_active_job","schemaVersion":"1.0.0"}';
+    final header = router.decodeHeader(raw);
+    expect(header.type, WellWerksPackageType.jobSetup);
+  });
+
   test('Build 183 router detects drillout handoff package type', () {
     const raw =
         '{"fileType":"wellwerks_drillout_handoff","schemaVersion":"1.0.0"}';
