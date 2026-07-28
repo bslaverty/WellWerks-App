@@ -575,8 +575,8 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     if (value.isNaN || value.isInfinite) return '0';
     final fixed = value.toStringAsFixed(2);
     return fixed
-        .replaceFirst(RegExp(r'\.00$'), '')
-        .replaceFirst(RegExp(r'0$'), '');
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
   }
 
   String _fmtWholeBbl(String raw) {

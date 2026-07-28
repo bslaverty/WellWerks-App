@@ -6,6 +6,7 @@ import '../models/production_shift.dart';
 import '../models/round_reading.dart';
 import '../services/app_settings_service.dart';
 import '../services/job_storage_service.dart';
+import '../services/production_report_continuity_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/rate_timer_notification_service.dart';
 import '../services/recovery_state_service.dart';
@@ -30,6 +31,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   final _service = ProductionShiftService();
   final _jobStorage = JobStorageService();
+  final _continuityService = const ProductionReportContinuityService();
   final _roundStorage = RoundStorageService();
   final _settingsService = AppSettingsService();
   final _recoveryState = RecoveryStateService();
@@ -1954,7 +1956,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       }
     }
 
-    _shift = _shift.copyWith(
+    final shiftWithRows = _shift.copyWith(
       activeJobId: _activeJob?.id ?? _shift.activeJobId,
       hourlyChecks: _controllers.map((item) => item.toCheck()).toList(),
       savedRows: updatedRows,
@@ -1962,6 +1964,15 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       wellSelectedChokes: nextSelectedChokes,
       wellSelectedChokeTypes: nextSelectedTypes,
       selectedTextHour: _shift.selectedTextHour ?? hourIndex,
+    );
+    final normalizedRows = _continuityService.normalizedRowsForJob(
+      shift: shiftWithRows,
+      activeJob: _activeJob,
+    );
+    _shift = shiftWithRows.copyWith(
+      savedRows: normalizedRows,
+      inventory:
+          shiftWithRows.inventory.copyWith(productionRows: normalizedRows),
     );
     await _service.saveActiveShift(_shift);
 

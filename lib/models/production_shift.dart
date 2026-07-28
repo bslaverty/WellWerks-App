@@ -1268,6 +1268,15 @@ class ProductionReportRow {
     required this.waterPumped,
     required this.oilPumped,
     required this.notes,
+    this.entryId = '',
+    this.activeJobId = '',
+    this.wellId = '',
+    this.originalTimestampIso = '',
+    this.productionDay = '',
+    this.createdAtIso = '',
+    this.lastModifiedAtIso = '',
+    this.sourceHandoffId = '',
+    this.sourceDeviceId = '',
   });
 
   factory ProductionReportRow.fromJson(Map<String, dynamic> json) {
@@ -1329,6 +1338,15 @@ class ProductionReportRow {
       waterPumped: asDouble(json['waterPumped']),
       oilPumped: asDouble(json['oilPumped']),
       notes: json['notes'] as String? ?? '',
+      entryId: json['entryId'] as String? ?? '',
+      activeJobId: json['activeJobId'] as String? ?? '',
+      wellId: json['wellId'] as String? ?? '',
+      originalTimestampIso: json['originalTimestampIso'] as String? ?? '',
+      productionDay: json['productionDay'] as String? ?? '',
+      createdAtIso: json['createdAtIso'] as String? ?? '',
+      lastModifiedAtIso: json['lastModifiedAtIso'] as String? ?? '',
+      sourceHandoffId: json['sourceHandoffId'] as String? ?? '',
+      sourceDeviceId: json['sourceDeviceId'] as String? ?? '',
     );
   }
 
@@ -1377,6 +1395,84 @@ class ProductionReportRow {
   final double waterPumped;
   final double oilPumped;
   final String notes;
+  final String entryId;
+  final String activeJobId;
+  final String wellId;
+  final String originalTimestampIso;
+  final String productionDay;
+  final String createdAtIso;
+  final String lastModifiedAtIso;
+  final String sourceHandoffId;
+  final String sourceDeviceId;
+
+  ProductionReportRow copyWithMetadata({
+    String? entryId,
+    String? activeJobId,
+    String? wellId,
+    String? originalTimestampIso,
+    String? productionDay,
+    String? createdAtIso,
+    String? lastModifiedAtIso,
+    String? sourceHandoffId,
+    String? sourceDeviceId,
+  }) {
+    return ProductionReportRow(
+      hourIndex: hourIndex,
+      time: time,
+      well: well,
+      choke: choke,
+      chokeType: chokeType,
+      tbg: tbg,
+      icp: icp,
+      csg: csg,
+      waterProduction: waterProduction,
+      oilProduction: oilProduction,
+      hourlyGas: hourlyGas,
+      gas24HourRate: gas24HourRate,
+      salesGasRate: salesGasRate,
+      gasStatic: gasStatic,
+      gasDifferential: gasDifferential,
+      gasTemp: gasTemp,
+      waterSpecificGravity: waterSpecificGravity,
+      wellheadTemp: wellheadTemp,
+      waterTemp: waterTemp,
+      flareRate: flareRate,
+      flarePilotTemp: flarePilotTemp,
+      biocide: biocide,
+      scavenger: scavenger,
+      defoamer: defoamer,
+      scaleInhibitor: scaleInhibitor,
+      vruGasRate: vruGasRate,
+      compressorInjection: compressorInjection,
+      vruSuction: vruSuction,
+      vruDischarge: vruDischarge,
+      sandRate: sandRate,
+      waterGaugeText: waterGaugeText,
+      oilGaugeText: oilGaugeText,
+      currentWaterBbl: currentWaterBbl,
+      currentOilBbl: currentOilBbl,
+      currentWaterMeter: currentWaterMeter,
+      currentOilMeter: currentOilMeter,
+      waterMeasurementMethod: waterMeasurementMethod,
+      oilMeasurementMethod: oilMeasurementMethod,
+      currentGasAccum: currentGasAccum,
+      hoursSincePrevious: hoursSincePrevious,
+      waterHauled: waterHauled,
+      oilHauled: oilHauled,
+      waterPumped: waterPumped,
+      oilPumped: oilPumped,
+      notes: notes,
+      entryId: entryId ?? this.entryId,
+      activeJobId: activeJobId ?? this.activeJobId,
+      wellId: wellId ?? this.wellId,
+      originalTimestampIso: originalTimestampIso ?? this.originalTimestampIso,
+      productionDay: productionDay ?? this.productionDay,
+      createdAtIso: createdAtIso ?? this.createdAtIso,
+      lastModifiedAtIso: lastModifiedAtIso ?? this.lastModifiedAtIso,
+      sourceHandoffId: sourceHandoffId ?? this.sourceHandoffId,
+      sourceDeviceId: sourceDeviceId ?? this.sourceDeviceId,
+    );
+  }
 
   Map<String, dynamic> toJson() {
     return {
@@ -1431,6 +1527,15 @@ class ProductionReportRow {
       'waterPumped': waterPumped,
       'oilPumped': oilPumped,
       'notes': notes,
+      'entryId': entryId,
+      'activeJobId': activeJobId,
+      'wellId': wellId,
+      'originalTimestampIso': originalTimestampIso,
+      'productionDay': productionDay,
+      'createdAtIso': createdAtIso,
+      'lastModifiedAtIso': lastModifiedAtIso,
+      'sourceHandoffId': sourceHandoffId,
+      'sourceDeviceId': sourceDeviceId,
     };
   }
 }

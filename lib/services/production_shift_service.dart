@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/production_shift.dart';
+import 'production_report_continuity_service.dart';
 
 class ProductionMath {
   static double parse(String value) => double.tryParse(value.trim()) ?? 0;
@@ -83,6 +84,8 @@ class ProductionMath {
 class ProductionShiftService {
   static const _activeKey = 'wellwerks_production_active_shift_v2';
   static const _historyKey = 'wellwerks_production_history_v2';
+  final ProductionReportContinuityService _continuity =
+      const ProductionReportContinuityService();
 
   Future<ProductionShift> loadActiveShift() async {
     final prefs = await SharedPreferences.getInstance();
@@ -92,9 +95,28 @@ class ProductionShiftService {
     }
 
     try {
-      return ProductionShift.fromJson(
+      final parsed = ProductionShift.fromJson(
         Map<String, dynamic>.from(jsonDecode(raw) as Map),
       );
+      final normalized = _continuity.normalizedRowsForJob(
+        shift: parsed,
+        activeJob: null,
+      );
+      final originalRows = parsed.inventory.productionRows.isNotEmpty
+          ? parsed.inventory.productionRows
+          : parsed.savedRows;
+      final before =
+          jsonEncode(originalRows.map((row) => row.toJson()).toList());
+      final after = jsonEncode(normalized.map((row) => row.toJson()).toList());
+      if (before != after) {
+        final migrated = parsed.copyWith(
+          savedRows: normalized,
+          inventory: parsed.inventory.copyWith(productionRows: normalized),
+        );
+        await saveActiveShift(migrated);
+        return migrated;
+      }
+      return parsed;
     } catch (_) {
       return ProductionShift.empty();
     }

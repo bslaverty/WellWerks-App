@@ -6,6 +6,7 @@ import '../models/production_shift.dart';
 import '../services/app_settings_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/job_profile_defaults_service.dart';
+import '../services/production_report_continuity_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/recovery_state_service.dart';
 import '../services/report_profile_service.dart';
@@ -26,6 +27,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   final _jobStorage = JobStorageService();
   final _recoveryState = RecoveryStateService();
   final _profileDefaults = JobProfileDefaultsService();
+  final _continuityService = const ProductionReportContinuityService();
 
   AppSettingsData _settings = const AppSettingsData(
     defaultGasUnit: AppSettingsDefaults.gasUnit,
@@ -88,15 +90,16 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   }
 
   List<ProductionReportRow> get _activeJobRows {
-    final inventoryRows = _shift.inventory.productionRows.isNotEmpty
-        ? _shift.inventory.productionRows
-        : _shift.savedRows;
+    final normalizedRows = _continuityService.normalizedRowsForJob(
+      shift: _shift,
+      activeJob: _activeJob,
+    );
     final activeJob = _activeJob;
     final rows = activeJob == null
-        ? List<ProductionReportRow>.from(inventoryRows)
+        ? List<ProductionReportRow>.from(normalizedRows)
         : (_shift.activeJobId != activeJob.id
             ? <ProductionReportRow>[]
-            : List<ProductionReportRow>.from(inventoryRows));
+            : List<ProductionReportRow>.from(normalizedRows));
     final order = _wellOrderSource;
     rows.sort((a, b) {
       final hourCompare = a.hourIndex.compareTo(b.hourIndex);

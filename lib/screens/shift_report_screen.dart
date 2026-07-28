@@ -11,10 +11,12 @@ import '../models/job_setup.dart';
 import '../models/production_shift.dart';
 import '../services/job_profile_defaults_service.dart';
 import '../services/job_storage_service.dart';
+import '../services/production_report_continuity_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/recovery_state_service.dart';
 import '../services/report_profile_service.dart';
 import '../utils/choke_parsing.dart';
+import '../utils/production_day.dart';
 import '../widgets/app_header.dart';
 
 class ShiftReportScreen extends StatefulWidget {
@@ -26,12 +28,14 @@ class ShiftReportScreen extends StatefulWidget {
 
 class _ShiftReportScreenState extends State<ShiftReportScreen> {
   static const _chartPrefsBase = 'wellwerks_production_report_chart_v1';
+  static const _reportViewPrefsBase = 'wellwerks_production_report_view_v1';
 
   final _shiftService = ProductionShiftService();
   final _layoutService = ReportProfileService();
   final _jobStorage = JobStorageService();
   final _recoveryState = RecoveryStateService();
   final _profileDefaults = JobProfileDefaultsService();
+  final _continuityService = const ProductionReportContinuityService();
 
   ProductionShift _shift = ProductionShift.empty();
   JobSetup? _activeJob;
@@ -41,6 +45,8 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   Map<_ChartSeries, bool> _seriesVisibility = _defaultSeriesVisibility();
   String _pointDetail = '';
   _ChartSeries? _pointDetailSeries;
+  _ReportView _reportView = _ReportView.dailyTabs;
+  String _selectedProductionDay = '';
 
   @override
   void initState() {
@@ -88,6 +94,16 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       }
     }
 
+    final reportPrefsRaw =
+        prefs.getString(_reportViewPrefsKeyFor(activeJob, shift));
+    final reportPrefs = _decodePrefs(reportPrefsRaw);
+    final reportViewRaw = (reportPrefs['reportView'] as String? ?? '').trim();
+    final reportView = reportViewRaw == _ReportView.timeline.name
+        ? _ReportView.timeline
+        : _ReportView.dailyTabs;
+    final selectedProductionDay =
+        (reportPrefs['selectedProductionDay'] as String? ?? '').trim();
+
     if (!mounted) return;
     setState(() {
       _shift = shift;
@@ -97,6 +113,8 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       _seriesVisibility = _resolvedSeriesVisibility(
         savedPrefs['visibleSeries'] as List<dynamic>?,
       );
+      _reportView = reportView;
+      _selectedProductionDay = selectedProductionDay;
       _loading = false;
     });
   }
@@ -105,6 +123,12 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     final id = (activeJob?.id ?? shift.activeJobId).trim();
     if (id.isEmpty) return _chartPrefsBase;
     return '$_chartPrefsBase:$id';
+  }
+
+  String _reportViewPrefsKeyFor(JobSetup? activeJob, ProductionShift shift) {
+    final id = (activeJob?.id ?? shift.activeJobId).trim();
+    if (id.isEmpty) return _reportViewPrefsBase;
+    return '$_reportViewPrefsBase:$id';
   }
 
   Map<String, dynamic> _decodePrefs(String? raw) {
@@ -129,6 +153,13 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       'selectedWell': selectedWell,
     };
     await prefs.setString(key, jsonEncode(payload));
+
+    final reportPrefsKey = _reportViewPrefsKeyFor(_activeJob, _shift);
+    final reportPayload = <String, dynamic>{
+      'reportView': _reportView.name,
+      'selectedProductionDay': _selectedProductionDay,
+    };
+    await prefs.setString(reportPrefsKey, jsonEncode(reportPayload));
   }
 
   static Map<_ChartSeries, bool> _defaultSeriesVisibility() {
@@ -164,14 +195,15 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     ProductionShift shift,
     JobSetup? activeJob,
   ) {
-    final inventoryRows = shift.inventory.productionRows.isNotEmpty
-        ? shift.inventory.productionRows
-        : shift.savedRows;
+    final normalizedRows = _continuityService.normalizedRowsForJob(
+      shift: shift,
+      activeJob: activeJob,
+    );
     final rows = activeJob == null
-        ? List<ProductionReportRow>.from(inventoryRows)
+        ? List<ProductionReportRow>.from(normalizedRows)
         : (shift.activeJobId != activeJob.id
             ? <ProductionReportRow>[]
-            : List<ProductionReportRow>.from(inventoryRows));
+            : List<ProductionReportRow>.from(normalizedRows));
 
     final order = _resolveWellOrderSource(shift, activeJob);
     final indexed = rows.asMap().entries.toList(growable: false);
@@ -215,6 +247,34 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
 
   List<ProductionReportRow> get _activeJobRows {
     return _resolveActiveJobRows(_shift, _activeJob);
+  }
+
+  List<ProductionReportRow> get _normalizedRows {
+    return _continuityService.normalizedRowsForJob(
+      shift: _shift,
+      activeJob: _activeJob,
+    );
+  }
+
+  Map<String, List<ProductionReportRow>> get _rowsByProductionDay {
+    return _continuityService.groupByProductionDay(_normalizedRows);
+  }
+
+  List<String> get _productionDayKeys {
+    final keys = _rowsByProductionDay.keys.toList()..sort();
+    return keys;
+  }
+
+  String get _effectiveSelectedProductionDay {
+    final keys = _productionDayKeys;
+    if (keys.isEmpty) return '';
+    if (_selectedProductionDay.isNotEmpty &&
+        keys.contains(_selectedProductionDay)) {
+      return _selectedProductionDay;
+    }
+    final current = productionDayKey(DateTime.now());
+    if (keys.contains(current)) return current;
+    return keys.last;
   }
 
   List<String> get _wellOrder {
@@ -548,14 +608,13 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
 
   DataCell _cell(String value) => DataCell(Text(value.isEmpty ? '-' : value));
 
-  Widget _buildTable() {
-    final rows = _rowsForSelectedWell;
+  Widget _buildDayTable(List<ProductionReportRow> rows) {
     if (rows.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(16),
+      return const Padding(
+        padding: EdgeInsets.all(16),
         child: Text(
-          _emptyStateMessage,
-          style: const TextStyle(color: Colors.white70),
+          'No entries for this production day.',
+          style: TextStyle(color: Colors.white70),
         ),
       );
     }
@@ -574,7 +633,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       scrollDirection: Axis.horizontal,
       child: DataTable(
         columns: [
-          for (final key in _visibleFieldKeys) _column(_headerLabel(key))
+          for (final key in _visibleFieldKeys) _column(_headerLabel(key)),
         ],
         rows: [
           for (final row in rows)
@@ -585,6 +644,183 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
             ),
         ],
       ),
+    );
+  }
+
+  String _prettyProductionDay(String dayKey) {
+    final parsed = DateTime.tryParse(dayKey);
+    if (parsed == null) return dayKey;
+    return DateFormat('MMM d').format(parsed);
+  }
+
+  Widget _buildOverviewCard() {
+    final rows = _normalizedRows;
+    final dayCount = _productionDayKeys.length;
+    final first = rows
+        .map((row) => DateTime.tryParse(row.originalTimestampIso))
+        .whereType<DateTime>()
+        .fold<DateTime?>(null, (a, b) => a == null || b.isBefore(a) ? b : a);
+    final last = rows
+        .map((row) => DateTime.tryParse(row.originalTimestampIso))
+        .whereType<DateTime>()
+        .fold<DateTime?>(null, (a, b) => a == null || b.isAfter(a) ? b : a);
+
+    final totalWater =
+        rows.fold<double>(0, (sum, row) => sum + row.waterProduction);
+    final totalOil =
+        rows.fold<double>(0, (sum, row) => sum + row.oilProduction);
+    final totalGas = rows.fold<double>(0, (sum, row) => sum + row.hourlyGas);
+    final totalOilHauled =
+        rows.fold<double>(0, (sum, row) => sum + row.oilHauled);
+    final totalOilPumped =
+        rows.fold<double>(0, (sum, row) => sum + row.oilPumped);
+
+    final customer = (_activeJob?.company ?? _shift.header.company).trim();
+    final jobName = (_activeJob?.padName ?? _shift.header.pad).trim();
+    final wells = _wellOrder.join(' / ');
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Overview',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text('Customer: ${customer.isEmpty ? '-' : customer}'),
+            Text('Job: ${jobName.isEmpty ? '-' : jobName}'),
+            Text('Wells: ${wells.isEmpty ? '-' : wells}'),
+            Text(
+              'Current Production Day: ${_prettyProductionDay(productionDayKey(DateTime.now()))}',
+            ),
+            Text('Production Days: $dayCount'),
+            Text(
+              'First Entry: ${first == null ? '-' : DateFormat('MMM d, h:mm a').format(first)}',
+            ),
+            Text(
+              'Latest Entry: ${last == null ? '-' : DateFormat('MMM d, h:mm a').format(last)}',
+            ),
+            Text('Total Water Produced: ${_wholeFmt(totalWater)} bbl'),
+            Text('Total Oil Produced: ${_wholeFmt(totalOil)} bbl'),
+            Text('Total Gas Produced: ${_wholeFmt(totalGas)}'),
+            Text('Total Oil Hauled: ${_wholeFmt(totalOilHauled)} bbl'),
+            Text('Total Oil Pumped: ${_wholeFmt(totalOilPumped)} bbl'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDailyTabsContent() {
+    final dayKeys = _productionDayKeys;
+    final selectedDay = _effectiveSelectedProductionDay;
+
+    final chips = <Widget>[
+      ChoiceChip(
+        label: const Text('Overview'),
+        selected: _selectedProductionDay == '__overview__' ||
+            (dayKeys.isEmpty && _selectedProductionDay.isEmpty),
+        onSelected: (_) {
+          setState(() => _selectedProductionDay = '__overview__');
+          _saveChartPrefs();
+        },
+      ),
+      for (final key in dayKeys)
+        ChoiceChip(
+          label: Text(_prettyProductionDay(key)),
+          selected: _selectedProductionDay == key ||
+              (_selectedProductionDay.isEmpty &&
+                  key == selectedDay &&
+                  _selectedProductionDay != '__overview__'),
+          onSelected: (_) {
+            setState(() => _selectedProductionDay = key);
+            _saveChartPrefs();
+          },
+        ),
+    ];
+
+    final showOverview = _selectedProductionDay == '__overview__' ||
+        (dayKeys.isEmpty && _selectedProductionDay.isEmpty);
+    final activeDay =
+        _selectedProductionDay.isEmpty ? selectedDay : _selectedProductionDay;
+    final rowsForDay = showOverview
+        ? const <ProductionReportRow>[]
+        : (_rowsByProductionDay[activeDay] ?? const <ProductionReportRow>[]);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (final chip in chips)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: chip,
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (showOverview)
+          _buildOverviewCard()
+        else
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: _buildDayTable(rowsForDay),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildTimelineContent() {
+    final grouped = _rowsByProductionDay;
+    final dayKeys = grouped.keys.toList()..sort();
+    if (dayKeys.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text(
+          'No timeline entries yet.',
+          style: TextStyle(color: Colors.white70),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final day in dayKeys) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 6),
+            child: Text(
+              '${_prettyProductionDay(day).toUpperCase()} PRODUCTION DAY',
+              style: const TextStyle(
+                color: Color(0xFFCDA56A),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          for (final row in grouped[day] ?? const <ProductionReportRow>[])
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text('${row.time} • ${row.well}'),
+              subtitle: Text(
+                'Oil ${_wholeFmt(row.oilProduction)} bbl/hr • Water ${_wholeFmt(row.waterProduction)} bbl/hr • Gas ${_wholeFmt(row.hourlyGas)}',
+              ),
+            ),
+          const Divider(),
+        ],
+      ],
     );
   }
 
@@ -1230,6 +1466,26 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                SegmentedButton<_ReportView>(
+                  segments: const [
+                    ButtonSegment<_ReportView>(
+                      value: _ReportView.dailyTabs,
+                      label: Text('Daily Tabs'),
+                    ),
+                    ButtonSegment<_ReportView>(
+                      value: _ReportView.timeline,
+                      label: Text('Timeline'),
+                    ),
+                  ],
+                  selected: {_reportView},
+                  onSelectionChanged: (selection) {
+                    setState(() {
+                      _reportView = selection.first;
+                    });
+                    _saveChartPrefs();
+                  },
+                ),
+                const SizedBox(height: 10),
                 if (summary.isNotEmpty)
                   Text(
                     summary,
@@ -1255,7 +1511,9 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         Card(
           child: Padding(
             padding: const EdgeInsets.all(14),
-            child: _buildTable(),
+            child: _reportView == _ReportView.dailyTabs
+                ? _buildDailyTabsContent()
+                : _buildTimelineContent(),
           ),
         ),
         const SizedBox(height: 8),
@@ -1544,6 +1802,8 @@ enum _ChartSeries {
   const _ChartSeries(this.id);
   final String id;
 }
+
+enum _ReportView { dailyTabs, timeline }
 
 enum _AxisGroup { left, right }
 

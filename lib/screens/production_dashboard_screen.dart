@@ -14,6 +14,7 @@ import 'production_inventory_screen.dart';
 import 'production_history_screen.dart';
 import 'report_template_screen.dart';
 import 'shift_report_screen.dart';
+import 'shift_handoff_screen.dart';
 import 'production_shift_change_screen.dart';
 import 'text_update_screen.dart';
 
@@ -252,6 +253,12 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
             subtitle:
                 'Select a saved hour, preview, and copy shift change text',
             onTap: () => _open(context, const ProductionShiftChangeScreen()),
+          ),
+          ToolCard(
+            icon: Icons.compare_arrows,
+            title: 'Shift Handoff',
+            subtitle: 'Create/share .wellwerks and merge imported handoff data',
+            onTap: () => _open(context, const ShiftHandoffScreen()),
           ),
           ToolCard(
             icon: Icons.local_drink,

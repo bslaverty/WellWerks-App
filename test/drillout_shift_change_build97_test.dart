@@ -848,4 +848,126 @@ void main() {
     expect(preview, contains('Sweep Tank 3:'));
     expect(preview, contains('Total On Location: 985 bbl'));
   });
+
+  testWidgets(
+      'Build 181 preview and copy preserve whole-inch zeros for tank gauges',
+      (WidgetTester tester) async {
+    String copiedText = '';
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (methodCall) async {
+        if (methodCall.method == 'Clipboard.setData') {
+          final args = methodCall.arguments;
+          if (args is Map) {
+            copiedText = (args['text'] as String?) ?? '';
+          }
+          return null;
+        }
+        if (methodCall.method == 'Clipboard.getData') {
+          return <String, dynamic>{'text': copiedText};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+
+    await _seedShiftSetup({
+      'tankConfigurationV1': {
+        'sandTankType': 'flowback_round_bottom',
+        'flowbackTankTypes': [
+          'flowback_round_bottom',
+          'flowback_round_bottom',
+        ],
+        'sweepTankTypes': ['flowback_round_bottom'],
+        'gaugesByRole': {
+          'sand_tank': '30',
+          'flowback_tank_1': '32',
+          'flowback_tank_2': '31',
+          'sweep_tank_1': '20',
+        },
+      },
+    });
+
+    await _pumpScreen(tester);
+
+    final preview = await _openPreviewAndRead(tester);
+    expect(preview, contains('Sand Tank:'));
+    expect(preview, contains('Flowback Tank 1:'));
+    expect(preview, contains('Flowback Tank 2:'));
+    expect(preview, contains('Sweep Tank 1:'));
+    expect(preview, contains('30" -'));
+    expect(preview, contains('32" -'));
+    expect(preview, contains('31" -'));
+    expect(preview, contains('20" -'));
+    expect(preview.contains('Sand Tank:       3" -'), isFalse);
+    expect(preview.contains('Sweep Tank 1:       2" -'), isFalse);
+
+    final copied = await _copyAndRead(tester);
+    expect(copied, preview);
+    expect(copied, contains('30" -'));
+    expect(copied, contains('20" -'));
+  });
+
+  testWidgets('Build 181 gauge formatter keeps integer zeros and decimals',
+      (WidgetTester tester) async {
+    String copiedText = '';
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (methodCall) async {
+        if (methodCall.method == 'Clipboard.setData') {
+          final args = methodCall.arguments;
+          if (args is Map) {
+            copiedText = (args['text'] as String?) ?? '';
+          }
+          return null;
+        }
+        if (methodCall.method == 'Clipboard.getData') {
+          return <String, dynamic>{'text': copiedText};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+
+    final cases = <String>[
+      '2',
+      '3',
+      '10',
+      '20',
+      '30',
+      '31',
+      '32',
+      '20.5',
+      '30.25',
+    ];
+
+    for (final gauge in cases) {
+      await _seedShiftSetup({
+        'tankConfigurationV1': {
+          'sandTankType': 'flowback_round_bottom',
+          'flowbackTankTypes': [],
+          'sweepTankTypes': [],
+          'gaugesByRole': {
+            'sand_tank': gauge,
+          },
+        },
+      });
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await _pumpScreen(tester);
+      final preview = await _openPreviewAndRead(tester);
+      final copied = await _copyAndRead(tester);
+
+      expect(copied, preview);
+      expect(preview, contains('Sand Tank:'));
+      expect(preview, contains('$gauge" -'));
+    }
+  });
 }
