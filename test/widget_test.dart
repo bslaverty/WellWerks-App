@@ -172,7 +172,7 @@ void main() {
     expect(find.text('Readiness'), findsOneWidget);
   });
 
-  testWidgets('Home no active job state shows compact create action',
+  testWidgets('Home no active job state shows import-capable actions',
       (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
     await ActiveWorkflowModeService.instance
@@ -184,7 +184,10 @@ void main() {
 
     expect(find.text('Active Company'), findsNothing);
     expect(find.text('No Active Job'), findsOneWidget);
-    expect(find.text('Create New Job >'), findsOneWidget);
+    expect(find.text('Create Job'), findsOneWidget);
+    expect(find.text('Import Job Setup File'), findsOneWidget);
+    expect(find.text('Paste Job Setup Import Code'), findsOneWidget);
+    expect(find.text('Scan Job Setup QR'), findsOneWidget);
     expect(find.text('Continue Active Job'), findsNothing);
     expect(find.text('ACTIVE'), findsNothing);
     expect(find.textContaining('Active Job:'), findsNothing);

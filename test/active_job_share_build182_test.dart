@@ -28,7 +28,7 @@ void main() {
       ).toJson(),
     );
 
-    final service = ActiveJobShareService();
+    const service = ActiveJobShareService();
     final encoded = service.encodePackage(package);
     final decoded = service.decodePackage(encoded);
 
@@ -42,19 +42,19 @@ void main() {
   });
 
   test('Build 182 active job share rejects unsupported schema', () {
-    final service = ActiveJobShareService();
+    const service = ActiveJobShareService();
     const raw = '{"fileType":"wellwerks_job_setup","schemaVersion":"9.9.9"}';
     expect(() => service.decodePackage(raw), throwsFormatException);
   });
 
   test('Build 182 active job share rejects unsupported type', () {
-    final service = ActiveJobShareService();
+    const service = ActiveJobShareService();
     const raw = '{"fileType":"wrong_type","schemaVersion":"1.0.0"}';
     expect(() => service.decodePackage(raw), throwsFormatException);
   });
 
   test('Build 183 import accepts legacy active job file type', () {
-    final service = ActiveJobShareService();
+    const service = ActiveJobShareService();
     const raw =
         '{"fileType":"wellwerks_active_job","schemaVersion":"1.0.0","workflow":"production","jobData":{"company":"Mach Energy"}}';
 
@@ -64,7 +64,7 @@ void main() {
   });
 
   test('Build 183 import accepts legacy active job with no schema', () {
-    final service = ActiveJobShareService();
+    const service = ActiveJobShareService();
     const raw =
         '{"fileType":"wellwerks_active_job","workflow":"production","jobData":{"company":"Mach Energy"}}';
 

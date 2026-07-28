@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -16,10 +17,10 @@ import '../services/active_job_share_service.dart';
 import '../services/active_workflow_mode_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/job_setup_qr_service.dart';
+import '../services/job_setup_import_service.dart';
 import '../services/rate_timer_notification_service.dart';
 import '../services/rate_timer_service.dart';
 import '../services/recovery_state_service.dart';
-import '../services/wellwerks_package_router_service.dart';
 import 'module_menu_screen.dart';
 import 'rate_calculator_screen.dart';
 import 'rate_calculator_menu_screen.dart';
@@ -31,6 +32,7 @@ import 'production_dashboard_screen.dart';
 import 'production_history_screen.dart';
 import 'gas_accum_screen.dart';
 import 'job_setup_qr_scanner_screen.dart';
+import 'job_management_screen.dart';
 import 'bottoms_up_screen.dart';
 import 'multiple_choke_screen.dart';
 import 'chart_reference_screen.dart';
@@ -60,9 +62,9 @@ class _HomeScreenState extends State<HomeScreen> {
   final _settingsService = AppSettingsService();
   final _rateTimerNotifications = RateTimerNotificationService.instance;
   final _workflowModeService = ActiveWorkflowModeService.instance;
-  final _jobShareService = ActiveJobShareService();
+  final _jobShareService = const ActiveJobShareService();
+  final _jobImportService = const JobSetupImportService();
   final _jobSetupQrService = const JobSetupQrService();
-  final _packageRouter = const WellWerksPackageRouterService();
 
   JobSetup? _activeJob;
   bool _loading = true;
@@ -329,12 +331,20 @@ class _HomeScreenState extends State<HomeScreen> {
             'Could not prepare Job Setup file to share.');
       }
 
-      await Share.shareXFiles(
+      final result = await Share.shareXFiles(
         [XFile(file.path)],
         subject: 'WellWerks Job Setup',
         text: 'Job setup package for WellWerks import.',
         sharePositionOrigin: _shareOriginRect(),
       );
+      final status = result.status;
+      if (status == ShareResultStatus.dismissed) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Job Setup share cancelled.')),
+        );
+        return;
+      }
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -342,14 +352,23 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     } on FormatException catch (error) {
       if (!mounted) return;
+      if (error.message.contains('Unable to chunk Job Setup payload for QR.')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'This Job Setup is too large for a QR code. Use Share Job Setup File or Copy Job Setup Import Code.',
+            ),
+          ),
+        );
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.message)),
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Failed to share Job Setup. ${error.toString()}')),
+        const SnackBar(content: Text('Failed to share Job Setup.')),
       );
     } finally {
       if (mounted) {
@@ -374,24 +393,25 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (picked == null) return;
 
-      final length = await picked.length();
-      if (length <= 0) {
+      final bytes = await picked.readAsBytes();
+      if (bytes.isEmpty) {
         throw const FormatException('Selected file is empty.');
       }
 
-      final raw = await picked.readAsString();
-      await _importJobSetupFromRaw(raw);
+      final raw = utf8.decode(bytes).trim();
+      if (raw.isEmpty) {
+        throw const FormatException('The selected Job Setup file is empty.');
+      }
+      await _runImportFlowFromRaw(raw, source: 'File Import');
     } on FormatException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.message)),
       );
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to import Job Setup file. ${error.toString()}'),
-        ),
+        const SnackBar(content: Text('Failed to import Job Setup file.')),
       );
     } finally {
       if (mounted) {
@@ -400,68 +420,254 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _importJobSetupFromRaw(String raw) async {
+  Future<void> _copyJobSetupSummary() async {
+    final activeJob = _activeJob;
+    if (activeJob == null || _jobShareBusy) return;
+    final summary = _jobImportService.buildSummary(activeJob);
+    await Clipboard.setData(ClipboardData(text: summary));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Job Setup summary copied.')),
+    );
+  }
+
+  Future<void> _copyJobSetupImportCode() async {
+    final activeJob = _activeJob;
+    if (activeJob == null || _jobShareBusy) return;
+    setState(() => _jobShareBusy = true);
     try {
-      final header = _packageRouter.decodeHeader(raw);
-      if (header.type != WellWerksPackageType.jobSetup) {
-        throw const FormatException(
-          'This file is not a Job Setup package. Use Share Job Setup on the sender device.',
-        );
+      final package = await _jobShareService.buildPackage(activeJob: activeJob);
+      final code = _jobImportService.buildImportCode(package);
+      if (code.trim().isEmpty) {
+        throw const FormatException('Generated import code is empty.');
       }
-
-      final package = _jobShareService.decodePackage(raw);
-      final importedJob = JobSetup.fromJson(package.jobData);
-      final normalizedImport = importedJob.copyWith(
-        workflow: importedJob.workflow.trim().isEmpty
-            ? package.workflow
-            : importedJob.workflow,
-        status: 'active',
-        endedAt: null,
-        startedAt: importedJob.startedAt ?? DateTime.now(),
-      );
-      final savedJob = await _jobStorage.saveActiveJob(normalizedImport);
-      await _workflowModeService.setMode(_workflowModeForJob(savedJob));
-
+      await Clipboard.setData(ClipboardData(text: code));
       if (!mounted) return;
-      setState(() {
-        _activeJob = savedJob;
-      });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(content: Text('Job Setup import code copied.')),
+      );
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to copy Job Setup import code.')),
+      );
+    } finally {
+      if (mounted) setState(() => _jobShareBusy = false);
+    }
+  }
+
+  Future<void> _pasteJobSetupImportCode() async {
+    if (_jobShareBusy) return;
+    final controller = TextEditingController();
+    final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+    final fromClipboard = clipboardData?.text?.trim() ?? '';
+    if (fromClipboard.isNotEmpty) {
+      controller.text = fromClipboard;
+    }
+    if (!mounted) return;
+
+    final pasted = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Paste Job Setup Import Code'),
+        content: TextField(
+          controller: controller,
+          maxLines: 8,
+          decoration: const InputDecoration(
+            labelText: 'WellWerks import code',
+            hintText: 'WELLWERKS_JOB_SETUP_V1:...',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Preview Import'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || pasted == null) return;
+    final rawCode = pasted.trim();
+    if (rawCode.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
           content: Text(
-            'Imported Job Setup: ${savedJob.padName.isEmpty ? savedJob.company : savedJob.padName}',
+            'The pasted text is not a valid WellWerks Job Setup import code.',
           ),
         ),
       );
       return;
-    } on FormatException {
-      // Fallback path: older files may contain only JobSetup JSON without envelope metadata.
-      final legacy = JobSetup.fromJson(
-        Map<String, dynamic>.from(
-          (const JsonDecoder().convert(raw) as Map),
-        ),
-      );
-      final normalizedImport = legacy.copyWith(
-        workflow:
-            legacy.workflow.trim().isEmpty ? 'production' : legacy.workflow,
-        status: 'active',
-        endedAt: null,
-        startedAt: legacy.startedAt ?? DateTime.now(),
-      );
-      final savedJob = await _jobStorage.saveActiveJob(normalizedImport);
-      await _workflowModeService.setMode(_workflowModeForJob(savedJob));
+    }
+
+    setState(() => _jobShareBusy = true);
+    try {
+      final payload = _jobImportService.extractImportCodePayload(rawCode);
+      await _runImportFlowFromRaw(payload, source: 'Import Code');
+    } on FormatException catch (error) {
       if (!mounted) return;
-      setState(() {
-        _activeJob = savedJob;
-      });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Imported legacy Job Setup: ${savedJob.padName.isEmpty ? savedJob.company : savedJob.padName}',
+        SnackBar(content: Text(error.message)),
+      );
+    } finally {
+      if (mounted) setState(() => _jobShareBusy = false);
+    }
+  }
+
+  Future<void> _runImportFlowFromRaw(
+    String raw, {
+    required String source,
+  }) async {
+    final jobs = await _jobStorage.loadJobs();
+    final preview = _jobImportService.decodePreview(raw: raw, localJobs: jobs);
+    if (!mounted) return;
+    await _showImportPreview(preview, source: source);
+  }
+
+  Future<void> _showImportPreview(
+    JobSetupImportPreview preview, {
+    required String source,
+  }) async {
+    final job = preview.job;
+    final wells = job.resolvedWellNames;
+    final tankSummary =
+        'Oil Tanks ${job.oilTanks}, Water Tanks ${job.waterTanks}, Factor ${job.productionTankFactor}';
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Job Setup Import Preview'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Customer: ${job.company.isEmpty ? '-' : job.company}'),
+              Text('Pad/Job: ${job.padName.isEmpty ? '-' : job.padName}'),
+              Text(
+                  'Workflow: ${job.workflow.isEmpty ? 'production' : job.workflow}'),
+              Text('Wells: ${wells.isEmpty ? '-' : wells.join(' / ')}'),
+              Text('Tank Setup: $tankSummary'),
+              Text(
+                'Package Date: ${preview.package.packageCreatedAt.isEmpty ? '-' : preview.package.packageCreatedAt}',
+              ),
+              Text(
+                'Source Build: ${preview.package.buildNumber.isEmpty ? '-' : preview.package.buildNumber}',
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Matching Local Job: ${preview.hasMatchingJob ? 'Yes' : 'No'}',
+                style: const TextStyle(color: Colors.white70),
+              ),
+              Text(
+                'Persistent Job ID: ${preview.job.id.isEmpty ? preview.package.sourceJobId : preview.job.id}',
+                style: const TextStyle(color: Colors.white70),
+              ),
+              Text(
+                'Import Source: $source',
+                style: const TextStyle(color: Colors.white70),
+              ),
+            ],
           ),
         ),
-      );
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          if (preview.hasMatchingJob)
+            OutlinedButton(
+              onPressed: () => Navigator.of(context).pop('update'),
+              child: const Text('Update Matching Job'),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop('new'),
+            child: const Text('Import as New Job'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || action == null) return;
+
+    if (action == 'update') {
+      await _importUpdateMatching(preview);
+      return;
     }
+    await _importAsNew(preview);
+  }
+
+  Future<void> _importUpdateMatching(JobSetupImportPreview preview) async {
+    final updated = _jobImportService.buildImportAsUpdate(preview);
+    await _jobStorage.saveJobWithoutActivating(updated);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Updated Job Setup configuration for ${updated.padName.isEmpty ? updated.company : updated.padName}.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _importAsNew(JobSetupImportPreview preview) async {
+    final localJobs = await _jobStorage.loadJobs();
+    final imported = _jobImportService.buildImportAsNew(
+      preview,
+      localJobs: localJobs,
+    );
+    final saved = await _jobStorage.saveJobWithoutActivating(imported);
+    if (!mounted) return;
+    await _showPostImportActions(saved);
+  }
+
+  Future<void> _showPostImportActions(JobSetup importedJob) async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Job Setup Imported'),
+        content: Text(
+          'Imported ${importedJob.padName.isEmpty ? importedJob.company : importedJob.padName}.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('done'),
+            child: const Text('Done'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.of(context).pop('open'),
+            child: const Text('Open Job'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop('active'),
+            child: const Text('Make Active'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || result == null || result == 'done') return;
+    if (result == 'active') {
+      await _jobStorage.setActiveJobById(importedJob.id);
+      await _workflowModeService.setMode(_workflowModeForJob(importedJob));
+      await _loadRecovery();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Imported job is now active.')),
+      );
+      return;
+    }
+
+    await open(context, const JobManagementScreen());
   }
 
   Rect? _shareOriginRect() {
@@ -570,7 +776,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _jobShareBusy = true);
     try {
       final raw = _jobSetupQrService.decodePayload(scanned);
-      await _importJobSetupFromRaw(raw);
+      await _runImportFlowFromRaw(raw, source: 'QR Scan');
     } on FormatException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -637,37 +843,55 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (job == null)
-              InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: _startNewJob,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'No Active Job',
-                              style: TextStyle(
-                                color: scheme.primary,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 16,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              'Create New Job >',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.chevron_right),
-                    ],
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'No Active Job',
+                    style: TextStyle(
+                      color: scheme.primary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _startNewJob,
+                      icon: const Icon(Icons.add_circle_outline),
+                      label: const Text('Create Job'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _jobShareBusy ? null : _importJobSetup,
+                      icon: const Icon(Icons.file_open_outlined),
+                      label: const Text('Import Job Setup File'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed:
+                          _jobShareBusy ? null : _pasteJobSetupImportCode,
+                      icon: const Icon(Icons.content_paste),
+                      label: const Text('Paste Job Setup Import Code'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _jobShareBusy ? null : _scanJobSetupQr,
+                      icon: const Icon(Icons.qr_code_scanner_outlined),
+                      label: const Text('Scan Job Setup QR'),
+                    ),
+                  ),
+                ],
               )
             else ...[
               InkWell(
@@ -796,7 +1020,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: FilledButton.icon(
                           onPressed: _jobShareBusy ? null : _shareJobSetup,
                           icon: const Icon(Icons.ios_share),
-                          label: const Text('Share Job Setup'),
+                          label: const Text('Share Job Setup File'),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -805,7 +1029,37 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: OutlinedButton.icon(
                           onPressed: _jobShareBusy ? null : _importJobSetup,
                           icon: const Icon(Icons.file_open_outlined),
-                          label: const Text('Import Job Setup'),
+                          label: const Text('Import Job Setup File'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed:
+                              _jobShareBusy ? null : _copyJobSetupSummary,
+                          icon: const Icon(Icons.article_outlined),
+                          label: const Text('Copy Job Setup Summary'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed:
+                              _jobShareBusy ? null : _copyJobSetupImportCode,
+                          icon: const Icon(Icons.copy_all_outlined),
+                          label: const Text('Copy Job Setup Import Code'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed:
+                              _jobShareBusy ? null : _pasteJobSetupImportCode,
+                          icon: const Icon(Icons.content_paste),
+                          label: const Text('Paste Job Setup Import Code'),
                         ),
                       ),
                       const SizedBox(height: 8),

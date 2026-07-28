@@ -133,6 +133,12 @@ class JobStorageService {
     return saveActiveJob(job);
   }
 
+  Future<JobSetup> saveJobWithoutActivating(JobSetup job) async {
+    final normalized = _normalizeImportedJob(job);
+    await _upsertJobInList(normalized);
+    return normalized;
+  }
+
   Future<void> setActiveJobById(String jobId) async {
     final targetId = jobId.trim();
     if (targetId.isEmpty) return;
@@ -245,6 +251,22 @@ class JobStorageService {
     return job.copyWith(
       id: id,
       status: 'active',
+      startedAt: startedAt,
+      endedAt: null,
+      wells: resolvedEntries.map((entry) => entry.name).toList(),
+      wellEntries: resolvedEntries,
+    );
+  }
+
+  JobSetup _normalizeImportedJob(JobSetup job) {
+    final startedAt = job.startedAt ?? DateTime.now();
+    final id = job.id.trim().isEmpty
+        ? startedAt.microsecondsSinceEpoch.toString()
+        : job.id;
+    final resolvedEntries = job.resolvedWellEntries;
+    return job.copyWith(
+      id: id,
+      status: job.status.trim().isEmpty ? 'active' : job.status,
       startedAt: startedAt,
       endedAt: null,
       wells: resolvedEntries.map((entry) => entry.name).toList(),
