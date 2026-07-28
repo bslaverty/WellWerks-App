@@ -7,12 +7,13 @@ import 'package:share_plus/share_plus.dart';
 
 import '../models/job_setup.dart';
 import '../models/production_shift.dart';
-import '../services/active_job_share_service.dart';
 import '../services/active_workflow_mode_service.dart';
+import '../services/drillout_handoff_service.dart';
 import '../services/shift_handoff_history_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/shift_handoff_service.dart';
+import '../services/wellwerks_package_router_service.dart';
 import '../widgets/app_header.dart';
 import 'package:intl/intl.dart';
 
@@ -27,13 +28,15 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
   final _shiftService = ProductionShiftService();
   final _jobStorage = JobStorageService();
   final _handoffService = ShiftHandoffService();
+  final _drilloutHandoffService = DrilloutHandoffService();
   final _historyService = ShiftHandoffHistoryService();
-  final _jobShareService = ActiveJobShareService();
+  final _packageRouter = const WellWerksPackageRouterService();
   final _workflowModeService = ActiveWorkflowModeService.instance;
 
   ProductionShift _shift = ProductionShift.empty();
   JobSetup? _activeJob;
   List<ShiftHandoffHistoryEntry> _history = const [];
+  ActiveWorkflowMode _workflowMode = ActiveWorkflowMode.production;
   bool _loading = true;
   bool _busy = false;
 
@@ -58,6 +61,7 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
   Future<void> _load() async {
     var shift = await _shiftService.loadActiveShift();
     final activeJob = await _jobStorage.ensureActiveJobLoaded();
+    final workflowMode = await _workflowModeService.ensureLoaded();
     if (activeJob != null && shift.activeJobId != activeJob.id) {
       shift = shift.copyWith(activeJobId: activeJob.id);
       await _shiftService.saveActiveShift(shift);
@@ -68,6 +72,7 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
       _shift = shift;
       _activeJob = activeJob;
       _history = history;
+      _workflowMode = workflowMode;
       _loading = false;
     });
   }
@@ -90,140 +95,32 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
     return ActiveWorkflowMode.production;
   }
 
-  Future<void> _exportActiveJobInfo() async {
-    final activeJob = _activeJob;
-    if (activeJob == null || _busy) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No active job to share yet.')),
-      );
-      return;
-    }
-    setState(() => _busy = true);
-    try {
-      final package = await _jobShareService.buildPackage(activeJob: activeJob);
-      final encoded = _jobShareService.encodePackage(package);
-      final directory = await getTemporaryDirectory();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final pad =
-          activeJob.padName.trim().replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_');
-      final base = pad.isEmpty ? 'active_job' : pad;
-      final file = File('${directory.path}/${base}_$timestamp.wwjob');
-      await file.writeAsString(encoded);
-
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        subject: 'WellWerks Active Job',
-        text: 'Active job package for WellWerks import.',
-      );
-
-      await _historyService.appendEntry(
-        ShiftHandoffHistoryEntry(
-          action: 'job_export',
-          timestampIso: DateTime.now().toIso8601String(),
-          handoffId: activeJob.id,
-          sourceJobId: activeJob.id,
-          entriesAdded: activeJob.resolvedWellNames.length,
-          duplicatesSkipped: 0,
-          conflictCount: 0,
-          importedConflictChoices: 0,
-        ),
-      );
-
-      if (!mounted) return;
-      final history = await _historyService.loadHistory();
-      if (!mounted) return;
-      setState(() => _history = history);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Active job shared: ${file.path}')),
-      );
-    } on FormatException catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to share active job.')),
-      );
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+  bool get _isProductionWorkflow {
+    return _workflowMode == ActiveWorkflowMode.production;
   }
 
-  Future<void> _importActiveJobInfo() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      final picked = await openFile(
-        acceptedTypeGroups: const [
-          XTypeGroup(
-            label: 'WellWerks Active Job',
-            extensions: <String>['wwjob', 'json'],
-          ),
-        ],
-      );
-      if (picked == null) return;
+  Future<void> _shareFileWithChecks({
+    required String encoded,
+    required String base,
+    required String subject,
+    required String text,
+  }) async {
+    final directory = await getTemporaryDirectory();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final file = File('${directory.path}/${base}_$timestamp.wellwerks');
+    await file.writeAsString(encoded);
 
-      final raw = await picked.readAsString();
-      final package = _jobShareService.decodePackage(raw);
-      final importedJob = JobSetup.fromJson(package.jobData);
-      final normalizedImport = importedJob.copyWith(
-        workflow: importedJob.workflow.trim().isEmpty
-            ? package.workflow
-            : importedJob.workflow,
-        status: 'active',
-        endedAt: null,
-        startedAt: importedJob.startedAt ?? DateTime.now(),
-      );
-      final savedJob = await _jobStorage.saveActiveJob(normalizedImport);
-      await _workflowModeService.setMode(_workflowModeForJob(savedJob));
-
-      final updatedShift = _shift.copyWith(activeJobId: savedJob.id);
-      await _shiftService.saveActiveShift(updatedShift);
-
-      await _historyService.appendEntry(
-        ShiftHandoffHistoryEntry(
-          action: 'job_import',
-          timestampIso: DateTime.now().toIso8601String(),
-          handoffId: package.sourceJobId,
-          sourceJobId: savedJob.id,
-          entriesAdded: savedJob.resolvedWellNames.length,
-          duplicatesSkipped: 0,
-          conflictCount: 0,
-          importedConflictChoices: 0,
-        ),
-      );
-
-      if (!mounted) return;
-      final history = await _historyService.loadHistory();
-      if (!mounted) return;
-      setState(() {
-        _activeJob = savedJob;
-        _shift = updatedShift;
-        _history = history;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Imported active job: ${savedJob.padName.isEmpty ? savedJob.company : savedJob.padName} (${savedJob.workflow})',
-          ),
-        ),
-      );
-    } on FormatException catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to import active job file.')),
-      );
-    } finally {
-      if (mounted) setState(() => _busy = false);
+    final exists = await file.exists();
+    final size = exists ? await file.length() : 0;
+    if (!exists || size <= 0) {
+      throw const FormatException('Could not prepare handoff file to share.');
     }
+
+    await Share.shareXFiles(
+      [XFile(file.path)],
+      subject: subject,
+      text: text,
+    );
   }
 
   String _conflictValueSummary(ProductionReportRow row) {
@@ -378,23 +275,19 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
         activeJob: _activeJob,
       );
       final encoded = _handoffService.encodePackage(package);
-      final directory = await getTemporaryDirectory();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
       final pad = (_activeJob?.padName ?? _shift.header.pad)
           .trim()
           .replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_');
       final base = pad.isEmpty ? 'job' : pad;
-      final file = File('${directory.path}/${base}_$timestamp.wellwerks');
-      await file.writeAsString(encoded);
-
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        subject: 'WellWerks Shift Handoff',
-        text: 'Shift handoff package for import into WellWerks.',
+      await _shareFileWithChecks(
+        encoded: encoded,
+        base: '${base}_production_handoff',
+        subject: 'WellWerks Production Handoff',
+        text: 'Production handoff package for import into WellWerks.',
       );
       await _historyService.appendEntry(
         ShiftHandoffHistoryEntry(
-          action: 'export',
+          action: 'production_export',
           timestampIso: DateTime.now().toIso8601String(),
           handoffId: package.handoffId,
           sourceJobId: package.sourceJobId,
@@ -406,7 +299,7 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Shift handoff exported: ${file.path}')),
+        const SnackBar(content: Text('Production handoff shared.')),
       );
       final history = await _historyService.loadHistory();
       if (!mounted) return;
@@ -528,7 +421,18 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
       );
       if (picked == null) return;
 
+      final length = await picked.length();
+      if (length <= 0) {
+        throw const FormatException('Selected file is empty.');
+      }
+
       final raw = await picked.readAsString();
+      final header = _packageRouter.decodeHeader(raw);
+      if (header.type != WellWerksPackageType.productionHandoff) {
+        throw const FormatException(
+          'This file is not a Production Handoff package.',
+        );
+      }
       final package = _handoffService.decodePackage(raw);
 
       final localJobId = (_activeJob?.id ?? _shift.activeJobId).trim();
@@ -581,7 +485,7 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
       await _shiftService.saveActiveShift(finalShift);
       await _historyService.appendEntry(
         ShiftHandoffHistoryEntry(
-          action: 'import',
+          action: 'production_import',
           timestampIso: DateTime.now().toIso8601String(),
           handoffId: package.handoffId,
           sourceJobId: package.sourceJobId,
@@ -627,6 +531,137 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
     }
   }
 
+  Future<void> _exportDrilloutHandoff() async {
+    final activeJob = _activeJob;
+    if (activeJob == null || _busy) return;
+    setState(() => _busy = true);
+    try {
+      final package = await _drilloutHandoffService.buildPackage(
+        activeJob: activeJob,
+      );
+      final encoded = _drilloutHandoffService.encodePackage(package);
+      final pad =
+          activeJob.padName.trim().replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_');
+      final base = pad.isEmpty ? 'job' : pad;
+
+      await _shareFileWithChecks(
+        encoded: encoded,
+        base: '${base}_drillout_handoff',
+        subject: 'WellWerks Drillout Handoff',
+        text: 'Drillout handoff package for import into WellWerks.',
+      );
+
+      await _historyService.appendEntry(
+        ShiftHandoffHistoryEntry(
+          action: 'drillout_export',
+          timestampIso: DateTime.now().toIso8601String(),
+          handoffId: package.handoffId,
+          sourceJobId: package.sourceJobId,
+          entriesAdded: activeJob.resolvedWellNames.length,
+          duplicatesSkipped: 0,
+          conflictCount: 0,
+          importedConflictChoices: 0,
+        ),
+      );
+
+      if (!mounted) return;
+      final history = await _historyService.loadHistory();
+      if (!mounted) return;
+      setState(() => _history = history);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Drillout handoff shared.')),
+      );
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to export drillout handoff.')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _importDrilloutHandoff() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final picked = await openFile(
+        acceptedTypeGroups: const [
+          XTypeGroup(
+            label: 'WellWerks Drillout Handoff',
+            extensions: <String>['wellwerks', 'json'],
+          ),
+        ],
+      );
+      if (picked == null) return;
+
+      final length = await picked.length();
+      if (length <= 0) {
+        throw const FormatException('Selected file is empty.');
+      }
+
+      final raw = await picked.readAsString();
+      final header = _packageRouter.decodeHeader(raw);
+      if (header.type != WellWerksPackageType.drilloutHandoff) {
+        throw const FormatException(
+          'This file is not a Drillout Handoff package.',
+        );
+      }
+
+      final package = _drilloutHandoffService.decodePackage(raw);
+      final importedJob = _drilloutHandoffService.importAsActiveJob(package);
+      final savedJob = await _jobStorage.saveActiveJob(importedJob);
+      await _workflowModeService.setMode(_workflowModeForJob(savedJob));
+
+      await _historyService.appendEntry(
+        ShiftHandoffHistoryEntry(
+          action: 'drillout_import',
+          timestampIso: DateTime.now().toIso8601String(),
+          handoffId: package.handoffId,
+          sourceJobId: package.sourceJobId,
+          entriesAdded: savedJob.resolvedWellNames.length,
+          duplicatesSkipped: 0,
+          conflictCount: 0,
+          importedConflictChoices: 0,
+        ),
+      );
+
+      if (!mounted) return;
+      final history = await _historyService.loadHistory();
+      if (!mounted) return;
+      setState(() {
+        _activeJob = savedJob;
+        _workflowMode = _workflowModeForJob(savedJob);
+        _history = history;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Imported Drillout handoff for ${savedJob.padName.isEmpty ? savedJob.company : savedJob.padName}.',
+          ),
+        ),
+      );
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to import drillout handoff.')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Widget _summaryCard() {
     final company = (_activeJob?.company ?? _shift.header.company).trim();
     final pad = (_activeJob?.padName ?? _shift.header.pad).trim();
@@ -638,9 +673,11 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Handoff Package',
-              style: TextStyle(
+            Text(
+              _isProductionWorkflow
+                  ? 'Production Handoff Package'
+                  : 'Drillout Handoff Package',
+              style: const TextStyle(
                 color: Color(0xFFCDA56A),
                 fontWeight: FontWeight.w800,
               ),
@@ -649,11 +686,17 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
             Text('Company: ${company.isEmpty ? '-' : company}'),
             Text('Pad/Job: ${pad.isEmpty ? '-' : pad}'),
             Text('Job ID: ${activeJobId.isEmpty ? '-' : activeJobId}'),
-            Text('Saved Entries: ${_rows.length}'),
+            Text(
+              _isProductionWorkflow
+                  ? 'Saved Entries: ${_rows.length}'
+                  : 'Shared Wells: ${_activeJob?.resolvedWellNames.length ?? 0}',
+            ),
             const SizedBox(height: 8),
-            const Text(
-              'Export creates a .wellwerks file. Import merges by entryId and lets you choose local or imported values for conflicts.',
-              style: TextStyle(color: Colors.white70),
+            Text(
+              _isProductionWorkflow
+                  ? 'Export creates a .wellwerks file. Import merges by entryId and lets you choose local or imported values for conflicts.'
+                  : 'Export creates a .wellwerks file containing drillout/cleanout active job context and text update setup.',
+              style: const TextStyle(color: Colors.white70),
             ),
           ],
         ),
@@ -663,74 +706,28 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
 
   String _historyTitle(ShiftHandoffHistoryEntry entry) {
     switch (entry.action) {
-      case 'export':
-        return 'Shift Export';
-      case 'import':
-        return 'Shift Import';
-      case 'job_export':
-        return 'Job Export';
-      case 'job_import':
-        return 'Job Import';
+      case 'production_export':
+        return 'Production Export';
+      case 'production_import':
+        return 'Production Import';
+      case 'drillout_export':
+        return 'Drillout Export';
+      case 'drillout_import':
+        return 'Drillout Import';
       default:
         return 'Handoff';
     }
   }
 
   String _historySubtitle(ShiftHandoffHistoryEntry entry) {
-    if (entry.action == 'export') {
+    if (entry.action == 'production_export') {
       return 'Rows in shift package: ${entry.entriesAdded}';
     }
-    if (entry.action == 'job_export' || entry.action == 'job_import') {
+    if (entry.action == 'drillout_export' ||
+        entry.action == 'drillout_import') {
       return 'Shared wells: ${entry.entriesAdded}';
     }
     return 'Added ${entry.entriesAdded}, Duplicates ${entry.duplicatesSkipped}, Conflicts ${entry.conflictCount}, Imported choices ${entry.importedConflictChoices}';
-  }
-
-  Widget _activeJobShareCard() {
-    final workflow = (_activeJob?.workflow ?? 'production').trim();
-    final label = workflow.isEmpty ? 'production' : workflow;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Active Job Share (All Workflows)',
-              style: TextStyle(
-                color: Color(0xFFCDA56A),
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text('Current workflow: $label'),
-            const SizedBox(height: 8),
-            const Text(
-              'Share/import full active job setup including drillout configuration, wells, and workflow mode.',
-              style: TextStyle(color: Colors.white70),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _busy ? null : _exportActiveJobInfo,
-                icon: const Icon(Icons.group_add),
-                label: const Text('Share Active Job File'),
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _busy ? null : _importActiveJobInfo,
-                icon: const Icon(Icons.upload_file_outlined),
-                label: const Text('Import Active Job File'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _historyCard() {
@@ -795,18 +792,20 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        appBar: AppHeader(title: 'Shift Handoff', showBack: true),
+        appBar: AppHeader(title: 'Handoff', showBack: true),
         body: Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
-      appBar: const AppHeader(title: 'Shift Handoff', showBack: true),
+      appBar: AppHeader(
+        title:
+            _isProductionWorkflow ? 'Production Handoff' : 'Drillout Handoff',
+        showBack: true,
+      ),
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          _activeJobShareCard(),
-          const SizedBox(height: 8),
           _summaryCard(),
           const SizedBox(height: 8),
           _historyCard(),
@@ -814,18 +813,34 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: _rows.isEmpty || _busy ? null : _exportHandoff,
+              onPressed: _busy
+                  ? null
+                  : (_isProductionWorkflow
+                      ? (_rows.isEmpty ? null : _exportHandoff)
+                      : (_activeJob == null ? null : _exportDrilloutHandoff)),
               icon: const Icon(Icons.ios_share),
-              label: const Text('Create & Share Handoff File'),
+              label: Text(
+                _isProductionWorkflow
+                    ? 'Create & Share Production Handoff'
+                    : 'Create & Share Drillout Handoff',
+              ),
             ),
           ),
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: _busy ? null : _importHandoff,
+              onPressed: _busy
+                  ? null
+                  : (_isProductionWorkflow
+                      ? _importHandoff
+                      : _importDrilloutHandoff),
               icon: const Icon(Icons.file_open_outlined),
-              label: const Text('Import Handoff File'),
+              label: Text(
+                _isProductionWorkflow
+                    ? 'Import Production Handoff'
+                    : 'Import Drillout Handoff',
+              ),
             ),
           ),
           const SizedBox(height: 8),

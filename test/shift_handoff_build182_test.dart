@@ -422,7 +422,7 @@ void main() {
 
   test('Build 182 unsupported schema is rejected safely', () {
     const raw =
-        '{"fileType":"wellwerks_shift_handoff","schemaVersion":"9.9.9"}';
+        '{"fileType":"wellwerks_production_handoff","schemaVersion":"9.9.9"}';
     expect(
       () => handoff.decodePackage(raw),
       throwsFormatException,

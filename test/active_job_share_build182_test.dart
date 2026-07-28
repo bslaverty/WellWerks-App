@@ -43,7 +43,7 @@ void main() {
 
   test('Build 182 active job share rejects unsupported schema', () {
     final service = ActiveJobShareService();
-    const raw = '{"fileType":"wellwerks_active_job","schemaVersion":"9.9.9"}';
+    const raw = '{"fileType":"wellwerks_job_setup","schemaVersion":"9.9.9"}';
     expect(() => service.decodePackage(raw), throwsFormatException);
   });
 

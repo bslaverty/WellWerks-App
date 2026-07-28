@@ -55,6 +55,8 @@
 	<string>Main</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>WellWerks can save exported JSA images to your Photos library when you choose Save Image to Photos.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>WellWerks uses the camera to scan Job Setup QR codes for handoff between devices.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>WellWerks uses your location to auto-fill job location and weather on JSA forms when you allow it.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

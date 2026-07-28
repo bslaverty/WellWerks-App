@@ -256,8 +256,9 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
           ),
           ToolCard(
             icon: Icons.compare_arrows,
-            title: 'Shift Handoff',
-            subtitle: 'Create/share .wellwerks and merge imported handoff data',
+            title: 'Production Handoff',
+            subtitle:
+                'Create/share .wellwerks and merge imported production data',
             onTap: () => _open(context, const ShiftHandoffScreen()),
           ),
           ToolCard(

@@ -4,6 +4,7 @@ import '../services/active_workflow_mode_service.dart';
 import 'drillout_shift_change_screen.dart';
 import 'jsa_screen.dart';
 import 'module_menu_screen.dart';
+import 'shift_handoff_screen.dart';
 
 class DrilloutCleanoutModuleScreen extends StatelessWidget {
   const DrilloutCleanoutModuleScreen({super.key});
@@ -30,6 +31,12 @@ class DrilloutCleanoutModuleScreen extends StatelessWidget {
           title: 'JSA',
           subtitle: 'Prefills from active workflow and active job context',
           screen: JsaScreen(),
+        ),
+        const ModuleTool(
+          icon: Icons.swap_horiz,
+          title: 'Drillout Handoff',
+          subtitle: 'Share/import drillout and cleanout active job context',
+          screen: ShiftHandoffScreen(),
         ),
       ],
     );

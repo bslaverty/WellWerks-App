@@ -107,7 +107,7 @@ class ShiftHandoffService {
   }) : _continuity = continuity ?? const ProductionReportContinuityService();
 
   static const currentSchemaVersion = '1.0.0';
-  static const currentFileType = 'wellwerks_shift_handoff';
+  static const currentFileType = 'wellwerks_production_handoff';
 
   final ProductionReportContinuityService _continuity;
 
