@@ -62,4 +62,14 @@ void main() {
     expect(decoded.fileType, 'wellwerks_active_job');
     expect(decoded.workflow, 'production');
   });
+
+  test('Build 183 import accepts legacy active job with no schema', () {
+    final service = ActiveJobShareService();
+    const raw =
+        '{"fileType":"wellwerks_active_job","workflow":"production","jobData":{"company":"Mach Energy"}}';
+
+    final decoded = service.decodePackage(raw);
+    expect(decoded.fileType, 'wellwerks_active_job');
+    expect(decoded.workflow, 'production');
+  });
 }

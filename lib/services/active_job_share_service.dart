@@ -92,7 +92,9 @@ class ActiveJobShareService {
       throw const FormatException('Unsupported active job file type.');
     }
     final schemaVersion = map['schemaVersion'] as String? ?? '';
-    if (schemaVersion != currentSchemaVersion) {
+    final isLegacyWithoutSchema =
+        fileType == legacyFileType && schemaVersion.trim().isEmpty;
+    if (schemaVersion != currentSchemaVersion && !isLegacyWithoutSchema) {
       throw const FormatException('Unsupported active job schema version.');
     }
     return ActiveJobSharePackage.fromJson(map);

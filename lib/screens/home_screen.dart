@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -332,6 +333,7 @@ class _HomeScreenState extends State<HomeScreen> {
         [XFile(file.path)],
         subject: 'WellWerks Job Setup',
         text: 'Job setup package for WellWerks import.',
+        sharePositionOrigin: _shareOriginRect(),
       );
 
       if (!mounted) return;
@@ -343,10 +345,11 @@ class _HomeScreenState extends State<HomeScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.message)),
       );
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to share Job Setup.')),
+        SnackBar(
+            content: Text('Failed to share Job Setup. ${error.toString()}')),
       );
     } finally {
       if (mounted) {
@@ -383,10 +386,12 @@ class _HomeScreenState extends State<HomeScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.message)),
       );
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to import Job Setup file.')),
+        SnackBar(
+          content: Text('Failed to import Job Setup file. ${error.toString()}'),
+        ),
       );
     } finally {
       if (mounted) {
@@ -396,37 +401,74 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _importJobSetupFromRaw(String raw) async {
-    final header = _packageRouter.decodeHeader(raw);
-    if (header.type != WellWerksPackageType.jobSetup) {
-      throw const FormatException(
-        'This file is not a Job Setup package. Use Share Job Setup on the sender device.',
+    try {
+      final header = _packageRouter.decodeHeader(raw);
+      if (header.type != WellWerksPackageType.jobSetup) {
+        throw const FormatException(
+          'This file is not a Job Setup package. Use Share Job Setup on the sender device.',
+        );
+      }
+
+      final package = _jobShareService.decodePackage(raw);
+      final importedJob = JobSetup.fromJson(package.jobData);
+      final normalizedImport = importedJob.copyWith(
+        workflow: importedJob.workflow.trim().isEmpty
+            ? package.workflow
+            : importedJob.workflow,
+        status: 'active',
+        endedAt: null,
+        startedAt: importedJob.startedAt ?? DateTime.now(),
+      );
+      final savedJob = await _jobStorage.saveActiveJob(normalizedImport);
+      await _workflowModeService.setMode(_workflowModeForJob(savedJob));
+
+      if (!mounted) return;
+      setState(() {
+        _activeJob = savedJob;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Imported Job Setup: ${savedJob.padName.isEmpty ? savedJob.company : savedJob.padName}',
+          ),
+        ),
+      );
+      return;
+    } on FormatException {
+      // Fallback path: older files may contain only JobSetup JSON without envelope metadata.
+      final legacy = JobSetup.fromJson(
+        Map<String, dynamic>.from(
+          (const JsonDecoder().convert(raw) as Map),
+        ),
+      );
+      final normalizedImport = legacy.copyWith(
+        workflow:
+            legacy.workflow.trim().isEmpty ? 'production' : legacy.workflow,
+        status: 'active',
+        endedAt: null,
+        startedAt: legacy.startedAt ?? DateTime.now(),
+      );
+      final savedJob = await _jobStorage.saveActiveJob(normalizedImport);
+      await _workflowModeService.setMode(_workflowModeForJob(savedJob));
+      if (!mounted) return;
+      setState(() {
+        _activeJob = savedJob;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Imported legacy Job Setup: ${savedJob.padName.isEmpty ? savedJob.company : savedJob.padName}',
+          ),
+        ),
       );
     }
+  }
 
-    final package = _jobShareService.decodePackage(raw);
-    final importedJob = JobSetup.fromJson(package.jobData);
-    final normalizedImport = importedJob.copyWith(
-      workflow: importedJob.workflow.trim().isEmpty
-          ? package.workflow
-          : importedJob.workflow,
-      status: 'active',
-      endedAt: null,
-      startedAt: importedJob.startedAt ?? DateTime.now(),
-    );
-    final savedJob = await _jobStorage.saveActiveJob(normalizedImport);
-    await _workflowModeService.setMode(_workflowModeForJob(savedJob));
-
-    if (!mounted) return;
-    setState(() {
-      _activeJob = savedJob;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Imported Job Setup: ${savedJob.padName.isEmpty ? savedJob.company : savedJob.padName}',
-        ),
-      ),
-    );
+  Rect? _shareOriginRect() {
+    final object = context.findRenderObject();
+    if (object is! RenderBox || !object.hasSize) return null;
+    final origin = object.localToGlobal(Offset.zero);
+    return origin & object.size;
   }
 
   Future<void> _showJobSetupQr() async {

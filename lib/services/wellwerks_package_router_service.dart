@@ -36,15 +36,20 @@ class WellWerksPackageRouterService {
 
     final map = Map<String, dynamic>.from(decoded);
     final fileType = (map['fileType'] as String? ?? '').trim();
-    final schemaVersion = (map['schemaVersion'] as String? ?? '').trim();
+    var schemaVersion = (map['schemaVersion'] as String? ?? '').trim();
 
     if (fileType.isEmpty) {
       throw const FormatException('Missing file type in WellWerks package.');
     }
-    if (schemaVersion.isEmpty) {
+    final isLegacyNoSchema =
+        fileType == fileTypeLegacyActiveJob && schemaVersion.isEmpty;
+    if (schemaVersion.isEmpty && !isLegacyNoSchema) {
       throw const FormatException(
         'Missing schema version in WellWerks package.',
       );
+    }
+    if (schemaVersion.isEmpty && isLegacyNoSchema) {
+      schemaVersion = '1.0.0';
     }
 
     final type = _typeForFileType(fileType);
