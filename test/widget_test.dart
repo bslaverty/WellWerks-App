@@ -130,7 +130,7 @@ void main() {
     expect(find.text('WellWerks Toolbox'), findsOneWidget);
   });
 
-  testWidgets('Home shows compact collapsed active job summary',
+  testWidgets('Home shows compact active job bar without duplicate card',
       (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
     await ActiveWorkflowModeService.instance
@@ -150,29 +150,20 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Active Company'), findsNothing);
-    expect(find.text('Mach Energy'), findsOneWidget);
-    expect(find.textContaining('Production • Day Shift'), findsOneWidget);
-    expect(find.text('Continue Active Job'), findsNothing);
-    expect(find.text('ACTIVE'), findsNothing);
+    expect(find.text('Active Job'), findsOneWidget);
+    expect(
+        find.text(
+            'Choose a module for production, completions, charts, layouts, and safety.'),
+        findsOneWidget);
+
+    expect(find.text('No Active Job'), findsNothing);
     expect(find.text('Edit Active Job'), findsNothing);
     expect(find.text('Start New Job'), findsNothing);
-    expect(find.textContaining('Horse Pad • - • Day'), findsNothing);
     expect(find.text('End/Clear Active Job'), findsNothing);
-
-    await tester.tap(find.byTooltip('Expand details'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Continue Active Job'), findsNothing);
-    expect(find.text('ACTIVE'), findsNothing);
-    expect(find.text('Edit Active Job'), findsOneWidget);
-    expect(find.text('Start New Job'), findsOneWidget);
-    expect(find.text('End/Clear Active Job'), findsOneWidget);
-    expect(find.text('Workflow'), findsOneWidget);
-    expect(find.text('Readiness'), findsOneWidget);
+    expect(find.text('Import Job Setup'), findsNothing);
   });
 
-  testWidgets('Home no active job state shows import-capable actions',
+  testWidgets('Home no active job keeps compact bar hidden and modules visible',
       (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
     await ActiveWorkflowModeService.instance
@@ -182,14 +173,12 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Active Company'), findsNothing);
-    expect(find.text('No Active Job'), findsOneWidget);
-    expect(find.text('Create Job'), findsOneWidget);
-    expect(find.text('Import Job Setup'), findsOneWidget);
-    expect(find.text('Scan Job Setup QR'), findsNothing);
-    expect(find.text('Continue Active Job'), findsNothing);
-    expect(find.text('ACTIVE'), findsNothing);
-    expect(find.textContaining('Active Job:'), findsNothing);
+    expect(find.text('Active Job'), findsNothing);
+    expect(find.text('No Active Job'), findsNothing);
+    expect(find.text('Create Job'), findsNothing);
+    expect(find.text('Import Job Setup'), findsNothing);
+    expect(find.text('Production'), findsOneWidget);
+    expect(find.text('Completions'), findsOneWidget);
   });
 
   testWidgets('Build 171 Home keeps permanent module order for all workflows',
