@@ -4,6 +4,7 @@ enum WellWerksPackageType {
   jobSetup,
   productionHandoff,
   drilloutHandoff,
+  operationsLog,
 }
 
 class WellWerksPackageHeader {
@@ -27,6 +28,7 @@ class WellWerksPackageRouterService {
   static const fileTypeLegacyActiveJob = 'wellwerks_active_job';
   static const fileTypeProductionHandoff = 'wellwerks_production_handoff';
   static const fileTypeDrilloutHandoff = 'wellwerks_drillout_handoff';
+  static const fileTypeOperationsLog = 'wellwerks_operations_log';
 
   WellWerksPackageHeader decodeHeader(String raw) {
     final decoded = jsonDecode(raw);
@@ -74,6 +76,8 @@ class WellWerksPackageRouterService {
         return WellWerksPackageType.productionHandoff;
       case fileTypeDrilloutHandoff:
         return WellWerksPackageType.drilloutHandoff;
+      case fileTypeOperationsLog:
+        return WellWerksPackageType.operationsLog;
       default:
         return null;
     }

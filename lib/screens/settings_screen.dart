@@ -6,6 +6,7 @@ import '../services/app_settings_service.dart';
 import '../services/app_theme_controller.dart';
 import '../widgets/app_header.dart';
 import 'about_support_screen.dart';
+import 'operator_profile_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -231,6 +232,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ),
+          ),
+          _sectionCard(
+            title: 'Operator',
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.badge_outlined, color: _accent),
+                title: Text('Operator Profile', style: TextStyle(color: _text)),
+                subtitle: Text(
+                  'Name, initials, and local operator ID for logs and reports.',
+                  style: TextStyle(color: _subtle),
+                ),
+                trailing: Icon(Icons.chevron_right, color: _subtle),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const OperatorProfileScreen(),
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
           _sectionCard(
             title: 'Production',
