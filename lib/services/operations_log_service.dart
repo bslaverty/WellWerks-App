@@ -266,6 +266,7 @@ class OperationsLogService {
     required String wellName,
     required String stage,
     required List<OperationsLogEntry> entries,
+    Set<String>? enabledFieldIds,
     String? baseFileName,
   }) async {
     final pdfBytes = await buildShiftReportPdfBytes(
@@ -274,6 +275,7 @@ class OperationsLogService {
       wellName: wellName,
       stage: stage,
       entries: entries,
+      enabledFieldIds: enabledFieldIds,
     );
     final fileName = _buildReportFileName(
       workflow: workflow,
@@ -294,11 +296,22 @@ class OperationsLogService {
     required String wellName,
     required String stage,
     required List<OperationsLogEntry> entries,
+    Set<String>? enabledFieldIds,
   }) async {
     final packageInfo = await PackageInfo.fromPlatform();
     final profile = await _operatorProfileService.load();
     final sortedEntries = List<OperationsLogEntry>.from(entries)
       ..sort((a, b) => a.readingTimestamp.compareTo(b.readingTimestamp));
+    final visibleFieldIds = (enabledFieldIds ??
+            const <String>{
+              'operationStage',
+              'pumpRate',
+              'casingPressure',
+              'pumpPressure',
+              'notes',
+            })
+        .toSet();
+    final readingColumns = _buildReadingColumns(visibleFieldIds);
     final stamp = DateTime.now();
     final doc = pw.Document(compress: false);
 
@@ -339,6 +352,10 @@ class OperationsLogService {
               _summaryRow('Stage', stage),
               _summaryRow('Readings', sortedEntries.length.toString()),
               _summaryRow(
+                'Latest status per well',
+                _latestStatusByWellSummary(sortedEntries),
+              ),
+              _summaryRow(
                 'Generated',
                 DateFormat('MMM d, yyyy h:mm a').format(stamp),
               ),
@@ -363,13 +380,11 @@ class OperationsLogService {
           else
             pw.Table(
               border: pw.TableBorder.all(color: _line, width: 0.7),
-              columnWidths: const <int, pw.TableColumnWidth>{
-                0: pw.FixedColumnWidth(56),
-                1: pw.FlexColumnWidth(1.4),
-                2: pw.FlexColumnWidth(1.2),
-                3: pw.FixedColumnWidth(52),
-                4: pw.FlexColumnWidth(1.0),
-                5: pw.FlexColumnWidth(1.6),
+              columnWidths: {
+                0: const pw.FixedColumnWidth(56),
+                1: const pw.FlexColumnWidth(1.4),
+                for (var i = 0; i < readingColumns.length; i++)
+                  i + 2: readingColumns[i].width,
               },
               children: [
                 pw.TableRow(
@@ -379,10 +394,8 @@ class OperationsLogService {
                   children: [
                     _tableHeaderCell('Time'),
                     _tableHeaderCell('Well'),
-                    _tableHeaderCell('Stage'),
-                    _tableHeaderCell('Rate'),
-                    _tableHeaderCell('Pressures'),
-                    _tableHeaderCell('Notes'),
+                    for (final column in readingColumns)
+                      _tableHeaderCell(column.label),
                   ],
                 ),
                 for (final entry in sortedEntries)
@@ -391,10 +404,8 @@ class OperationsLogService {
                       _tableCell(DateFormat('h:mm a')
                           .format(entry.readingTimestamp.toLocal())),
                       _tableCell(entry.wellName),
-                      _tableCell(entry.operationStage),
-                      _tableCell(entry.pumpRate),
-                      _tableCell(_pressureSummary(entry)),
-                      _tableCell(_compactNotes(entry)),
+                      for (final column in readingColumns)
+                        _tableCell(column.valueBuilder(entry)),
                     ],
                   ),
               ],
@@ -692,6 +703,146 @@ class OperationsLogService {
     );
   }
 
+  List<_ReadingReportColumn> _buildReadingColumns(Set<String> enabledFieldIds) {
+    final columns = <_ReadingReportColumn>[];
+
+    void addColumn(
+      String fieldId,
+      String label,
+      pw.TableColumnWidth width,
+      String Function(OperationsLogEntry entry) valueBuilder,
+    ) {
+      if (!enabledFieldIds.contains(fieldId)) return;
+      columns.add(
+        _ReadingReportColumn(
+          label: label,
+          width: width,
+          valueBuilder: valueBuilder,
+        ),
+      );
+    }
+
+    addColumn(
+      'operationStage',
+      'Stage',
+      const pw.FlexColumnWidth(1.2),
+      (entry) => entry.operationStage,
+    );
+    addColumn(
+      'pumpRate',
+      'Rate',
+      const pw.FixedColumnWidth(52),
+      (entry) => entry.pumpRate,
+    );
+    addColumn(
+      'casingPressure',
+      'CSG PSI',
+      const pw.FlexColumnWidth(0.9),
+      (entry) => entry.casingPressure,
+    );
+    addColumn(
+      'pumpPressure',
+      'Pump PSI',
+      const pw.FlexColumnWidth(0.9),
+      (entry) => entry.pumpPressure,
+    );
+    addColumn(
+      'tubingPressure',
+      'Manifold PSI',
+      const pw.FlexColumnWidth(0.9),
+      (entry) => entry.tubingPressure,
+    );
+    addColumn(
+      'returnsRate',
+      'Returns',
+      const pw.FlexColumnWidth(0.9),
+      (entry) => entry.returnsRate,
+    );
+    addColumn(
+      'waterRate',
+      'Water',
+      const pw.FlexColumnWidth(0.9),
+      (entry) => entry.waterRate,
+    );
+    addColumn(
+      'flowRate',
+      'Flow',
+      const pw.FlexColumnWidth(0.9),
+      (entry) => entry.flowRate,
+    );
+    addColumn(
+      'tankLevel',
+      'Tank',
+      const pw.FlexColumnWidth(0.9),
+      (entry) => entry.tankLevel,
+    );
+    addColumn(
+      'choke',
+      'Choke',
+      const pw.FlexColumnWidth(0.9),
+      (entry) => entry.choke,
+    );
+    addColumn(
+      'sweepInformation',
+      'Sweep',
+      const pw.FlexColumnWidth(1.1),
+      (entry) => entry.sweepInformation,
+    );
+    addColumn(
+      'sandOrSolids',
+      'Sand',
+      const pw.FlexColumnWidth(0.9),
+      (entry) => entry.sandOrSolids,
+    );
+    addColumn(
+      'equipmentStatus',
+      'Equipment',
+      const pw.FlexColumnWidth(1.1),
+      (entry) => entry.equipmentStatus,
+    );
+    addColumn(
+      'downtime',
+      'Downtime',
+      const pw.FlexColumnWidth(1.1),
+      (entry) => entry.downtime,
+    );
+    addColumn(
+      'notes',
+      'Notes',
+      const pw.FlexColumnWidth(1.6),
+      (entry) => entry.notes,
+    );
+
+    if (columns.isEmpty) {
+      columns.add(
+        _ReadingReportColumn(
+          label: 'Notes',
+          width: const pw.FlexColumnWidth(1.6),
+          valueBuilder: (entry) => entry.notes,
+        ),
+      );
+    }
+
+    return columns;
+  }
+
+  String _latestStatusByWellSummary(List<OperationsLogEntry> sortedEntries) {
+    if (sortedEntries.isEmpty) return '-';
+    final latestByWell = <String, String>{};
+    for (final entry in sortedEntries) {
+      final well = entry.wellName.trim();
+      if (well.isEmpty) continue;
+      final status = entry.operationStage.trim();
+      if (status.isNotEmpty) {
+        latestByWell[well] = status;
+      }
+    }
+    if (latestByWell.isEmpty) return '-';
+    return latestByWell.entries
+        .map((item) => '${item.key}: ${item.value}')
+        .join(' | ');
+  }
+
   String _workflowLabel(OperationsLogWorkflow workflow) {
     return workflow == OperationsLogWorkflow.drillout ? 'Drillout' : 'Cleanout';
   }
@@ -705,27 +856,20 @@ class OperationsLogService {
     return '$name ($initials)';
   }
 
-  String _pressureSummary(OperationsLogEntry entry) {
-    final items = <String>[
-      if (entry.casingPressure.trim().isNotEmpty)
-        'CSG ${entry.casingPressure.trim()}',
-      if (entry.tubingPressure.trim().isNotEmpty)
-        'TBG ${entry.tubingPressure.trim()}',
-    ];
-    return items.isEmpty ? '-' : items.join(' / ');
-  }
-
-  String _compactNotes(OperationsLogEntry entry) {
-    final notes = <String>[
-      if (entry.equipmentStatus.trim().isNotEmpty) entry.equipmentStatus.trim(),
-      if (entry.downtime.trim().isNotEmpty) entry.downtime.trim(),
-      if (entry.notes.trim().isNotEmpty) entry.notes.trim(),
-    ];
-    return notes.isEmpty ? '-' : notes.join(' • ');
-  }
-
   String _newId(String prefix) {
     final stamp = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
     return '${prefix}_$stamp';
   }
+}
+
+class _ReadingReportColumn {
+  const _ReadingReportColumn({
+    required this.label,
+    required this.width,
+    required this.valueBuilder,
+  });
+
+  final String label;
+  final pw.TableColumnWidth width;
+  final String Function(OperationsLogEntry entry) valueBuilder;
 }

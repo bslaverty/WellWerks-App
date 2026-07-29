@@ -45,7 +45,7 @@ void main() {
           'appName': 'WellWerks',
           'packageName': 'wellwerks',
           'version': '1.0.1',
-          'buildNumber': '189',
+          'buildNumber': '190',
           'buildSignature': 'signature',
         };
       }
@@ -115,10 +115,10 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
     await tester.pumpAndSettle();
 
-    final stageField = tester.widget<TextFormField>(
+    final stageField = tester.widget<DropdownButtonFormField<String>>(
       find.byKey(const Key('operations-log-form-stage-field')),
     );
-    expect(stageField.controller?.text ?? '', isEmpty);
+    expect(stageField.initialValue ?? '', isEmpty);
   });
 
   testWidgets('drillout form receives current job and selected well defaults',
@@ -265,11 +265,23 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(
+      find.text('Create Shift Report'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+
     final shareButton = tester.widget<OutlinedButton>(
-      find.widgetWithText(OutlinedButton, 'Share Selected Readings').first,
+      find.ancestor(
+        of: find.text('Share Selected Readings'),
+        matching: find.byType(OutlinedButton),
+      ),
     );
     final reportButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Create Shift Report').first,
+      find.ancestor(
+        of: find.text('Create Shift Report'),
+        matching: find.byType(FilledButton),
+      ),
     );
 
     expect(shareButton.onPressed, isNull);

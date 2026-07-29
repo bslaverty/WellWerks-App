@@ -7,8 +7,10 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/job_setup.dart';
+import '../services/drillout_cleanout_stage_service.dart';
 import '../models/operations_log_entry.dart';
 import '../services/job_storage_service.dart';
+import '../services/operations_log_field_config_service.dart';
 import '../services/operations_log_service.dart';
 import '../services/wellwerks_qr_transfer_service.dart';
 import '../widgets/app_header.dart';
@@ -18,11 +20,11 @@ import 'wellwerks_qr_scanner_screen.dart';
 class OperationsLogScreen extends StatefulWidget {
   const OperationsLogScreen({
     super.key,
-    required this.workflow,
-    required this.title,
+    this.workflow,
+    this.title = 'Operations Log',
   });
 
-  final OperationsLogWorkflow workflow;
+  final OperationsLogWorkflow? workflow;
   final String title;
 
   @override
@@ -32,12 +34,20 @@ class OperationsLogScreen extends StatefulWidget {
 class _OperationsLogScreenState extends State<OperationsLogScreen> {
   final _jobStorage = JobStorageService();
   final _logService = OperationsLogService();
+  final _fieldConfigService = OperationsLogFieldConfigService();
   final _qrTransferService = const WellWerksQrTransferService();
   final _imagePicker = ImagePicker();
 
   JobSetup? _activeJob;
   List<OperationsLogEntry> _entries = const [];
   Set<String> _selectedEntryIds = <String>{};
+  Set<String> _enabledFieldIds = <String>{
+    'operationStage',
+    'pumpRate',
+    'casingPressure',
+    'pumpPressure',
+    'notes',
+  };
   bool _loading = true;
   bool _newestFirst = false;
 
@@ -61,20 +71,37 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
 
   Future<void> _load() async {
     final job = await _jobStorage.ensureActiveJobLoaded();
+    final workflow = _resolveWorkflow(job);
     final entries = await _logService.loadEntries(
-      workflow: widget.workflow,
+      workflow: workflow,
+      jobId: job?.id ?? '',
+    );
+    final config = await _fieldConfigService.load(
+      workflow: workflow,
       jobId: job?.id ?? '',
     );
     if (!mounted) return;
     setState(() {
       _activeJob = job;
       _entries = entries;
+      _enabledFieldIds = config.enabledFieldIds;
       _selectedEntryIds = _selectedEntryIds
           .where((entryId) => entries.any((item) => item.entryId == entryId))
           .toSet();
       _loading = false;
     });
   }
+
+  OperationsLogWorkflow _resolveWorkflow(JobSetup? job) {
+    if (widget.workflow != null) return widget.workflow!;
+    final activeWorkflow = (job?.workflow ?? '').trim().toLowerCase();
+    if (activeWorkflow == OperationsLogWorkflow.cleanout.name) {
+      return OperationsLogWorkflow.cleanout;
+    }
+    return OperationsLogWorkflow.drillout;
+  }
+
+  OperationsLogWorkflow get _workflow => _resolveWorkflow(_activeJob);
 
   String get _currentWellName {
     final job = _activeJob;
@@ -117,7 +144,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     final job = _activeJob;
     if (job == null) {
       debugPrint(
-        '[OperationsLog] Add Reading blocked: no active job for ${widget.workflow.name}.',
+        '[OperationsLog] Add Reading blocked: no active job for ${_workflow.name}.',
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -132,7 +159,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       final savedEntry = await Navigator.of(context).push<OperationsLogEntry>(
         MaterialPageRoute(
           builder: (_) => OperationsLogEntryFormScreen(
-            workflow: widget.workflow,
+            workflow: _workflow,
             title: widget.title,
             activeJob: job,
             defaultWells: _resolvedWells,
@@ -141,6 +168,8 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
             initialSelectedWellName: _currentWellName,
             initialStage: _currentStage,
             initialReadingTimestamp: DateTime.now(),
+            stageOptions: DrilloutCleanoutStageService.stageOptions,
+            enabledFieldIds: _enabledFieldIds,
             logService: _logService,
           ),
         ),
@@ -149,7 +178,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       await _load();
     } catch (error, stackTrace) {
       debugPrint(
-        '[OperationsLog] Failed to open Add Reading form for ${widget.workflow.name}: $error\n$stackTrace',
+        '[OperationsLog] Failed to open Add Reading form for ${_workflow.name}: $error\n$stackTrace',
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -161,6 +190,26 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   }
 
   Future<void> _showEntryDetails(OperationsLogEntry entry) async {
+    final rows = <Widget>[
+      Text('Time: ${entry.readingTimestamp.toLocal()}'),
+      if (_enabledFieldIds.contains('operationStage') &&
+          entry.operationStage.isNotEmpty)
+        Text('Operation: ${entry.operationStage}'),
+      if (_enabledFieldIds.contains('pumpRate') && entry.pumpRate.isNotEmpty)
+        Text('Pump rate: ${entry.pumpRate}'),
+      if (_enabledFieldIds.contains('casingPressure') &&
+          entry.casingPressure.isNotEmpty)
+        Text('Casing pressure: ${entry.casingPressure}'),
+      if (_enabledFieldIds.contains('pumpPressure') &&
+          entry.pumpPressure.isNotEmpty)
+        Text('Pump pressure: ${entry.pumpPressure}'),
+      if (_enabledFieldIds.contains('tubingPressure') &&
+          entry.tubingPressure.isNotEmpty)
+        Text('Tubing pressure: ${entry.tubingPressure}'),
+      if (_enabledFieldIds.contains('notes') && entry.notes.isNotEmpty)
+        Text('Notes: ${entry.notes}'),
+    ];
+
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -174,10 +223,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 8),
-            Text('Time: ${entry.readingTimestamp.toLocal()}'),
-            Text('Operation: ${entry.operationStage}'),
-            Text('Pump rate: ${entry.pumpRate}'),
-            Text('Notes: ${entry.notes}'),
+            ...rows,
           ],
         ),
       ),
@@ -207,7 +253,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     final job = _activeJob;
     if (job == null) return;
     await _logService.deleteEntry(
-      workflow: widget.workflow,
+      workflow: _workflow,
       jobId: job.id,
       entryId: entry.entryId,
     );
@@ -220,7 +266,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
         .where((entry) => _selectedEntryIds.contains(entry.entryId))
         .toList(growable: false);
     if (job == null || selectedEntries.isEmpty) return;
-    final packageType = widget.workflow == OperationsLogWorkflow.drillout
+    final packageType = _workflow == OperationsLogWorkflow.drillout
         ? OperationsLogPackageType.drilloutReadingBatch
         : OperationsLogPackageType.cleanoutReadingBatch;
     final package = await _logService.buildPackage(
@@ -236,13 +282,14 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     final job = _activeJob;
     if (job == null || _entries.isEmpty) return;
     final exported = await _logService.exportShiftReportPdf(
-      workflow: widget.workflow,
+      workflow: _workflow,
       jobName: job.padName,
       wellName: _currentWellName,
       stage: _currentStage,
       entries: _entries,
+      enabledFieldIds: _enabledFieldIds,
       baseFileName:
-          '${job.padName.isNotEmpty ? job.padName : widget.workflow.name}_shift_report',
+          '${job.padName.isNotEmpty ? job.padName : _workflow.name}_shift_report',
     );
     await Share.shareXFiles(
       [XFile(exported.filePath)],
@@ -266,7 +313,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   Future<void> _shareReading(OperationsLogEntry entry) async {
     final job = _activeJob;
     if (job == null) return;
-    final packageType = widget.workflow == OperationsLogWorkflow.drillout
+    final packageType = _workflow == OperationsLogWorkflow.drillout
         ? OperationsLogPackageType.drilloutReading
         : OperationsLogPackageType.cleanoutReading;
     final package = await _logService.buildPackage(
@@ -402,7 +449,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
           false;
       if (!confirmed) return;
       final result = await _logService.importEntries(
-        workflow: widget.workflow,
+        workflow: _workflow,
         jobId: job.id,
         package: package,
         existingEntries: _entries,
@@ -421,6 +468,106 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(error.message)));
     }
+  }
+
+  Future<void> _customizeFields() async {
+    final job = _activeJob;
+    if (job == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Set an active job before customizing fields.'),
+        ),
+      );
+      return;
+    }
+
+    final selected = Set<String>.from(_enabledFieldIds);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Customize Fields'),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Well, date, and time are always required. Choose additional fields to show in Add Reading and reports.',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  for (final field
+                      in OperationsLogFieldConfigService.configurableFields)
+                    CheckboxListTile(
+                      dense: true,
+                      value: selected.contains(field.id),
+                      title: Text(field.label),
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: (value) {
+                        setDialogState(() {
+                          if (value ?? false) {
+                            selected.add(field.id);
+                          } else {
+                            selected.remove(field.id);
+                          }
+                        });
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (saved != true) return;
+    final config = OperationsLogFieldConfig(enabledFieldIds: selected);
+    await _fieldConfigService.save(
+      workflow: _workflow,
+      jobId: job.id,
+      config: config,
+    );
+    if (!mounted) return;
+    setState(() => _enabledFieldIds = selected);
+  }
+
+  String _entrySubtitle(OperationsLogEntry entry) {
+    final parts = <String>[];
+    if (_enabledFieldIds.contains('operationStage') &&
+        entry.operationStage.isNotEmpty) {
+      parts.add(entry.operationStage);
+    }
+    if (_enabledFieldIds.contains('pumpRate') && entry.pumpRate.isNotEmpty) {
+      parts.add('Rate ${entry.pumpRate}');
+    }
+    if (_enabledFieldIds.contains('casingPressure') &&
+        entry.casingPressure.isNotEmpty) {
+      parts.add('CSG ${entry.casingPressure}');
+    }
+    if (_enabledFieldIds.contains('pumpPressure') &&
+        entry.pumpPressure.isNotEmpty) {
+      parts.add('PMP ${entry.pumpPressure}');
+    }
+    if (_enabledFieldIds.contains('notes') && entry.notes.isNotEmpty) {
+      parts.add(entry.notes);
+    }
+    return parts.join(' • ');
   }
 
   @override
@@ -462,6 +609,15 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _customizeFields,
+                    icon: const Icon(Icons.tune),
+                    label: const Text('Customize Fields'),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 SizedBox(
@@ -509,14 +665,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                         title: Text(
                           '${TimeOfDay.fromDateTime(entry.readingTimestamp).format(context)} • ${entry.wellName}',
                         ),
-                        subtitle: Text([
-                          if (entry.operationStage.isNotEmpty)
-                            entry.operationStage,
-                          if (entry.pumpRate.isNotEmpty)
-                            'Rate ${entry.pumpRate}',
-                          if (entry.casingPressure.isNotEmpty)
-                            'CSG ${entry.casingPressure}',
-                        ].join(' • ')),
+                        subtitle: Text(_entrySubtitle(entry)),
                         onTap: () => _showEntryDetails(entry),
                         trailing: PopupMenuButton<String>(
                           onSelected: (value) {

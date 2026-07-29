@@ -170,7 +170,7 @@ void main() {
 
   test('Build number is 189 in pubspec', () async {
     final pubspec = await File('pubspec.yaml').readAsString();
-    expect(pubspec, contains('version: 1.0.1+189'));
+    expect(pubspec, contains('version: 1.0.1+190'));
     expect(
         pubspec, contains('image_path: "assets/icons/app_icon_build145.png"'));
   });

@@ -11,6 +11,7 @@ import '../models/job_setup.dart';
 import '../services/active_company_service.dart';
 import '../services/active_workflow_mode_service.dart';
 import '../services/app_settings_service.dart';
+import '../services/drillout_cleanout_stage_service.dart';
 import '../services/job_profile_defaults_service.dart';
 import '../services/job_storage_service.dart';
 import '../utils/gauge_keypad_input.dart';
@@ -114,13 +115,8 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   String? _gas;
   String? _sand;
 
-  static const List<String> _statusOptions = [
-    'Ready for Pressure Test',
-    'Drilling Plugs',
-    'Circulating',
-    'Equipment Issues',
-    'POOH',
-  ];
+  static const List<String> _statusOptions =
+      DrilloutCleanoutStageService.stageOptions;
 
   static const List<String> _sandOptions = [
     'Trace',
