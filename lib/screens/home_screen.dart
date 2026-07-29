@@ -18,6 +18,7 @@ import '../services/active_workflow_mode_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/job_setup_qr_service.dart';
 import '../services/job_setup_import_service.dart';
+import '../services/job_setup_share_history_service.dart';
 import '../services/rate_timer_notification_service.dart';
 import '../services/rate_timer_service.dart';
 import '../services/recovery_state_service.dart';
@@ -55,6 +56,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   static const _homeSummaryExpandedKey =
       'wellwerks_home_job_summary_expanded_v1';
+  static const _maxTextShareLength = 12000;
 
   final _jobStorage = JobStorageService();
   final _recoveryState = RecoveryStateService();
@@ -64,6 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _workflowModeService = ActiveWorkflowModeService.instance;
   final _jobShareService = const ActiveJobShareService();
   final _jobImportService = const JobSetupImportService();
+  final _jobSetupShareHistory = const JobSetupShareHistoryService();
   final _jobSetupQrService = const JobSetupQrService();
 
   JobSetup? _activeJob;
@@ -352,23 +355,136 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     } on FormatException catch (error) {
       if (!mounted) return;
-      if (error.message.contains('Unable to chunk Job Setup payload for QR.')) {
+      _logJobSetupError('share-file-format', error, null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Could not prepare Job Setup file to share.')),
+      );
+    } catch (error, stackTrace) {
+      if (!mounted) return;
+      _logJobSetupError('share-file-failed', error, stackTrace);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to share Job Setup.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _jobShareBusy = false);
+      }
+    }
+  }
+
+  Future<void> _shareJobSetupByText() async {
+    final activeJob = _activeJob;
+    if (activeJob == null || _jobShareBusy) return;
+
+    setState(() => _jobShareBusy = true);
+    try {
+      final package = await _jobShareService.buildPackage(activeJob: activeJob);
+      final message = _jobImportService.buildTextShareMessage(
+        package: package,
+        company: activeJob.company,
+        padOrJob: activeJob.padName,
+      );
+      if (message.trim().isEmpty) {
+        throw const FormatException('Could not create the Job Setup text.');
+      }
+      if (message.length > _maxTextShareLength) {
+        throw const FormatException(
+          'This Job Setup is too large to share as text. Use Share Job Setup File or Job Setup QR.',
+        );
+      }
+
+      final rawPayload = _jobImportService.extractImportCodePayload(message);
+      _jobImportService.decodePreview(raw: rawPayload, localJobs: const []);
+
+      await _jobSetupShareHistory.appendEntry(
+        JobSetupShareHistoryEntry(
+          packageId: package.packageId,
+          packageType: package.fileType,
+          sourceJobId: package.sourceJobId,
+          jobLabel: _jobLabel(activeJob),
+          timestampIso: DateTime.now().toIso8601String(),
+          direction: 'Outgoing',
+          method: 'Text Share',
+          status: 'Created',
+          resultSummary: 'Validated text payload.',
+        ),
+      );
+
+      final subjectJob = activeJob.padName.trim().isEmpty
+          ? activeJob.company.trim()
+          : activeJob.padName.trim();
+      final shareResult = await Share.share(
+        message,
+        subject: 'WellWerks Job Setup - $subjectJob',
+        sharePositionOrigin: _shareOriginRect(),
+      );
+
+      if (shareResult.status == ShareResultStatus.dismissed) {
+        await _jobSetupShareHistory.appendEntry(
+          JobSetupShareHistoryEntry(
+            packageId: package.packageId,
+            packageType: package.fileType,
+            sourceJobId: package.sourceJobId,
+            jobLabel: _jobLabel(activeJob),
+            timestampIso: DateTime.now().toIso8601String(),
+            direction: 'Outgoing',
+            method: 'Text Share',
+            status: 'Cancelled',
+            resultSummary: 'Share Sheet dismissed by user.',
+          ),
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Job Setup text share cancelled.')),
+        );
+        return;
+      }
+
+      await _jobSetupShareHistory.appendEntry(
+        JobSetupShareHistoryEntry(
+          packageId: package.packageId,
+          packageType: package.fileType,
+          sourceJobId: package.sourceJobId,
+          jobLabel: _jobLabel(activeJob),
+          timestampIso: DateTime.now().toIso8601String(),
+          direction: 'Outgoing',
+          method: 'Text Share',
+          status: 'Share Sheet Opened',
+          resultSummary: 'Text payload handed to native Share Sheet.',
+        ),
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Job Setup text ready to send.')),
+      );
+    } on FormatException catch (error) {
+      _logJobSetupError('share-text-format', error, null);
+      if (!mounted) return;
+      final message = error.message;
+      if (message.contains('too large to share as text')) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'This Job Setup is too large for a QR code. Use Share Job Setup File or Copy Job Setup Import Code.',
+              'This Job Setup is too large to share as text. Use Share Job Setup File or Job Setup QR.',
             ),
           ),
         );
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
+        const SnackBar(content: Text('Could not create the Job Setup text.')),
       );
-    } catch (error) {
+    } catch (error, stackTrace) {
+      _logJobSetupError('share-text-failed', error, stackTrace);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to share Job Setup.')),
+        const SnackBar(
+          content: Text(
+            'The Job Setup text was created, but the iPhone Share Sheet could not open.',
+          ),
+        ),
       );
     } finally {
       if (mounted) {
@@ -431,37 +547,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _copyJobSetupImportCode() async {
-    final activeJob = _activeJob;
-    if (activeJob == null || _jobShareBusy) return;
-    setState(() => _jobShareBusy = true);
-    try {
-      final package = await _jobShareService.buildPackage(activeJob: activeJob);
-      final code = _jobImportService.buildImportCode(package);
-      if (code.trim().isEmpty) {
-        throw const FormatException('Generated import code is empty.');
-      }
-      await Clipboard.setData(ClipboardData(text: code));
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Job Setup import code copied.')),
-      );
-    } on FormatException catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to copy Job Setup import code.')),
-      );
-    } finally {
-      if (mounted) setState(() => _jobShareBusy = false);
-    }
-  }
-
-  Future<void> _pasteJobSetupImportCode() async {
+  Future<void> _importJobSetupFromText() async {
     if (_jobShareBusy) return;
     final controller = TextEditingController();
     final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
@@ -474,13 +560,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final pasted = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Paste Job Setup Import Code'),
+        title: const Text('Import Job Setup from Text'),
         content: TextField(
           controller: controller,
           maxLines: 8,
           decoration: const InputDecoration(
-            labelText: 'WellWerks import code',
-            hintText: 'WELLWERKS_JOB_SETUP_V1:...',
+            labelText: 'Paste complete message or import code',
+            hintText: 'WellWerks Job Setup message',
             border: OutlineInputBorder(),
           ),
         ),
@@ -503,7 +589,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'The pasted text is not a valid WellWerks Job Setup import code.',
+            'The pasted text does not contain a WellWerks Job Setup.',
           ),
         ),
       );
@@ -513,15 +599,36 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _jobShareBusy = true);
     try {
       final payload = _jobImportService.extractImportCodePayload(rawCode);
-      await _runImportFlowFromRaw(payload, source: 'Import Code');
+      await _runImportFlowFromRaw(payload, source: 'Text Import');
     } on FormatException catch (error) {
       if (!mounted) return;
+      final msg = _friendlyImportError(error.message);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } catch (error, stackTrace) {
+      _logJobSetupError('import-text-failed', error, stackTrace);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
+        const SnackBar(content: Text('Failed to import Job Setup from text.')),
       );
     } finally {
       if (mounted) setState(() => _jobShareBusy = false);
     }
+  }
+
+  String _friendlyImportError(String raw) {
+    if (raw.contains('does not contain a WellWerks Job Setup')) {
+      return 'The pasted text does not contain a WellWerks Job Setup.';
+    }
+    if (raw.contains('incomplete')) {
+      return 'The Job Setup import code is incomplete. Copy the entire message and try again.';
+    }
+    if (raw.contains('Unsupported active job schema version')) {
+      return 'This Job Setup uses a newer unsupported WellWerks format.';
+    }
+    if (raw.contains('Unsupported active job file type')) {
+      return 'The pasted text does not contain a WellWerks Job Setup.';
+    }
+    return raw;
   }
 
   Future<void> _runImportFlowFromRaw(
@@ -597,18 +704,53 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    if (!mounted || action == null) return;
-
-    if (action == 'update') {
-      await _importUpdateMatching(preview);
+    if (!mounted || action == null) {
+      if (source == 'Text Import') {
+        await _jobSetupShareHistory.appendEntry(
+          JobSetupShareHistoryEntry(
+            packageId: preview.package.packageId,
+            packageType: preview.package.fileType,
+            sourceJobId: preview.package.sourceJobId,
+            jobLabel: _jobLabel(preview.job),
+            timestampIso: DateTime.now().toIso8601String(),
+            direction: 'Incoming',
+            method: 'Text Share',
+            status: 'Cancelled',
+            resultSummary: 'Import preview closed before confirmation.',
+          ),
+        );
+      }
       return;
     }
-    await _importAsNew(preview);
+
+    if (action == 'update') {
+      await _importUpdateMatching(preview, source: source);
+      return;
+    }
+    await _importAsNew(preview, source: source);
   }
 
-  Future<void> _importUpdateMatching(JobSetupImportPreview preview) async {
+  Future<void> _importUpdateMatching(
+    JobSetupImportPreview preview, {
+    required String source,
+  }) async {
     final updated = _jobImportService.buildImportAsUpdate(preview);
     await _jobStorage.saveJobWithoutActivating(updated);
+    if (source == 'Text Import') {
+      await _jobSetupShareHistory.appendEntry(
+        JobSetupShareHistoryEntry(
+          packageId: preview.package.packageId,
+          packageType: preview.package.fileType,
+          sourceJobId: preview.package.sourceJobId,
+          jobLabel: _jobLabel(updated),
+          timestampIso: DateTime.now().toIso8601String(),
+          direction: 'Incoming',
+          method: 'Text Share',
+          status: 'Imported',
+          resultSummary: 'Updated matching local job setup by persistent ID.',
+        ),
+      );
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -619,15 +761,48 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _importAsNew(JobSetupImportPreview preview) async {
+  Future<void> _importAsNew(
+    JobSetupImportPreview preview, {
+    required String source,
+  }) async {
     final localJobs = await _jobStorage.loadJobs();
     final imported = _jobImportService.buildImportAsNew(
       preview,
       localJobs: localJobs,
     );
     final saved = await _jobStorage.saveJobWithoutActivating(imported);
+    if (source == 'Text Import') {
+      await _jobSetupShareHistory.appendEntry(
+        JobSetupShareHistoryEntry(
+          packageId: preview.package.packageId,
+          packageType: preview.package.fileType,
+          sourceJobId: preview.package.sourceJobId,
+          jobLabel: _jobLabel(saved),
+          timestampIso: DateTime.now().toIso8601String(),
+          direction: 'Incoming',
+          method: 'Text Share',
+          status: 'Imported',
+          resultSummary: 'Imported as new job setup.',
+        ),
+      );
+    }
     if (!mounted) return;
     await _showPostImportActions(saved);
+  }
+
+  String _jobLabel(JobSetup job) {
+    final pad = job.padName.trim();
+    if (pad.isNotEmpty) return pad;
+    final company = job.company.trim();
+    if (company.isNotEmpty) return company;
+    return 'Unknown Job';
+  }
+
+  void _logJobSetupError(String scope, Object error, StackTrace? stackTrace) {
+    debugPrint('[$scope] $error');
+    if (stackTrace != null) {
+      debugPrint(stackTrace.toString());
+    }
   }
 
   Future<void> _showPostImportActions(JobSetup importedJob) async {
@@ -876,10 +1051,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      onPressed:
-                          _jobShareBusy ? null : _pasteJobSetupImportCode,
+                      onPressed: _jobShareBusy ? null : _importJobSetupFromText,
                       icon: const Icon(Icons.content_paste),
-                      label: const Text('Paste Job Setup Import Code'),
+                      label: const Text('Import Job Setup from Text'),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1047,9 +1221,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         width: double.infinity,
                         child: OutlinedButton.icon(
                           onPressed:
-                              _jobShareBusy ? null : _copyJobSetupImportCode,
+                              _jobShareBusy ? null : _shareJobSetupByText,
                           icon: const Icon(Icons.copy_all_outlined),
-                          label: const Text('Copy Job Setup Import Code'),
+                          label: const Text('Share Job Setup by Text'),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -1057,9 +1231,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         width: double.infinity,
                         child: OutlinedButton.icon(
                           onPressed:
-                              _jobShareBusy ? null : _pasteJobSetupImportCode,
+                              _jobShareBusy ? null : _importJobSetupFromText,
                           icon: const Icon(Icons.content_paste),
-                          label: const Text('Paste Job Setup Import Code'),
+                          label: const Text('Import Job Setup from Text'),
                         ),
                       ),
                       const SizedBox(height: 8),

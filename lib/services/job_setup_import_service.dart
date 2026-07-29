@@ -30,6 +30,23 @@ class JobSetupImportService {
   final ActiveJobShareService _jobShareService;
   final WellWerksPackageRouterService _router;
 
+  String buildTextShareMessage({
+    required ActiveJobSharePackage package,
+    required String company,
+    required String padOrJob,
+  }) {
+    final importCode = buildImportCode(package);
+    final safeCompany = company.trim().isEmpty ? '-' : company.trim();
+    final safePad = padOrJob.trim().isEmpty ? '-' : padOrJob.trim();
+    return [
+      'WellWerks Job Setup',
+      '$safeCompany - $safePad',
+      'Copy the complete import code below and paste it into WellWerks.',
+      '',
+      importCode,
+    ].join('\n');
+  }
+
   String buildSummary(JobSetup job) {
     final wells = job.resolvedWellNames;
     final wellSummary = wells.isEmpty ? '-' : wells.join(' / ');
@@ -59,23 +76,31 @@ class JobSetupImportService {
     final index = trimmed.indexOf(importCodePrefix);
     if (index < 0) {
       throw const FormatException(
-        'The pasted text is not a valid WellWerks Job Setup import code.',
+        'The pasted text does not contain a WellWerks Job Setup.',
       );
     }
 
-    final payload = trimmed.substring(index + importCodePrefix.length).trim();
-    if (payload.isEmpty) {
+    final payloadCandidate =
+        trimmed.substring(index + importCodePrefix.length).trim();
+    if (payloadCandidate.isEmpty) {
       throw const FormatException(
-        'The pasted text is not a valid WellWerks Job Setup import code.',
+        'The Job Setup import code is incomplete. Copy the entire message and try again.',
+      );
+    }
+
+    final extracted = _extractPayloadFromMessage(payloadCandidate);
+    if (extracted == null || extracted.isEmpty) {
+      throw const FormatException(
+        'The Job Setup import code is incomplete. Copy the entire message and try again.',
       );
     }
 
     try {
-      final decodedBytes = base64Url.decode(payload);
+      final decodedBytes = base64Url.decode(extracted);
       final decoded = utf8.decode(decodedBytes).trim();
       if (decoded.isEmpty) {
         throw const FormatException(
-          'The pasted text is not a valid WellWerks Job Setup import code.',
+          'The Job Setup import code is incomplete. Copy the entire message and try again.',
         );
       }
       return decoded;
@@ -83,7 +108,7 @@ class JobSetupImportService {
       rethrow;
     } catch (_) {
       throw const FormatException(
-        'The pasted text is not a valid WellWerks Job Setup import code.',
+        'The Job Setup import code is incomplete. Copy the entire message and try again.',
       );
     }
   }
@@ -212,8 +237,34 @@ class JobSetupImportService {
     }
 
     throw const FormatException(
-      'The pasted text is not a valid WellWerks Job Setup import code.',
+      'The pasted text does not contain a WellWerks Job Setup.',
     );
+  }
+
+  String? _extractPayloadFromMessage(String raw) {
+    final compact = raw.replaceAll(RegExp(r'\s+'), '');
+    if (compact.isEmpty) return null;
+
+    for (var end = compact.length; end > 0; end--) {
+      final candidate = compact.substring(0, end);
+      if (!_looksBase64Url(candidate)) {
+        continue;
+      }
+      try {
+        final decoded = utf8.decode(base64Url.decode(candidate)).trim();
+        if (decoded.startsWith('{') && decoded.endsWith('}')) {
+          return candidate;
+        }
+      } catch (_) {
+        // Keep searching for a valid payload boundary.
+      }
+    }
+
+    return null;
+  }
+
+  bool _looksBase64Url(String value) {
+    return RegExp(r'^[A-Za-z0-9_\-]+=*$').hasMatch(value);
   }
 
   ActiveJobSharePackage _decodePackageJson(String rawJson) {
