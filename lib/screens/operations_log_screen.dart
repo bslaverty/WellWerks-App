@@ -12,6 +12,7 @@ import '../services/job_storage_service.dart';
 import '../services/operations_log_service.dart';
 import '../services/wellwerks_qr_transfer_service.dart';
 import '../widgets/app_header.dart';
+import 'operations_log_entry_form_screen.dart';
 import 'wellwerks_qr_scanner_screen.dart';
 
 class OperationsLogScreen extends StatefulWidget {
@@ -36,6 +37,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
 
   JobSetup? _activeJob;
   List<OperationsLogEntry> _entries = const [];
+  Set<String> _selectedEntryIds = <String>{};
   bool _loading = true;
   bool _newestFirst = false;
 
@@ -67,6 +69,9 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     setState(() {
       _activeJob = job;
       _entries = entries;
+      _selectedEntryIds = _selectedEntryIds
+          .where((entryId) => entries.any((item) => item.entryId == entryId))
+          .toSet();
       _loading = false;
     });
   }
@@ -94,23 +99,65 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     return items;
   }
 
+  List<JobSetupWell> get _resolvedWells {
+    final job = _activeJob;
+    if (job == null) return const <JobSetupWell>[];
+    final entries = job.resolvedWellEntries;
+    if (entries.isNotEmpty) return entries;
+
+    final fallbackWell = _currentWellName.trim();
+    if (fallbackWell.isEmpty || fallbackWell == 'No active job') {
+      return const <JobSetupWell>[];
+    }
+    final fallbackId = job.wellIds.isNotEmpty ? job.wellIds.first : '';
+    return <JobSetupWell>[JobSetupWell(id: fallbackId, name: fallbackWell)];
+  }
+
   Future<void> _addReading() async {
     final job = _activeJob;
-    if (job == null) return;
-    final entry = await _logService.createLocalEntry(
-      workflow: widget.workflow,
-      jobId: job.id,
-      wellId: job.wellIds.isNotEmpty ? job.wellIds.first : '',
-      wellName: _currentWellName,
-      readingTimestamp: DateTime.now(),
-      operationStage: _currentStage,
-    );
-    await _logService.upsertEntry(
-      workflow: widget.workflow,
-      jobId: job.id,
-      entry: entry,
-    );
-    await _load();
+    if (job == null) {
+      debugPrint(
+        '[OperationsLog] Add Reading blocked: no active job for ${widget.workflow.name}.',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Set an active job before adding a reading.'),
+        ),
+      );
+      return;
+    }
+
+    try {
+      final savedEntry = await Navigator.of(context).push<OperationsLogEntry>(
+        MaterialPageRoute(
+          builder: (_) => OperationsLogEntryFormScreen(
+            workflow: widget.workflow,
+            title: widget.title,
+            activeJob: job,
+            defaultWells: _resolvedWells,
+            initialSelectedWellId:
+                _resolvedWells.isNotEmpty ? _resolvedWells.first.id : '',
+            initialSelectedWellName: _currentWellName,
+            initialStage: _currentStage,
+            initialReadingTimestamp: DateTime.now(),
+            logService: _logService,
+          ),
+        ),
+      );
+      if (savedEntry == null) return;
+      await _load();
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[OperationsLog] Failed to open Add Reading form for ${widget.workflow.name}: $error\n$stackTrace',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to open the reading form right now.'),
+        ),
+      );
+    }
   }
 
   Future<void> _showEntryDetails(OperationsLogEntry entry) async {
@@ -169,14 +216,17 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
 
   Future<void> _shareSelectedReadings() async {
     final job = _activeJob;
-    if (job == null || _entries.isEmpty) return;
+    final selectedEntries = _entries
+        .where((entry) => _selectedEntryIds.contains(entry.entryId))
+        .toList(growable: false);
+    if (job == null || selectedEntries.isEmpty) return;
     final packageType = widget.workflow == OperationsLogWorkflow.drillout
         ? OperationsLogPackageType.drilloutReadingBatch
         : OperationsLogPackageType.cleanoutReadingBatch;
     final package = await _logService.buildPackage(
       packageType: packageType,
       persistentJobId: job.id,
-      entries: _entries,
+      entries: selectedEntries,
     );
     final encoded = _logService.encodePackage(package);
     await _showShareQrDialog(encoded, '${widget.title} QR');
@@ -199,6 +249,18 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       subject: '${widget.title} Shift Report',
       text: '${widget.title} shift report for ${job.padName}.',
     );
+  }
+
+  void _toggleSelectedEntry(String entryId, bool selected) {
+    setState(() {
+      final next = Set<String>.from(_selectedEntryIds);
+      if (selected) {
+        next.add(entryId);
+      } else {
+        next.remove(entryId);
+      }
+      _selectedEntryIds = next;
+    });
   }
 
   Future<void> _shareReading(OperationsLogEntry entry) async {
@@ -392,7 +454,9 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: _shareSelectedReadings,
+                        onPressed: _selectedEntryIds.isEmpty
+                            ? null
+                            : _shareSelectedReadings,
                         icon: const Icon(Icons.qr_code_2),
                         label: const Text('Share Selected Readings'),
                       ),
@@ -418,9 +482,16 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                 ),
                 const SizedBox(height: 8),
                 FilledButton(
-                  onPressed: _createShiftReport,
+                  onPressed: _entries.isEmpty ? null : _createShiftReport,
                   child: const Text('Create Shift Report'),
                 ),
+                if (_entries.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: Text(
+                      'At least one reading is required to create a shift report.',
+                    ),
+                  ),
                 const SizedBox(height: 16),
                 if (_sortedEntries.isEmpty)
                   const Text('No readings recorded yet.')
@@ -428,6 +499,13 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                   ..._sortedEntries.map(
                     (entry) => Card(
                       child: ListTile(
+                        leading: Checkbox(
+                          value: _selectedEntryIds.contains(entry.entryId),
+                          onChanged: (value) => _toggleSelectedEntry(
+                            entry.entryId,
+                            value ?? false,
+                          ),
+                        ),
                         title: Text(
                           '${TimeOfDay.fromDateTime(entry.readingTimestamp).format(context)} • ${entry.wellName}',
                         ),

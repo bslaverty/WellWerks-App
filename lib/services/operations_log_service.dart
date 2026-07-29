@@ -144,7 +144,7 @@ class OperationsLogService {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(storageKey(workflow, jobId));
-    if (raw == null || raw.isEmpty) return const [];
+    if (raw == null || raw.isEmpty) return <OperationsLogEntry>[];
     try {
       final decoded = jsonDecode(raw) as List<dynamic>;
       return decoded
@@ -153,7 +153,7 @@ class OperationsLogService {
           .toList()
         ..sort((a, b) => a.readingTimestamp.compareTo(b.readingTimestamp));
     } catch (_) {
-      return const [];
+      return <OperationsLogEntry>[];
     }
   }
 
