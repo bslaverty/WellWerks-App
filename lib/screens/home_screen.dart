@@ -1,9 +1,7 @@
 import 'dart:io';
-import 'dart:convert';
 
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -16,12 +14,12 @@ import '../services/app_settings_service.dart';
 import '../services/active_job_share_service.dart';
 import '../services/active_workflow_mode_service.dart';
 import '../services/job_storage_service.dart';
-import '../services/job_setup_qr_service.dart';
 import '../services/job_setup_import_service.dart';
 import '../services/job_setup_share_history_service.dart';
 import '../services/rate_timer_notification_service.dart';
 import '../services/rate_timer_service.dart';
 import '../services/recovery_state_service.dart';
+import '../services/wellwerks_qr_transfer_service.dart';
 import 'module_menu_screen.dart';
 import 'rate_calculator_screen.dart';
 import 'rate_calculator_menu_screen.dart';
@@ -56,7 +54,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   static const _homeSummaryExpandedKey =
       'wellwerks_home_job_summary_expanded_v1';
-  static const _maxTextShareLength = 12000;
 
   final _jobStorage = JobStorageService();
   final _recoveryState = RecoveryStateService();
@@ -67,7 +64,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final _jobShareService = const ActiveJobShareService();
   final _jobImportService = const JobSetupImportService();
   final _jobSetupShareHistory = const JobSetupShareHistoryService();
-  final _jobSetupQrService = const JobSetupQrService();
+  final _qrTransferService = const WellWerksQrTransferService();
+  final _imagePicker = ImagePicker();
 
   JobSetup? _activeJob;
   bool _loading = true;
@@ -318,173 +316,44 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _jobShareBusy = true);
     try {
       final package = await _jobShareService.buildPackage(activeJob: activeJob);
-      final encoded = _jobShareService.encodePackage(package);
-      final directory = await getTemporaryDirectory();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final pad =
-          activeJob.padName.trim().replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_');
-      final base = pad.isEmpty ? 'job_setup' : pad;
-      final file = File('${directory.path}/${base}_$timestamp.wellwerks');
-      await file.writeAsString(encoded);
-
-      final exists = await file.exists();
-      final size = exists ? await file.length() : 0;
-      if (!exists || size <= 0) {
-        throw const FormatException(
-            'Could not prepare Job Setup file to share.');
-      }
-
-      final result = await Share.shareXFiles(
-        [XFile(file.path)],
-        subject: 'WellWerks Job Setup',
-        text: 'Job setup package for WellWerks import.',
-        sharePositionOrigin: _shareOriginRect(),
-      );
-      final status = result.status;
-      if (status == ShareResultStatus.dismissed) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Job Setup share cancelled.')),
-        );
-        return;
-      }
+      final raw = _jobShareService.encodePackage(package);
+      final qrValue = _qrTransferService.encodeStructuredPayload(raw);
+      _qrTransferService.ensureSingleQrCapacity(qrValue);
+      final decodedRaw = _qrTransferService.decodeStructuredPayload(qrValue);
+      _jobImportService.decodePreview(raw: decodedRaw, localJobs: const []);
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Job Setup shared.')),
-      );
-    } on FormatException catch (error) {
-      if (!mounted) return;
-      _logJobSetupError('share-file-format', error, null);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Could not prepare Job Setup file to share.')),
-      );
-    } catch (error, stackTrace) {
-      if (!mounted) return;
-      _logJobSetupError('share-file-failed', error, stackTrace);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to share Job Setup.')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _jobShareBusy = false);
-      }
-    }
-  }
-
-  Future<void> _shareJobSetupByText() async {
-    final activeJob = _activeJob;
-    if (activeJob == null || _jobShareBusy) return;
-
-    setState(() => _jobShareBusy = true);
-    try {
-      final package = await _jobShareService.buildPackage(activeJob: activeJob);
-      final message = _jobImportService.buildTextShareMessage(
-        package: package,
-        company: activeJob.company,
-        padOrJob: activeJob.padName,
-      );
-      if (message.trim().isEmpty) {
-        throw const FormatException('Could not create the Job Setup text.');
-      }
-      if (message.length > _maxTextShareLength) {
-        throw const FormatException(
-          'This Job Setup is too large to share as text. Use Share Job Setup File or Job Setup QR.',
-        );
-      }
-
-      final rawPayload = _jobImportService.extractImportCodePayload(message);
-      _jobImportService.decodePreview(raw: rawPayload, localJobs: const []);
-
-      await _jobSetupShareHistory.appendEntry(
-        JobSetupShareHistoryEntry(
-          packageId: package.packageId,
-          packageType: package.fileType,
-          sourceJobId: package.sourceJobId,
-          jobLabel: _jobLabel(activeJob),
-          timestampIso: DateTime.now().toIso8601String(),
-          direction: 'Outgoing',
-          method: 'Text Share',
-          status: 'Created',
-          resultSummary: 'Validated text payload.',
-        ),
-      );
-
-      final subjectJob = activeJob.padName.trim().isEmpty
-          ? activeJob.company.trim()
-          : activeJob.padName.trim();
-      final shareResult = await Share.share(
-        message,
-        subject: 'WellWerks Job Setup - $subjectJob',
-        sharePositionOrigin: _shareOriginRect(),
-      );
-
-      if (shareResult.status == ShareResultStatus.dismissed) {
-        await _jobSetupShareHistory.appendEntry(
-          JobSetupShareHistoryEntry(
+      await _showShareQrDialog(
+        title: 'Share Job Setup',
+        qrValue: qrValue,
+        onShareQr: () async {
+          final jobName = _qrTransferService.sanitizeFilePart(
+            activeJob.padName.trim().isEmpty
+                ? activeJob.company
+                : activeJob.padName,
+          );
+          await _shareQrImage(
+            qrValue: qrValue,
+            fileName: 'WellWerks_Job_Setup_$jobName.png',
+            subject: 'WellWerks Job Setup - $jobName',
             packageId: package.packageId,
             packageType: package.fileType,
             sourceJobId: package.sourceJobId,
             jobLabel: _jobLabel(activeJob),
-            timestampIso: DateTime.now().toIso8601String(),
-            direction: 'Outgoing',
-            method: 'Text Share',
-            status: 'Cancelled',
-            resultSummary: 'Share Sheet dismissed by user.',
-          ),
-        );
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Job Setup text share cancelled.')),
-        );
-        return;
-      }
-
-      await _jobSetupShareHistory.appendEntry(
-        JobSetupShareHistoryEntry(
-          packageId: package.packageId,
-          packageType: package.fileType,
-          sourceJobId: package.sourceJobId,
-          jobLabel: _jobLabel(activeJob),
-          timestampIso: DateTime.now().toIso8601String(),
-          direction: 'Outgoing',
-          method: 'Text Share',
-          status: 'Share Sheet Opened',
-          resultSummary: 'Text payload handed to native Share Sheet.',
-        ),
-      );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Job Setup text ready to send.')),
+          );
+        },
       );
     } on FormatException catch (error) {
-      _logJobSetupError('share-text-format', error, null);
+      _logJobSetupError('share-file-format', error, null);
       if (!mounted) return;
-      final message = error.message;
-      if (message.contains('too large to share as text')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'This Job Setup is too large to share as text. Use Share Job Setup File or Job Setup QR.',
-            ),
-          ),
-        );
-        return;
-      }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not create the Job Setup text.')),
+        SnackBar(content: Text(error.message)),
       );
     } catch (error, stackTrace) {
-      _logJobSetupError('share-text-failed', error, stackTrace);
+      _logJobSetupError('share-file-failed', error, stackTrace);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'The Job Setup text was created, but the iPhone Share Sheet could not open.',
-          ),
-        ),
+        const SnackBar(content: Text('The QR image could not be shared.')),
       );
     } finally {
       if (mounted) {
@@ -495,138 +364,78 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _importJobSetup() async {
     if (_jobShareBusy) return;
-    setState(() => _jobShareBusy = true);
-
-    try {
-      final picked = await openFile(
-        acceptedTypeGroups: const [
-          XTypeGroup(
-            label: 'WellWerks Job Setup',
-            extensions: <String>['wellwerks', 'wwjob', 'json'],
-          ),
-        ],
-      );
-
-      if (picked == null) return;
-
-      final bytes = await picked.readAsBytes();
-      if (bytes.isEmpty) {
-        throw const FormatException('Selected file is empty.');
-      }
-
-      final raw = utf8.decode(bytes).trim();
-      if (raw.isEmpty) {
-        throw const FormatException('The selected Job Setup file is empty.');
-      }
-      await _runImportFlowFromRaw(raw, source: 'File Import');
-    } on FormatException catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to import Job Setup file.')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _jobShareBusy = false);
-      }
-    }
-  }
-
-  Future<void> _copyJobSetupSummary() async {
-    final activeJob = _activeJob;
-    if (activeJob == null || _jobShareBusy) return;
-    final summary = _jobImportService.buildSummary(activeJob);
-    await Clipboard.setData(ClipboardData(text: summary));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Job Setup summary copied.')),
-    );
-  }
-
-  Future<void> _importJobSetupFromText() async {
-    if (_jobShareBusy) return;
-    final controller = TextEditingController();
-    final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
-    final fromClipboard = clipboardData?.text?.trim() ?? '';
-    if (fromClipboard.isNotEmpty) {
-      controller.text = fromClipboard;
-    }
-    if (!mounted) return;
-
-    final pasted = await showDialog<String>(
+    final choice = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Import Job Setup from Text'),
-        content: TextField(
-          controller: controller,
-          maxLines: 8,
-          decoration: const InputDecoration(
-            labelText: 'Paste complete message or import code',
-            hintText: 'WellWerks Job Setup message',
-            border: OutlineInputBorder(),
-          ),
-        ),
+        title: const Text('Import Job Setup'),
         actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop('scan'),
+            child: const Text('Scan QR'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.of(context).pop('photos'),
+            child: const Text('Choose QR from Photos'),
+          ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const Text('Preview Import'),
           ),
         ],
       ),
     );
 
-    if (!mounted || pasted == null) return;
-    final rawCode = pasted.trim();
-    if (rawCode.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'The pasted text does not contain a WellWerks Job Setup.',
-          ),
-        ),
-      );
+    if (!mounted || choice == null) return;
+    if (choice == 'scan') {
+      await _scanJobSetupQr();
       return;
     }
+    await _importJobSetupFromPhotos();
+  }
 
+  Future<void> _importJobSetupFromPhotos() async {
+    if (_jobShareBusy) return;
     setState(() => _jobShareBusy = true);
     try {
-      final payload = _jobImportService.extractImportCodePayload(rawCode);
-      await _runImportFlowFromRaw(payload, source: 'Text Import');
+      final picked = await _imagePicker.pickImage(source: ImageSource.gallery);
+      if (picked == null) return;
+
+      final qrRaw = await _qrTransferService.decodeFirstQrFromImagePath(
+        picked.path,
+      );
+      if (qrRaw == null || qrRaw.trim().isEmpty) {
+        throw const FormatException('No QR code was found in that image.');
+      }
+
+      final raw = _qrTransferService.decodeStructuredPayload(qrRaw);
+      await _runImportFlowFromRaw(raw, source: 'Photo QR');
     } on FormatException catch (error) {
       if (!mounted) return;
-      final msg = _friendlyImportError(error.message);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_friendlyQrImportError(error.message))),
+      );
     } catch (error, stackTrace) {
-      _logJobSetupError('import-text-failed', error, stackTrace);
+      _logJobSetupError('job-setup-photo-import', error, stackTrace);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to import Job Setup from text.')),
+        const SnackBar(
+            content: Text('The selected photo could not be opened.')),
       );
     } finally {
       if (mounted) setState(() => _jobShareBusy = false);
     }
   }
 
-  String _friendlyImportError(String raw) {
-    if (raw.contains('does not contain a WellWerks Job Setup')) {
-      return 'The pasted text does not contain a WellWerks Job Setup.';
+  String _friendlyQrImportError(String raw) {
+    if (raw.contains('No QR code was found')) {
+      return 'No QR code was found in that image.';
     }
-    if (raw.contains('incomplete')) {
-      return 'The Job Setup import code is incomplete. Copy the entire message and try again.';
+    if (raw.contains('Unsupported Job Setup QR payload format') ||
+        raw.contains('Unsupported active job file type')) {
+      return 'This QR code is not a WellWerks package.';
     }
     if (raw.contains('Unsupported active job schema version')) {
-      return 'This Job Setup uses a newer unsupported WellWerks format.';
-    }
-    if (raw.contains('Unsupported active job file type')) {
-      return 'The pasted text does not contain a WellWerks Job Setup.';
+      return 'This QR uses a newer WellWerks format. Update the app and try again.';
     }
     return raw;
   }
@@ -705,7 +514,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (!mounted || action == null) {
-      if (source == 'Text Import') {
+      if (source == 'Photo QR' || source == 'Camera QR') {
         await _jobSetupShareHistory.appendEntry(
           JobSetupShareHistoryEntry(
             packageId: preview.package.packageId,
@@ -714,7 +523,7 @@ class _HomeScreenState extends State<HomeScreen> {
             jobLabel: _jobLabel(preview.job),
             timestampIso: DateTime.now().toIso8601String(),
             direction: 'Incoming',
-            method: 'Text Share',
+            method: source,
             status: 'Cancelled',
             resultSummary: 'Import preview closed before confirmation.',
           ),
@@ -736,7 +545,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }) async {
     final updated = _jobImportService.buildImportAsUpdate(preview);
     await _jobStorage.saveJobWithoutActivating(updated);
-    if (source == 'Text Import') {
+    if (source == 'Photo QR' || source == 'Camera QR') {
       await _jobSetupShareHistory.appendEntry(
         JobSetupShareHistoryEntry(
           packageId: preview.package.packageId,
@@ -745,7 +554,7 @@ class _HomeScreenState extends State<HomeScreen> {
           jobLabel: _jobLabel(updated),
           timestampIso: DateTime.now().toIso8601String(),
           direction: 'Incoming',
-          method: 'Text Share',
+          method: source,
           status: 'Imported',
           resultSummary: 'Updated matching local job setup by persistent ID.',
         ),
@@ -771,7 +580,7 @@ class _HomeScreenState extends State<HomeScreen> {
       localJobs: localJobs,
     );
     final saved = await _jobStorage.saveJobWithoutActivating(imported);
-    if (source == 'Text Import') {
+    if (source == 'Photo QR' || source == 'Camera QR') {
       await _jobSetupShareHistory.appendEntry(
         JobSetupShareHistoryEntry(
           packageId: preview.package.packageId,
@@ -780,7 +589,7 @@ class _HomeScreenState extends State<HomeScreen> {
           jobLabel: _jobLabel(saved),
           timestampIso: DateTime.now().toIso8601String(),
           direction: 'Incoming',
-          method: 'Text Share',
+          method: source,
           status: 'Imported',
           resultSummary: 'Imported as new job setup.',
         ),
@@ -852,92 +661,134 @@ class _HomeScreenState extends State<HomeScreen> {
     return origin & object.size;
   }
 
-  Future<void> _showJobSetupQr() async {
-    final activeJob = _activeJob;
-    if (activeJob == null || _jobShareBusy) return;
-    setState(() => _jobShareBusy = true);
-    try {
-      final package = await _jobShareService.buildPackage(activeJob: activeJob);
-      final raw = _jobShareService.encodePackage(package);
-      final frames = _jobSetupQrService.encodePayloadFrames(raw);
-      if (!mounted) return;
-
-      var frameIndex = 0;
-      await showDialog<void>(
-        context: context,
-        builder: (context) {
-          return StatefulBuilder(
-            builder: (context, setInnerState) => AlertDialog(
-              title: Text(
-                frames.length == 1
-                    ? 'Job Setup QR'
-                    : 'Job Setup QR ${frameIndex + 1}/${frames.length}',
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  QrImageView(
-                    data: frames[frameIndex],
-                    version: QrVersions.auto,
-                    size: 260,
-                    backgroundColor: Colors.white,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    frames.length == 1
-                        ? 'Scan this code from another WellWerks device to import this active Job Setup.'
-                        : 'Scan all ${frames.length} QR codes in order on the receiving device.',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                ],
-              ),
-              actions: [
-                if (frames.length > 1)
-                  TextButton(
-                    onPressed: frameIndex <= 0
-                        ? null
-                        : () {
-                            setInnerState(() {
-                              frameIndex -= 1;
-                            });
-                          },
-                    child: const Text('Previous'),
-                  ),
-                if (frames.length > 1)
-                  TextButton(
-                    onPressed: frameIndex >= frames.length - 1
-                        ? null
-                        : () {
-                            setInnerState(() {
-                              frameIndex += 1;
-                            });
-                          },
-                    child: const Text('Next'),
-                  ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Close'),
-                ),
-              ],
+  Future<void> _showShareQrDialog({
+    required String title,
+    required String qrValue,
+    required Future<void> Function() onShareQr,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            QrImageView(
+              data: qrValue,
+              version: QrVersions.auto,
+              errorCorrectionLevel: QrErrorCorrectLevel.L,
+              size: 280,
+              backgroundColor: Colors.white,
             ),
-          );
-        },
+            const SizedBox(height: 10),
+            const Text(
+              'Scan this QR or tap Share QR to send it as an image.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Done'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await onShareQr();
+            },
+            child: const Text('Share QR'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _shareQrImage({
+    required String qrValue,
+    required String fileName,
+    required String subject,
+    required String packageId,
+    required String packageType,
+    required String sourceJobId,
+    required String jobLabel,
+  }) async {
+    try {
+      await _jobSetupShareHistory.appendEntry(
+        JobSetupShareHistoryEntry(
+          packageId: packageId,
+          packageType: packageType,
+          sourceJobId: sourceJobId,
+          jobLabel: jobLabel,
+          timestampIso: DateTime.now().toIso8601String(),
+          direction: 'Outgoing',
+          method: 'Shared QR Image',
+          status: 'Created',
+          resultSummary: 'QR image created.',
+        ),
       );
-    } on FormatException catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
+
+      final bytes = await _qrTransferService.buildQrPngBytes(qrValue);
+      final directory = await getTemporaryDirectory();
+      final safeName = _qrTransferService.sanitizeFilePart(
+        fileName.replaceAll('.png', ''),
       );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to generate Job Setup QR code.')),
+      final path = '${directory.path}/$safeName.png';
+      final file = File(path);
+      await file.writeAsBytes(bytes, flush: true);
+
+      final result = await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: subject,
+        text: subject,
+        sharePositionOrigin: _shareOriginRect(),
       );
-    } finally {
-      if (mounted) {
-        setState(() => _jobShareBusy = false);
+
+      if (result.status == ShareResultStatus.dismissed) {
+        await _jobSetupShareHistory.appendEntry(
+          JobSetupShareHistoryEntry(
+            packageId: packageId,
+            packageType: packageType,
+            sourceJobId: sourceJobId,
+            jobLabel: jobLabel,
+            timestampIso: DateTime.now().toIso8601String(),
+            direction: 'Outgoing',
+            method: 'Shared QR Image',
+            status: 'Cancelled',
+            resultSummary: 'Share Sheet dismissed by user.',
+          ),
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('QR image sharing cancelled.')),
+        );
+        return;
       }
+
+      await _jobSetupShareHistory.appendEntry(
+        JobSetupShareHistoryEntry(
+          packageId: packageId,
+          packageType: packageType,
+          sourceJobId: sourceJobId,
+          jobLabel: jobLabel,
+          timestampIso: DateTime.now().toIso8601String(),
+          direction: 'Outgoing',
+          method: 'Shared QR Image',
+          status: 'Share Sheet Opened',
+          resultSummary: 'QR image shared via native Share Sheet.',
+        ),
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('QR image ready to send.')),
+      );
+    } catch (error, stackTrace) {
+      _logJobSetupError('share-qr-image', error, stackTrace);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('The QR image could not be shared.')),
+      );
     }
   }
 
@@ -950,12 +801,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() => _jobShareBusy = true);
     try {
-      final raw = _jobSetupQrService.decodePayload(scanned);
-      await _runImportFlowFromRaw(raw, source: 'QR Scan');
+      final raw = _qrTransferService.decodeStructuredPayload(scanned);
+      await _runImportFlowFromRaw(raw, source: 'Camera QR');
     } on FormatException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
+        SnackBar(content: Text(_friendlyQrImportError(error.message))),
       );
     } catch (_) {
       if (!mounted) return;
@@ -1043,26 +894,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: _jobShareBusy ? null : _importJobSetup,
-                      icon: const Icon(Icons.file_open_outlined),
-                      label: const Text('Import Job Setup File'),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _jobShareBusy ? null : _importJobSetupFromText,
-                      icon: const Icon(Icons.content_paste),
-                      label: const Text('Import Job Setup from Text'),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _jobShareBusy ? null : _scanJobSetupQr,
                       icon: const Icon(Icons.qr_code_scanner_outlined),
-                      label: const Text('Scan Job Setup QR'),
+                      label: const Text('Import Job Setup'),
                     ),
                   ),
                 ],
@@ -1194,7 +1027,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: FilledButton.icon(
                           onPressed: _jobShareBusy ? null : _shareJobSetup,
                           icon: const Icon(Icons.ios_share),
-                          label: const Text('Share Job Setup File'),
+                          label: const Text('Share Job Setup'),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -1202,56 +1035,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         width: double.infinity,
                         child: OutlinedButton.icon(
                           onPressed: _jobShareBusy ? null : _importJobSetup,
-                          icon: const Icon(Icons.file_open_outlined),
-                          label: const Text('Import Job Setup File'),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed:
-                              _jobShareBusy ? null : _copyJobSetupSummary,
-                          icon: const Icon(Icons.article_outlined),
-                          label: const Text('Copy Job Setup Summary'),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed:
-                              _jobShareBusy ? null : _shareJobSetupByText,
-                          icon: const Icon(Icons.copy_all_outlined),
-                          label: const Text('Share Job Setup by Text'),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed:
-                              _jobShareBusy ? null : _importJobSetupFromText,
-                          icon: const Icon(Icons.content_paste),
-                          label: const Text('Import Job Setup from Text'),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: _showJobSetupQr,
-                          icon: const Icon(Icons.qr_code_2_outlined),
-                          label: const Text('Show Job Setup QR'),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: _scanJobSetupQr,
                           icon: const Icon(Icons.qr_code_scanner_outlined),
-                          label: const Text('Scan Job Setup QR'),
+                          label: const Text('Import Job Setup'),
                         ),
                       ),
                       if (_jobShareBusy)

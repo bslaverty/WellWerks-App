@@ -55,6 +55,8 @@
 	<string>Main</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>WellWerks can save exported JSA images to your Photos library when you choose Save Image to Photos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>WellWerks uses your photo library only when you choose a QR image to import a WellWerks package.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>WellWerks uses the camera to scan Job Setup QR codes for handoff between devices.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

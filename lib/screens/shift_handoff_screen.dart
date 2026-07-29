@@ -1,8 +1,9 @@
 import 'dart:io';
 
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/job_setup.dart';
@@ -14,8 +15,10 @@ import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/shift_handoff_service.dart';
 import '../services/wellwerks_package_router_service.dart';
+import '../services/wellwerks_qr_transfer_service.dart';
 import '../widgets/app_header.dart';
 import 'package:intl/intl.dart';
+import 'wellwerks_qr_scanner_screen.dart';
 
 class ShiftHandoffScreen extends StatefulWidget {
   const ShiftHandoffScreen({super.key});
@@ -32,6 +35,8 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
   final _historyService = ShiftHandoffHistoryService();
   final _packageRouter = const WellWerksPackageRouterService();
   final _workflowModeService = ActiveWorkflowModeService.instance;
+  final _qrTransferService = const WellWerksQrTransferService();
+  final _imagePicker = ImagePicker();
 
   ProductionShift _shift = ProductionShift.empty();
   JobSetup? _activeJob;
@@ -99,28 +104,110 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
     return _workflowMode == ActiveWorkflowMode.production;
   }
 
-  Future<void> _shareFileWithChecks({
-    required String encoded,
-    required String base,
-    required String subject,
-    required String text,
+  Future<void> _showShareQrDialog({
+    required String title,
+    required String qrValue,
+    required Future<void> Function() onShare,
   }) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            QrImageView(
+              data: qrValue,
+              version: QrVersions.auto,
+              errorCorrectionLevel: QrErrorCorrectLevel.L,
+              size: 280,
+              backgroundColor: Colors.white,
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Scan this QR nearby or tap Share QR to send it as an image.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Done'),
+          ),
+          FilledButton(
+            onPressed: () async => onShare(),
+            child: const Text('Share QR'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _shareQrImage({
+    required String qrValue,
+    required String fileName,
+    required String subject,
+  }) async {
+    final bytes = await _qrTransferService.buildQrPngBytes(qrValue);
     final directory = await getTemporaryDirectory();
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final file = File('${directory.path}/${base}_$timestamp.wellwerks');
-    await file.writeAsString(encoded);
+    final safeName = _qrTransferService.sanitizeFilePart(
+      fileName.replaceAll('.png', ''),
+    );
+    final file = File('${directory.path}/$safeName.png');
+    await file.writeAsBytes(bytes, flush: true);
 
-    final exists = await file.exists();
-    final size = exists ? await file.length() : 0;
-    if (!exists || size <= 0) {
-      throw const FormatException('Could not prepare handoff file to share.');
-    }
-
-    await Share.shareXFiles(
+    final result = await Share.shareXFiles(
       [XFile(file.path)],
       subject: subject,
-      text: text,
+      text: subject,
     );
+    if (result.status == ShareResultStatus.dismissed && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('QR image sharing cancelled.')),
+      );
+    }
+  }
+
+  Future<String?> _chooseImportMethod(String title) {
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.of(context).pop('photos'),
+            child: const Text('Choose QR from Photos'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop('scan'),
+            child: const Text('Scan QR'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<String?> _scanQrFromCamera(String title) {
+    return Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => WellWerksQrScannerScreen(
+          title: title,
+          prompt: 'Center the handoff QR code in view.',
+        ),
+      ),
+    );
+  }
+
+  Future<String?> _scanQrFromPhotos() async {
+    final picked = await _imagePicker.pickImage(source: ImageSource.gallery);
+    if (picked == null) return null;
+    return _qrTransferService.decodeFirstQrFromImagePath(picked.path);
   }
 
   String _conflictValueSummary(ProductionReportRow row) {
@@ -275,16 +362,27 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
         activeJob: _activeJob,
       );
       final encoded = _handoffService.encodePackage(package);
+      final qrValue = _qrTransferService.encodeStructuredPayload(encoded);
+      _qrTransferService.ensureSingleQrCapacity(qrValue);
+      _qrTransferService.decodeStructuredPayload(qrValue);
+
       final pad = (_activeJob?.padName ?? _shift.header.pad)
           .trim()
           .replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_');
       final base = pad.isEmpty ? 'job' : pad;
-      await _shareFileWithChecks(
-        encoded: encoded,
-        base: '${base}_production_handoff',
-        subject: 'WellWerks Production Handoff',
-        text: 'Production handoff package for import into WellWerks.',
+
+      if (!mounted) return;
+      await _showShareQrDialog(
+        title: 'Share Production Handoff',
+        qrValue: qrValue,
+        onShare: () => _shareQrImage(
+          qrValue: qrValue,
+          fileName:
+              'WellWerks_Production_Handoff_${_qrTransferService.sanitizeFilePart(base)}_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.png',
+          subject: 'WellWerks Production Handoff - $base',
+        ),
       );
+
       await _historyService.appendEntry(
         ShiftHandoffHistoryEntry(
           action: 'production_export',
@@ -299,7 +397,7 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Production handoff shared.')),
+        const SnackBar(content: Text('Production handoff QR ready.')),
       );
       final history = await _historyService.loadHistory();
       if (!mounted) return;
@@ -314,7 +412,7 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to export shift handoff.')),
+        const SnackBar(content: Text('The QR image could not be shared.')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -411,27 +509,24 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final picked = await openFile(
-        acceptedTypeGroups: const [
-          XTypeGroup(
-            label: 'WellWerks Shift Handoff',
-            extensions: <String>['wellwerks', 'json'],
-          ),
-        ],
-      );
-      if (picked == null) return;
+      final method = await _chooseImportMethod('Import Production Handoff');
+      if (!mounted || method == null) return;
 
-      final length = await picked.length();
-      if (length <= 0) {
-        throw const FormatException('Selected file is empty.');
+      final scanned = method == 'scan'
+          ? await _scanQrFromCamera('Scan Production Handoff QR')
+          : await _scanQrFromPhotos();
+      if (scanned == null || scanned.trim().isEmpty) {
+        if (method == 'photos') {
+          throw const FormatException('No QR code was found in that image.');
+        }
+        return;
       }
 
-      final raw = await picked.readAsString();
+      final raw = _qrTransferService.decodeStructuredPayload(scanned);
       final header = _packageRouter.decodeHeader(raw);
       if (header.type != WellWerksPackageType.productionHandoff) {
         throw const FormatException(
-          'This file is not a Production Handoff package.',
-        );
+            'This is a Job Setup QR. Open Import Job Setup to use it.');
       }
       final package = _handoffService.decodePackage(raw);
 
@@ -524,7 +619,7 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to import shift handoff file.')),
+        const SnackBar(content: Text('This QR code is incomplete or damaged.')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -540,15 +635,24 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
         activeJob: activeJob,
       );
       final encoded = _drilloutHandoffService.encodePackage(package);
+      final qrValue = _qrTransferService.encodeStructuredPayload(encoded);
+      _qrTransferService.ensureSingleQrCapacity(qrValue);
+      _qrTransferService.decodeStructuredPayload(qrValue);
+
       final pad =
           activeJob.padName.trim().replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_');
       final base = pad.isEmpty ? 'job' : pad;
 
-      await _shareFileWithChecks(
-        encoded: encoded,
-        base: '${base}_drillout_handoff',
-        subject: 'WellWerks Drillout Handoff',
-        text: 'Drillout handoff package for import into WellWerks.',
+      if (!mounted) return;
+      await _showShareQrDialog(
+        title: 'Share Drillout Handoff',
+        qrValue: qrValue,
+        onShare: () => _shareQrImage(
+          qrValue: qrValue,
+          fileName:
+              'WellWerks_Drillout_Handoff_${_qrTransferService.sanitizeFilePart(base)}_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.png',
+          subject: 'WellWerks Drillout Handoff - $base',
+        ),
       );
 
       await _historyService.appendEntry(
@@ -569,7 +673,7 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
       if (!mounted) return;
       setState(() => _history = history);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Drillout handoff shared.')),
+        const SnackBar(content: Text('Drillout handoff QR ready.')),
       );
     } on FormatException catch (error) {
       if (!mounted) return;
@@ -579,7 +683,7 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to export drillout handoff.')),
+        const SnackBar(content: Text('The QR image could not be shared.')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -590,26 +694,24 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final picked = await openFile(
-        acceptedTypeGroups: const [
-          XTypeGroup(
-            label: 'WellWerks Drillout Handoff',
-            extensions: <String>['wellwerks', 'json'],
-          ),
-        ],
-      );
-      if (picked == null) return;
+      final method = await _chooseImportMethod('Import Drillout Handoff');
+      if (!mounted || method == null) return;
 
-      final length = await picked.length();
-      if (length <= 0) {
-        throw const FormatException('Selected file is empty.');
+      final scanned = method == 'scan'
+          ? await _scanQrFromCamera('Scan Drillout Handoff QR')
+          : await _scanQrFromPhotos();
+      if (scanned == null || scanned.trim().isEmpty) {
+        if (method == 'photos') {
+          throw const FormatException('No QR code was found in that image.');
+        }
+        return;
       }
 
-      final raw = await picked.readAsString();
+      final raw = _qrTransferService.decodeStructuredPayload(scanned);
       final header = _packageRouter.decodeHeader(raw);
       if (header.type != WellWerksPackageType.drilloutHandoff) {
         throw const FormatException(
-          'This file is not a Drillout Handoff package.',
+          'This is a Production Handoff QR. Open Import Production Handoff to use it.',
         );
       }
 
@@ -655,7 +757,7 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to import drillout handoff.')),
+        const SnackBar(content: Text('This QR code is incomplete or damaged.')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -694,8 +796,8 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
             const SizedBox(height: 8),
             Text(
               _isProductionWorkflow
-                  ? 'Export creates a .wellwerks file. Import merges by entryId and lets you choose local or imported values for conflicts.'
-                  : 'Export creates a .wellwerks file containing drillout/cleanout active job context and text update setup.',
+                  ? 'Share and import use one WellWerks QR package format. Import still merges by entryId and lets you choose local or imported conflict values.'
+                  : 'Share and import use one WellWerks QR package format for drillout/cleanout handoff context.',
               style: const TextStyle(color: Colors.white70),
             ),
           ],
@@ -821,8 +923,8 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
               icon: const Icon(Icons.ios_share),
               label: Text(
                 _isProductionWorkflow
-                    ? 'Create & Share Production Handoff'
-                    : 'Create & Share Drillout Handoff',
+                    ? 'Share Production Handoff'
+                    : 'Share Drillout Handoff',
               ),
             ),
           ),

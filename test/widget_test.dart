@@ -185,9 +185,8 @@ void main() {
     expect(find.text('Active Company'), findsNothing);
     expect(find.text('No Active Job'), findsOneWidget);
     expect(find.text('Create Job'), findsOneWidget);
-    expect(find.text('Import Job Setup File'), findsOneWidget);
-    expect(find.text('Import Job Setup from Text'), findsOneWidget);
-    expect(find.text('Scan Job Setup QR'), findsOneWidget);
+    expect(find.text('Import Job Setup'), findsOneWidget);
+    expect(find.text('Scan Job Setup QR'), findsNothing);
     expect(find.text('Continue Active Job'), findsNothing);
     expect(find.text('ACTIVE'), findsNothing);
     expect(find.textContaining('Active Job:'), findsNothing);
