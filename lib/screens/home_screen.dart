@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../models/job_box_inventory.dart';
 import '../widgets/app_header.dart';
 import '../widgets/tool_card.dart';
 import '../services/app_settings_service.dart';
 import '../services/active_workflow_mode_service.dart';
 import '../services/job_storage_service.dart';
+import '../services/operations_log_service.dart';
 import '../services/rate_timer_notification_service.dart';
 import '../services/rate_timer_service.dart';
 import '../services/recovery_state_service.dart';
@@ -29,6 +31,8 @@ import 'job_setup_screen.dart';
 import 'drillout_shift_change_screen.dart';
 import 'drillout_cleanout_module_screen.dart';
 import 'flywheel_diesel_tank_screen.dart';
+import 'job_box_inventory_screen.dart';
+import 'operations_log_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -88,6 +92,46 @@ class _HomeScreenState extends State<HomeScreen> {
       _loading = false;
     });
     _handlePendingRateTimerAction();
+    _handlePendingEstimatedStsAction();
+  }
+
+  Future<void> _handlePendingEstimatedStsAction() async {
+    final payload =
+        await _rateTimerNotifications.consumePendingEstimatedStsNotification();
+    if (!mounted || payload == null) return;
+
+    final expectedJobId = (payload['persistentJobId'] as String? ?? '').trim();
+    final workflowRaw = (payload['workflow'] as String? ?? '').trim();
+
+    final activeJob = await _jobStorage.ensureActiveJobLoaded();
+    if (!mounted) return;
+
+    final matchesActiveJob = expectedJobId.isNotEmpty &&
+        activeJob != null &&
+        activeJob.id.trim() == expectedJobId;
+    if (!matchesActiveJob) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('The original STS reading is no longer available.'),
+        ),
+      );
+      return;
+    }
+
+    final normalizedWorkflow = workflowRaw.toLowerCase();
+    final isCleanout = normalizedWorkflow == 'cleanout';
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => OperationsLogScreen(
+          workflow: isCleanout
+              ? OperationsLogWorkflow.cleanout
+              : OperationsLogWorkflow.drillout,
+          title: isCleanout ? 'Cleanout Log' : 'Drillout Log',
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _loadRecovery();
   }
 
   Future<void> _handlePendingRateTimerAction() async {
@@ -334,6 +378,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 subtitle:
                     'Shared shift update workflow, JSA, preview, and copy',
                 screen: DrilloutCleanoutModuleScreen(),
+              ),
+              const ModuleTool(
+                icon: Icons.inventory_2_outlined,
+                title: 'Job Box Inventory',
+                subtitle: 'Track completions job box items and copy updates',
+                screen: JobBoxInventoryScreen(
+                  source: JobBoxInventorySource.completions,
+                ),
               ),
               const ModuleTool(
                 icon: Icons.straighten,

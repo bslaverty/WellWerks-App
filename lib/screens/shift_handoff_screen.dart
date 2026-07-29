@@ -1,8 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -104,10 +101,22 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
     return _workflowMode == ActiveWorkflowMode.production;
   }
 
+  bool get _isDrilloutCleanoutWorkflow {
+    return _workflowMode == ActiveWorkflowMode.drillout ||
+        _workflowMode == ActiveWorkflowMode.cleanout;
+  }
+
+  String _activeHandoffWorkflowLabel([JobSetup? job]) {
+    final workflow =
+        (job?.workflow ?? _activeJob?.workflow ?? '').trim().toLowerCase();
+    if (workflow == 'cleanout') return 'Cleanout';
+    return 'Drillout';
+  }
+
   Future<void> _showShareQrDialog({
     required String title,
     required String qrValue,
-    required Future<void> Function() onShare,
+    required Future<void> Function(BuildContext shareContext) onShare,
   }) async {
     await showDialog<void>(
       context: context,
@@ -136,9 +145,25 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Done'),
           ),
-          FilledButton(
-            onPressed: () async => onShare(),
-            child: const Text('Share QR'),
+          Builder(
+            builder: (buttonContext) => FilledButton(
+              onPressed: () async {
+                try {
+                  await onShare(buttonContext);
+                } catch (error, stackTrace) {
+                  debugPrint(
+                    '[ShiftHandoff] Failed to share QR image: $error\n$stackTrace',
+                  );
+                  if (!mounted || !buttonContext.mounted) return;
+                  ScaffoldMessenger.of(buttonContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('The QR image could not be shared.'),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Share QR'),
+            ),
           ),
         ],
       ),
@@ -149,24 +174,16 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
     required String qrValue,
     required String fileName,
     required String subject,
+    required BuildContext shareContext,
   }) async {
-    final bytes = await _qrTransferService.buildQrPngBytes(qrValue);
-    final directory = await getTemporaryDirectory();
-    final safeName = _qrTransferService.sanitizeFilePart(
-      fileName.replaceAll('.png', ''),
-    );
-    final file = File('${directory.path}/$safeName.png');
-    await file.writeAsBytes(bytes, flush: true);
-
-    final result = await Share.shareXFiles(
-      [XFile(file.path)],
+    final result = await _qrTransferService.shareQrPng(
+      qrValue: qrValue,
+      fileName: fileName,
+      shareContext: shareContext,
       subject: subject,
-      text: subject,
     );
-    if (result.status == ShareResultStatus.dismissed && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('QR image sharing cancelled.')),
-      );
+    if (result.status == ShareResultStatus.dismissed) {
+      return;
     }
   }
 
@@ -227,9 +244,9 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
         return StatefulBuilder(
           builder: (context, setInnerState) {
             return AlertDialog(
-              title: Text('Resolve ${conflicts.length} Conflict(s)'),
+              title: const Text('Resolve Import Conflicts'),
               content: SizedBox(
-                width: double.maxFinite,
+                width: 520,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -257,7 +274,9 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
                           ),
                           TextButton(
                             onPressed: () {
-                              setInnerState(selectedImported.clear);
+                              setInnerState(() {
+                                selectedImported.clear();
+                              });
                             },
                             child: const Text('Keep All Local'),
                           ),
@@ -375,11 +394,12 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
       await _showShareQrDialog(
         title: 'Share Production Handoff',
         qrValue: qrValue,
-        onShare: () => _shareQrImage(
+        onShare: (shareContext) => _shareQrImage(
           qrValue: qrValue,
           fileName:
               'WellWerks_Production_Handoff_${_qrTransferService.sanitizeFilePart(base)}_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.png',
           subject: 'WellWerks Production Handoff - $base',
+          shareContext: shareContext,
         ),
       );
 
@@ -626,7 +646,7 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
     }
   }
 
-  Future<void> _exportDrilloutHandoff() async {
+  Future<void> _exportWorkflowHandoff() async {
     final activeJob = _activeJob;
     if (activeJob == null || _busy) return;
     setState(() => _busy = true);
@@ -642,16 +662,19 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
       final pad =
           activeJob.padName.trim().replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_');
       final base = pad.isEmpty ? 'job' : pad;
+      final workflowLabel = _activeHandoffWorkflowLabel(activeJob);
+      final workflowSlug = _qrTransferService.sanitizeFilePart(workflowLabel);
 
       if (!mounted) return;
       await _showShareQrDialog(
-        title: 'Share Drillout Handoff',
+        title: 'Share $workflowLabel Handoff',
         qrValue: qrValue,
-        onShare: () => _shareQrImage(
+        onShare: (shareContext) => _shareQrImage(
           qrValue: qrValue,
           fileName:
-              'WellWerks_Drillout_Handoff_${_qrTransferService.sanitizeFilePart(base)}_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.png',
-          subject: 'WellWerks Drillout Handoff - $base',
+              'WellWerks_${workflowSlug}_Handoff_${_qrTransferService.sanitizeFilePart(base)}_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.png',
+          subject: 'WellWerks $workflowLabel Handoff - $base',
+          shareContext: shareContext,
         ),
       );
 
@@ -673,7 +696,7 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
       if (!mounted) return;
       setState(() => _history = history);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Drillout handoff QR ready.')),
+        SnackBar(content: Text('$workflowLabel handoff QR ready.')),
       );
     } on FormatException catch (error) {
       if (!mounted) return;
@@ -690,15 +713,15 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
     }
   }
 
-  Future<void> _importDrilloutHandoff() async {
+  Future<void> _importWorkflowHandoff() async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final method = await _chooseImportMethod('Import Drillout Handoff');
+      final method = await _chooseImportMethod('Import Handoff');
       if (!mounted || method == null) return;
 
       final scanned = method == 'scan'
-          ? await _scanQrFromCamera('Scan Drillout Handoff QR')
+          ? await _scanQrFromCamera('Scan Handoff QR')
           : await _scanQrFromPhotos();
       if (scanned == null || scanned.trim().isEmpty) {
         if (method == 'photos') {
@@ -716,6 +739,20 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
       }
 
       final package = _drilloutHandoffService.decodePackage(raw);
+      final packageWorkflow = package.workflow.trim().toLowerCase();
+      final expectedWorkflow =
+          (_activeJob?.workflow ?? '').trim().toLowerCase();
+      if (expectedWorkflow == 'drillout' && packageWorkflow == 'cleanout') {
+        throw const FormatException(
+          'This is a Cleanout handoff. Open Handoff from a Cleanout job to import it.',
+        );
+      }
+      if (expectedWorkflow == 'cleanout' && packageWorkflow == 'drillout') {
+        throw const FormatException(
+          'This is a Drillout handoff. Open Handoff from a Drillout job to import it.',
+        );
+      }
+
       final importedJob = _drilloutHandoffService.importAsActiveJob(package);
       final savedJob = await _jobStorage.saveActiveJob(importedJob);
       await _workflowModeService.setMode(_workflowModeForJob(savedJob));
@@ -745,7 +782,7 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Imported Drillout handoff for ${savedJob.padName.isEmpty ? savedJob.company : savedJob.padName}.',
+            'Imported ${_activeHandoffWorkflowLabel(savedJob)} handoff for ${savedJob.padName.isEmpty ? savedJob.company : savedJob.padName}.',
           ),
         ),
       );
@@ -778,7 +815,7 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
             Text(
               _isProductionWorkflow
                   ? 'Production Handoff Package'
-                  : 'Drillout Handoff Package',
+                  : 'Handoff Package',
               style: const TextStyle(
                 color: Color(0xFFCDA56A),
                 fontWeight: FontWeight.w800,
@@ -813,9 +850,9 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
       case 'production_import':
         return 'Production Import';
       case 'drillout_export':
-        return 'Drillout Export';
+        return 'Handoff Export';
       case 'drillout_import':
-        return 'Drillout Import';
+        return 'Handoff Import';
       default:
         return 'Handoff';
     }
@@ -901,13 +938,24 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
 
     return Scaffold(
       appBar: AppHeader(
-        title:
-            _isProductionWorkflow ? 'Production Handoff' : 'Drillout Handoff',
+        title: _isProductionWorkflow ? 'Production Handoff' : 'Handoff',
         showBack: true,
       ),
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
+          if (_isDrilloutCleanoutWorkflow && _activeJob == null)
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(14),
+                child: Text(
+                  'Select or create an active Drillout or Cleanout job in Job Setup before using Handoff.',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              ),
+            ),
+          if (_isDrilloutCleanoutWorkflow && _activeJob == null)
+            const SizedBox(height: 8),
           _summaryCard(),
           const SizedBox(height: 8),
           _historyCard(),
@@ -919,12 +967,12 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
                   ? null
                   : (_isProductionWorkflow
                       ? (_rows.isEmpty ? null : _exportHandoff)
-                      : (_activeJob == null ? null : _exportDrilloutHandoff)),
+                      : (_activeJob == null ? null : _exportWorkflowHandoff)),
               icon: const Icon(Icons.ios_share),
               label: Text(
                 _isProductionWorkflow
                     ? 'Share Production Handoff'
-                    : 'Share Drillout Handoff',
+                    : 'Share Handoff',
               ),
             ),
           ),
@@ -936,12 +984,12 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
                   ? null
                   : (_isProductionWorkflow
                       ? _importHandoff
-                      : _importDrilloutHandoff),
+                      : _importWorkflowHandoff),
               icon: const Icon(Icons.file_open_outlined),
               label: Text(
                 _isProductionWorkflow
                     ? 'Import Production Handoff'
-                    : 'Import Drillout Handoff',
+                    : 'Import Handoff',
               ),
             ),
           ),

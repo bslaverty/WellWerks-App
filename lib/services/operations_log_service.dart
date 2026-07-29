@@ -11,6 +11,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/operations_log_entry.dart';
 import 'device_identity_service.dart';
+import 'drillout_cleanout_field_definitions.dart';
+import 'operations_sts_reminder_service.dart';
 import 'operator_profile_service.dart';
 import 'wellwerks_qr_transfer_service.dart';
 
@@ -120,16 +122,20 @@ class OperationsLogService {
     WellWerksQrTransferService? qrTransferService,
     OperatorProfileService? operatorProfileService,
     DeviceIdentityService? deviceIdentityService,
+    OperationsStsReminderService? stsReminderService,
   })  : _qrTransferService =
             qrTransferService ?? const WellWerksQrTransferService(),
         _operatorProfileService =
             operatorProfileService ?? OperatorProfileService.instance,
         _deviceIdentityService =
-            deviceIdentityService ?? DeviceIdentityService.instance;
+            deviceIdentityService ?? DeviceIdentityService.instance,
+        _stsReminderService =
+            stsReminderService ?? OperationsStsReminderService();
 
   final WellWerksQrTransferService _qrTransferService;
   final OperatorProfileService _operatorProfileService;
   final DeviceIdentityService _deviceIdentityService;
+  final OperationsStsReminderService _stsReminderService;
 
   String storageKey(OperationsLogWorkflow workflow, String jobId) {
     final normalizedJobId = jobId.trim();
@@ -183,9 +189,16 @@ class OperationsLogService {
     String tubingPressure = '',
     String pumpPressure = '',
     String pumpRate = '',
+    String gas = '',
+    String plugNumber = '',
+    String surfaceTotalFluid = '',
+    String waterHauled = '',
+    String oilHauled = '',
     String returnsRate = '',
     String waterRate = '',
     String flowRate = '',
+    DateTime? estimatedSts,
+    DateTime? sts,
     String tankLevel = '',
     String sweepInformation = '',
     String sandOrSolids = '',
@@ -222,9 +235,16 @@ class OperationsLogService {
       tubingPressure: tubingPressure,
       pumpPressure: pumpPressure,
       pumpRate: pumpRate,
+      gas: gas,
+      plugNumber: plugNumber,
+      surfaceTotalFluid: surfaceTotalFluid,
+      waterHauled: waterHauled,
+      oilHauled: oilHauled,
       returnsRate: returnsRate,
       waterRate: waterRate,
       flowRate: flowRate,
+      estimatedSts: estimatedSts,
+      sts: sts,
       tankLevel: tankLevel,
       sweepInformation: sweepInformation,
       sandOrSolids: sandOrSolids,
@@ -256,6 +276,15 @@ class OperationsLogService {
     required String entryId,
   }) async {
     final entries = await loadEntries(workflow: workflow, jobId: jobId);
+    final removed = entries
+        .where((entry) => entry.entryId == entryId)
+        .toList(growable: false);
+    for (final entry in removed) {
+      await _stsReminderService.cancelForEntry(
+        entry,
+        reason: 'entryDeleted',
+      );
+    }
     entries.removeWhere((entry) => entry.entryId == entryId);
     await saveEntries(workflow: workflow, jobId: jobId, entries: entries);
   }
@@ -303,15 +332,9 @@ class OperationsLogService {
     final sortedEntries = List<OperationsLogEntry>.from(entries)
       ..sort((a, b) => a.readingTimestamp.compareTo(b.readingTimestamp));
     final visibleFieldIds = (enabledFieldIds ??
-            const <String>{
-              'operationStage',
-              'pumpRate',
-              'casingPressure',
-              'pumpPressure',
-              'notes',
-            })
+            DrilloutCleanoutFieldDefinitions.defaultEnabledFieldIds)
         .toSet();
-    final readingColumns = _buildReadingColumns(visibleFieldIds);
+    final readingColumns = _buildReadingColumns(visibleFieldIds, sortedEntries);
     final stamp = DateTime.now();
     final doc = pw.Document(compress: false);
 
@@ -631,7 +654,7 @@ class OperationsLogService {
                   if (wellName.trim().isNotEmpty) 'Well ${wellName.trim()}',
                   if (stage.trim().isNotEmpty) 'Stage ${stage.trim()}',
                   '${entries.length} readings',
-                ].join(' • '),
+                ].join(' | '),
                 style:
                     const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
               ),
@@ -703,115 +726,32 @@ class OperationsLogService {
     );
   }
 
-  List<_ReadingReportColumn> _buildReadingColumns(Set<String> enabledFieldIds) {
+  List<_ReadingReportColumn> _buildReadingColumns(
+    Set<String> enabledFieldIds,
+    List<OperationsLogEntry> entries,
+  ) {
     final columns = <_ReadingReportColumn>[];
 
-    void addColumn(
-      String fieldId,
-      String label,
-      pw.TableColumnWidth width,
-      String Function(OperationsLogEntry entry) valueBuilder,
-    ) {
-      if (!enabledFieldIds.contains(fieldId)) return;
+    for (final field in DrilloutCleanoutFieldDefinitions.readingFields) {
+      final legacySweepPresent =
+          field.id == DrilloutCleanoutFieldDefinitions.sweepInformationId &&
+              entries.any((entry) => entry.sweepInformation.trim().isNotEmpty);
+      if ((!enabledFieldIds.contains(field.id) && !legacySweepPresent) ||
+          !field.reportVisible) {
+        continue;
+      }
+      if (!entries
+          .any((entry) => _reportValueForField(field.id, entry).isNotEmpty)) {
+        continue;
+      }
       columns.add(
         _ReadingReportColumn(
-          label: label,
-          width: width,
-          valueBuilder: valueBuilder,
+          label: field.label,
+          width: _reportWidthForField(field.id),
+          valueBuilder: (entry) => _reportValueForField(field.id, entry),
         ),
       );
     }
-
-    addColumn(
-      'operationStage',
-      'Stage',
-      const pw.FlexColumnWidth(1.2),
-      (entry) => entry.operationStage,
-    );
-    addColumn(
-      'pumpRate',
-      'Rate',
-      const pw.FixedColumnWidth(52),
-      (entry) => entry.pumpRate,
-    );
-    addColumn(
-      'casingPressure',
-      'CSG PSI',
-      const pw.FlexColumnWidth(0.9),
-      (entry) => entry.casingPressure,
-    );
-    addColumn(
-      'pumpPressure',
-      'Pump PSI',
-      const pw.FlexColumnWidth(0.9),
-      (entry) => entry.pumpPressure,
-    );
-    addColumn(
-      'tubingPressure',
-      'Manifold PSI',
-      const pw.FlexColumnWidth(0.9),
-      (entry) => entry.tubingPressure,
-    );
-    addColumn(
-      'returnsRate',
-      'Returns',
-      const pw.FlexColumnWidth(0.9),
-      (entry) => entry.returnsRate,
-    );
-    addColumn(
-      'waterRate',
-      'Water',
-      const pw.FlexColumnWidth(0.9),
-      (entry) => entry.waterRate,
-    );
-    addColumn(
-      'flowRate',
-      'Flow',
-      const pw.FlexColumnWidth(0.9),
-      (entry) => entry.flowRate,
-    );
-    addColumn(
-      'tankLevel',
-      'Tank',
-      const pw.FlexColumnWidth(0.9),
-      (entry) => entry.tankLevel,
-    );
-    addColumn(
-      'choke',
-      'Choke',
-      const pw.FlexColumnWidth(0.9),
-      (entry) => entry.choke,
-    );
-    addColumn(
-      'sweepInformation',
-      'Sweep',
-      const pw.FlexColumnWidth(1.1),
-      (entry) => entry.sweepInformation,
-    );
-    addColumn(
-      'sandOrSolids',
-      'Sand',
-      const pw.FlexColumnWidth(0.9),
-      (entry) => entry.sandOrSolids,
-    );
-    addColumn(
-      'equipmentStatus',
-      'Equipment',
-      const pw.FlexColumnWidth(1.1),
-      (entry) => entry.equipmentStatus,
-    );
-    addColumn(
-      'downtime',
-      'Downtime',
-      const pw.FlexColumnWidth(1.1),
-      (entry) => entry.downtime,
-    );
-    addColumn(
-      'notes',
-      'Notes',
-      const pw.FlexColumnWidth(1.6),
-      (entry) => entry.notes,
-    );
 
     if (columns.isEmpty) {
       columns.add(
@@ -824,6 +764,89 @@ class OperationsLogService {
     }
 
     return columns;
+  }
+
+  pw.TableColumnWidth _reportWidthForField(String fieldId) {
+    switch (fieldId) {
+      case 'operationStage':
+        return const pw.FlexColumnWidth(1.2);
+      case 'pumpRate':
+      case 'returnsRate':
+      case 'casingPressure':
+      case 'pumpPressure':
+      case 'tubingPressure':
+      case 'choke':
+      case 'gas':
+      case 'sandOrSolids':
+      case 'plugNumber':
+      case 'surfaceTotalFluid':
+      case 'waterHauled':
+      case 'oilHauled':
+        return const pw.FlexColumnWidth(0.9);
+      case 'estimatedSts':
+      case 'sts':
+      case 'sweepInformation':
+      case 'equipmentStatus':
+      case 'downtime':
+      case 'tankLevel':
+        return const pw.FlexColumnWidth(1.2);
+      case 'notes':
+        return const pw.FlexColumnWidth(1.6);
+      default:
+        return const pw.FlexColumnWidth(1.0);
+    }
+  }
+
+  String _reportValueForField(String fieldId, OperationsLogEntry entry) {
+    switch (fieldId) {
+      case 'operationStage':
+        return entry.operationStage.trim();
+      case 'pumpRate':
+        return entry.pumpRate.trim();
+      case 'returnsRate':
+        return entry.returnsRate.trim();
+      case 'tubingPressure':
+        return entry.tubingPressure.trim();
+      case 'casingPressure':
+        return entry.casingPressure.trim();
+      case 'pumpPressure':
+        return entry.pumpPressure.trim();
+      case 'gas':
+        return entry.gas.trim();
+      case 'estimatedSts':
+        return _formatReportDateTime(entry.estimatedSts);
+      case 'sts':
+        return _formatReportDateTime(entry.sts);
+      case 'sandOrSolids':
+        return entry.sandOrSolids.trim();
+      case 'plugNumber':
+        return entry.plugNumber.trim();
+      case 'surfaceTotalFluid':
+        return entry.surfaceTotalFluid.trim();
+      case 'waterHauled':
+        return entry.waterHauled.trim();
+      case 'oilHauled':
+        return entry.oilHauled.trim();
+      case 'sweepInformation':
+        return entry.sweepInformation.trim();
+      case 'tankLevel':
+        return entry.tankLevel.trim();
+      case 'choke':
+        return entry.choke.trim();
+      case 'equipmentStatus':
+        return entry.equipmentStatus.trim();
+      case 'downtime':
+        return entry.downtime.trim();
+      case 'notes':
+        return entry.notes.trim();
+      default:
+        return '';
+    }
+  }
+
+  String _formatReportDateTime(DateTime? value) {
+    if (value == null) return '';
+    return DateFormat('M/d h:mm a').format(value.toLocal());
   }
 
   String _latestStatusByWellSummary(List<OperationsLogEntry> sortedEntries) {

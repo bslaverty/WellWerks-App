@@ -19,6 +19,11 @@ const String _quickRoundChannelId = 'wellwerks_quick_round_hourly_v1';
 const String _quickRoundChannelName = 'Quick Round Reminder';
 const String _quickRoundChannelDescription =
     'Hourly reminder to collect Quick Round numbers.';
+const String _stsChannelId = 'wellwerks_estimated_sts_v1';
+const String _stsChannelName = 'Estimated STS Reminders';
+const String _stsChannelDescription =
+    'Reminders before estimated sweep-to-surface times.';
+const String _stsPayloadType = 'estimated_sts';
 
 @pragma('vm:entry-point')
 void rateTimerNotificationTapBackground(NotificationResponse response) async {
@@ -34,6 +39,10 @@ class RateTimerNotificationService {
 
   static const _permissionPromptedKey =
       'wellwerks_rate_timer_notif_prompted_v1';
+  static const _stsPermissionPromptedKey =
+      'wellwerks_estimated_sts_notif_prompted_v1';
+  static const _pendingStsNotificationKey =
+      'wellwerks_pending_estimated_sts_notification_v1';
   static const quickRoundReminderEnabledKey =
       'wellwerks_quick_round_reminder_enabled_v1';
   static const quickRoundReminderMinuteKey =
@@ -171,6 +180,148 @@ class RateTimerNotificationService {
     }
   }
 
+  Future<bool> hasPromptedEstimatedStsPermission() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_stsPermissionPromptedKey) ?? false;
+  }
+
+  Future<void> markEstimatedStsPermissionPrompted() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_stsPermissionPromptedKey, true);
+  }
+
+  int notificationIdForSweep(String sweepId) {
+    final hash = sweepId.trim().hashCode;
+    final positive = hash == -2147483648 ? 2147483647 : hash.abs();
+    return 700000 + (positive % 900000);
+  }
+
+  Future<void> scheduleEstimatedStsReminder({
+    required int notificationId,
+    required DateTime scheduledAt,
+    required String wellName,
+    required int leadMinutes,
+    required String sweepId,
+    required String entryId,
+    required String persistentJobId,
+    required String workflow,
+  }) async {
+    await ensureInitialized();
+    await _plugin.cancel(notificationId);
+
+    final localScheduled = tz.TZDateTime.from(scheduledAt, tz.local);
+    final leadLabel = _leadTimeLabel(leadMinutes);
+    final trimmedWell = wellName.trim();
+    final body = trimmedWell.isNotEmpty
+        ? 'Estimated STS for $trimmedWell is $leadLabel away.'
+        : 'Estimated sweep-to-surface time is $leadLabel away.';
+
+    final payload = jsonEncode(<String, dynamic>{
+      'type': _stsPayloadType,
+      'sweepId': sweepId,
+      'entryId': entryId,
+      'persistentJobId': persistentJobId,
+      'workflow': workflow,
+      'scheduledAt': scheduledAt.toIso8601String(),
+      'leadMinutes': leadMinutes,
+    });
+
+    await _plugin.zonedSchedule(
+      notificationId,
+      'Sweep Approaching Surface',
+      body,
+      localScheduled,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _stsChannelId,
+          _stsChannelName,
+          channelDescription: _stsChannelDescription,
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBanner: true,
+          presentBadge: true,
+          presentSound: true,
+          interruptionLevel: InterruptionLevel.timeSensitive,
+        ),
+      ),
+      payload: payload,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+    );
+  }
+
+  Future<void> showEstimatedStsReminderNow({
+    required int notificationId,
+    required String wellName,
+    required int leadMinutes,
+  }) async {
+    await ensureInitialized();
+    final leadLabel = _leadTimeLabel(leadMinutes);
+    final trimmedWell = wellName.trim();
+    final body = trimmedWell.isNotEmpty
+        ? 'Estimated STS for $trimmedWell is $leadLabel away.'
+        : 'Estimated sweep-to-surface time is $leadLabel away.';
+    await _plugin.show(
+      notificationId,
+      'Sweep Approaching Surface',
+      body,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _stsChannelId,
+          _stsChannelName,
+          channelDescription: _stsChannelDescription,
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBanner: true,
+          presentBadge: true,
+          presentSound: true,
+          interruptionLevel: InterruptionLevel.timeSensitive,
+        ),
+      ),
+    );
+  }
+
+  Future<void> cancelEstimatedStsReminder(int notificationId) async {
+    await ensureInitialized();
+    await _plugin.cancel(notificationId);
+  }
+
+  Future<void> cancelEstimatedStsReminders(
+      Iterable<int> notificationIds) async {
+    await ensureInitialized();
+    for (final id in notificationIds) {
+      await _plugin.cancel(id);
+    }
+  }
+
+  Future<void> setPendingEstimatedStsNotification(
+    Map<String, dynamic> payload,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pendingStsNotificationKey, jsonEncode(payload));
+  }
+
+  Future<Map<String, dynamic>?> consumePendingEstimatedStsNotification() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_pendingStsNotificationKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+    await prefs.remove(_pendingStsNotificationKey);
+    try {
+      return Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> cancelQuickRoundReminder() async {
     await ensureInitialized();
     for (var hour = 0; hour < quickRoundReminderCount; hour++) {
@@ -279,6 +430,11 @@ class RateTimerNotificationService {
     try {
       final payload = jsonDecode(response.payload ?? '{}');
       final map = Map<String, dynamic>.from(payload as Map);
+      final type = (map['type'] as String? ?? '').trim();
+      if (type == _stsPayloadType) {
+        await setPendingEstimatedStsNotification(map);
+        return;
+      }
       final action = response.actionId;
 
       if (action == rateTimerActionStop) {
@@ -325,5 +481,14 @@ class RateTimerNotificationService {
         DarwinNotificationCategoryOption.hiddenPreviewShowTitle,
       },
     );
+  }
+
+  String _leadTimeLabel(int minutes) {
+    if (minutes == 60) return '1 hour';
+    if (minutes % 60 == 0) {
+      final hours = minutes ~/ 60;
+      return '$hours hours';
+    }
+    return '$minutes minutes';
   }
 }

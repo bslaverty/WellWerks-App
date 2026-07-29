@@ -11,7 +11,7 @@ import '../models/job_setup.dart';
 import '../services/active_company_service.dart';
 import '../services/active_workflow_mode_service.dart';
 import '../services/app_settings_service.dart';
-import '../services/drillout_cleanout_stage_service.dart';
+import '../services/drillout_cleanout_field_definitions.dart';
 import '../services/job_profile_defaults_service.dart';
 import '../services/job_storage_service.dart';
 import '../utils/gauge_keypad_input.dart';
@@ -116,21 +116,13 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   String? _sand;
 
   static const List<String> _statusOptions =
-      DrilloutCleanoutStageService.stageOptions;
+      DrilloutCleanoutFieldDefinitions.stageOptions;
 
-  static const List<String> _sandOptions = [
-    'Trace',
-    'Light',
-    'Medium',
-    'Heavy',
-  ];
+  static const List<String> _sandOptions =
+      DrilloutCleanoutFieldDefinitions.sandOptions;
 
-  static const List<String> _gasOptions = [
-    'None',
-    'Light',
-    'Medium',
-    'Heavy',
-  ];
+  static const List<String> _gasOptions =
+      DrilloutCleanoutFieldDefinitions.gasOptions;
 
   @override
   void initState() {

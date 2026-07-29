@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -41,6 +43,8 @@ void main() {
 
   test('operations log qr package roundtrip preserves entry ids and timestamps',
       () async {
+    final estimatedSts = DateTime(2026, 7, 29, 23, 35);
+    final sts = DateTime(2026, 7, 30, 0, 5);
     final entry = OperationsLogEntry(
       entryId: 'entry-1',
       packageCompatibleEntryId: 'pkg-entry-1',
@@ -59,7 +63,13 @@ void main() {
       isImported: false,
       qrPackageId: 'pkg-123',
       operationStage: 'Stage 1',
+      gas: 'Medium',
+      sandOrSolids: 'Light',
+      choke: '24/64" Positive',
       pumpRate: '12.5',
+      returnsRate: '10.0',
+      estimatedSts: estimatedSts,
+      sts: sts,
     );
 
     final package = await service.buildPackage(
@@ -73,6 +83,12 @@ void main() {
     expect(decoded.packageType, 'drilloutReading');
     expect(decoded.entries.single.entryId, 'entry-1');
     expect(decoded.entries.single.readingTimestamp, entry.readingTimestamp);
+    expect(decoded.entries.single.gas, 'Medium');
+    expect(decoded.entries.single.sandOrSolids, 'Light');
+    expect(decoded.entries.single.choke, '24/64" Positive');
+    expect(decoded.entries.single.returnsRate, '10.0');
+    expect(decoded.entries.single.estimatedSts, estimatedSts);
+    expect(decoded.entries.single.sts, sts);
     expect(decoded.sourceOperatorInitials, 'JD');
   });
 
@@ -122,6 +138,7 @@ void main() {
   });
 
   test('operations log compact shift report builds a pdf payload', () async {
+    final sts = DateTime(2026, 7, 29, 0, 5);
     final entry = OperationsLogEntry(
       entryId: 'entry-1',
       packageCompatibleEntryId: 'pkg-entry-1',
@@ -140,8 +157,11 @@ void main() {
       isImported: false,
       operationStage: 'Stage 1',
       pumpRate: '12.5',
+      returnsRate: '11.0',
       casingPressure: '510',
       tubingPressure: '245',
+      estimatedSts: DateTime(2026, 7, 28, 23, 35),
+      sts: sts,
       notes: 'Stable conditions',
     );
 
@@ -155,5 +175,37 @@ void main() {
 
     expect(bytes.length, greaterThan(1000));
     expect(bytes.take(4).toList(), equals(<int>[0x25, 0x50, 0x44, 0x46]));
+    final text = latin1.decode(bytes, allowInvalid: true);
+    expect(text, contains('(Estimated)'));
+    expect(text, contains('(STS)'));
+    expect(text, contains('(12:05)'));
+  });
+
+  test('operations log entries persist estimated STS and STS timestamps',
+      () async {
+    const workflow = OperationsLogWorkflow.drillout;
+    const jobId = 'job-191';
+    final created = await service.createLocalEntry(
+      workflow: workflow,
+      jobId: jobId,
+      wellId: 'well-1',
+      wellName: 'Well 1',
+      readingTimestamp: DateTime(2026, 7, 29, 23, 30),
+      pumpRate: '12.0',
+      returnsRate: '9.5',
+      estimatedSts: DateTime(2026, 7, 29, 23, 35),
+      sts: DateTime(2026, 7, 30, 0, 5),
+    );
+
+    await service.upsertEntry(
+      workflow: workflow,
+      jobId: jobId,
+      entry: created,
+    );
+
+    final loaded = await service.loadEntries(workflow: workflow, jobId: jobId);
+    expect(loaded, hasLength(1));
+    expect(loaded.single.estimatedSts, DateTime(2026, 7, 29, 23, 35));
+    expect(loaded.single.sts, DateTime(2026, 7, 30, 0, 5));
   });
 }

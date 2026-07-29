@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'drillout_cleanout_field_definitions.dart';
 import 'operations_log_service.dart';
 
 class OperationsLogFieldOption {
@@ -41,33 +42,20 @@ class OperationsLogFieldConfigService {
   static const String _legacyShiftChangeBase =
       'wellwerks_drillout_shift_change_v1';
 
-  static const List<OperationsLogFieldOption> configurableFields =
-      <OperationsLogFieldOption>[
-    OperationsLogFieldOption(id: 'operationStage', label: 'Stage'),
-    OperationsLogFieldOption(id: 'pumpRate', label: 'Rate Override'),
-    OperationsLogFieldOption(id: 'casingPressure', label: 'Casing PSI'),
-    OperationsLogFieldOption(id: 'pumpPressure', label: 'Pump PSI'),
-    OperationsLogFieldOption(id: 'tubingPressure', label: 'Manifold PSI'),
-    OperationsLogFieldOption(id: 'returnsRate', label: 'Returns Rate'),
-    OperationsLogFieldOption(id: 'waterRate', label: 'Water Rate'),
-    OperationsLogFieldOption(id: 'flowRate', label: 'Flow Rate'),
-    OperationsLogFieldOption(id: 'tankLevel', label: 'Tank Level'),
-    OperationsLogFieldOption(id: 'choke', label: 'Choke'),
-    OperationsLogFieldOption(
-        id: 'sweepInformation', label: 'Sweep Information'),
-    OperationsLogFieldOption(id: 'sandOrSolids', label: 'Sand / Solids'),
-    OperationsLogFieldOption(id: 'equipmentStatus', label: 'Equipment Issues'),
-    OperationsLogFieldOption(id: 'downtime', label: 'Downtime'),
-    OperationsLogFieldOption(id: 'notes', label: 'Notes'),
-  ];
+  static List<OperationsLogFieldOption> get configurableFields {
+    return DrilloutCleanoutFieldDefinitions.readingFields
+        .where(
+          (field) =>
+              field.id != DrilloutCleanoutFieldDefinitions.sweepInformationId,
+        )
+        .map(
+          (field) => OperationsLogFieldOption(id: field.id, label: field.label),
+        )
+        .toList(growable: false);
+  }
 
-  static const Set<String> _defaultEnabled = <String>{
-    'operationStage',
-    'pumpRate',
-    'casingPressure',
-    'pumpPressure',
-    'notes',
-  };
+  static Set<String> get _defaultEnabled =>
+      DrilloutCleanoutFieldDefinitions.defaultEnabledFieldIds;
 
   String _prefsKey({
     required OperationsLogWorkflow workflow,
@@ -120,10 +108,11 @@ class OperationsLogFieldConfigService {
   }
 
   OperationsLogFieldConfig _normalize(OperationsLogFieldConfig config) {
-    final allowed = configurableFields.map((item) => item.id).toSet();
+    final allowed = configurableFields.map((item) => item.id).toSet()
+      ..add(DrilloutCleanoutFieldDefinitions.sweepInformationId);
     final filtered = config.enabledFieldIds.where(allowed.contains).toSet();
     if (filtered.isEmpty) {
-      return const OperationsLogFieldConfig(enabledFieldIds: _defaultEnabled);
+      return OperationsLogFieldConfig(enabledFieldIds: _defaultEnabled);
     }
     return OperationsLogFieldConfig(enabledFieldIds: filtered);
   }
@@ -135,7 +124,7 @@ class OperationsLogFieldConfigService {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_legacyKey(jobId));
     if (raw == null || raw.trim().isEmpty) {
-      return const OperationsLogFieldConfig(enabledFieldIds: _defaultEnabled);
+      return OperationsLogFieldConfig(enabledFieldIds: _defaultEnabled);
     }
 
     try {
@@ -154,23 +143,36 @@ class OperationsLogFieldConfigService {
         enabled.add('tubingPressure');
       }
       if ((map['showStatus'] as bool?) ?? false) {
-        enabled.add('operationStage');
+        enabled.add(DrilloutCleanoutFieldDefinitions.operationStageId);
+      }
+      if (((map['showGas'] as bool?) ?? false) ||
+          ((map['showGasSpotRate'] as bool?) ?? false)) {
+        enabled.add(DrilloutCleanoutFieldDefinitions.gasId);
       }
       if ((map['showSand'] as bool?) ?? false) {
-        enabled.add('sandOrSolids');
+        enabled.add(DrilloutCleanoutFieldDefinitions.sandOrSolidsId);
+      }
+      if ((map['showPlugNumber'] as bool?) ?? false) {
+        enabled.add(DrilloutCleanoutFieldDefinitions.plugNumberId);
+      }
+      if ((map['includeSurfaceTotalFluid'] as bool?) ?? false) {
+        enabled.add(DrilloutCleanoutFieldDefinitions.surfaceTotalFluidId);
+      }
+      if ((map['includeWaterHauled'] as bool?) ?? false) {
+        enabled.add(DrilloutCleanoutFieldDefinitions.waterHauledId);
+      }
+      if ((map['includeOilHauled'] as bool?) ?? false) {
+        enabled.add(DrilloutCleanoutFieldDefinitions.oilHauledId);
       }
       if ((map['showCoilDepth'] as bool?) ?? false) {
-        enabled.add('sweepInformation');
+        enabled.add(DrilloutCleanoutFieldDefinitions.sweepInformationId);
       }
       if ((map['notes'] as String? ?? '').trim().isNotEmpty) {
-        enabled.add('notes');
-      }
-      if (workflow == OperationsLogWorkflow.cleanout) {
-        enabled.add('waterRate');
+        enabled.add(DrilloutCleanoutFieldDefinitions.notesId);
       }
       return OperationsLogFieldConfig(enabledFieldIds: enabled);
     } catch (_) {
-      return const OperationsLogFieldConfig(enabledFieldIds: _defaultEnabled);
+      return OperationsLogFieldConfig(enabledFieldIds: _defaultEnabled);
     }
   }
 }

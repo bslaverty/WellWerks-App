@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wellwerks/models/job_setup.dart';
 import 'package:wellwerks/screens/operations_log_screen.dart';
+import 'package:wellwerks/services/drillout_cleanout_field_definitions.dart';
 import 'package:wellwerks/services/job_storage_service.dart';
 import 'package:wellwerks/services/operations_log_service.dart';
 
@@ -45,7 +46,7 @@ void main() {
           'appName': 'WellWerks',
           'packageName': 'wellwerks',
           'version': '1.0.1',
-          'buildNumber': '190',
+          'buildNumber': '191',
           'buildSignature': 'signature',
         };
       }
@@ -166,9 +167,19 @@ void main() {
 
     expect(find.text('Add Drillout Reading'), findsOneWidget);
 
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('operations-log-form-pump-rate-field')),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.enterText(
       find.byKey(const Key('operations-log-form-pump-rate-field')),
       '12.5',
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('operations-log-form-notes-field')),
+      180,
+      scrollable: find.byType(Scrollable).first,
     );
     await tester.enterText(
       find.byKey(const Key('operations-log-form-notes-field')),
@@ -290,5 +301,217 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
     await tester.pumpAndSettle();
     expect(find.text('Add Drillout Reading'), findsOneWidget);
+  });
+
+  testWidgets('operations log gas and sand use text-update dropdown options',
+      (tester) async {
+    await seedActiveJob(includeStage: true);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: OperationsLogScreen(
+          workflow: OperationsLogWorkflow.drillout,
+          title: 'Drillout Log',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('operations-log-form-gas-dropdown')),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const Key('operations-log-form-gas-dropdown')));
+    await tester.pumpAndSettle();
+    for (final option in DrilloutCleanoutFieldDefinitions.gasOptions) {
+      expect(find.text(option), findsWidgets);
+    }
+    expect(find.text('Trace'), findsNothing);
+    await tester.tapAt(const Offset(8, 8));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('operations-log-form-sand-dropdown')),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester
+        .tap(find.byKey(const Key('operations-log-form-sand-dropdown')));
+    await tester.pumpAndSettle();
+    for (final option in DrilloutCleanoutFieldDefinitions.sandOptions) {
+      expect(find.text(option), findsWidgets);
+    }
+  });
+
+  testWidgets('stage dropdown includes Traveling to Bottom from shared source',
+      (tester) async {
+    await seedActiveJob(includeStage: true);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: OperationsLogScreen(
+          workflow: OperationsLogWorkflow.drillout,
+          title: 'Drillout Log',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('operations-log-form-stage-field')));
+    await tester.pumpAndSettle();
+    expect(find.text('Traveling to Bottom'), findsWidgets);
+  });
+
+  testWidgets('customize fields shows all shared text-update reading fields',
+      (tester) async {
+    await seedActiveJob(includeStage: true);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: OperationsLogScreen(
+          workflow: OperationsLogWorkflow.drillout,
+          title: 'Drillout Log',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Customize Fields'));
+    await tester.pumpAndSettle();
+
+    for (final field in DrilloutCleanoutFieldDefinitions.readingFields.where(
+      (f) => f.id != DrilloutCleanoutFieldDefinitions.sweepInformationId,
+    )) {
+      await tester.scrollUntilVisible(
+        find.text(field.label),
+        180,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(find.text(field.label), findsWidgets);
+    }
+  });
+
+  testWidgets('build 191 add reading shows pump and returns rate only',
+      (tester) async {
+    await seedActiveJob(includeStage: true);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: OperationsLogScreen(
+          workflow: OperationsLogWorkflow.drillout,
+          title: 'Drillout Log',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('operations-log-form-returns-rate-field')),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.byKey(const Key('operations-log-form-pump-rate-field')),
+        findsOneWidget);
+    expect(find.byKey(const Key('operations-log-form-returns-rate-field')),
+        findsOneWidget);
+    expect(find.byKey(const Key('operations-log-form-water-rate-field')),
+        findsNothing);
+    expect(find.byKey(const Key('operations-log-form-flow-rate-field')),
+        findsNothing);
+  });
+
+  testWidgets(
+      'build 191 add reading shows optional estimated STS and STS controls',
+      (tester) async {
+    await seedActiveJob(includeStage: true);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: OperationsLogScreen(
+          workflow: OperationsLogWorkflow.drillout,
+          title: 'Drillout Log',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('operations-log-form-estimated-sts-pick')),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('operations-log-form-sts-pick')),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.byKey(const Key('operations-log-form-estimated-sts-pick')),
+        findsOneWidget);
+    expect(
+        find.byKey(const Key('operations-log-form-sts-pick')), findsOneWidget);
+  });
+
+  testWidgets('disabled field hides from Add Reading and persists by workflow',
+      (tester) async {
+    await seedActiveJob(includeStage: true);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: OperationsLogScreen(
+          workflow: OperationsLogWorkflow.drillout,
+          title: 'Drillout Log',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Customize Fields'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.widgetWithText(CheckboxListTile, 'Gas'),
+      180,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.tap(find.widgetWithText(CheckboxListTile, 'Gas'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('operations-log-form-gas-dropdown')),
+        findsNothing);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: OperationsLogScreen(
+          workflow: OperationsLogWorkflow.drillout,
+          title: 'Drillout Log',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('operations-log-form-gas-dropdown')),
+        findsNothing);
   });
 }

@@ -4,7 +4,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/app_settings_service.dart';
 import '../services/app_theme_controller.dart';
+import '../services/operations_sts_reminder_service.dart';
 import '../widgets/app_header.dart';
+import '../widgets/lead_time_wheel_picker_sheet.dart';
 import 'about_support_screen.dart';
 import 'operator_profile_screen.dart';
 
@@ -23,6 +25,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Color get _subtle => Theme.of(context).colorScheme.onSurfaceVariant;
 
   final _service = AppSettingsService();
+  final _stsReminderService = OperationsStsReminderService();
   AppSettingsData? _settings;
   String _appVersion = '--';
   String _appBuild = '--';
@@ -95,6 +98,90 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(success)));
+  }
+
+  String _leadTimeLabel(int minutes) {
+    return _stsReminderService.leadTimeLabel(minutes);
+  }
+
+  Future<void> _setEstimatedStsReminderLeadTime(AppSettingsData current) async {
+    final picked = await showLeadTimeWheelPickerSheet(
+      context,
+      title: 'Reminder Time',
+      actionLabel: 'Set',
+      options: OperationsStsReminderService.allowedLeadMinutes,
+      initialMinutes: current.estimatedStsReminderLeadMinutes,
+    );
+    if (picked == null || !mounted) return;
+    if (picked == current.estimatedStsReminderLeadMinutes) return;
+
+    final decision = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(
+          'Apply this reminder time to currently scheduled STS reminders?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('cancel'),
+            child: const Text('Cancel'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.of(context).pop('futureOnly'),
+            child: const Text('Future Reminders Only'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop('updateScheduled'),
+            child: const Text('Update Scheduled Reminders'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || decision == null || decision == 'cancel') return;
+
+    await _save(current.copyWith(estimatedStsReminderLeadMinutes: picked));
+    if (decision == 'updateScheduled') {
+      await _stsReminderService.updateUseDefaultScheduledReminders(
+        newDefaultLeadMinutes: picked,
+      );
+    }
+  }
+
+  Future<void> _toggleEstimatedStsReminder(
+    AppSettingsData current,
+    bool enabled,
+  ) async {
+    if (enabled) {
+      await _save(current.copyWith(estimatedStsReminderEnabled: true));
+      return;
+    }
+
+    final decision = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel currently scheduled STS reminders?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('cancel'),
+            child: const Text('Cancel'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.of(context).pop('keep'),
+            child: const Text('Keep Reminders'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop('cancelReminders'),
+            child: const Text('Cancel Reminders'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || decision == null || decision == 'cancel') return;
+    await _save(current.copyWith(estimatedStsReminderEnabled: false));
+    if (decision == 'cancelReminders') {
+      await _stsReminderService.cancelAllScheduledFromRegistry();
+    }
   }
 
   Widget _sectionCard({
@@ -518,6 +605,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: s.rateTimerNotificationsEnabled,
                 onChanged: (value) =>
                     _save(s.copyWith(rateTimerNotificationsEnabled: value)),
+              ),
+              _switchTile(
+                title: 'Estimated STS Reminder',
+                subtitle: 'Notify before an estimated sweep reaches surface.',
+                value: s.estimatedStsReminderEnabled,
+                onChanged: (value) => _toggleEstimatedStsReminder(s, value),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                enabled: s.estimatedStsReminderEnabled,
+                title: Text(
+                  'Reminder Time',
+                  style: TextStyle(color: _text),
+                ),
+                subtitle: Text(
+                  'Choose how long before Estimated STS WellWerks should notify you.',
+                  style: TextStyle(color: _subtle),
+                ),
+                trailing: Text(
+                  '${_leadTimeLabel(s.estimatedStsReminderLeadMinutes)} before',
+                  style: TextStyle(
+                    color: s.estimatedStsReminderEnabled ? _accent : _subtle,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                onTap: s.estimatedStsReminderEnabled
+                    ? () => _setEstimatedStsReminderLeadTime(s)
+                    : null,
               ),
               _switchTile(
                 title: '30-Second Warning',

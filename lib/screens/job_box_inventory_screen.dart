@@ -11,9 +11,14 @@ import '../services/job_box_inventory_service.dart';
 import '../widgets/app_header.dart';
 
 class JobBoxInventoryScreen extends StatefulWidget {
-  const JobBoxInventoryScreen({super.key, this.initialRecordId});
+  const JobBoxInventoryScreen({
+    super.key,
+    this.initialRecordId,
+    this.source = JobBoxInventorySource.production,
+  });
 
   final String? initialRecordId;
+  final String source;
 
   @override
   State<JobBoxInventoryScreen> createState() => _JobBoxInventoryScreenState();
@@ -80,10 +85,15 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
     if (initialId.isNotEmpty) {
       record = await _service.loadRecord(initialId);
     }
-    record ??= await _service.loadWorkingDraft();
+    final normalizedSource = JobBoxInventorySource.normalize(widget.source);
+    record ??= await _service.loadWorkingDraft(source: normalizedSource);
     record ??= JobBoxInventoryRecord.createDefault().copyWith(
+      source: normalizedSource,
       hideZeroQuantityItems: hideZeroPreference,
     );
+    if (record.source.trim().isEmpty) {
+      record = record.copyWith(source: normalizedSource);
+    }
 
     if (!mounted) return;
     final normalizedCustomer =
@@ -162,6 +172,7 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
   JobBoxInventoryRecord _buildRecord({String? id}) {
     return JobBoxInventoryRecord(
       id: id ?? _recordId,
+      source: JobBoxInventorySource.normalize(widget.source),
       customer: _customerController.text.trim(),
       date: _dateController.text.trim(),
       wellNames: _wellNamesController.text.trim(),
@@ -175,7 +186,10 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
 
   Future<void> _persistWorkingDraft() async {
     _updatedAt = DateTime.now();
-    await _service.saveWorkingDraft(_buildRecord());
+    await _service.saveWorkingDraft(
+      _buildRecord(),
+      source: JobBoxInventorySource.normalize(widget.source),
+    );
   }
 
   void _updateItemQuantity(String key, int delta) {
@@ -320,6 +334,7 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
     final buffer = StringBuffer()
       ..writeln('Job Box Inventory')
       ..writeln()
+      ..writeln('Source: ${JobBoxInventorySource.label(widget.source)}')
       ..writeln('Customer: $customerLabel')
       ..writeln('Date: ${_formatGpsDate()}')
       ..writeln(
@@ -384,7 +399,7 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Inventory update copied to clipboard.')),
+      const SnackBar(content: Text('Inventory update copied.')),
     );
   }
 
@@ -593,7 +608,7 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
           child: FilledButton.icon(
             onPressed: _copyInventoryUpdate,
             icon: const Icon(Icons.copy),
-            label: const Text('Copy Text'),
+            label: const Text('Copy Update'),
           ),
         ),
         const SizedBox(height: 10),

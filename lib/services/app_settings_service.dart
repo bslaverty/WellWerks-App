@@ -36,6 +36,8 @@ class AppSettingsDefaults {
   static const rateTimerWarningEnabled = true;
   static const rateTimerCompleteEnabled = true;
   static const rateTimerSoundEnabled = true;
+  static const estimatedStsReminderEnabled = true;
+  static const estimatedStsReminderLeadMinutes = 10;
   static const appTheme = 'wellwerks_default';
   static const activeCompany = JobProfileDefaultsService.companyNone;
   static const optionalReportSections = [
@@ -96,6 +98,10 @@ class AppSettingsData {
     this.rateTimerCompleteEnabled =
         AppSettingsDefaults.rateTimerCompleteEnabled,
     this.rateTimerSoundEnabled = AppSettingsDefaults.rateTimerSoundEnabled,
+    this.estimatedStsReminderEnabled =
+        AppSettingsDefaults.estimatedStsReminderEnabled,
+    this.estimatedStsReminderLeadMinutes =
+        AppSettingsDefaults.estimatedStsReminderLeadMinutes,
     this.appTheme = AppSettingsDefaults.appTheme,
     this.activeCompany = AppSettingsDefaults.activeCompany,
   });
@@ -128,6 +134,8 @@ class AppSettingsData {
   final bool rateTimerWarningEnabled;
   final bool rateTimerCompleteEnabled;
   final bool rateTimerSoundEnabled;
+  final bool estimatedStsReminderEnabled;
+  final int estimatedStsReminderLeadMinutes;
   final String appTheme;
   final String activeCompany;
 
@@ -171,6 +179,8 @@ class AppSettingsData {
     bool? rateTimerWarningEnabled,
     bool? rateTimerCompleteEnabled,
     bool? rateTimerSoundEnabled,
+    bool? estimatedStsReminderEnabled,
+    int? estimatedStsReminderLeadMinutes,
     String? appTheme,
     String? activeCompany,
   }) {
@@ -216,6 +226,10 @@ class AppSettingsData {
           rateTimerCompleteEnabled ?? this.rateTimerCompleteEnabled,
       rateTimerSoundEnabled:
           rateTimerSoundEnabled ?? this.rateTimerSoundEnabled,
+      estimatedStsReminderEnabled:
+          estimatedStsReminderEnabled ?? this.estimatedStsReminderEnabled,
+      estimatedStsReminderLeadMinutes: estimatedStsReminderLeadMinutes ??
+          this.estimatedStsReminderLeadMinutes,
       appTheme: appTheme ?? this.appTheme,
       activeCompany: activeCompany ?? this.activeCompany,
     );
@@ -250,6 +264,8 @@ class AppSettingsData {
         'rateTimerWarningEnabled': rateTimerWarningEnabled,
         'rateTimerCompleteEnabled': rateTimerCompleteEnabled,
         'rateTimerSoundEnabled': rateTimerSoundEnabled,
+        'estimatedStsReminderEnabled': estimatedStsReminderEnabled,
+        'estimatedStsReminderLeadMinutes': estimatedStsReminderLeadMinutes,
         'appTheme': appTheme,
         'activeCompany': activeCompany,
       };
@@ -318,6 +334,13 @@ class AppSettingsData {
           AppSettingsDefaults.rateTimerCompleteEnabled,
       rateTimerSoundEnabled: json['rateTimerSoundEnabled'] as bool? ??
           AppSettingsDefaults.rateTimerSoundEnabled,
+      estimatedStsReminderEnabled:
+          json['estimatedStsReminderEnabled'] as bool? ??
+              AppSettingsDefaults.estimatedStsReminderEnabled,
+      estimatedStsReminderLeadMinutes:
+          _normalizeEstimatedStsReminderLeadMinutes(
+        json['estimatedStsReminderLeadMinutes'],
+      ),
       appTheme: _normalizeTheme(json['appTheme'] as String?),
       activeCompany: _normalizeActiveCompany(json['activeCompany'] as String?),
       defaultOptionalReportSections: _normalizeOptionalSections(
@@ -453,6 +476,24 @@ class AppSettingsData {
     }
   }
 
+  static int _normalizeEstimatedStsReminderLeadMinutes(dynamic value) {
+    final parsed = (value is num)
+        ? value.toInt()
+        : int.tryParse((value ?? '').toString().trim());
+    switch (parsed) {
+      case 5:
+      case 10:
+      case 15:
+      case 20:
+      case 30:
+      case 45:
+      case 60:
+        return parsed!;
+      default:
+        return AppSettingsDefaults.estimatedStsReminderLeadMinutes;
+    }
+  }
+
   static String _normalizeActiveCompany(String? value) {
     final normalized =
         JobProfileDefaultsService().normalizeCompany((value ?? '').trim());
@@ -542,6 +583,10 @@ class AppSettingsService {
       rateTimerWarningEnabled: AppSettingsDefaults.rateTimerWarningEnabled,
       rateTimerCompleteEnabled: AppSettingsDefaults.rateTimerCompleteEnabled,
       rateTimerSoundEnabled: AppSettingsDefaults.rateTimerSoundEnabled,
+      estimatedStsReminderEnabled:
+          AppSettingsDefaults.estimatedStsReminderEnabled,
+      estimatedStsReminderLeadMinutes:
+          AppSettingsDefaults.estimatedStsReminderLeadMinutes,
       appTheme: AppSettingsDefaults.appTheme,
       activeCompany: AppSettingsDefaults.activeCompany,
     );

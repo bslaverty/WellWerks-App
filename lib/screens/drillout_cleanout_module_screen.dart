@@ -42,8 +42,9 @@ class DrilloutCleanoutModuleScreen extends StatelessWidget {
         ),
         const ModuleTool(
           icon: Icons.swap_horiz,
-          title: 'Drillout Handoff',
-          subtitle: 'Share/import drillout and cleanout active job context',
+          title: 'Handoff',
+          subtitle:
+              'Share or import the active Drillout or Cleanout job handoff',
           screen: ShiftHandoffScreen(),
         ),
       ],

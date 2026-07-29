@@ -268,7 +268,10 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   Future<void> _openJobBoxInventory(JobBoxInventoryRecord? record) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => JobBoxInventoryScreen(initialRecordId: record?.id),
+        builder: (_) => JobBoxInventoryScreen(
+          initialRecordId: record?.id,
+          source: record?.source ?? JobBoxInventorySource.production,
+        ),
       ),
     );
     await _load();
@@ -812,6 +815,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
           const SizedBox(height: 8),
           _infoLine('Well(s)', record.wellNames),
           _infoLine('Job Box', record.jobBoxNumber),
+          _infoLine('Source', JobBoxInventorySource.label(record.source)),
           _infoLine('Visible Items', '${visibleItems.length}'),
           const SizedBox(height: 8),
           Wrap(

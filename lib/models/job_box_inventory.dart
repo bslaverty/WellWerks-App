@@ -1,5 +1,25 @@
 import 'package:intl/intl.dart';
 
+class JobBoxInventorySource {
+  static const production = 'production';
+  static const completions = 'completions';
+
+  static String normalize(String value) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized == completions) return completions;
+    return production;
+  }
+
+  static String label(String value) {
+    switch (normalize(value)) {
+      case completions:
+        return 'Completions';
+      default:
+        return 'Production';
+    }
+  }
+}
+
 class JobBoxInventoryItem {
   const JobBoxInventoryItem({
     required this.key,
@@ -214,19 +234,11 @@ class JobBoxInventoryCatalog {
       isDefault: true,
       canDelete: false,
     ),
-    JobBoxInventoryItem(
-      key: '12_64',
-      name: '12/64',
-      quantity: 0,
-      section: positiveChokesSection,
-      isDefault: true,
-      canDelete: false,
-    ),
   ];
 
   static final defaultItems = <JobBoxInventoryItem>[
     ..._mainDefaultItems,
-    for (var size = 13; size <= 64; size++)
+    for (var size = 12; size <= 64; size++)
       JobBoxInventoryItem(
         key: '${size}_64',
         name: '$size/64',
@@ -252,6 +264,7 @@ class JobBoxInventoryCatalog {
 class JobBoxInventoryRecord {
   const JobBoxInventoryRecord({
     required this.id,
+    required this.source,
     required this.customer,
     required this.date,
     required this.wellNames,
@@ -263,6 +276,7 @@ class JobBoxInventoryRecord {
   });
 
   final String id;
+  final String source;
   final String customer;
   final String date;
   final String wellNames;
@@ -274,6 +288,7 @@ class JobBoxInventoryRecord {
 
   JobBoxInventoryRecord copyWith({
     String? id,
+    String? source,
     String? customer,
     String? date,
     String? wellNames,
@@ -285,6 +300,7 @@ class JobBoxInventoryRecord {
   }) {
     return JobBoxInventoryRecord(
       id: id ?? this.id,
+      source: source ?? this.source,
       customer: customer ?? this.customer,
       date: date ?? this.date,
       wellNames: wellNames ?? this.wellNames,
@@ -299,6 +315,7 @@ class JobBoxInventoryRecord {
 
   Map<String, dynamic> toJson() => {
         'id': id,
+        'source': JobBoxInventorySource.normalize(source),
         'customer': customer,
         'date': date,
         'wellNames': wellNames,
@@ -312,6 +329,7 @@ class JobBoxInventoryRecord {
   factory JobBoxInventoryRecord.fromJson(Map<String, dynamic> json) {
     return JobBoxInventoryRecord(
       id: json['id'] as String? ?? '',
+      source: JobBoxInventorySource.normalize(json['source'] as String? ?? ''),
       customer: json['customer'] as String? ?? '',
       date: json['date'] as String? ?? '',
       wellNames: json['wellNames'] as String? ?? '',
@@ -332,6 +350,7 @@ class JobBoxInventoryRecord {
     final now = DateTime.now();
     return JobBoxInventoryRecord(
       id: '',
+      source: JobBoxInventorySource.production,
       customer: '',
       date: DateFormat('MM/dd/yyyy').format(now),
       wellNames: '',

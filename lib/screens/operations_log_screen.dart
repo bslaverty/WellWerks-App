@@ -1,17 +1,16 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/job_setup.dart';
-import '../services/drillout_cleanout_stage_service.dart';
+import '../services/drillout_cleanout_field_definitions.dart';
 import '../models/operations_log_entry.dart';
+import '../services/operations_sts_reminder_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/operations_log_field_config_service.dart';
 import '../services/operations_log_service.dart';
+import '../services/rate_timer_notification_service.dart';
 import '../services/wellwerks_qr_transfer_service.dart';
 import '../widgets/app_header.dart';
 import 'operations_log_entry_form_screen.dart';
@@ -36,18 +35,15 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   final _logService = OperationsLogService();
   final _fieldConfigService = OperationsLogFieldConfigService();
   final _qrTransferService = const WellWerksQrTransferService();
+  final _stsReminderService = OperationsStsReminderService();
+  final _notificationService = RateTimerNotificationService.instance;
   final _imagePicker = ImagePicker();
 
   JobSetup? _activeJob;
   List<OperationsLogEntry> _entries = const [];
   Set<String> _selectedEntryIds = <String>{};
-  Set<String> _enabledFieldIds = <String>{
-    'operationStage',
-    'pumpRate',
-    'casingPressure',
-    'pumpPressure',
-    'notes',
-  };
+  Set<String> _enabledFieldIds =
+      DrilloutCleanoutFieldDefinitions.defaultEnabledFieldIds;
   bool _loading = true;
   bool _newestFirst = false;
 
@@ -168,9 +164,10 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
             initialSelectedWellName: _currentWellName,
             initialStage: _currentStage,
             initialReadingTimestamp: DateTime.now(),
-            stageOptions: DrilloutCleanoutStageService.stageOptions,
+            stageOptions: DrilloutCleanoutFieldDefinitions.stageOptions,
             enabledFieldIds: _enabledFieldIds,
             logService: _logService,
+            existingEntries: _entries,
           ),
         ),
       );
@@ -197,6 +194,9 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
         Text('Operation: ${entry.operationStage}'),
       if (_enabledFieldIds.contains('pumpRate') && entry.pumpRate.isNotEmpty)
         Text('Pump rate: ${entry.pumpRate}'),
+      if (_enabledFieldIds.contains('returnsRate') &&
+          entry.returnsRate.isNotEmpty)
+        Text('Returns rate: ${entry.returnsRate}'),
       if (_enabledFieldIds.contains('casingPressure') &&
           entry.casingPressure.isNotEmpty)
         Text('Casing pressure: ${entry.casingPressure}'),
@@ -208,6 +208,26 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
         Text('Tubing pressure: ${entry.tubingPressure}'),
       if (_enabledFieldIds.contains('notes') && entry.notes.isNotEmpty)
         Text('Notes: ${entry.notes}'),
+      if (_enabledFieldIds.contains('gas') && entry.gas.isNotEmpty)
+        Text('Gas: ${entry.gas}'),
+      if (_enabledFieldIds.contains('sandOrSolids') &&
+          entry.sandOrSolids.isNotEmpty)
+        Text('Sand / Solids: ${entry.sandOrSolids}'),
+      if (_enabledFieldIds.contains('choke') && entry.choke.isNotEmpty)
+        Text('Choke: ${entry.choke}'),
+      if (_enabledFieldIds.contains('estimatedSts') &&
+          entry.estimatedSts != null)
+        Text(
+          'Estimated STS: ${_formatFieldTime(entry.estimatedSts!, readingTimestamp: entry.readingTimestamp)}',
+        ),
+      if (_enabledFieldIds.contains('sts') && entry.sts != null)
+        Text(
+          'STS: ${_formatFieldTime(entry.sts!, readingTimestamp: entry.readingTimestamp)}',
+        ),
+      if (entry.sweepInformation.isNotEmpty)
+        Text('Legacy Sweep Information: ${entry.sweepInformation}'),
+      if (_enabledFieldIds.contains('tankLevel') && entry.tankLevel.isNotEmpty)
+        Text('Tank Information: ${entry.tankLevel}'),
     ];
 
     await showModalBottomSheet<void>(
@@ -352,15 +372,34 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Done'),
           ),
-          FilledButton(
-            onPressed: () async {
-              final bytes = await _qrTransferService.buildQrPngBytes(qrValue);
-              final directory = await getTemporaryDirectory();
-              final file = File('${directory.path}/operations_log.png');
-              await file.writeAsBytes(bytes, flush: true);
-              await Share.shareXFiles([XFile(file.path)]);
-            },
-            child: const Text('Share QR'),
+          Builder(
+            builder: (buttonContext) => FilledButton(
+              onPressed: () async {
+                try {
+                  final result = await _qrTransferService.shareQrPng(
+                    qrValue: qrValue,
+                    fileName: title,
+                    shareContext: buttonContext,
+                    subject: title,
+                  );
+                  if (!mounted || !buttonContext.mounted) return;
+                  if (result.status == ShareResultStatus.dismissed) {
+                    return;
+                  }
+                } catch (error, stackTrace) {
+                  debugPrint(
+                    '[OperationsLog] Failed to share QR image: $error\n$stackTrace',
+                  );
+                  if (!mounted || !buttonContext.mounted) return;
+                  ScaffoldMessenger.of(buttonContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('The QR image could not be shared.'),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Share QR'),
+            ),
           ),
         ],
       ),
@@ -454,6 +493,10 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
         package: package,
         existingEntries: _entries,
       );
+      await _scheduleImportedEstimatedStsReminders(
+        jobId: job.id,
+        entries: result.added,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -467,6 +510,52 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  Future<void> _scheduleImportedEstimatedStsReminders({
+    required String jobId,
+    required List<OperationsLogEntry> entries,
+  }) async {
+    if (entries.isEmpty) return;
+    final withEstimated = entries
+        .where((entry) => entry.estimatedSts != null)
+        .toList(growable: false);
+    if (withEstimated.isEmpty) return;
+
+    final settings = await _stsReminderService.loadSettings();
+    if (!settings.estimatedStsReminderEnabled) return;
+
+    final prompted =
+        await _notificationService.hasPromptedEstimatedStsPermission();
+    var permissionGranted = false;
+    if (prompted) {
+      permissionGranted =
+          await _notificationService.requestNotificationPermission();
+    }
+
+    final updated = <OperationsLogEntry>[];
+    for (final incoming in withEstimated) {
+      final seededSweepId = incoming.sweepId.trim().isEmpty
+          ? 'sweep_${incoming.entryId}'
+          : incoming.sweepId;
+      final normalized = incoming.copyWith(sweepId: seededSweepId);
+      final sync = await _stsReminderService.syncForSavedEntry(
+        entry: normalized,
+        remindersEnabled: settings.estimatedStsReminderEnabled,
+        defaultLeadMinutes: settings.estimatedStsReminderLeadMinutes,
+        permissionGranted: permissionGranted,
+      );
+      updated.add(sync.entry);
+    }
+
+    if (updated.isEmpty) return;
+    for (final entry in updated) {
+      await _logService.upsertEntry(
+        workflow: _workflow,
+        jobId: jobId,
+        entry: entry,
+      );
     }
   }
 
@@ -554,7 +643,11 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       parts.add(entry.operationStage);
     }
     if (_enabledFieldIds.contains('pumpRate') && entry.pumpRate.isNotEmpty) {
-      parts.add('Rate ${entry.pumpRate}');
+      parts.add('Pump ${entry.pumpRate}');
+    }
+    if (_enabledFieldIds.contains('returnsRate') &&
+        entry.returnsRate.isNotEmpty) {
+      parts.add('Returns ${entry.returnsRate}');
     }
     if (_enabledFieldIds.contains('casingPressure') &&
         entry.casingPressure.isNotEmpty) {
@@ -567,7 +660,54 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     if (_enabledFieldIds.contains('notes') && entry.notes.isNotEmpty) {
       parts.add(entry.notes);
     }
+    if (_enabledFieldIds.contains('gas') && entry.gas.isNotEmpty) {
+      parts.add('Gas ${entry.gas}');
+    }
+    if (_enabledFieldIds.contains('sandOrSolids') &&
+        entry.sandOrSolids.isNotEmpty) {
+      parts.add('Sand ${entry.sandOrSolids}');
+    }
+    if (_enabledFieldIds.contains('choke') && entry.choke.isNotEmpty) {
+      parts.add('Choke ${entry.choke}');
+    }
+    if (_enabledFieldIds.contains('estimatedSts') &&
+        entry.estimatedSts != null) {
+      parts.add(
+        'Est. STS ${_formatFieldTime(entry.estimatedSts!, readingTimestamp: entry.readingTimestamp)}',
+      );
+    }
+    if (_enabledFieldIds.contains('sts') && entry.sts != null) {
+      parts.add(
+        'STS ${_formatFieldTime(entry.sts!, readingTimestamp: entry.readingTimestamp)}',
+      );
+    }
+    if (entry.sweepInformation.isNotEmpty) {
+      parts.add('Legacy Sweep ${entry.sweepInformation}');
+    }
     return parts.join(' • ');
+  }
+
+  String _formatFieldTime(
+    DateTime value, {
+    required DateTime readingTimestamp,
+  }) {
+    final local = value.toLocal();
+    final readingDate = DateTime(
+      readingTimestamp.year,
+      readingTimestamp.month,
+      readingTimestamp.day,
+    );
+    final selectedDate = DateTime(local.year, local.month, local.day);
+    final timeLabel = TimeOfDay.fromDateTime(local).format(context);
+    if (selectedDate == readingDate) {
+      return timeLabel;
+    }
+    if (selectedDate == readingDate.add(const Duration(days: 1))) {
+      return 'Tomorrow $timeLabel';
+    }
+    final dateLabel =
+        MaterialLocalizations.of(context).formatCompactDate(local);
+    return '$dateLabel $timeLabel';
   }
 
   @override
