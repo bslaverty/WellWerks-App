@@ -3,18 +3,22 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 import '../services/app_settings_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/rate_timer_notification_service.dart';
 import '../services/rate_timer_service.dart';
+import '../services/wellwerks_qr_transfer_service.dart';
 import '../data/tank_charts.dart';
 import '../utils/gauge_keypad_input.dart';
 import '../utils/gauge_parser.dart';
 import '../widgets/app_header.dart';
 import '../widgets/shared_gauge_keypad.dart';
 import '../widgets/ww_number_field.dart';
+import 'wellwerks_qr_scanner_screen.dart';
 
 enum _KeypadTarget { start, end }
 
@@ -121,10 +125,14 @@ class RateCalculatorScreen extends StatefulWidget {
 class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     with WidgetsBindingObserver {
   static const _timerMinutesPrefKey = 'wellwerks_rate_timer_minutes';
+  static const _rateLogQrFileType = 'wellwerks_rate_log';
+  static const _rateLogQrSchemaVersion = '1.0.0';
   final _settingsService = AppSettingsService();
   final _jobStorage = JobStorageService();
   final _rateTimerService = RateTimerService();
   final _rateTimerNotifications = RateTimerNotificationService.instance;
+  final _qrTransferService = const WellWerksQrTransferService();
+  final _imagePicker = ImagePicker();
 
   final startGauge = TextEditingController();
   final endGauge = TextEditingController();
@@ -350,33 +358,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     return '${widget.config.title} Rates\n\n$lines';
   }
 
-  Future<void> _previewRateUpdate() async {
-    final text = _rateUpdateText();
-    if (text.isEmpty) {
-      _showShareMessage('Calculate a rate before sharing.');
-      return;
-    }
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Preview Update'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: SingleChildScrollView(
-            child: SelectableText(text),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _copyRateUpdate() async {
     final text = _rateUpdateText();
     if (text.isEmpty) {
@@ -390,6 +371,271 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     } catch (err) {
       debugPrint('Rate copy failed: $err');
       _showShareMessage('Unable to copy rate update.');
+    }
+  }
+
+  String _rateLogEntryKey(_RateLogEntry entry) {
+    final value = entry.rateValue.toStringAsFixed(6);
+    return '${entry.timestamp.millisecondsSinceEpoch}|${entry.rateUnit}|$value';
+  }
+
+  Map<String, dynamic> _buildRateLogPackage() {
+    return <String, dynamic>{
+      'fileType': _rateLogQrFileType,
+      'schemaVersion': _rateLogQrSchemaVersion,
+      'calculatorId': _calculatorStorageId,
+      'calculatorTitle': widget.config.title,
+      'exportedAt': DateTime.now().toIso8601String(),
+      'entries': _rateLogEntries
+          .map(
+            (entry) => <String, Object>{
+              'timestampMs': entry.timestamp.millisecondsSinceEpoch,
+              'rateValue': entry.rateValue,
+              'rateUnit': entry.rateUnit,
+            },
+          )
+          .toList(growable: false),
+    };
+  }
+
+  String _encodeRateLogPackage() {
+    final payload = _buildRateLogPackage();
+    return _qrTransferService.encodeStructuredPayload(jsonEncode(payload));
+  }
+
+  List<_RateLogEntry> _decodeRateLogPackage(String rawValue) {
+    final rawJson = _qrTransferService.decodeStructuredPayload(rawValue);
+    final decoded = jsonDecode(rawJson);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Invalid rate log package.');
+    }
+    if ((decoded['fileType'] as String? ?? '') != _rateLogQrFileType) {
+      throw const FormatException('Unsupported rate log package type.');
+    }
+    final rawEntries = decoded['entries'];
+    if (rawEntries is! List) {
+      throw const FormatException('Rate log package has no entries.');
+    }
+    final entries = <_RateLogEntry>[];
+    for (final item in rawEntries) {
+      if (item is! Map) continue;
+      final map = Map<String, dynamic>.from(item);
+      final timestampMs = map['timestampMs'];
+      final rateValue = map['rateValue'];
+      final rateUnit = map['rateUnit'];
+      if (timestampMs is! int || rateValue is! num || rateUnit is! String) {
+        continue;
+      }
+      entries.add(
+        _RateLogEntry(
+          timestamp: DateTime.fromMillisecondsSinceEpoch(timestampMs),
+          rateValue: rateValue.toDouble(),
+          rateUnit: rateUnit,
+          selected: true,
+        ),
+      );
+    }
+    if (entries.isEmpty) {
+      throw const FormatException('Rate log package has no valid entries.');
+    }
+    entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    entries[0] = entries[0].copyWith(selected: true);
+    return entries;
+  }
+
+  Future<void> _showRateLogQrDialog(String qrValue) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Share Rate Log QR'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            QrImageView(
+              data: qrValue,
+              version: QrVersions.auto,
+              errorCorrectionLevel: QrErrorCorrectLevel.L,
+              size: 280,
+              backgroundColor: Colors.white,
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Scan this QR nearby or tap Share QR to send it as an image.',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Done'),
+          ),
+          Builder(
+            builder: (buttonContext) => FilledButton(
+              onPressed: () async {
+                try {
+                  await _qrTransferService.shareQrPng(
+                    qrValue: qrValue,
+                    fileName: '${widget.config.title}_Rate_Log',
+                    shareContext: buttonContext,
+                    subject: '${widget.config.title} Rate Log',
+                  );
+                } catch (_) {
+                  if (!mounted || !buttonContext.mounted) return;
+                  ScaffoldMessenger.of(buttonContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('The QR image could not be shared.'),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Share QR'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _shareRateLogQr() async {
+    if (_rateLogEntries.isEmpty) {
+      _showShareMessage('Rate log is empty. Calculate a rate first.');
+      return;
+    }
+    try {
+      final qrValue = _encodeRateLogPackage();
+      await _showRateLogQrDialog(qrValue);
+    } on FormatException catch (error) {
+      _showShareMessage(error.message);
+    } catch (_) {
+      _showShareMessage('Unable to create a QR package right now.');
+    }
+  }
+
+  Future<void> _importRateLogQr() async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Import Rate Log'),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop('scan'),
+            child: const Text('Scan QR'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.of(dialogContext).pop('photos'),
+            child: const Text('Choose QR from Photos'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null) return;
+    if (!mounted) return;
+
+    String? raw;
+    if (choice == 'scan') {
+      raw = await Navigator.of(context).push<String>(
+        MaterialPageRoute(
+          builder: (_) => const WellWerksQrScannerScreen(
+            title: 'Scan Rate Log QR',
+            prompt: 'Center the rate log QR code in view.',
+          ),
+        ),
+      );
+    } else {
+      final picked = await _imagePicker.pickImage(source: ImageSource.gallery);
+      if (picked != null) {
+        raw = await _qrTransferService.decodeFirstQrFromImagePath(picked.path);
+      }
+    }
+
+    if (raw == null || raw.trim().isEmpty) {
+      _showShareMessage('No QR data found to import.');
+      return;
+    }
+    await _importRateLogFromRaw(raw);
+  }
+
+  Future<void> _importRateLogFromRaw(String rawValue) async {
+    try {
+      final incomingEntries = _decodeRateLogPackage(rawValue);
+      final existingKeys = _rateLogEntries.map(_rateLogEntryKey).toSet();
+      final duplicateCount = incomingEntries
+          .where((entry) => existingKeys.contains(_rateLogEntryKey(entry)))
+          .length;
+
+      final mode = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Import Rate Log'),
+          content: Text(
+            'Incoming entries: ${incomingEntries.length}\n'
+            'Detected duplicates: $duplicateCount\n\n'
+            'Choose how to import this rate log.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            OutlinedButton(
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop('skipDuplicates'),
+              child: const Text('Skip Duplicates'),
+            ),
+            OutlinedButton(
+              onPressed: () => Navigator.of(dialogContext).pop('mergeAll'),
+              child: const Text('Merge'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop('replace'),
+              child: const Text('Replace'),
+            ),
+          ],
+        ),
+      );
+      if (mode == null) return;
+
+      final merged = <_RateLogEntry>[];
+      if (mode == 'replace') {
+        merged.addAll(incomingEntries);
+      } else if (mode == 'mergeAll') {
+        merged.addAll(_rateLogEntries);
+        merged.addAll(incomingEntries);
+      } else {
+        merged.addAll(_rateLogEntries);
+        for (final entry in incomingEntries) {
+          final key = _rateLogEntryKey(entry);
+          final alreadyExists =
+              merged.any((item) => _rateLogEntryKey(item) == key);
+          if (!alreadyExists) {
+            merged.add(entry);
+          }
+        }
+      }
+
+      if (merged.isNotEmpty) {
+        merged.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        merged[0] = merged[0].copyWith(selected: true);
+      }
+
+      setState(() {
+        _rateLogEntries
+          ..clear()
+          ..addAll(merged);
+        _rateLogExpanded = true;
+        _rateLogEnabled = true;
+      });
+      await _saveRateLogState();
+      _showShareMessage('Imported ${incomingEntries.length} rate log entries.');
+    } on FormatException catch (error) {
+      _showShareMessage(error.message);
+    } catch (_) {
+      _showShareMessage('Unable to import this rate log package.');
     }
   }
 
@@ -1396,9 +1642,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                     if (_rateLogEnabled && _rateLogEntries.isNotEmpty)
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: _previewRateUpdate,
-                          icon: const Icon(Icons.preview_outlined),
-                          label: const Text('Preview Update'),
+                          onPressed: _copyRateUpdate,
+                          icon: const Icon(Icons.copy_outlined),
+                          label: const Text('Copy Update'),
                         ),
                       ),
                     if (_rateLogEnabled && _rateLogEntries.isNotEmpty)
@@ -1406,9 +1652,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                     if (_rateLogEnabled && _rateLogEntries.isNotEmpty)
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: _copyRateUpdate,
-                          icon: const Icon(Icons.share_outlined),
-                          label: const Text('Copy Update'),
+                          onPressed: _shareRateLogQr,
+                          icon: const Icon(Icons.qr_code_2_outlined),
+                          label: const Text('Share QR'),
                         ),
                       ),
                     if (_rateLogEnabled && _rateLogEntries.isNotEmpty)
@@ -1421,6 +1667,17 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                       ),
                     ),
                   ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _importRateLogQr,
+                    icon: const Icon(Icons.file_download_outlined),
+                    label: const Text('Import QR'),
+                  ),
                 ),
               ),
               ConstrainedBox(

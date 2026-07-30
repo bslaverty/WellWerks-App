@@ -262,8 +262,7 @@ void main() {
     expect(find.text('Add Cleanout Reading'), findsOneWidget);
   });
 
-  testWidgets('empty-state controls do not appear enabled without action',
-      (tester) async {
+  testWidgets('empty-state primary actions provide guidance', (tester) async {
     await seedActiveJob(includeStage: true);
 
     await tester.pumpWidget(
@@ -277,26 +276,39 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
-      find.text('Create Shift Report'),
+      find.text('Create Report'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
 
     final shareButton = tester.widget<OutlinedButton>(
       find.ancestor(
-        of: find.text('Share Selected Readings'),
+        of: find.text('Share Selected'),
         matching: find.byType(OutlinedButton),
       ),
     );
     final reportButton = tester.widget<FilledButton>(
       find.ancestor(
-        of: find.text('Create Shift Report'),
+        of: find.text('Create Report'),
         matching: find.byType(FilledButton),
       ),
     );
 
-    expect(shareButton.onPressed, isNull);
-    expect(reportButton.onPressed, isNull);
+    expect(shareButton.onPressed, isNotNull);
+    expect(reportButton.onPressed, isNotNull);
+
+    await tester.tap(find.text('Share Selected'));
+    await tester.pumpAndSettle();
+    expect(find.text('Select at least one reading to share.'), findsOneWidget);
+
+    await tester.tap(find.text('Create Report'));
+    await tester.pumpAndSettle();
+    expect(find.text('Shift Change Report'), findsOneWidget);
+    expect(find.text('Text Update'), findsOneWidget);
+    expect(find.text('Operations Report'), findsOneWidget);
+    expect(find.text('QR Handoff'), findsOneWidget);
+    await tester.tap(find.text('Shift Change Report'));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
     await tester.pumpAndSettle();

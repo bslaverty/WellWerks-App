@@ -33,6 +33,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   final _workflowModeService = ActiveWorkflowModeService.instance;
   final _page = PageController();
   Timer? _autoSaveTimer;
+  bool _autoSaving = false;
+  DateTime? _lastAutoSaveAt;
 
   int _step = 0;
   bool _loading = true;
@@ -127,6 +129,21 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
         waterTanks,
         waterTankCapacity,
         productionTankFactor,
+        _drilloutWellName,
+        _drilloutManifoldPsi,
+        _drilloutCasingPsi,
+        _drilloutPumpPsi,
+        _drilloutRateOverride,
+        _drilloutSurfaceTotalFluid,
+        _drilloutWaterHauled,
+        _drilloutOilHauled,
+        _drilloutPlugNumber,
+        _drilloutStatus,
+        _drilloutCoilDepth,
+        _flowbackGauge,
+        _waterTank1Gauge,
+        _waterTank2Gauge,
+        _sweepTankGauge,
       ];
 
   void _attachAutoSaveListeners() {
@@ -266,8 +283,58 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   void _scheduleAutoSave() {
-    // Build 173: Active Job changes are committed only through explicit
-    // Start Job / Update Active Job actions.
+    if (_loading || !_editing) {
+      return;
+    }
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(milliseconds: 550), () async {
+      if (!_canAutoSave()) return;
+      final currentEditing = _activeJob;
+      if (currentEditing == null) return;
+
+      setState(() {
+        _autoSaving = true;
+      });
+
+      try {
+        final draft = _activeWorkflowMode == ActiveWorkflowMode.production
+            ? _buildJobFromForm()
+            : _buildDrilloutJobFromForm();
+        final safeDraft = draft.copyWith(
+          id: currentEditing.id,
+          status: currentEditing.status,
+          startedAt: currentEditing.startedAt,
+          endedAt: currentEditing.endedAt,
+        );
+        final saved = await _storage.updateActiveJob(safeDraft);
+        if (!mounted) return;
+        setState(() {
+          _activeJob = saved;
+          _autoSaving = false;
+          _lastAutoSaveAt = DateTime.now();
+        });
+      } catch (_) {
+        if (!mounted) return;
+        setState(() {
+          _autoSaving = false;
+        });
+      }
+    });
+  }
+
+  bool _canAutoSave() {
+    return mounted &&
+        !_loading &&
+        _editing &&
+        !_startingFreshJob &&
+        _activeJob != null;
+  }
+
+  String _autoSaveStatusText() {
+    if (_autoSaving) return 'Saving...';
+    final savedAt = _lastAutoSaveAt;
+    if (savedAt == null) return 'Autosave ready';
+    return 'Saved ${DateFormat('h:mm a').format(savedAt)}';
   }
 
   void _applyDrilloutSetupToForm(JobSetup job) {
@@ -377,6 +444,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       setState(() {
         _tankConfig = _tankConfig.copyWith(flowbackTankTypes: next);
       });
+      _scheduleAutoSave();
       return;
     }
 
@@ -389,6 +457,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
         flowbackTankTypes: _tankConfig.flowbackTankTypes.sublist(0, count),
       );
     });
+    _scheduleAutoSave();
   }
 
   Future<void> _setSweepTankCount(int count) async {
@@ -401,6 +470,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       setState(() {
         _tankConfig = _tankConfig.copyWith(sweepTankTypes: next);
       });
+      _scheduleAutoSave();
       return;
     }
 
@@ -413,6 +483,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
         sweepTankTypes: _tankConfig.sweepTankTypes.sublist(0, count),
       );
     });
+    _scheduleAutoSave();
   }
 
   Future<bool> _confirmTankRoleReduction(List<String> removedRoleIds) async {
@@ -754,6 +825,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       _activeJob = null;
       _startingFreshJob = true;
       _editing = true;
+      _lastAutoSaveAt = null;
       _step = 0;
     });
     if (_page.hasClients) {
@@ -773,6 +845,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     setState(() {
       _startingFreshJob = false;
       _editing = true;
+      _lastAutoSaveAt = null;
       _step = 0;
     });
     if (_page.hasClients) {
@@ -801,6 +874,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       _activeJob = saved;
       _startingFreshJob = false;
       _editing = false;
+      _lastAutoSaveAt = DateTime.now();
       _step = 0;
     });
     if (_page.hasClients) {
@@ -1047,21 +1121,6 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     for (final controller in _autoSaveControllers) {
       controller.dispose();
     }
-    _drilloutWellName.dispose();
-    _drilloutManifoldPsi.dispose();
-    _drilloutCasingPsi.dispose();
-    _drilloutPumpPsi.dispose();
-    _drilloutRateOverride.dispose();
-    _drilloutSurfaceTotalFluid.dispose();
-    _drilloutWaterHauled.dispose();
-    _drilloutOilHauled.dispose();
-    _drilloutPlugNumber.dispose();
-    _drilloutStatus.dispose();
-    _drilloutCoilDepth.dispose();
-    _flowbackGauge.dispose();
-    _waterTank1Gauge.dispose();
-    _waterTank2Gauge.dispose();
-    _sweepTankGauge.dispose();
     super.dispose();
   }
 
@@ -1088,7 +1147,26 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                   children: [
                     Padding(
                       padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
-                      child: LinearProgressIndicator(value: (_step + 1) / 5),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          LinearProgressIndicator(value: (_step + 1) / 5),
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              _autoSaveStatusText(),
+                              style: TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     Expanded(
                       child: PageView(
@@ -1507,6 +1585,17 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            _autoSaveStatusText(),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
         const SizedBox(height: 14),
         InputDecorator(
           decoration: const InputDecoration(labelText: 'Company'),
@@ -1532,6 +1621,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           ],
           onChanged: (value) {
             setState(() => shift = value ?? 'Day');
+            _scheduleAutoSave();
           },
         ),
         const SizedBox(height: 12),
@@ -1615,7 +1705,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           ),
         ),
         DropdownButtonFormField<String>(
-          key: const Key('tank-config-sand-type'),
+          key: Key('tank-config-sand-type-${_tankConfig.sandTankType}'),
           initialValue: _tankConfig.sandTankType,
           decoration: const InputDecoration(labelText: 'Sand Tank Type'),
           items: _tankTypeItemsForRole(DrilloutTankCatalog.roleSandTank),
@@ -1624,11 +1714,12 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
             setState(() {
               _tankConfig = _tankConfig.copyWith(sandTankType: value);
             });
+            _scheduleAutoSave();
           },
         ),
         const SizedBox(height: 10),
         DropdownButtonFormField<int>(
-          key: const Key('tank-config-flowback-count'),
+          key: Key('tank-config-flowback-count-${_tankConfig.flowbackCount}'),
           initialValue: _tankConfig.flowbackCount,
           decoration:
               const InputDecoration(labelText: 'Flowback Tank Quantity'),
@@ -1647,7 +1738,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: DropdownButtonFormField<String>(
-              key: Key('tank-config-flowback-type-$i'),
+              key: Key(
+                  'tank-config-flowback-type-$i-${_tankConfig.flowbackTankTypes[i]}'),
               initialValue: _tankConfig.flowbackTankTypes[i],
               decoration: InputDecoration(
                 labelText: 'Flowback Tank ${i + 1} Type',
@@ -1662,12 +1754,13 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                 setState(() {
                   _tankConfig = _tankConfig.copyWith(flowbackTankTypes: types);
                 });
+                _scheduleAutoSave();
               },
             ),
           ),
         const SizedBox(height: 10),
         DropdownButtonFormField<int>(
-          key: const Key('tank-config-sweep-count'),
+          key: Key('tank-config-sweep-count-${_tankConfig.sweepCount}'),
           initialValue: _tankConfig.sweepCount,
           decoration: const InputDecoration(labelText: 'Sweep Tank Quantity'),
           items: const [
@@ -1685,7 +1778,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: DropdownButtonFormField<String>(
-              key: Key('tank-config-sweep-type-$i'),
+              key: Key(
+                  'tank-config-sweep-type-$i-${_tankConfig.sweepTankTypes[i]}'),
               initialValue: _tankConfig.sweepTankTypes[i],
               decoration: InputDecoration(
                 labelText: 'Sweep Tank ${i + 1} Type',
@@ -1700,6 +1794,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                 setState(() {
                   _tankConfig = _tankConfig.copyWith(sweepTankTypes: types);
                 });
+                _scheduleAutoSave();
               },
             ),
           ),

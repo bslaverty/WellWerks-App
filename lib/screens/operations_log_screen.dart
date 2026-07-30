@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -46,6 +47,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       DrilloutCleanoutFieldDefinitions.defaultEnabledFieldIds;
   bool _loading = true;
   bool _newestFirst = false;
+  bool _expandedTimeline = false;
 
   @override
   void initState() {
@@ -285,22 +287,64 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     final selectedEntries = _entries
         .where((entry) => _selectedEntryIds.contains(entry.entryId))
         .toList(growable: false);
-    if (job == null || selectedEntries.isEmpty) return;
-    final packageType = _workflow == OperationsLogWorkflow.drillout
-        ? OperationsLogPackageType.drilloutReadingBatch
-        : OperationsLogPackageType.cleanoutReadingBatch;
-    final package = await _logService.buildPackage(
-      packageType: packageType,
-      persistentJobId: job.id,
-      entries: selectedEntries,
-    );
-    final encoded = _logService.encodePackage(package);
-    await _showShareQrDialog(encoded, '${widget.title} QR');
+    if (job == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Set an active job before sharing.')),
+      );
+      return;
+    }
+    if (selectedEntries.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select at least one reading to share.')),
+      );
+      return;
+    }
+    try {
+      final packageType = _workflow == OperationsLogWorkflow.drillout
+          ? OperationsLogPackageType.drilloutReadingBatch
+          : OperationsLogPackageType.cleanoutReadingBatch;
+      final package = await _logService.buildPackage(
+        packageType: packageType,
+        persistentJobId: job.id,
+        entries: selectedEntries,
+      );
+      final encoded = _logService.encodePackage(package);
+      await _showShareQrDialog(encoded, '${widget.title} QR');
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[OperationsLog] Failed to share selected readings: $error\n$stackTrace',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to share selected readings.')),
+      );
+    }
   }
 
-  Future<void> _createShiftReport() async {
+  Future<void> _createPdfReport({
+    required String reportLabel,
+    required String fileLabel,
+  }) async {
     final job = _activeJob;
-    if (job == null || _entries.isEmpty) return;
+    if (job == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Set an active job before creating reports.')),
+      );
+      return;
+    }
+    if (_entries.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('At least one reading is required to create a report.'),
+        ),
+      );
+      return;
+    }
     final exported = await _logService.exportShiftReportPdf(
       workflow: _workflow,
       jobName: job.padName,
@@ -309,13 +353,164 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       entries: _entries,
       enabledFieldIds: _enabledFieldIds,
       baseFileName:
-          '${job.padName.isNotEmpty ? job.padName : _workflow.name}_shift_report',
+          '${job.padName.isNotEmpty ? job.padName : _workflow.name}_$fileLabel',
     );
     await Share.shareXFiles(
       [XFile(exported.filePath)],
-      subject: '${widget.title} Shift Report',
-      text: '${widget.title} shift report for ${job.padName}.',
+      subject: '${widget.title} $reportLabel',
+      text: '${widget.title} $reportLabel for ${job.padName}.',
     );
+  }
+
+  String _buildTextUpdate() {
+    if (_entries.isEmpty) return '';
+    final latest = _sortedEntries.last;
+    final parts = <String>[
+      '${_workflow.name.toUpperCase()} UPDATE',
+      _currentWellName,
+      TimeOfDay.fromDateTime(latest.readingTimestamp).format(context),
+    ];
+    if (latest.operationStage.trim().isNotEmpty) {
+      parts.add('Stage ${latest.operationStage.trim()}');
+    }
+    if (latest.pumpRate.trim().isNotEmpty) {
+      parts.add('Pump ${latest.pumpRate.trim()}');
+    }
+    if (latest.returnsRate.trim().isNotEmpty) {
+      parts.add('Returns ${latest.returnsRate.trim()}');
+    }
+    if (latest.casingPressure.trim().isNotEmpty) {
+      parts.add('CSG ${latest.casingPressure.trim()}');
+    }
+    if (latest.choke.trim().isNotEmpty) {
+      parts.add('Choke ${latest.choke.trim()}');
+    }
+    if (latest.notes.trim().isNotEmpty) {
+      parts.add(latest.notes.trim());
+    }
+    return parts.join(' • ');
+  }
+
+  Future<void> _copyTextUpdate() async {
+    if (_entries.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('At least one reading is required for a text update.'),
+        ),
+      );
+      return;
+    }
+    final text = _buildTextUpdate();
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Text update copied.')),
+    );
+  }
+
+  Future<void> _shareQrHandoff() async {
+    final job = _activeJob;
+    if (job == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Set an active job before QR handoff.')),
+      );
+      return;
+    }
+    if (_entries.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('At least one reading is required for QR handoff.'),
+        ),
+      );
+      return;
+    }
+    try {
+      final packageType = _workflow == OperationsLogWorkflow.drillout
+          ? OperationsLogPackageType.drilloutReadingBatch
+          : OperationsLogPackageType.cleanoutReadingBatch;
+      final package = await _logService.buildPackage(
+        packageType: packageType,
+        persistentJobId: job.id,
+        entries: _entries,
+      );
+      final encoded = _logService.encodePackage(package);
+      await _showShareQrDialog(encoded, '${widget.title} QR Handoff');
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[OperationsLog] Failed to create QR handoff: $error\n$stackTrace',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to create QR handoff.')),
+      );
+    }
+  }
+
+  Future<void> _openCreateReportMenu() async {
+    if (!mounted) return;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(
+              title: Text(
+                'Create Report',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              subtitle: Text('Choose output from current operations readings.'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.picture_as_pdf_outlined),
+              title: const Text('Shift Change Report'),
+              onTap: () => Navigator.of(sheetContext).pop('shift'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.text_fields),
+              title: const Text('Text Update'),
+              onTap: () => Navigator.of(sheetContext).pop('text'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.description_outlined),
+              title: const Text('Operations Report'),
+              onTap: () => Navigator.of(sheetContext).pop('operations'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.qr_code_2),
+              title: const Text('QR Handoff'),
+              onTap: () => Navigator.of(sheetContext).pop('handoff'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null) return;
+
+    switch (choice) {
+      case 'shift':
+        await _createPdfReport(
+          reportLabel: 'Shift Change Report',
+          fileLabel: 'shift_change_report',
+        );
+        break;
+      case 'text':
+        await _copyTextUpdate();
+        break;
+      case 'operations':
+        await _createPdfReport(
+          reportLabel: 'Operations Report',
+          fileLabel: 'operations_report',
+        );
+        break;
+      case 'handoff':
+        await _shareQrHandoff();
+        break;
+    }
   }
 
   void _toggleSelectedEntry(String entryId, bool selected) {
@@ -741,11 +936,9 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: _selectedEntryIds.isEmpty
-                            ? null
-                            : _shareSelectedReadings,
+                        onPressed: _shareSelectedReadings,
                         icon: const Icon(Icons.qr_code_2),
-                        label: const Text('Share Selected Readings'),
+                        label: const Text('Share Selected'),
                       ),
                     ),
                   ],
@@ -776,55 +969,139 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                   title: const Text('Newest first'),
                   subtitle: const Text('Turn off for oldest first.'),
                 ),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  value: _expandedTimeline,
+                  onChanged: (value) =>
+                      setState(() => _expandedTimeline = value),
+                  title: const Text('Expanded timeline cards'),
+                  subtitle: const Text('Turn off for compact cards.'),
+                ),
                 const SizedBox(height: 8),
                 FilledButton(
-                  onPressed: _entries.isEmpty ? null : _createShiftReport,
-                  child: const Text('Create Shift Report'),
+                  onPressed: _openCreateReportMenu,
+                  child: const Text('Create Report'),
                 ),
-                if (_entries.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 8),
-                    child: Text(
-                      'At least one reading is required to create a shift report.',
-                    ),
-                  ),
                 const SizedBox(height: 16),
                 if (_sortedEntries.isEmpty)
-                  const Text('No readings recorded yet.')
+                  const Text('No Operations Log readings are available.')
                 else
                   ..._sortedEntries.map(
                     (entry) => Card(
-                      child: ListTile(
-                        leading: Checkbox(
-                          value: _selectedEntryIds.contains(entry.entryId),
-                          onChanged: (value) => _toggleSelectedEntry(
-                            entry.entryId,
-                            value ?? false,
-                          ),
-                        ),
-                        title: Text(
-                          '${TimeOfDay.fromDateTime(entry.readingTimestamp).format(context)} • ${entry.wellName}',
-                        ),
-                        subtitle: Text(_entrySubtitle(entry)),
+                      child: InkWell(
                         onTap: () => _showEntryDetails(entry),
-                        trailing: PopupMenuButton<String>(
-                          onSelected: (value) {
-                            if (value == 'share') {
-                              _shareReading(entry);
-                            } else if (value == 'delete') {
-                              _deleteEntry(entry);
-                            }
-                          },
-                          itemBuilder: (_) => const [
-                            PopupMenuItem(
-                              value: 'share',
-                              child: Text('Share Reading'),
-                            ),
-                            PopupMenuItem(
-                              value: 'delete',
-                              child: Text('Delete'),
-                            ),
-                          ],
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Checkbox(
+                                    value: _selectedEntryIds
+                                        .contains(entry.entryId),
+                                    onChanged: (value) => _toggleSelectedEntry(
+                                      entry.entryId,
+                                      value ?? false,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(top: 10),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            '${TimeOfDay.fromDateTime(entry.readingTimestamp).format(context)} • ${entry.wellName}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            _entrySubtitle(entry).trim().isEmpty
+                                                ? 'No additional details'
+                                                : _entrySubtitle(entry),
+                                            maxLines:
+                                                _expandedTimeline ? null : 2,
+                                            overflow: _expandedTimeline
+                                                ? TextOverflow.visible
+                                                : TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  PopupMenuButton<String>(
+                                    onSelected: (value) {
+                                      if (value == 'share') {
+                                        _shareReading(entry);
+                                      } else if (value == 'delete') {
+                                        _deleteEntry(entry);
+                                      }
+                                    },
+                                    itemBuilder: (_) => const [
+                                      PopupMenuItem(
+                                        value: 'share',
+                                        child: Text('Share Reading'),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'delete',
+                                        child: Text('Delete'),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              if (_expandedTimeline)
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(48, 2, 10, 8),
+                                  child: Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      if (entry.operationStage
+                                          .trim()
+                                          .isNotEmpty)
+                                        Chip(
+                                          label: Text(
+                                            'Stage ${entry.operationStage.trim()}',
+                                          ),
+                                        ),
+                                      if (entry.pumpRate.trim().isNotEmpty)
+                                        Chip(
+                                          label: Text(
+                                            'Pump ${entry.pumpRate.trim()}',
+                                          ),
+                                        ),
+                                      if (entry.returnsRate.trim().isNotEmpty)
+                                        Chip(
+                                          label: Text(
+                                            'Returns ${entry.returnsRate.trim()}',
+                                          ),
+                                        ),
+                                      if (entry.casingPressure
+                                          .trim()
+                                          .isNotEmpty)
+                                        Chip(
+                                          label: Text(
+                                            'CSG ${entry.casingPressure.trim()}',
+                                          ),
+                                        ),
+                                      if (entry.choke.trim().isNotEmpty)
+                                        Chip(
+                                          label: Text(
+                                            'Choke ${entry.choke.trim()}',
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../models/job_setup.dart';
+import '../screens/drillout_cleanout_module_screen.dart';
+import '../screens/job_management_screen.dart';
+import '../screens/job_setup_screen.dart';
+import '../screens/production_dashboard_screen.dart';
+import '../screens/shift_handoff_screen.dart';
 import '../screens/settings_screen.dart';
 import '../services/active_workflow_mode_service.dart';
 import '../services/job_storage_service.dart';
+import '../services/jsa_storage_service.dart';
+import '../services/production_shift_service.dart';
 
 class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   final String title;
@@ -106,6 +113,8 @@ class _ActiveJobModeBanner extends StatefulWidget {
 class _ActiveJobModeBannerState extends State<_ActiveJobModeBanner> {
   final _jobStorage = JobStorageService();
   final _workflowMode = ActiveWorkflowModeService.instance;
+  final _shiftService = ProductionShiftService();
+  final _jsaStorage = JsaStorageService();
 
   @override
   void initState() {
@@ -147,75 +156,247 @@ class _ActiveJobModeBannerState extends State<_ActiveJobModeBanner> {
     return '$company • $middle';
   }
 
+  Future<void> _openActiveJobHub() async {
+    final activeJob = _jobStorage.activeJobListenable.value;
+    final jobs = await _jobStorage.loadJobs();
+    final switchableJobs = jobs
+        .where((item) => item.status.trim().toLowerCase() != 'archived')
+        .toList(growable: false);
+
+    if (!mounted) return;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              ListTile(
+                title: const Text(
+                  'Active Job Hub',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                subtitle: Text(
+                  activeJob == null
+                      ? 'No active job selected'
+                      : _jobSummary(activeJob),
+                ),
+              ),
+              const Divider(height: 0),
+              ListTile(
+                leading: const Icon(Icons.build_circle_outlined),
+                title: const Text('Job Setup'),
+                onTap: () => Navigator.of(sheetContext).pop('jobSetup'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.add_circle_outline),
+                title: const Text('Start New Job'),
+                onTap: () => Navigator.of(sheetContext).pop('startNew'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.play_circle_outline),
+                title: const Text('Resume Job'),
+                enabled: activeJob != null,
+                onTap: activeJob == null
+                    ? null
+                    : () => Navigator.of(sheetContext).pop('resume'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.swap_horiz),
+                title: const Text('Switch Active Job'),
+                enabled: switchableJobs.isNotEmpty,
+                onTap: switchableJobs.isEmpty
+                    ? null
+                    : () => Navigator.of(sheetContext).pop('switch'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.stop_circle_outlined),
+                title: const Text('End Active Job'),
+                enabled: activeJob != null,
+                onTap: activeJob == null
+                    ? null
+                    : () => Navigator.of(sheetContext).pop('end'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.compare_arrows),
+                title: const Text('Handoff'),
+                onTap: () => Navigator.of(sheetContext).pop('handoff'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'jobSetup':
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => JobSetupScreen(
+              startFreshJob: false,
+              editActiveOnOpen: activeJob != null,
+            ),
+          ),
+        );
+        break;
+      case 'startNew':
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const JobSetupScreen(startFreshJob: true),
+          ),
+        );
+        break;
+      case 'resume':
+        final current = _jobStorage.activeJobListenable.value;
+        if (current == null) break;
+        final workflow = current.workflow.trim().toLowerCase();
+        if (workflow == 'drillout') {
+          await _workflowMode.setMode(ActiveWorkflowMode.drillout);
+          if (!mounted) break;
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const DrilloutCleanoutModuleScreen(),
+            ),
+          );
+        } else if (workflow == 'cleanout') {
+          await _workflowMode.setMode(ActiveWorkflowMode.cleanout);
+          if (!mounted) break;
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const DrilloutCleanoutModuleScreen(),
+            ),
+          );
+        } else {
+          await _workflowMode.setMode(ActiveWorkflowMode.production);
+          if (!mounted) break;
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const ProductionDashboardScreen(),
+            ),
+          );
+        }
+        break;
+      case 'switch':
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const JobManagementScreen()),
+        );
+        break;
+      case 'end':
+        final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: const Text('End Active Job?'),
+                content: const Text(
+                  'This will end the active job and clear active shift context.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    child: const Text('End Job'),
+                  ),
+                ],
+              ),
+            ) ??
+            false;
+        if (!confirmed) break;
+        await _jobStorage.endActiveJob();
+        await _shiftService.clearActiveShift();
+        await _jsaStorage.clearDraft();
+        if (!mounted) break;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Active job ended.')),
+        );
+        break;
+      case 'handoff':
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const ShiftHandoffScreen()),
+        );
+        break;
+    }
+
+    await _hydrate();
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final job = _jobStorage.activeJobListenable.value;
-    if (job == null) {
-      return const SizedBox.shrink();
-    }
 
-    return Container(
-      height: 38,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest.withValues(alpha: 0.45),
-        border: Border(
-          top: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.5)),
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: [
-          Text(
-            'Active Job',
-            style: TextStyle(
-              color: colors.primary,
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
+    return Material(
+      color: colors.surfaceContainerHighest.withValues(alpha: 0.45),
+      child: InkWell(
+        onTap: _openActiveJobHub,
+        child: Container(
+          height: 38,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(
+                color: colors.outlineVariant.withValues(alpha: 0.5),
+              ),
             ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              _jobSummary(job),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
-          PopupMenuButton<ActiveWorkflowMode>(
-            padding: EdgeInsets.zero,
-            onSelected: (mode) => _workflowMode.setMode(mode),
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: ActiveWorkflowMode.production,
-                child: Text('Production'),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              Text(
+                'Active Job',
+                style: TextStyle(
+                  color: colors.primary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
               ),
-              PopupMenuItem(
-                value: ActiveWorkflowMode.drillout,
-                child: Text('Drillout'),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  job == null ? 'No active job selected' : _jobSummary(job),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
-              PopupMenuItem(
-                value: ActiveWorkflowMode.cleanout,
-                child: Text('Cleanout'),
+              PopupMenuButton<ActiveWorkflowMode>(
+                padding: EdgeInsets.zero,
+                onSelected: (mode) => _workflowMode.setMode(mode),
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: ActiveWorkflowMode.production,
+                    child: Text('Production'),
+                  ),
+                  PopupMenuItem(
+                    value: ActiveWorkflowMode.drillout,
+                    child: Text('Drillout'),
+                  ),
+                  PopupMenuItem(
+                    value: ActiveWorkflowMode.cleanout,
+                    child: Text('Cleanout'),
+                  ),
+                ],
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      ActiveWorkflowModeService.labelFor(
+                          _workflowMode.mode.value),
+                      style: TextStyle(
+                        color: colors.primary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Icon(Icons.arrow_drop_down, color: colors.primary),
+                  ],
+                ),
               ),
             ],
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  ActiveWorkflowModeService.labelFor(_workflowMode.mode.value),
-                  style: TextStyle(
-                    color: colors.primary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                Icon(Icons.arrow_drop_down, color: colors.primary),
-              ],
-            ),
           ),
-        ],
+        ),
       ),
     );
   }

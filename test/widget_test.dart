@@ -34,6 +34,7 @@ import 'package:wellwerks/services/production_shift_service.dart';
 import 'package:wellwerks/services/report_profile_service.dart';
 import 'package:wellwerks/services/rig_up_inventory_service.dart';
 import 'package:wellwerks/utils/jsa_time_format.dart';
+import 'package:wellwerks/widgets/tool_card.dart';
 import 'package:wellwerks/widgets/time_wheel_picker_sheet.dart';
 
 Finder labeledTextField(String label) {
@@ -173,12 +174,13 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Active Job'), findsNothing);
+    expect(find.text('Active Job'), findsOneWidget);
     expect(find.text('No Active Job'), findsNothing);
     expect(find.text('Create Job'), findsNothing);
     expect(find.text('Import Job Setup'), findsNothing);
-    expect(find.text('Production'), findsOneWidget);
-    expect(find.text('Completions'), findsOneWidget);
+    expect(find.text('No active job selected'), findsOneWidget);
+    expect(find.widgetWithText(ToolCard, 'Production'), findsOneWidget);
+    expect(find.widgetWithText(ToolCard, 'Completions'), findsOneWidget);
   });
 
   testWidgets('Build 171 Home keeps permanent module order for all workflows',
@@ -192,12 +194,13 @@ void main() {
       await tester.pumpAndSettle();
 
       Future<void> expectVisibleText(String text) async {
+        final finder = find.widgetWithText(ToolCard, text);
         await tester.scrollUntilVisible(
-          find.text(text),
+          finder,
           250,
           scrollable: find.byType(Scrollable).first,
         );
-        expect(find.text(text), findsOneWidget);
+        expect(finder, findsOneWidget);
       }
 
       await expectVisibleText('Production');
@@ -206,8 +209,6 @@ void main() {
       await expectVisibleText('Rig-Up');
       await expectVisibleText('JSA');
       await expectVisibleText('History');
-      expect(find.text('Drillout').hitTestable(), findsNothing);
-      expect(find.text('Cleanout').hitTestable(), findsNothing);
     }
 
     await pumpForMode(ActiveWorkflowMode.production);

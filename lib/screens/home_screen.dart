@@ -4,7 +4,6 @@ import '../models/job_box_inventory.dart';
 import '../widgets/app_header.dart';
 import '../widgets/tool_card.dart';
 import '../services/app_settings_service.dart';
-import '../services/active_workflow_mode_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/operations_log_service.dart';
 import '../services/rate_timer_notification_service.dart';
@@ -27,8 +26,6 @@ import 'tank_charts_menu_screen.dart';
 import 'conversion_calculator_screen.dart';
 import 'settings_screen.dart';
 import 'about_support_screen.dart';
-import 'job_setup_screen.dart';
-import 'drillout_shift_change_screen.dart';
 import 'drillout_cleanout_module_screen.dart';
 import 'flywheel_diesel_tank_screen.dart';
 import 'job_box_inventory_screen.dart';
@@ -47,31 +44,20 @@ class _HomeScreenState extends State<HomeScreen> {
   final _rateTimerService = RateTimerService();
   final _settingsService = AppSettingsService();
   final _rateTimerNotifications = RateTimerNotificationService.instance;
-  final _workflowModeService = ActiveWorkflowModeService.instance;
 
   bool _loading = true;
-  ActiveWorkflowMode _activeWorkflowMode = ActiveWorkflowMode.production;
 
   @override
   void initState() {
     super.initState();
     _jobStorage.activeJobListenable.addListener(_handleActiveJobChanged);
-    _workflowModeService.mode.addListener(_handleWorkflowModeChanged);
     _loadRecovery();
   }
 
   @override
   void dispose() {
     _jobStorage.activeJobListenable.removeListener(_handleActiveJobChanged);
-    _workflowModeService.mode.removeListener(_handleWorkflowModeChanged);
     super.dispose();
-  }
-
-  void _handleWorkflowModeChanged() {
-    if (!mounted) return;
-    setState(() {
-      _activeWorkflowMode = _workflowModeService.mode.value;
-    });
   }
 
   void _handleActiveJobChanged() {
@@ -82,13 +68,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadRecovery() async {
     await _jobStorage.ensureActiveJobLoaded();
     final lastActiveJobId = await _jobStorage.loadLastActiveJobId();
-    final workflowMode = await _workflowModeService.ensureLoaded();
     await _recoveryState.loadSnapshot(
       lastActiveJobId: lastActiveJobId,
     );
     if (!mounted) return;
     setState(() {
-      _activeWorkflowMode = workflowMode;
       _loading = false;
     });
     _handlePendingRateTimerAction();
@@ -195,17 +179,6 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadRecovery();
   }
 
-  Future<void> _editActiveJob() async {
-    if (_activeWorkflowMode == ActiveWorkflowMode.production) {
-      await open(context, const JobSetupScreen(editActiveOnOpen: true));
-      return;
-    }
-    await open(
-      context,
-      DrilloutShiftChangeScreen(initialWorkflow: _activeWorkflowMode),
-    );
-  }
-
   Widget _chloridesCalculatorScreen() {
     return const ChartReferenceScreen(
       title: 'Chlorides Chart',
@@ -294,10 +267,6 @@ class _HomeScreenState extends State<HomeScreen> {
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
             onSelected: (value) {
-              if (value == 'jobSetup') {
-                _editActiveJob();
-                return;
-              }
               if (value == 'settings') {
                 open(context, const SettingsScreen());
                 return;
@@ -307,10 +276,6 @@ class _HomeScreenState extends State<HomeScreen> {
               }
             },
             itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'jobSetup',
-                child: Text('Job Setup'),
-              ),
               PopupMenuItem(
                 value: 'settings',
                 child: Text('Settings'),
