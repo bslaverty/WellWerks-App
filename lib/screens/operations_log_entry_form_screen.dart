@@ -178,41 +178,17 @@ class _OperationsLogEntryFormScreenState
     return widget.initialSelectedWellName.trim();
   }
 
-  Future<void> _pickDate() async {
-    final now = DateTime.now();
-    final selected = await showDatePicker(
-      context: context,
-      initialDate: _readingTimestamp,
-      firstDate: DateTime(now.year - 10),
-      lastDate: DateTime(now.year + 10),
+  Future<void> _pickEntryTime() async {
+    final selection = await showStsDateTimeSelectorSheet(
+      context,
+      title: 'Entry Time',
+      helperText: 'Select the operational time for this reading.',
+      readingTimestamp: _readingTimestamp,
+      initialValue: _readingTimestamp,
     );
-    if (selected == null) return;
-    setState(() {
-      _readingTimestamp = DateTime(
-        selected.year,
-        selected.month,
-        selected.day,
-        _readingTimestamp.hour,
-        _readingTimestamp.minute,
-      );
-    });
-  }
-
-  Future<void> _pickTime() async {
-    final selected = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_readingTimestamp),
-    );
-    if (selected == null) return;
-    setState(() {
-      _readingTimestamp = DateTime(
-        _readingTimestamp.year,
-        _readingTimestamp.month,
-        _readingTimestamp.day,
-        selected.hour,
-        selected.minute,
-      );
-    });
+    if (!mounted || selection == null || selection.cleared) return;
+    if (selection.value == null) return;
+    setState(() => _readingTimestamp = selection.value!);
   }
 
   String _formatOptionalDateTime(DateTime? value) {
@@ -539,6 +515,73 @@ class _OperationsLogEntryFormScreenState
     }
   }
 
+  List<String> _previewLines() {
+    final lines = <String>[
+      'Entry Time: ${MaterialLocalizations.of(context).formatCompactDate(_readingTimestamp)} ${TimeOfDay.fromDateTime(_readingTimestamp).format(context)}',
+      'Entry Type: Manual Reading',
+      'Well: ${_selectedWellName.trim().isEmpty ? '-' : _selectedWellName.trim()}',
+    ];
+
+    if (_isEnabled('operationStage') && _selectedStage.trim().isNotEmpty) {
+      lines.add('Stage: ${_selectedStage.trim()}');
+    }
+    if (_isEnabled('pumpRate') && _pumpRateController.text.trim().isNotEmpty) {
+      lines.add('Pump Rate: ${_pumpRateController.text.trim()}');
+    }
+    if (_isEnabled('returnsRate') &&
+        _returnsRateController.text.trim().isNotEmpty) {
+      lines.add('Returns Rate: ${_returnsRateController.text.trim()}');
+    }
+    if (_isEnabled('choke') && !_choke.isNone) {
+      lines.add('Choke: ${formatChokeDisplay(_choke)}');
+    }
+    if (_isEnabled('pumpPressure') &&
+        _pumpPressureController.text.trim().isNotEmpty) {
+      lines.add('Pump PSI: ${_pumpPressureController.text.trim()}');
+    }
+    if (_isEnabled('estimatedSts') && _estimatedSts != null) {
+      lines.add('Estimated STS: ${_formatOptionalDateTime(_estimatedSts)}');
+    }
+    if (_isEnabled('sts') && _sts != null) {
+      lines.add('STS: ${_formatOptionalDateTime(_sts)}');
+    }
+    if (_isEnabled('tankLevel') &&
+        _tankLevelController.text.trim().isNotEmpty) {
+      lines.add('Tank Readings: ${_tankLevelController.text.trim()}');
+    }
+    if (_isEnabled('notes') && _notesController.text.trim().isNotEmpty) {
+      lines.add('Notes: ${_notesController.text.trim()}');
+    }
+    return lines;
+  }
+
+  Future<void> _previewBeforeSave() async {
+    final lines = _previewLines();
+    if (!mounted) return;
+    final shouldSave = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Preview Reading'),
+            content: SingleChildScrollView(
+              child: SelectableText(lines.join('\n')),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Edit'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('Save Reading'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!shouldSave) return;
+    await _save();
+  }
+
   @override
   Widget build(BuildContext context) {
     final dateLabel = MaterialLocalizations.of(context).formatCompactDate(
@@ -610,26 +653,17 @@ class _OperationsLogEntryFormScreenState
             ),
             const SizedBox(height: 12),
           ],
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  key: const Key('operations-log-form-date-button'),
-                  onPressed: _pickDate,
-                  icon: const Icon(Icons.calendar_today),
-                  label: Text('Date: $dateLabel'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton.icon(
-                  key: const Key('operations-log-form-time-button'),
-                  onPressed: _pickTime,
-                  icon: const Icon(Icons.access_time),
-                  label: Text('Time: $timeLabel'),
-                ),
-              ),
-            ],
+          ListTile(
+            key: const Key('operations-log-form-entry-time-tile'),
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.schedule),
+            title: const Text('Entry Time'),
+            subtitle: Text('$dateLabel $timeLabel'),
+            trailing: FilledButton(
+              key: const Key('operations-log-form-entry-time-button'),
+              onPressed: _pickEntryTime,
+              child: const Text('Select'),
+            ),
           ),
           const SizedBox(height: 12),
           if (_isEnabled('pumpRate')) ...[
@@ -875,6 +909,14 @@ class _OperationsLogEntryFormScreenState
                   onPressed:
                       _saving ? null : () => Navigator.of(context).maybePop(),
                   child: const Text('Cancel'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton(
+                  key: const Key('operations-log-form-preview-button'),
+                  onPressed: _saving ? null : _previewBeforeSave,
+                  child: const Text('Preview'),
                 ),
               ),
               const SizedBox(width: 12),

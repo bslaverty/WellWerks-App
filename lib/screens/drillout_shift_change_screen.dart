@@ -3,11 +3,15 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../data/tank_charts.dart';
 import '../models/drillout_tank_configuration.dart';
 import '../models/job_setup.dart';
+import '../models/operations_log_entry.dart';
 import '../services/active_company_service.dart';
 import '../services/active_workflow_mode_service.dart';
 import '../services/app_settings_service.dart';
@@ -15,6 +19,7 @@ import '../services/drillout_cleanout_field_definitions.dart';
 import '../services/job_profile_defaults_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/operations_log_service.dart';
+import '../services/wellwerks_qr_transfer_service.dart';
 import '../utils/gauge_keypad_input.dart';
 import '../utils/gauge_parser.dart';
 import '../widgets/app_header.dart';
@@ -60,6 +65,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   final _activeCompanyService = ActiveCompanyService.instance;
   final _workflowModeService = ActiveWorkflowModeService.instance;
   final _operationsLogService = OperationsLogService();
+  final _qrTransferService = const WellWerksQrTransferService();
 
   final _customer = TextEditingController();
   final _wellName = TextEditingController();
@@ -94,6 +100,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   String _textTimeFormat = '12h';
   DateTime _selectedTime = DateTime(2000, 1, 1, _defaultShiftHour);
   String _editedText = '';
+  String _lastLoggedEventKey = '';
   _DrilloutMode _mode = _DrilloutMode.shiftChange;
   ActiveWorkflowMode _workflow = ActiveWorkflowMode.drillout;
 
@@ -223,11 +230,45 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         ? const ChokeSelection(type: ChokeTypes.none)
         : ChokeSelection(type: savedType, size64: savedSize.clamp(2, 64));
 
-    final combinedSetup = <String, dynamic>{
+    bool hasTankSetupData(Map<String, dynamic> source) {
+      final config = source['tankConfigurationV1'];
+      if (config is Map) return true;
+
+      bool hasNonEmpty(String key) =>
+          (source[key] as String? ?? '').trim().isNotEmpty;
+      bool hasTrue(String key) => source[key] == true;
+
+      return hasTrue('showFlowbackTank') ||
+          hasTrue('showWaterTank') ||
+          hasTrue('showWaterTank1') ||
+          hasTrue('showWaterTank2') ||
+          hasTrue('showSweepTank') ||
+          hasNonEmpty('primaryTank') ||
+          hasNonEmpty('flowbackTankType') ||
+          hasNonEmpty('waterTankType') ||
+          hasNonEmpty('waterTank1Type') ||
+          hasNonEmpty('waterTank2Type') ||
+          hasNonEmpty('sweepTankType') ||
+          hasNonEmpty('primaryGauge') ||
+          hasNonEmpty('flowbackGauge') ||
+          hasNonEmpty('water1Gauge') ||
+          hasNonEmpty('waterTank1Gauge') ||
+          hasNonEmpty('water2Gauge') ||
+          hasNonEmpty('waterTank2Gauge') ||
+          hasNonEmpty('sweepGauge') ||
+          hasNonEmpty('sweepTankGauge') ||
+          hasNonEmpty('flowback3Gauge') ||
+          hasNonEmpty('sweep2Gauge') ||
+          hasNonEmpty('sweep3Gauge');
+    }
+
+    final useJobTankSetup =
+        !hasTankSetupData(saved) && hasTankSetupData(jobSetup);
+    final tankSetupSource = <String, dynamic>{
       ...jobSetup,
       ...saved,
     };
-    final hasLegacyTankOverrides = saved.containsKey('primaryTank') ||
+    final savedHasLegacyTankOverrides = saved.containsKey('primaryTank') ||
         saved.containsKey('flowbackTankType') ||
         saved.containsKey('showWaterTank') ||
         saved.containsKey('showWaterTank1') ||
@@ -235,12 +276,22 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         saved.containsKey('showSweepTank') ||
         saved.containsKey('waterTankType') ||
         saved.containsKey('waterTank1Type') ||
-        saved.containsKey('waterTank2Type');
-    if (hasLegacyTankOverrides) {
-      combinedSetup.remove('tankConfigurationV1');
+        saved.containsKey('waterTank2Type') ||
+        saved.containsKey('sweepTankType') ||
+        saved.containsKey('flowbackGauge') ||
+        saved.containsKey('waterTank1Gauge') ||
+        saved.containsKey('waterTank2Gauge') ||
+        saved.containsKey('sweepTankGauge') ||
+        saved.containsKey('primaryGauge') ||
+        saved.containsKey('water1Gauge') ||
+        saved.containsKey('water2Gauge') ||
+        saved.containsKey('sweepGauge');
+    if (savedHasLegacyTankOverrides &&
+        !saved.containsKey('tankConfigurationV1')) {
+      tankSetupSource.remove('tankConfigurationV1');
     }
     final loadedTankConfig =
-        DrilloutTankConfiguration.fromDrilloutSetup(combinedSetup);
+        DrilloutTankConfiguration.fromDrilloutSetup(tankSetupSource);
 
     final savedHourRaw = saved['selectedHour'];
     final savedHour =
@@ -328,29 +379,40 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _notes.text = resolveValue('notes') as String? ?? '';
       _primaryGauge.text =
           loadedTankConfig.gaugesByRole[DrilloutTankCatalog.roleSandTank] ??
-              (resolveValue('primaryGauge') as String?) ??
-              (resolveValue('flowbackGauge') as String?) ??
+              (!useJobTankSetup
+                  ? (resolveValue('primaryGauge') as String?) ??
+                      (resolveValue('flowbackGauge') as String?)
+                  : null) ??
               '';
       _gas1Gauge.text = saved['gas1Gauge'] as String? ?? '';
       _gas2Gauge.text = saved['gas2Gauge'] as String? ?? '';
       _water1Gauge.text =
           loadedTankConfig.gaugesByRole[DrilloutTankCatalog.roleFlowback1] ??
-              (resolveValue('water1Gauge') as String?) ??
-              (resolveValue('waterTank1Gauge') as String?) ??
+              (!useJobTankSetup
+                  ? (resolveValue('water1Gauge') as String?) ??
+                      (resolveValue('waterTank1Gauge') as String?)
+                  : null) ??
               '';
       _water2Gauge.text =
           loadedTankConfig.gaugesByRole[DrilloutTankCatalog.roleFlowback2] ??
-              (saved['water2Gauge'] as String? ?? '');
-      _flowback3Gauge.text =
-          loadedTankConfig.gaugesByRole[DrilloutTankCatalog.roleFlowback3] ??
+              (!useJobTankSetup ? (saved['water2Gauge'] as String?) : null) ??
               '';
+      _flowback3Gauge.text = loadedTankConfig
+              .gaugesByRole[DrilloutTankCatalog.roleFlowback3] ??
+          (!useJobTankSetup ? (saved['flowback3Gauge'] as String?) : null) ??
+          '';
       _sweepGauge.text =
           loadedTankConfig.gaugesByRole[DrilloutTankCatalog.roleSweep1] ??
-              (saved['sweepGauge'] as String? ?? '');
+              (!useJobTankSetup ? (saved['sweepGauge'] as String?) : null) ??
+              '';
       _sweep2Gauge.text =
-          loadedTankConfig.gaugesByRole[DrilloutTankCatalog.roleSweep2] ?? '';
+          loadedTankConfig.gaugesByRole[DrilloutTankCatalog.roleSweep2] ??
+              (!useJobTankSetup ? (saved['sweep2Gauge'] as String?) : null) ??
+              '';
       _sweep3Gauge.text =
-          loadedTankConfig.gaugesByRole[DrilloutTankCatalog.roleSweep3] ?? '';
+          loadedTankConfig.gaugesByRole[DrilloutTankCatalog.roleSweep3] ??
+              (!useJobTankSetup ? (saved['sweep3Gauge'] as String?) : null) ??
+              '';
       _latestCalculatedRate = latestRate;
 
       if (_rate.text.trim().isEmpty && latestRate != null) {
@@ -898,9 +960,18 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     final confirmed = await _confirmTankRoleReduction(removedRoles);
     if (!confirmed) return;
 
+    for (final roleId in removedRoles) {
+      _gaugeControllerForRole(roleId)?.clear();
+    }
+
     setState(() {
+      final nextGauges = Map<String, String>.from(_tankConfig.gaugesByRole);
+      for (final roleId in removedRoles) {
+        nextGauges.remove(roleId);
+      }
       _tankConfig = _tankConfig.copyWith(
         flowbackTankTypes: _tankConfig.flowbackTankTypes.sublist(0, count),
+        gaugesByRole: nextGauges,
       );
     });
     _saveSetup();
@@ -924,9 +995,18 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
     final confirmed = await _confirmTankRoleReduction(removedRoles);
     if (!confirmed) return;
 
+    for (final roleId in removedRoles) {
+      _gaugeControllerForRole(roleId)?.clear();
+    }
+
     setState(() {
+      final nextGauges = Map<String, String>.from(_tankConfig.gaugesByRole);
+      for (final roleId in removedRoles) {
+        nextGauges.remove(roleId);
+      }
       _tankConfig = _tankConfig.copyWith(
         sweepTankTypes: _tankConfig.sweepTankTypes.sublist(0, count),
+        gaugesByRole: nextGauges,
       );
     });
     _saveSetup();
@@ -1060,7 +1140,6 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         ],
       ),
     );
-    await _logOperationsEvent(trigger: 'preview');
   }
 
   Future<void> _edit() async {
@@ -1095,10 +1174,104 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   Future<void> _copy() async {
     final text = _currentOutputText();
     await Clipboard.setData(ClipboardData(text: text));
-    await _logOperationsEvent(trigger: 'copy');
+    await _logOperationsEvent(trigger: 'copy', sharedVia: 'copyText');
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Shift change copied to clipboard.')),
+      const SnackBar(content: Text('Text copied and logged.')),
+    );
+  }
+
+  String _logEventKey({
+    required String trigger,
+    required String shareMethod,
+    required String text,
+  }) {
+    final jobId = _activeJob?.id ?? '';
+    return '$jobId|$trigger|$shareMethod|${_selectedTime.toIso8601String()}|${text.hashCode}';
+  }
+
+  Future<void> _message() async {
+    final text = _currentOutputText();
+    final smsUri = Uri.parse('sms:?body=${Uri.encodeComponent(text)}');
+    var launched = false;
+    if (await canLaunchUrl(smsUri)) {
+      launched = await launchUrl(smsUri);
+    }
+    if (!launched) {
+      await Share.share(text, subject: 'WellWerks $_modeLabel');
+      launched = true;
+    }
+    if (!launched) return;
+    await _logOperationsEvent(trigger: 'message', sharedVia: 'message');
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Message opened and logged.')),
+    );
+  }
+
+  Future<void> _showShareQrDialog(String qrValue) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Share $_modeLabel QR'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            QrImageView(
+              data: qrValue,
+              version: QrVersions.auto,
+              size: 280,
+              backgroundColor: Colors.white,
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Scan nearby or tap Share QR to send as an image.',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Done'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await _qrTransferService.shareQrPng(
+                qrValue: qrValue,
+                fileName:
+                    '${_workflowLabel.toLowerCase()}_${_modeLabel.toLowerCase()}_qr',
+                shareContext: dialogContext,
+                subject: 'WellWerks $_workflowLabel $_modeLabel QR',
+              );
+            },
+            child: const Text('Share QR'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _shareQr() async {
+    final activeJob = _activeJob;
+    if (activeJob == null) return;
+    final entry = await _logOperationsEvent(trigger: 'qr', sharedVia: 'qr');
+    if (entry == null) return;
+
+    final packageType = _operationsWorkflow == OperationsLogWorkflow.cleanout
+        ? OperationsLogPackageType.cleanoutReading
+        : OperationsLogPackageType.drilloutReading;
+    final package = await _operationsLogService.buildPackage(
+      packageType: packageType,
+      persistentJobId: activeJob.id,
+      entries: [entry],
+    );
+    final encoded = _operationsLogService.encodePackage(package);
+    if (!mounted) return;
+    await _showShareQrDialog(encoded);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('QR shared and logged.')),
     );
   }
 
@@ -1108,11 +1281,23 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         : OperationsLogWorkflow.drillout;
   }
 
-  Future<void> _logOperationsEvent({required String trigger}) async {
+  Future<OperationsLogEntry?> _logOperationsEvent({
+    required String trigger,
+    required String sharedVia,
+  }) async {
     final activeJob = _activeJob;
-    if (activeJob == null) return;
+    if (activeJob == null) return null;
 
     final text = _currentOutputText();
+    final dedupeKey = _logEventKey(
+      trigger: trigger,
+      shareMethod: sharedVia,
+      text: text,
+    );
+    if (_lastLoggedEventKey == dedupeKey) {
+      return null;
+    }
+
     final wellName = _wellName.text.trim().isEmpty
         ? activeJob.primaryWell
         : _wellName.text.trim();
@@ -1122,7 +1307,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         _mode == _DrilloutMode.update ? 'textUpdate' : 'shiftChange';
 
     try {
-      await _operationsLogService.appendEventEntry(
+      final entry = await _operationsLogService.appendEventEntry(
         workflow: _operationsWorkflow,
         jobId: activeJob.id,
         wellId: wellId,
@@ -1133,6 +1318,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         structuredData: <String, dynamic>{
           'source': 'drilloutShiftChangeScreen',
           'trigger': trigger,
+          'sharedVia': sharedVia,
           'workflow': _workflow.name,
           'mode': _modeStorageValue,
           'company': _customer.text.trim(),
@@ -1149,12 +1335,17 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         operationStage: _status ?? '',
         pumpRate: _rate.text.trim(),
         choke: formatChokeDisplay(_choke),
-        notes: _notes.text.trim(),
+        notes: _notes.text.trim().isEmpty
+            ? '$_modeLabel finalized via $sharedVia.'
+            : _notes.text.trim(),
       );
+      _lastLoggedEventKey = dedupeKey;
+      return entry;
     } catch (error, stackTrace) {
       debugPrint(
         '[DrilloutShiftChange] Failed to append Operations Log entry: $error\n$stackTrace',
       );
+      return null;
     }
   }
 
@@ -1464,7 +1655,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                         ListTile(
                           contentPadding: EdgeInsets.zero,
                           leading: const Icon(Icons.schedule),
-                          title: const Text('Shift Change Time'),
+                          title: const Text('Entry Time'),
                           subtitle: Text(_formatTime(_selectedTime)),
                           trailing: FilledButton(
                             onPressed: _pickTime,
@@ -1952,6 +2143,18 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                       onPressed: _copy,
                       icon: const Icon(Icons.copy),
                       label: Text('Copy $_modeLabel'),
+                    ),
+                    OutlinedButton.icon(
+                      key: const Key('drillout-action-message'),
+                      onPressed: _message,
+                      icon: const Icon(Icons.message_outlined),
+                      label: Text('Message $_modeLabel'),
+                    ),
+                    OutlinedButton.icon(
+                      key: const Key('drillout-action-share-qr'),
+                      onPressed: _shareQr,
+                      icon: const Icon(Icons.qr_code_2),
+                      label: Text('Share $_modeLabel QR'),
                     ),
                     OutlinedButton.icon(
                       key: const Key('drillout-action-clear-current'),

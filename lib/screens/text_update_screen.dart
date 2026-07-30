@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/job_setup.dart';
+import '../models/operations_log_entry.dart';
 import '../models/production_shift.dart';
 import '../services/app_settings_service.dart';
 import '../services/job_storage_service.dart';
@@ -11,8 +15,15 @@ import '../services/production_report_continuity_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/recovery_state_service.dart';
 import '../services/report_profile_service.dart';
+import '../services/wellwerks_qr_transfer_service.dart';
 import '../utils/flywheel_text_update_formatter.dart';
 import '../widgets/app_header.dart';
+import '../widgets/sts_date_time_selector_sheet.dart';
+
+enum _EntryTimeMode {
+  currentTime,
+  manualTime,
+}
 
 class TextUpdateScreen extends StatefulWidget {
   const TextUpdateScreen({super.key});
@@ -30,6 +41,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   final _profileDefaults = JobProfileDefaultsService();
   final _continuityService = const ProductionReportContinuityService();
   final _operationsLogService = OperationsLogService();
+  final _qrTransferService = const WellWerksQrTransferService();
 
   AppSettingsData _settings = const AppSettingsData(
     defaultGasUnit: AppSettingsDefaults.gasUnit,
@@ -44,6 +56,9 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   ReportLayoutProfile _layout = ReportProfileService().defaultProfile();
   bool _loading = true;
   int? _selectedHour;
+  _EntryTimeMode _entryTimeMode = _EntryTimeMode.currentTime;
+  DateTime? _manualEntryTime;
+  String _lastFinalizeLogKey = '';
 
   @override
   void initState() {
@@ -179,23 +194,6 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     return row.biocide.isEmpty ? '-' : row.biocide;
   }
 
-  String _fmtTimeLabel(String value) {
-    final raw = value.trim();
-    final parsed = _parseShiftTime(raw);
-    if (parsed == null) {
-      return raw.toUpperCase();
-    }
-    if (_settings.textTimeFormat == '24h') {
-      final hh = parsed.hour.toString().padLeft(2, '0');
-      final mm = parsed.minute.toString().padLeft(2, '0');
-      return '$hh:$mm';
-    }
-    final period = parsed.hour >= 12 ? 'PM' : 'AM';
-    final hour12 = parsed.hour % 12 == 0 ? 12 : parsed.hour % 12;
-    final mm = parsed.minute.toString().padLeft(2, '0');
-    return '$hour12:$mm $period';
-  }
-
   DateTime? _parseShiftTime(String value) {
     final upper = value.trim().toUpperCase();
     if (upper.isEmpty) return null;
@@ -265,19 +263,11 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
       _headerWellList.isEmpty ? '-' : _headerWellList.join(' / ');
 
   String get _headerUpdateTime {
-    final selected = _selectedRow;
-    if (selected != null) {
-      return '${_fmtTimeLabel(selected.time)} UPDATE';
-    }
-    final selectedHour = _selectedHour;
-    if (selectedHour != null && _activeJobRows.isNotEmpty) {
-      final row = _activeJobRows.firstWhere(
-        (item) => item.hourIndex == selectedHour,
-        orElse: () => _activeJobRows.first,
-      );
-      return '${_fmtTimeLabel(row.time)} UPDATE';
-    }
-    return 'UPDATE';
+    final entryTime = _entryTimeMode == _EntryTimeMode.currentTime
+        ? DateTime.now()
+        : (_manualEntryTime ?? DateTime.now());
+    final time = TimeOfDay.fromDateTime(entryTime).format(context);
+    return '$time UPDATE';
   }
 
   List<String> _buildHeaderLines() {
@@ -721,33 +711,70 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     return lines.join('\n');
   }
 
-  Future<void> _copy() async {
-    await Clipboard.setData(ClipboardData(text: _preview));
-    final selectedHour = _selectedRow?.hourIndex;
-    if (selectedHour != null) {
-      _shift = _shift.copyWith(selectedTextHour: selectedHour);
-      await _shiftService.saveActiveShift(_shift);
+  String _entryTimeModeLabel() {
+    if (_entryTimeMode == _EntryTimeMode.currentTime) {
+      return 'Current Time';
     }
-    await _logTextUpdateEvent();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Text Update copied.')),
+    return 'Manual Time';
+  }
+
+  DateTime _selectedEntryTime() {
+    if (_entryTimeMode == _EntryTimeMode.currentTime) {
+      return DateTime.now();
+    }
+    return _manualEntryTime ?? DateTime.now();
+  }
+
+  Future<void> _pickManualEntryTime() async {
+    final base = _manualEntryTime ?? DateTime.now();
+    final selection = await showStsDateTimeSelectorSheet(
+      context,
+      title: 'Entry Time',
+      helperText: 'Choose the operational time for this Text Update.',
+      readingTimestamp: base,
+      initialValue: base,
     );
+    if (!mounted || selection == null || selection.cleared) return;
+    if (selection.value == null) return;
+    setState(() {
+      _manualEntryTime = selection.value;
+    });
   }
 
-  OperationsLogWorkflow _operationsWorkflowForActiveJob() {
-    final workflow = (_activeJob?.workflow ?? '').trim().toLowerCase();
-    if (workflow == OperationsLogWorkflow.cleanout.name) {
-      return OperationsLogWorkflow.cleanout;
-    }
-    return OperationsLogWorkflow.drillout;
+  String _entryTimeDisplay() {
+    final value = _selectedEntryTime();
+    final date = MaterialLocalizations.of(context).formatCompactDate(value);
+    final time = TimeOfDay.fromDateTime(value).format(context);
+    return '$date $time';
   }
 
-  Future<void> _logTextUpdateEvent() async {
+  String _finalizeLogKey({
+    required String shareMethod,
+    required DateTime entryTime,
+    required String text,
+  }) {
+    final jobId = _activeJob?.id ?? '';
+    return '$jobId|$shareMethod|${entryTime.toIso8601String()}|${_selectedHour ?? -1}|${text.hashCode}';
+  }
+
+  Future<OperationsLogEntry?> _logTextUpdateEvent({
+    required String shareMethod,
+    required DateTime entryTime,
+  }) async {
     final activeJob = _activeJob;
-    if (activeJob == null) return;
+    if (activeJob == null) return null;
     final rows = _orderedSelectedRows;
-    if (rows.isEmpty) return;
+    if (rows.isEmpty) return null;
+
+    final generatedText = _preview;
+    final dedupeKey = _finalizeLogKey(
+      shareMethod: shareMethod,
+      entryTime: entryTime,
+      text: generatedText,
+    );
+    if (_lastFinalizeLogKey == dedupeKey) {
+      return null;
+    }
 
     final firstWell = rows.first.well.trim();
     final matchedWell = activeJob.resolvedWellEntries.where((entry) {
@@ -758,16 +785,19 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         : matchedWell.first.id;
 
     try {
-      await _operationsLogService.appendEventEntry(
+      final entry = await _operationsLogService.createLocalEntry(
         workflow: _operationsWorkflowForActiveJob(),
         jobId: activeJob.id,
         wellId: selectedWellId,
         wellName: firstWell.isEmpty ? activeJob.primaryWell : firstWell,
+        readingTimestamp: entryTime,
         entryType: 'textUpdate',
-        timestamp: DateTime.now(),
-        generatedText: _preview,
+        generatedText: generatedText,
         structuredData: <String, dynamic>{
           'source': 'textUpdateScreen',
+          'sharedVia': shareMethod,
+          'entryTime': entryTime.toIso8601String(),
+          'loggedAt': DateTime.now().toIso8601String(),
           'selectedHour': _selectedHour,
           'wellCount': rows.length,
           'rows': rows
@@ -784,13 +814,195 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
               )
               .toList(growable: false),
         },
-        notes: 'Text Update copied from Production workflow.',
+        notes:
+            'Text Update finalized via $shareMethod from Production workflow.',
       );
+      await _operationsLogService.upsertEntry(
+        workflow: _operationsWorkflowForActiveJob(),
+        jobId: activeJob.id,
+        entry: entry,
+      );
+      _lastFinalizeLogKey = dedupeKey;
+      return entry;
     } catch (error, stackTrace) {
       debugPrint(
         '[TextUpdate] Failed to append Operations Log entry: $error\n$stackTrace',
       );
+      return null;
     }
+  }
+
+  Future<void> _copyTextFinalize() async {
+    final entryTime = _selectedEntryTime();
+    final text = _preview;
+    await Clipboard.setData(ClipboardData(text: text));
+    final selectedHour = _selectedRow?.hourIndex;
+    if (selectedHour != null) {
+      _shift = _shift.copyWith(selectedTextHour: selectedHour);
+      await _shiftService.saveActiveShift(_shift);
+    }
+    await _logTextUpdateEvent(
+      shareMethod: 'copyText',
+      entryTime: entryTime,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Text copied and logged.')),
+    );
+  }
+
+  OperationsLogWorkflow _operationsWorkflowForActiveJob() {
+    final workflow = (_activeJob?.workflow ?? '').trim().toLowerCase();
+    if (workflow == OperationsLogWorkflow.cleanout.name) {
+      return OperationsLogWorkflow.cleanout;
+    }
+    return OperationsLogWorkflow.drillout;
+  }
+
+  Future<void> _messageFinalize() async {
+    final entryTime = _selectedEntryTime();
+    final text = _preview;
+    final smsUri = Uri.parse('sms:?body=${Uri.encodeComponent(text)}');
+    var launched = false;
+    if (await canLaunchUrl(smsUri)) {
+      launched = await launchUrl(smsUri);
+    }
+    if (!launched) {
+      await Share.share(text, subject: 'WellWerks Text Update');
+      launched = true;
+    }
+    if (!launched) return;
+    await _logTextUpdateEvent(
+      shareMethod: 'message',
+      entryTime: entryTime,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Message opened and logged.')),
+    );
+  }
+
+  Future<void> _showShareQrDialog(String qrValue) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Share QR'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            QrImageView(
+              data: qrValue,
+              version: QrVersions.auto,
+              size: 280,
+              backgroundColor: Colors.white,
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Scan this QR nearby or tap Share QR to send it as an image.',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Done'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              try {
+                await _qrTransferService.shareQrPng(
+                  qrValue: qrValue,
+                  fileName: 'text_update_qr',
+                  shareContext: dialogContext,
+                  subject: 'WellWerks Text Update QR',
+                );
+              } catch (error, stackTrace) {
+                debugPrint(
+                  '[TextUpdate] Failed to share QR image: $error\n$stackTrace',
+                );
+              }
+            },
+            child: const Text('Share QR'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _shareQrFinalize() async {
+    final activeJob = _activeJob;
+    if (activeJob == null) return;
+    final entryTime = _selectedEntryTime();
+    final entry = await _logTextUpdateEvent(
+      shareMethod: 'qr',
+      entryTime: entryTime,
+    );
+    if (entry == null) return;
+
+    final packageType =
+        _operationsWorkflowForActiveJob() == OperationsLogWorkflow.cleanout
+            ? OperationsLogPackageType.cleanoutReading
+            : OperationsLogPackageType.drilloutReading;
+    final package = await _operationsLogService.buildPackage(
+      packageType: packageType,
+      persistentJobId: activeJob.id,
+      entries: [entry],
+    );
+    final encoded = _operationsLogService.encodePackage(package);
+    if (!mounted) return;
+    await _showShareQrDialog(encoded);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('QR shared and logged.')),
+    );
+  }
+
+  Future<void> _openPreviewActions() async {
+    if (_activeJobRows.isEmpty) return;
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Text Update Preview'),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              _preview,
+              style: const TextStyle(height: 1.35, fontFamily: 'monospace'),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Close'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await _copyTextFinalize();
+            },
+            child: const Text('Copy Text'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await _messageFinalize();
+            },
+            child: const Text('Message'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await _shareQrFinalize();
+            },
+            child: const Text('Share QR'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _section(String title, List<Widget> children) {
@@ -915,6 +1127,44 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
               style: const TextStyle(color: Colors.white70),
             ),
             const SizedBox(height: 10),
+            SegmentedButton<_EntryTimeMode>(
+              segments: const [
+                ButtonSegment<_EntryTimeMode>(
+                  value: _EntryTimeMode.currentTime,
+                  label: Text('Current Time'),
+                ),
+                ButtonSegment<_EntryTimeMode>(
+                  value: _EntryTimeMode.manualTime,
+                  label: Text('Manual Time'),
+                ),
+              ],
+              selected: {_entryTimeMode},
+              onSelectionChanged: (selection) {
+                final mode = selection.first;
+                setState(() {
+                  _entryTimeMode = mode;
+                  if (_entryTimeMode == _EntryTimeMode.manualTime &&
+                      _manualEntryTime == null) {
+                    _manualEntryTime = DateTime.now();
+                  }
+                });
+              },
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.schedule),
+              title: const Text('Entry Time'),
+              subtitle:
+                  Text('${_entryTimeModeLabel()} • ${_entryTimeDisplay()}'),
+              trailing: _entryTimeMode == _EntryTimeMode.manualTime
+                  ? FilledButton(
+                      onPressed: _pickManualEntryTime,
+                      child: const Text('Select'),
+                    )
+                  : null,
+            ),
+            const SizedBox(height: 10),
             DropdownButtonFormField<int>(
               initialValue: selected?.hourIndex,
               decoration: const InputDecoration(labelText: 'Select Hour'),
@@ -958,9 +1208,9 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: _activeJobRows.isEmpty ? null : _copy,
-                icon: const Icon(Icons.copy),
-                label: const Text('Copy Text Update'),
+                onPressed: _activeJobRows.isEmpty ? null : _openPreviewActions,
+                icon: const Icon(Icons.preview),
+                label: const Text('Preview Actions'),
               ),
             ),
           ]),

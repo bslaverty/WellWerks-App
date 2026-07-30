@@ -1012,7 +1012,7 @@ void main() {
 
     expect(find.textContaining('Mach Energy'), findsWidgets);
     final copyTextButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Copy Text Update'),
+      find.widgetWithText(FilledButton, 'Preview Actions'),
     );
     expect(copyTextButton.onPressed, isNotNull);
   });

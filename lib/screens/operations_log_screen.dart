@@ -40,6 +40,13 @@ enum _OperationsEntryFilter {
   handoffs,
 }
 
+enum _ReportDataSource {
+  latest,
+  selected,
+  lastThree,
+  entireShift,
+}
+
 class _OperationsLogScreenState extends State<OperationsLogScreen> {
   final _jobStorage = JobStorageService();
   final _logService = OperationsLogService();
@@ -59,6 +66,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   bool _expandedTimeline = false;
   _OperationsEntryFilter _entryFilter = _OperationsEntryFilter.all;
   Set<String> _expandedEntryIds = <String>{};
+  String _lastFinalizedReportKey = '';
 
   @override
   void initState() {
@@ -132,7 +140,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   List<OperationsLogEntry> get _sortedEntries {
     final items = List<OperationsLogEntry>.from(_entries);
     items.sort((a, b) {
-      final compare = a.readingTimestamp.compareTo(b.readingTimestamp);
+      final compare = a.entryTime.compareTo(b.entryTime);
       return _newestFirst ? -compare : compare;
     });
     return items;
@@ -258,7 +266,12 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
 
   Future<void> _showEntryDetails(OperationsLogEntry entry) async {
     final rows = <Widget>[
-      Text('Time: ${entry.readingTimestamp.toLocal()}'),
+      Text('Entry Time: ${entry.entryTime.toLocal()}'),
+      Text('Logged At: ${entry.loggedAt.toLocal()}'),
+      if ((entry.structuredData['sharedVia'] as String? ?? '')
+          .trim()
+          .isNotEmpty)
+        Text('Shared Via: ${entry.structuredData['sharedVia']}'),
       if (_enabledFieldIds.contains('operationStage') &&
           entry.operationStage.isNotEmpty)
         Text('Operation: ${entry.operationStage}'),
@@ -288,11 +301,11 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       if (_enabledFieldIds.contains('estimatedSts') &&
           entry.estimatedSts != null)
         Text(
-          'Estimated STS: ${_formatFieldTime(entry.estimatedSts!, readingTimestamp: entry.readingTimestamp)}',
+          'Estimated STS: ${_formatFieldTime(entry.estimatedSts!, readingTimestamp: entry.entryTime)}',
         ),
       if (_enabledFieldIds.contains('sts') && entry.sts != null)
         Text(
-          'STS: ${_formatFieldTime(entry.sts!, readingTimestamp: entry.readingTimestamp)}',
+          'STS: ${_formatFieldTime(entry.sts!, readingTimestamp: entry.entryTime)}',
         ),
       if (entry.sweepInformation.isNotEmpty)
         Text('Legacy Sweep Information: ${entry.sweepInformation}'),
@@ -391,130 +404,224 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     }
   }
 
-  Future<void> _createPdfReport({
-    required String reportLabel,
-    required String fileLabel,
+  Future<_ReportDataSource?> _chooseReportDataSource() async {
+    return showModalBottomSheet<_ReportDataSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(
+              title: Text(
+                'Choose Data Source',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            ListTile(
+              title: const Text('Latest Reading'),
+              onTap: () =>
+                  Navigator.of(sheetContext).pop(_ReportDataSource.latest),
+            ),
+            ListTile(
+              title: const Text('Selected Reading'),
+              onTap: () =>
+                  Navigator.of(sheetContext).pop(_ReportDataSource.selected),
+            ),
+            ListTile(
+              title: const Text('Last 3 Readings'),
+              onTap: () =>
+                  Navigator.of(sheetContext).pop(_ReportDataSource.lastThree),
+            ),
+            ListTile(
+              title: const Text('Entire Shift'),
+              onTap: () =>
+                  Navigator.of(sheetContext).pop(_ReportDataSource.entireShift),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<OperationsLogEntry> _entriesForReportSource(_ReportDataSource source) {
+    final ordered = _sortedEntries;
+    if (ordered.isEmpty) return const <OperationsLogEntry>[];
+    switch (source) {
+      case _ReportDataSource.latest:
+        return [ordered.last];
+      case _ReportDataSource.selected:
+        final selected = ordered
+            .where((entry) => _selectedEntryIds.contains(entry.entryId))
+            .toList(growable: false);
+        if (selected.isNotEmpty) return selected;
+        return [ordered.last];
+      case _ReportDataSource.lastThree:
+        final start = ordered.length > 3 ? ordered.length - 3 : 0;
+        return ordered.sublist(start);
+      case _ReportDataSource.entireShift:
+        return ordered;
+    }
+  }
+
+  String _reportSourceLabel(_ReportDataSource source) {
+    switch (source) {
+      case _ReportDataSource.latest:
+        return 'latestReading';
+      case _ReportDataSource.selected:
+        return 'selectedReading';
+      case _ReportDataSource.lastThree:
+        return 'last3Readings';
+      case _ReportDataSource.entireShift:
+        return 'entireShift';
+    }
+  }
+
+  String _buildReportPreview({
+    required String reportType,
+    required List<OperationsLogEntry> entries,
+  }) {
+    if (entries.isEmpty) return 'No readings are available for this report.';
+    final lines = <String>[
+      reportType,
+      'Well: $_currentWellName',
+      '',
+    ];
+    for (final entry in entries) {
+      lines.add(
+        '${TimeOfDay.fromDateTime(entry.entryTime).format(context)} • ${entry.wellName} • ${_entryTypeLabel(entry)}',
+      );
+      final subtitle = _entrySubtitle(entry);
+      if (subtitle.trim().isNotEmpty) {
+        lines.add(subtitle);
+      }
+      if (entry.generatedText.trim().isNotEmpty) {
+        lines.add(entry.generatedText.trim());
+      }
+      lines.add('');
+    }
+    return lines.join('\n').trim();
+  }
+
+  Future<void> _finalizeReportAction({
+    required String reportType,
+    required String shareMethod,
+    required String reportText,
+    required _ReportDataSource source,
   }) async {
     final job = _activeJob;
-    if (job == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Set an active job before creating reports.')),
-      );
-      return;
-    }
-    if (_entries.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('At least one reading is required to create a report.'),
-        ),
-      );
-      return;
-    }
-    final exported = await _logService.exportShiftReportPdf(
+    if (job == null) return;
+    final key =
+        '$reportType|$shareMethod|${_reportSourceLabel(source)}|${reportText.hashCode}';
+    if (_lastFinalizedReportKey == key) return;
+
+    final latest = _sortedEntries.isEmpty ? null : _sortedEntries.last;
+    final entry = await _logService.appendEventEntry(
       workflow: _workflow,
-      jobName: job.padName,
-      wellName: _currentWellName,
-      stage: _currentStage,
-      entries: _entries,
-      enabledFieldIds: _enabledFieldIds,
-      baseFileName:
-          '${job.padName.isNotEmpty ? job.padName : _workflow.name}_$fileLabel',
+      jobId: job.id,
+      wellId: latest?.persistentWellId ??
+          (job.wellIds.isEmpty ? '' : job.wellIds.first),
+      wellName: latest?.wellName ?? _currentWellName,
+      entryType: reportType == 'Text Update' ? 'textUpdate' : 'shiftChange',
+      timestamp: DateTime.now(),
+      generatedText: reportText,
+      structuredData: <String, dynamic>{
+        'source': 'operationsLogCreateReport',
+        'reportType': reportType,
+        'sharedVia': shareMethod,
+        'dataSource': _reportSourceLabel(source),
+      },
+      operationStage: latest?.operationStage ?? _currentStage,
+      pumpRate: latest?.pumpRate ?? '',
+      choke: latest?.choke ?? '',
+      notes: '$reportType finalized via $shareMethod.',
     );
-    await Share.shareXFiles(
-      [XFile(exported.filePath)],
-      subject: '${widget.title} $reportLabel',
-      text: '${widget.title} $reportLabel for ${job.padName}.',
-    );
-  }
-
-  String _buildTextUpdate() {
-    if (_entries.isEmpty) return '';
-    final latest = _sortedEntries.last;
-    final parts = <String>[
-      '${_workflow.name.toUpperCase()} UPDATE',
-      _currentWellName,
-      TimeOfDay.fromDateTime(latest.readingTimestamp).format(context),
-    ];
-    if (latest.operationStage.trim().isNotEmpty) {
-      parts.add('Stage ${latest.operationStage.trim()}');
-    }
-    if (latest.pumpRate.trim().isNotEmpty) {
-      parts.add('Pump ${latest.pumpRate.trim()}');
-    }
-    if (latest.returnsRate.trim().isNotEmpty) {
-      parts.add('Returns ${latest.returnsRate.trim()}');
-    }
-    if (latest.casingPressure.trim().isNotEmpty) {
-      parts.add('CSG ${latest.casingPressure.trim()}');
-    }
-    if (latest.choke.trim().isNotEmpty) {
-      parts.add('Choke ${latest.choke.trim()}');
-    }
-    if (latest.notes.trim().isNotEmpty) {
-      parts.add(latest.notes.trim());
-    }
-    return parts.join(' • ');
-  }
-
-  Future<void> _copyTextUpdate() async {
-    if (_entries.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('At least one reading is required for a text update.'),
-        ),
-      );
-      return;
-    }
-    final text = _buildTextUpdate();
-    await Clipboard.setData(ClipboardData(text: text));
+    _lastFinalizedReportKey = key;
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Text update copied.')),
+      SnackBar(content: Text('$reportType $shareMethod logged.')),
     );
-  }
+    await _load();
 
-  Future<void> _shareQrHandoff() async {
-    final job = _activeJob;
-    if (job == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Set an active job before QR handoff.')),
-      );
-      return;
-    }
-    if (_entries.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('At least one reading is required for QR handoff.'),
-        ),
-      );
-      return;
-    }
-    try {
-      final packageType = _workflow == OperationsLogWorkflow.drillout
-          ? OperationsLogPackageType.drilloutReadingBatch
-          : OperationsLogPackageType.cleanoutReadingBatch;
+    if (shareMethod == 'qr') {
+      final packageType = _workflow == OperationsLogWorkflow.cleanout
+          ? OperationsLogPackageType.cleanoutReading
+          : OperationsLogPackageType.drilloutReading;
       final package = await _logService.buildPackage(
         packageType: packageType,
         persistentJobId: job.id,
-        entries: _entries,
+        entries: [entry],
       );
       final encoded = _logService.encodePackage(package);
-      await _showShareQrDialog(encoded, '${widget.title} QR Handoff');
-    } catch (error, stackTrace) {
-      debugPrint(
-        '[OperationsLog] Failed to create QR handoff: $error\n$stackTrace',
-      );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to create QR handoff.')),
-      );
+      await _showShareQrDialog(encoded, '$reportType QR');
     }
+  }
+
+  Future<void> _previewAndFinalizeReport({
+    required String reportType,
+    required List<OperationsLogEntry> entries,
+    required _ReportDataSource source,
+  }) async {
+    final reportText =
+        _buildReportPreview(reportType: reportType, entries: entries);
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('$reportType Preview'),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: SelectableText(reportText),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Close'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await Clipboard.setData(ClipboardData(text: reportText));
+              await _finalizeReportAction(
+                reportType: reportType,
+                shareMethod: 'copyText',
+                reportText: reportText,
+                source: source,
+              );
+            },
+            child: const Text('Copy Text'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await Share.share(reportText, subject: '$reportType - WellWerks');
+              await _finalizeReportAction(
+                reportType: reportType,
+                shareMethod: 'message',
+                reportText: reportText,
+                source: source,
+              );
+            },
+            child: const Text('Message'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await _finalizeReportAction(
+                reportType: reportType,
+                shareMethod: 'qr',
+                reportText: reportText,
+                source: source,
+              );
+            },
+            child: const Text('Share QR'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openCreateReportMenu() async {
@@ -559,28 +666,48 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     );
     if (choice == null) return;
 
+    if (_entries.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('At least one reading is required to create a report.'),
+        ),
+      );
+      return;
+    }
+
+    final source = await _chooseReportDataSource();
+    if (source == null) return;
+    final sourceEntries = _entriesForReportSource(source);
+
     switch (choice) {
       case 'shift':
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Use the Shift Change module for full shift report workflows.',
-            ),
-          ),
+        await _previewAndFinalizeReport(
+          reportType: 'Shift Change Report',
+          entries: sourceEntries,
+          source: source,
         );
         break;
       case 'text':
-        await _copyTextUpdate();
+        await _previewAndFinalizeReport(
+          reportType: 'Text Update',
+          entries: sourceEntries,
+          source: source,
+        );
         break;
       case 'operations':
-        await _createPdfReport(
-          reportLabel: 'Operations Report',
-          fileLabel: 'operations_report',
+        await _previewAndFinalizeReport(
+          reportType: 'Operations Report',
+          entries: sourceEntries,
+          source: source,
         );
         break;
       case 'handoff':
-        await _shareQrHandoff();
+        await _previewAndFinalizeReport(
+          reportType: 'QR Handoff',
+          entries: sourceEntries,
+          source: source,
+        );
         break;
     }
   }
@@ -752,12 +879,12 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     }
     if (entry.estimatedSts != null) {
       values.add(
-        'Est. STS ${_formatFieldTime(entry.estimatedSts!, readingTimestamp: entry.readingTimestamp)}',
+        'Est. STS ${_formatFieldTime(entry.estimatedSts!, readingTimestamp: entry.entryTime)}',
       );
     }
     if (entry.sts != null) {
       values.add(
-        'STS ${_formatFieldTime(entry.sts!, readingTimestamp: entry.readingTimestamp)}',
+        'STS ${_formatFieldTime(entry.sts!, readingTimestamp: entry.entryTime)}',
       );
     }
     if (values.isEmpty) return 'No key metrics';
@@ -885,7 +1012,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
               title: const Text('Import Preview'),
               content: Text(
                 package.entries.length == 1
-                    ? '1 reading from ${package.workflow} for ${job.padName}.\n${package.entries.first.wellName} at ${package.entries.first.readingTimestamp.toLocal()}'
+                    ? '1 reading from ${package.workflow} for ${job.padName}.\n${package.entries.first.wellName} at ${package.entries.first.entryTime.toLocal()}'
                     : '${package.entries.length} readings from ${package.workflow} for ${job.padName}.',
               ),
               actions: [
@@ -1092,12 +1219,12 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     if (_enabledFieldIds.contains('estimatedSts') &&
         entry.estimatedSts != null) {
       parts.add(
-        'Est. STS ${_formatFieldTime(entry.estimatedSts!, readingTimestamp: entry.readingTimestamp)}',
+        'Est. STS ${_formatFieldTime(entry.estimatedSts!, readingTimestamp: entry.entryTime)}',
       );
     }
     if (_enabledFieldIds.contains('sts') && entry.sts != null) {
       parts.add(
-        'STS ${_formatFieldTime(entry.sts!, readingTimestamp: entry.readingTimestamp)}',
+        'STS ${_formatFieldTime(entry.sts!, readingTimestamp: entry.entryTime)}',
       );
     }
     if (entry.sweepInformation.isNotEmpty) {
@@ -1290,7 +1417,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            '${TimeOfDay.fromDateTime(entry.readingTimestamp).format(context)} • ${_entryTypeLabel(entry)}',
+                                            '${TimeOfDay.fromDateTime(entry.entryTime).format(context)} • ${_entryTypeLabel(entry)}',
                                             style: const TextStyle(
                                               fontWeight: FontWeight.w800,
                                             ),

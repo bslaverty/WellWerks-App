@@ -105,6 +105,10 @@ class OperationsLogEntry {
   final String downtime;
   final String notes;
 
+  // Build 197 naming alignment.
+  DateTime get entryTime => readingTimestamp;
+  DateTime get loggedAt => createdAt;
+
   OperationsLogEntry copyWith({
     String? entryId,
     String? packageCompatibleEntryId,
@@ -231,7 +235,9 @@ class OperationsLogEntry {
         'persistentWellId': persistentWellId,
         'wellName': wellName,
         'readingTimestamp': readingTimestamp.toIso8601String(),
+        'entryTime': entryTime.toIso8601String(),
         'createdAt': createdAt.toIso8601String(),
+        'loggedAt': loggedAt.toIso8601String(),
         'lastModifiedAt': lastModifiedAt.toIso8601String(),
         'sourceBuildNumber': sourceBuildNumber,
         'sourceOperatorId': sourceOperatorId,
@@ -280,8 +286,14 @@ class OperationsLogEntry {
       };
 
   factory OperationsLogEntry.fromJson(Map<String, dynamic> json) {
-    DateTime parseDate(String key) {
-      return DateTime.tryParse(json[key] as String? ?? '') ?? DateTime.now();
+    DateTime parseDate(String key, {String? fallbackKey}) {
+      final primary = DateTime.tryParse(json[key] as String? ?? '');
+      if (primary != null) return primary;
+      if (fallbackKey != null) {
+        final fallback = DateTime.tryParse(json[fallbackKey] as String? ?? '');
+        if (fallback != null) return fallback;
+      }
+      return DateTime.now();
     }
 
     return OperationsLogEntry(
@@ -292,8 +304,8 @@ class OperationsLogEntry {
       persistentJobId: (json['persistentJobId'] as String? ?? '').trim(),
       persistentWellId: (json['persistentWellId'] as String? ?? '').trim(),
       wellName: (json['wellName'] as String? ?? '').trim(),
-      readingTimestamp: parseDate('readingTimestamp'),
-      createdAt: parseDate('createdAt'),
+      readingTimestamp: parseDate('entryTime', fallbackKey: 'readingTimestamp'),
+      createdAt: parseDate('loggedAt', fallbackKey: 'createdAt'),
       lastModifiedAt: parseDate('lastModifiedAt'),
       sourceBuildNumber: (json['sourceBuildNumber'] as String? ?? '').trim(),
       sourceOperatorId: (json['sourceOperatorId'] as String? ?? '').trim(),

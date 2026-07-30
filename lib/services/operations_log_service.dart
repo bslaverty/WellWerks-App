@@ -157,7 +157,7 @@ class OperationsLogService {
           .map((item) => OperationsLogEntry.fromJson(
               Map<String, dynamic>.from(item as Map)))
           .toList()
-        ..sort((a, b) => a.readingTimestamp.compareTo(b.readingTimestamp));
+        ..sort((a, b) => a.entryTime.compareTo(b.entryTime));
     } catch (_) {
       return <OperationsLogEntry>[];
     }
@@ -170,7 +170,7 @@ class OperationsLogService {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final sorted = List<OperationsLogEntry>.from(entries)
-      ..sort((a, b) => a.readingTimestamp.compareTo(b.readingTimestamp));
+      ..sort((a, b) => a.entryTime.compareTo(b.entryTime));
     await prefs.setString(
       storageKey(workflow, jobId),
       jsonEncode(sorted.map((entry) => entry.toJson()).toList()),
@@ -372,7 +372,7 @@ class OperationsLogService {
     final packageInfo = await PackageInfo.fromPlatform();
     final profile = await _operatorProfileService.load();
     final sortedEntries = List<OperationsLogEntry>.from(entries)
-      ..sort((a, b) => a.readingTimestamp.compareTo(b.readingTimestamp));
+      ..sort((a, b) => a.entryTime.compareTo(b.entryTime));
     final visibleFieldIds = (enabledFieldIds ??
             DrilloutCleanoutFieldDefinitions.defaultEnabledFieldIds)
         .toSet();
@@ -467,7 +467,7 @@ class OperationsLogService {
                   pw.TableRow(
                     children: [
                       _tableCell(DateFormat('h:mm a')
-                          .format(entry.readingTimestamp.toLocal())),
+                          .format(entry.entryTime.toLocal())),
                       _tableCell(entry.wellName),
                       for (final column in readingColumns)
                         _tableCell(column.valueBuilder(entry)),
@@ -589,7 +589,7 @@ class OperationsLogService {
     }
 
     final merged = [...existingEntries, ...added]
-      ..sort((a, b) => a.readingTimestamp.compareTo(b.readingTimestamp));
+      ..sort((a, b) => a.entryTime.compareTo(b.entryTime));
     await saveEntries(workflow: workflow, jobId: jobId, entries: merged);
     await _appendHistory(package: package, imported: added.length);
     return OperationsLogImportResult(
