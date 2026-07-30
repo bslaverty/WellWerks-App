@@ -17,8 +17,8 @@ import '../services/operations_log_service.dart';
 import '../services/rate_timer_notification_service.dart';
 import '../services/wellwerks_qr_transfer_service.dart';
 import '../widgets/app_header.dart';
-import '../widgets/sts_date_time_selector_sheet.dart';
 import 'operations_log_entry_form_screen.dart';
+import 'operations_log_sts_entry_screen.dart';
 import 'wellwerks_qr_scanner_screen.dart';
 
 class OperationsLogScreen extends StatefulWidget {
@@ -376,6 +376,160 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
         ),
       );
     }
+  }
+
+  OperationsLogEntry? _oldestOpenEstimatedStsEntry() {
+    final open = _sortedEntries
+        .where((entry) => entry.estimatedSts != null && entry.sts == null)
+        .toList(growable: false)
+      ..sort((a, b) {
+        final byEstimated = a.estimatedSts!.compareTo(b.estimatedSts!);
+        if (byEstimated != 0) return byEstimated;
+        return a.entryTime.compareTo(b.entryTime);
+      });
+    if (open.isEmpty) return null;
+    return open.first;
+  }
+
+  double? _parseNumericValue(String rawValue) {
+    final trimmed = rawValue.trim();
+    if (trimmed.isEmpty) return null;
+    final match = RegExp(r'-?\d+(?:\.\d+)?').firstMatch(trimmed);
+    if (match == null) return null;
+    return double.tryParse(match.group(0) ?? '');
+  }
+
+  double? _mostRecentAverageReturnRate() {
+    for (final item in _sortedEntries.reversed) {
+      final parsed = _parseNumericValue(item.returnsRate);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  double? _averageReturnRateForStsEntry(OperationsLogEntry entry) {
+    final fromStructured = entry.structuredData['stsAverageReturnRate'];
+    if (fromStructured is num) return fromStructured.toDouble();
+    final parsed = _parseNumericValue(entry.returnsRate);
+    if (parsed != null) return parsed;
+    return _mostRecentAverageReturnRate();
+  }
+
+  double? _estimatedStsDurationMinutes(OperationsLogEntry entry) {
+    if (entry.estimatedSts == null) return null;
+    final seconds = entry.estimatedSts!.difference(entry.entryTime).inSeconds;
+    if (seconds <= 0) return null;
+    return seconds / 60;
+  }
+
+  double? _actualStsDurationMinutes(
+    OperationsLogEntry entry,
+    DateTime actualSts,
+  ) {
+    final seconds = actualSts.difference(entry.entryTime).inSeconds;
+    if (seconds <= 0) return null;
+    return seconds / 60;
+  }
+
+  double? _storedAdjustedAverageReturnRate(OperationsLogEntry entry) {
+    final raw = entry.structuredData['stsAdjustedAverageReturnRate'];
+    if (raw is num) return raw.toDouble();
+    return null;
+  }
+
+  Future<void> _completeStsEntry({
+    required OperationsLogEntry entry,
+    required DateTime actualSts,
+    required String notes,
+    required double? averageReturnRate,
+  }) async {
+    final job = _activeJob;
+    if (job == null) return;
+
+    final estimatedDuration = _estimatedStsDurationMinutes(entry);
+    final actualDuration = _actualStsDurationMinutes(entry, actualSts);
+    double? adjusted;
+    if (averageReturnRate != null &&
+        estimatedDuration != null &&
+        actualDuration != null &&
+        actualDuration > 0) {
+      adjusted = averageReturnRate * (estimatedDuration / actualDuration);
+    }
+
+    final structured = Map<String, dynamic>.from(entry.structuredData);
+    if (averageReturnRate != null) {
+      structured['stsAverageReturnRate'] = averageReturnRate;
+    }
+    if (estimatedDuration != null) {
+      structured['stsEstimatedDurationMinutes'] = estimatedDuration;
+    }
+    if (actualDuration != null) {
+      structured['stsActualDurationMinutes'] = actualDuration;
+    }
+    if (adjusted != null) {
+      structured['stsAdjustedAverageReturnRate'] = adjusted;
+    }
+
+    var updated = entry.copyWith(
+      sts: actualSts,
+      notes: notes.trim(),
+      structuredData: structured,
+    );
+
+    final sweepId = entry.sweepId.trim();
+    if (sweepId.isNotEmpty) {
+      try {
+        await _stsReminderService.cancelBySweepId(sweepId);
+      } catch (_) {
+        // Keep save resilient when notification services are unavailable.
+      }
+      updated = updated.copyWith(
+        estimatedStsNotificationStatus: 'actualStsRecorded',
+        estimatedStsCancellationReason: 'actualStsRecorded',
+      );
+    }
+
+    await _logService.upsertEntry(
+      workflow: _workflow,
+      jobId: job.id,
+      entry: updated,
+    );
+    await _load();
+  }
+
+  Future<void> _addSts() async {
+    final target = _oldestOpenEstimatedStsEntry();
+    if (target == null || target.estimatedSts == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No pending STS entries are available.')),
+      );
+      return;
+    }
+
+    final pumpRate = target.pumpRate.trim().isEmpty
+        ? _latestKnownValue((entry) => entry.pumpRate)
+        : target.pumpRate.trim();
+    final averageReturns = _averageReturnRateForStsEntry(target);
+    final result = await Navigator.of(context).push<OperationsLogStsEntryResult>(
+      MaterialPageRoute(
+        builder: (_) => OperationsLogStsEntryScreen(
+          estimatedSts: target.estimatedSts!,
+          pumpRate: pumpRate,
+          averageReturnRate: averageReturns,
+          initialActualSts: DateTime.now(),
+          initialNotes: target.notes,
+        ),
+      ),
+    );
+    if (result == null) return;
+
+    await _completeStsEntry(
+      entry: target,
+      actualSts: result.actualSts,
+      notes: result.notes,
+      averageReturnRate: averageReturns,
+    );
   }
 
   Future<void> _showEntryDetails(OperationsLogEntry entry) async {
@@ -884,81 +1038,33 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   }
 
   Future<void> _recordStsForEntry(OperationsLogEntry entry) async {
-    final selection = await showStsDateTimeSelectorSheet(
-      context,
-      title: 'Record STS',
-      helperText: 'Set actual sweep-to-surface time.',
-      readingTimestamp: entry.entryTime,
-      initialValue: entry.sts ?? DateTime.now(),
+    if (entry.estimatedSts == null) return;
+    final averageReturns = _averageReturnRateForStsEntry(entry);
+    final result = await Navigator.of(context).push<OperationsLogStsEntryResult>(
+      MaterialPageRoute(
+        builder: (_) => OperationsLogStsEntryScreen(
+          estimatedSts: entry.estimatedSts!,
+          pumpRate: entry.pumpRate,
+          averageReturnRate: averageReturns,
+          initialActualSts: entry.sts ?? DateTime.now(),
+          initialNotes: entry.notes,
+        ),
+      ),
     );
-    if (selection == null || selection.cleared || selection.value == null) {
-      return;
-    }
-    if (!mounted) return;
-
-    final notesController = TextEditingController(text: entry.notes);
-    try {
-      final confirmed = await showDialog<bool>(
-            context: context,
-            builder: (dialogContext) => AlertDialog(
-              title: const Text('STS Notes (Optional)'),
-              content: TextField(
-                controller: notesController,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Notes',
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(true),
-                  child: const Text('Save'),
-                ),
-              ],
-            ),
-          ) ??
-          false;
-      if (!confirmed) return;
-
-      final job = _activeJob;
-      if (job == null) return;
-
-      var updated = entry.copyWith(
-        sts: selection.value,
-        notes: notesController.text.trim(),
-      );
-
-      final sweepId = entry.sweepId.trim();
-      if (sweepId.isNotEmpty) {
-        try {
-          await _stsReminderService.cancelBySweepId(sweepId);
-        } catch (_) {
-          // Keep save resilient when notification services are unavailable.
-        }
-        updated = updated.copyWith(
-          estimatedStsNotificationStatus: 'actualStsRecorded',
-          estimatedStsCancellationReason: 'actualStsRecorded',
-        );
-      }
-
-      await _logService.upsertEntry(
-        workflow: _workflow,
-        jobId: job.id,
-        entry: updated,
-      );
-      await _load();
-    } finally {
-      notesController.dispose();
-    }
+    if (result == null) return;
+    await _completeStsEntry(
+      entry: entry,
+      actualSts: result.actualSts,
+      notes: result.notes,
+      averageReturnRate: averageReturns,
+    );
   }
 
   Future<void> _editEntry(OperationsLogEntry entry) async {
     final type = _entryTypeValue(entry);
-    if (entry.estimatedSts != null || entry.sts != null || type == 'stsReached') {
+    if (entry.estimatedSts != null ||
+        entry.sts != null ||
+        type == 'stsReached') {
       await _recordStsForEntry(entry);
       return;
     }
@@ -1440,7 +1546,8 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     if (_enabledFieldIds.contains('gas') && entry.gas.isNotEmpty) {
       parts.add('Gas ${entry.gas}');
     }
-    if (_enabledFieldIds.contains('waterHauled') && entry.waterHauled.isNotEmpty) {
+    if (_enabledFieldIds.contains('waterHauled') &&
+        entry.waterHauled.isNotEmpty) {
       parts.add('Water ${entry.waterHauled}');
     }
     if (_enabledFieldIds.contains('oilHauled') && entry.oilHauled.isNotEmpty) {
@@ -1491,7 +1598,9 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   }
 
   List<({String label, String key})> _dataColumns() {
-    final columns = <({String label, String key})>[(label: 'Time', key: 'time')];
+    final columns = <({String label, String key})>[
+      (label: 'Time', key: 'time')
+    ];
 
     void addIfEnabled(String fieldId, String label, String key) {
       if (_enabledFieldIds.contains(fieldId)) {
@@ -1686,8 +1795,8 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       if (shift.isNotEmpty) {
         lines.add('Shift ${shift[0].toUpperCase()}${shift.substring(1)}');
       }
-      final wells = (entry.structuredData['wellsIncluded'] as String? ?? '')
-          .trim();
+      final wells =
+          (entry.structuredData['wellsIncluded'] as String? ?? '').trim();
       if (wells.isNotEmpty) {
         lines.add('Wells $wells');
       } else if (entry.wellName.trim().isNotEmpty) {
@@ -1696,7 +1805,9 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       if (lines.isNotEmpty) return lines;
     }
 
-    if (entry.estimatedSts != null || entry.sts != null || type == 'stsReached') {
+    if (entry.estimatedSts != null ||
+        entry.sts != null ||
+        type == 'stsReached') {
       final lines = <String>[];
       if (entry.estimatedSts != null) {
         lines.add(
@@ -1758,7 +1869,9 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
         ? ''
         : 'Stage ${entry.operationStage.trim()}');
     add(entry.choke.trim().isEmpty ? '' : 'Choke ${entry.choke.trim()}');
-    add(_manifoldPsiValue(entry).isEmpty ? '' : 'Manifold ${_manifoldPsiValue(entry)}');
+    add(_manifoldPsiValue(entry).isEmpty
+        ? ''
+        : 'Manifold ${_manifoldPsiValue(entry)}');
     if (entry.estimatedSts != null && entry.sts == null) {
       add(_liveStsLabel(entry));
     }
@@ -1907,7 +2020,8 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     }
   }
 
-  List<OperationsLogEntry> _dataEntries(List<({String label, String key})> columns) {
+  List<OperationsLogEntry> _dataEntries(
+      List<({String label, String key})> columns) {
     final selectedKeys = columns
         .where((column) => column.key != 'time')
         .map((column) => column.key)
@@ -1956,7 +2070,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
           break;
         case _FocusCategory.pressures:
           value =
-            'M ${_manifoldPsiValue(entry)} | C ${entry.casingPressure} | P ${_isLegacyManifoldFallback(entry) ? '' : entry.pumpPressure}';
+              'M ${_manifoldPsiValue(entry)} | C ${entry.casingPressure} | P ${_isLegacyManifoldFallback(entry) ? '' : entry.pumpPressure}';
           break;
         case _FocusCategory.tanks:
           value = entry.tankLevel;
@@ -2177,7 +2291,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   Widget _foundationCards() {
     final latest = _sortedEntries.isEmpty ? null : _sortedEntries.last;
     final latestKnownManifold =
-      _latestKnownValue((entry) => _manifoldPsiValue(entry));
+        _latestKnownValue((entry) => _manifoldPsiValue(entry));
     final latestKnownChoke = _latestKnownValue((entry) => entry.choke);
     final latestKnownReturns = _latestKnownValue((entry) => entry.returnsRate);
     final latestTextUpdate = _sortedEntries.reversed
@@ -2295,7 +2409,8 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
         (label: 'Returns', value: _returnsDisplay(entry.returnsRate)),
       if (_manifoldPsiValue(entry).isNotEmpty)
         (label: 'Manifold', value: _manifoldPsiValue(entry)),
-      if (entry.pumpPressure.trim().isNotEmpty && !_isLegacyManifoldFallback(entry))
+      if (entry.pumpPressure.trim().isNotEmpty &&
+          !_isLegacyManifoldFallback(entry))
         (label: 'Pump PSI', value: entry.pumpPressure.trim()),
       if (entry.casingPressure.trim().isNotEmpty)
         (label: 'Casing', value: entry.casingPressure.trim()),
@@ -2447,8 +2562,8 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Text(
                       line,
-                      style: const TextStyle(
-                          fontSize: 15, color: Colors.white70),
+                      style:
+                          const TextStyle(fontSize: 15, color: Colors.white70),
                     ),
                   ),
                 if (entry.estimatedSts != null && entry.sts == null)
@@ -2498,6 +2613,14 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                                           style: TextStyle(
                                             color: _stsStatusColor(entry),
                                             fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          'Adj Avg ${_storedAdjustedAverageReturnRate(entry)?.toStringAsFixed(2) ?? '--'} bbl/min',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
                                           ),
                                         ),
                                       ),
@@ -2610,7 +2733,8 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                     },
                     items: [
                       for (final col in sortableColumns)
-                        DropdownMenuItem(value: col.key, child: Text(col.label)),
+                        DropdownMenuItem(
+                            value: col.key, child: Text(col.label)),
                     ],
                   ),
               ],
@@ -2619,29 +2743,30 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
             if (rows.isEmpty)
               const Text('No rows match selected fields and current filters.')
             else
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                headingRowColor: WidgetStateProperty.all(_wwPanelSoft),
-                columns: [
-                  for (final col in columns) DataColumn(label: Text(col.label))
-                ],
-                rows: [
-                  for (final entry in rows)
-                    DataRow(
-                      onSelectChanged: (_) => _showEntryDetails(entry),
-                      cells: [
-                        for (final col in columns)
-                          DataCell(
-                            Text(
-                              _valueForColumn(entry, col.key),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  headingRowColor: WidgetStateProperty.all(_wwPanelSoft),
+                  columns: [
+                    for (final col in columns)
+                      DataColumn(label: Text(col.label))
+                  ],
+                  rows: [
+                    for (final entry in rows)
+                      DataRow(
+                        onSelectChanged: (_) => _showEntryDetails(entry),
+                        cells: [
+                          for (final col in columns)
+                            DataCell(
+                              Text(
+                                _valueForColumn(entry, col.key),
+                              ),
                             ),
-                          ),
-                      ],
-                    ),
-                ],
+                        ],
+                      ),
+                  ],
+                ),
               ),
-            ),
           ],
         );
       case _OperationsLogViewMode.focus:
@@ -2984,41 +3109,53 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
         ),
         child: SafeArea(
           top: false,
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _lastUpdatedText(),
-                      style:
-                          const TextStyle(fontSize: 12, color: Colors.white70),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${_visibleEntries.length} entries',
-                      style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w800),
-                    ),
-                  ],
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '${_lastUpdatedText()} • ${_visibleEntries.length} entries',
+                  style: const TextStyle(fontSize: 12, color: Colors.white70),
                 ),
               ),
-              const SizedBox(width: 10),
-              SizedBox(
-                height: 52,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _wwGold,
-                    foregroundColor: Colors.black,
-                    textStyle: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w900),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _wwGold,
+                          foregroundColor: Colors.black,
+                          textStyle: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w900),
+                        ),
+                        onPressed: _addReading,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Reading'),
+                      ),
+                    ),
                   ),
-                  onPressed: _addReading,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Reading'),
-                ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _wwGold,
+                          foregroundColor: Colors.black,
+                          textStyle: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w900),
+                        ),
+                        onPressed: _addSts,
+                        icon: const Icon(Icons.timer_outlined),
+                        label: const Text('Add STS'),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
