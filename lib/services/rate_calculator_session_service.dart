@@ -1,6 +1,39 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class RateCalculatorSessionLogEntry {
+  const RateCalculatorSessionLogEntry({
+    required this.timestampMs,
+    required this.rateValue,
+    required this.rateUnit,
+    required this.selected,
+  });
+
+  final int timestampMs;
+  final double rateValue;
+  final String rateUnit;
+  final bool selected;
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'timestampMs': timestampMs,
+      'rateValue': rateValue,
+      'rateUnit': rateUnit,
+      'selected': selected,
+    };
+  }
+
+  factory RateCalculatorSessionLogEntry.fromJson(Map<String, dynamic> map) {
+    return RateCalculatorSessionLogEntry(
+      timestampMs: (map['timestampMs'] as num?)?.toInt() ?? 0,
+      rateValue: (map['rateValue'] as num?)?.toDouble() ?? 0,
+      rateUnit: (map['rateUnit'] as String? ?? '').trim(),
+      selected: map['selected'] as bool? ?? true,
+    );
+  }
+}
 
 class RateCalculatorSession {
   const RateCalculatorSession({
@@ -25,6 +58,7 @@ class RateCalculatorSession {
     required this.timerStartedAtMs,
     required this.timerEndsAtMs,
     required this.timerDurationSeconds,
+    required this.rateLogEntries,
     required this.updatedAtMs,
   });
 
@@ -49,16 +83,20 @@ class RateCalculatorSession {
   final int? timerStartedAtMs;
   final int? timerEndsAtMs;
   final int? timerDurationSeconds;
+  final List<RateCalculatorSessionLogEntry> rateLogEntries;
   final int updatedAtMs;
 
   bool get hasUserData {
     return startGauge.trim().isNotEmpty ||
         endGauge.trim().isNotEmpty ||
-        (minutes.trim().isNotEmpty && minutes.trim() != '0') ||
-        factor.trim().isNotEmpty ||
         bblPerMin != null ||
         bblPerHr != null ||
         bblPerDay != null ||
+        rateLogEntries.isNotEmpty ||
+        rateLogEnabled ||
+        rateLogExpanded ||
+        (error?.trim().isNotEmpty ?? false) ||
+        timerFinished ||
         timerStartedAtMs != null ||
         timerEndsAtMs != null ||
         remainingSeconds > 0;
@@ -87,6 +125,8 @@ class RateCalculatorSession {
       'timerStartedAtMs': timerStartedAtMs,
       'timerEndsAtMs': timerEndsAtMs,
       'timerDurationSeconds': timerDurationSeconds,
+      'rateLogEntries':
+          rateLogEntries.map((entry) => entry.toJson()).toList(growable: false),
       'updatedAtMs': updatedAtMs,
     };
   }
@@ -95,6 +135,24 @@ class RateCalculatorSession {
     double? asDouble(dynamic value) {
       if (value is num) return value.toDouble();
       return null;
+    }
+
+    List<RateCalculatorSessionLogEntry> parseRateLogEntries(dynamic raw) {
+      if (raw is! List) return const <RateCalculatorSessionLogEntry>[];
+      final entries = <RateCalculatorSessionLogEntry>[];
+      for (final item in raw) {
+        if (item is! Map) continue;
+        final mapped = Map<String, dynamic>.from(item);
+        final entry = RateCalculatorSessionLogEntry.fromJson(mapped);
+        if (entry.timestampMs <= 0 ||
+            entry.rateUnit.isEmpty ||
+            !entry.rateValue.isFinite) {
+          continue;
+        }
+        entries.add(entry);
+      }
+      entries.sort((a, b) => b.timestampMs.compareTo(a.timestampMs));
+      return entries;
     }
 
     return RateCalculatorSession(
@@ -119,6 +177,7 @@ class RateCalculatorSession {
       timerStartedAtMs: (map['timerStartedAtMs'] as num?)?.toInt(),
       timerEndsAtMs: (map['timerEndsAtMs'] as num?)?.toInt(),
       timerDurationSeconds: (map['timerDurationSeconds'] as num?)?.toInt(),
+      rateLogEntries: parseRateLogEntries(map['rateLogEntries']),
       updatedAtMs: (map['updatedAtMs'] as num?)?.toInt() ?? 0,
     );
   }
@@ -219,5 +278,12 @@ class RateCalculatorSessionService {
     });
     await prefs.setString(_sessionsKey, jsonEncode(payload));
     await prefs.setString(_activeSessionKey, _activeCalculatorId);
+  }
+
+  @visibleForTesting
+  void resetForTesting() {
+    _initialized = false;
+    _activeCalculatorId = '';
+    _sessionsByCalculatorId.clear();
   }
 }

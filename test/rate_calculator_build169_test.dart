@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wellwerks/screens/rate_calculator_screen.dart';
+import 'package:wellwerks/services/rate_calculator_session_service.dart';
 
 Future<void> _pumpRateCalculator(
   WidgetTester tester,
   RateCalculatorConfig config,
 ) async {
   SharedPreferences.setMockInitialValues(<String, Object>{});
+  RateCalculatorSessionService.instance.resetForTesting();
   await tester.binding.setSurfaceSize(const Size(1280, 1800));
   await tester.pumpWidget(
     MaterialApp(home: RateCalculatorScreen(config: config)),

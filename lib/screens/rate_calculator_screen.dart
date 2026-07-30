@@ -162,6 +162,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   double? bblPerHr;
   double? bblPerDay;
   String? error;
+  bool _initializing = true;
 
   @override
   void initState() {
@@ -173,14 +174,84 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     endGauge.addListener(_handleSessionFieldChanged);
     factor.addListener(_handleSessionFieldChanged);
     minutes.addListener(_handleMinutesChanged);
-    _loadSavedTimerMinutes().then((_) async {
-      await _sessionService.ensureInitialized();
-      await _restoreCalculatorSession();
-      await _applyPendingNotificationAction();
-      await _restoreTimerState();
+    _initializeSession();
+  }
+
+  Future<void> _initializeSession() async {
+    await _sessionService.ensureInitialized();
+
+    final redirected = await _redirectToActiveCalculatorIfNeeded();
+    if (redirected) {
+      if (mounted) {
+        setState(() => _initializing = false);
+      }
+      return;
+    }
+
+    final restored = await _restoreCalculatorSession();
+    if (!restored) {
+      await _loadSavedTimerMinutes();
+      await _loadSavedDisplayUnit();
+      await _loadRateLogState();
+    } else {
+      // Build 205 used separate persistence stores for rate log/display unit.
+      // Backfill from legacy keys only when missing from restored session.
+      if (_rateLogEntries.isEmpty) {
+        await _loadRateLogState();
+      }
+      if (_rateDisplayUnit == _RateDisplayUnit.bblPerMin &&
+          bblPerMin == null &&
+          bblPerHr == null) {
+        await _loadSavedDisplayUnit();
+      }
+      if (minutes.text.trim().isEmpty) {
+        await _loadSavedTimerMinutes();
+      }
+    }
+
+    await _applyPendingNotificationAction();
+    await _restoreTimerState();
+    await _persistCalculatorSession();
+
+    if (!mounted) return;
+    setState(() => _initializing = false);
+  }
+
+  Future<bool> _redirectToActiveCalculatorIfNeeded() async {
+    final activeTimer = await _rateTimerService.loadActiveTimer();
+    final now = DateTime.now();
+    final timerCalculatorId =
+        (activeTimer != null && activeTimer.isRunningAt(now))
+            ? activeTimer.calculatorId.trim()
+            : '';
+
+    var targetId = timerCalculatorId;
+    if (targetId.isEmpty) {
+      final activeId = _sessionService.activeCalculatorId.trim();
+      final activeSession = _sessionService.sessionForCalculator(activeId);
+      if (activeId.isNotEmpty && (activeSession?.hasUserData ?? false)) {
+        targetId = activeId;
+      }
+    }
+
+    if (targetId.isEmpty || targetId == _calculatorStorageId) {
+      return false;
+    }
+
+    final targetConfig = RateCalculatorConfig.fromStorageId(targetId);
+    if (targetConfig == null || !mounted) {
+      return false;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => RateCalculatorScreen(config: targetConfig),
+        ),
+      );
     });
-    _loadSavedDisplayUnit();
-    _loadRateLogState();
+    return true;
   }
 
   @override
@@ -284,21 +355,62 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   }
 
   bool get _hasSessionData {
+    final defaultFactor = (widget.config.defaultFactor ?? 1.67).toString();
+    final customFactorEntered =
+        !widget.config.usesChart && factor.text.trim() != defaultFactor;
+    final hasCurrentTimer =
+        _activeTimerState?.calculatorId == _calculatorStorageId;
     return startGauge.text.trim().isNotEmpty ||
         endGauge.text.trim().isNotEmpty ||
+        customFactorEntered ||
         bblPerMin != null ||
         bblPerHr != null ||
         bblPerDay != null ||
         _timerRunning ||
-        _activeTimerState != null ||
+        hasCurrentTimer ||
         _timerFinished ||
         _rateLogEnabled ||
         _rateLogEntries.isNotEmpty ||
         (error?.trim().isNotEmpty ?? false);
   }
 
+  List<RateCalculatorSessionLogEntry> _sessionLogEntries() {
+    return _rateLogEntries
+        .map(
+          (entry) => RateCalculatorSessionLogEntry(
+            timestampMs: entry.timestamp.millisecondsSinceEpoch,
+            rateValue: entry.rateValue,
+            rateUnit: entry.rateUnit,
+            selected: entry.selected,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  List<_RateLogEntry> _rateLogEntriesFromSession(
+    List<RateCalculatorSessionLogEntry> entries,
+  ) {
+    final restored = entries
+        .map(
+          (entry) => _RateLogEntry(
+            timestamp: DateTime.fromMillisecondsSinceEpoch(entry.timestampMs),
+            rateValue: entry.rateValue,
+            rateUnit: entry.rateUnit,
+            selected: entry.selected,
+          ),
+        )
+        .toList(growable: false)
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    if (restored.isNotEmpty) {
+      restored[0] = restored[0].copyWith(selected: true);
+    }
+    return restored;
+  }
+
   RateCalculatorSession _buildSessionSnapshot() {
-    final activeState = _activeTimerState;
+    final activeState = _activeTimerState?.calculatorId == _calculatorStorageId
+        ? _activeTimerState
+        : null;
     return RateCalculatorSession(
       calculatorId: _calculatorStorageId,
       calculatorTitle: widget.config.title,
@@ -322,14 +434,19 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       timerStartedAtMs: activeState?.startedAtMs,
       timerEndsAtMs: activeState?.endsAtMs,
       timerDurationSeconds: activeState?.durationSeconds,
+      rateLogEntries: _sessionLogEntries(),
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     );
   }
 
   Future<void> _persistCalculatorSession() async {
+    if (!_hasSessionData) {
+      await _sessionService.clearSession(_calculatorStorageId);
+      return;
+    }
     await _sessionService.saveSession(
       _buildSessionSnapshot(),
-      setActive: _hasSessionData,
+      setActive: true,
     );
   }
 
@@ -337,10 +454,10 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     await _sessionService.clearSession(_calculatorStorageId);
   }
 
-  Future<void> _restoreCalculatorSession() async {
+  Future<bool> _restoreCalculatorSession() async {
     final session = _sessionService.sessionForCalculator(_calculatorStorageId);
-    if (session == null) return;
-    if (!mounted) return;
+    if (session == null) return false;
+    if (!mounted) return false;
 
     setState(() {
       startGauge.text = session.startGauge;
@@ -361,6 +478,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       _thirtySecondAlertShown = session.thirtySecondAlertShown;
       _rateLogEnabled = session.rateLogEnabled;
       _rateLogExpanded = session.rateLogExpanded;
+      _rateLogEntries
+        ..clear()
+        ..addAll(_rateLogEntriesFromSession(session.rateLogEntries));
 
       if (session.rateDisplayUnit == 'bbl_hr') {
         _rateDisplayUnit = _RateDisplayUnit.bblPerHr;
@@ -368,6 +488,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         _rateDisplayUnit = _RateDisplayUnit.bblPerMin;
       }
     });
+    return true;
   }
 
   Future<void> _loadSavedDisplayUnit() async {
@@ -804,7 +925,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         _activeTimerState = active;
         _timerEndsAt = null;
       });
-      _persistCalculatorSession();
       return;
     }
 
@@ -899,8 +1019,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
   Future<void> _loadSavedTimerMinutes() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedText = prefs.getString(_timerMinutesPrefKey);
-    final savedLegacyInt = prefs.getInt(_timerMinutesPrefKey);
+    final rawSaved = prefs.get(_timerMinutesPrefKey);
+    final savedText = rawSaved is String ? rawSaved : null;
+    final savedLegacyInt = rawSaved is int ? rawSaved : null;
     final settings = await _settingsService.load();
     if (!mounted) return;
 
@@ -1004,7 +1125,14 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     final now = DateTime.now();
     if (existing != null && existing.isRunningAt(now)) {
       if (existing.calculatorId == _calculatorStorageId) {
-        await _startFreshTimer(configuredSeconds);
+        await _restoreTimerState();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('A timer is already running for this calculator.'),
+            ),
+          );
+        }
         return;
       }
       if (!mounted) return;
@@ -1264,7 +1392,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   }
 
   Widget _timedRateSection() {
-    final canRunTimer = _hasValidMinutes;
+    final canRunTimer =
+        _hasValidMinutes && !_isCurrentCalculatorTimerActive && !_timerRunning;
 
     return Card(
       child: Padding(
@@ -2073,6 +2202,13 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_initializing) {
+      return Scaffold(
+        appBar: AppHeader(title: widget.config.title, showBack: true),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
         _persistTimerState();
