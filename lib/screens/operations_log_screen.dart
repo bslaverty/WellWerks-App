@@ -26,10 +26,12 @@ class OperationsLogScreen extends StatefulWidget {
     super.key,
     this.workflow,
     this.title = 'Operations Log',
+    this.openAddStsOnLoad = false,
   });
 
   final OperationsLogWorkflow? workflow;
   final String title;
+  final bool openAddStsOnLoad;
 
   @override
   State<OperationsLogScreen> createState() => _OperationsLogScreenState();
@@ -129,6 +131,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   String _lastFinalizedReportKey = '';
   DateTime _clockNow = DateTime.now();
   Timer? _clockTicker;
+  bool _didAutoOpenSts = false;
 
   @override
   void initState() {
@@ -177,6 +180,14 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
           .toSet();
       _loading = false;
     });
+
+    if (widget.openAddStsOnLoad && !_didAutoOpenSts) {
+      _didAutoOpenSts = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _addSts();
+      });
+    }
   }
 
   OperationsLogWorkflow _resolveWorkflow(JobSetup? job) {

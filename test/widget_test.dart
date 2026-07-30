@@ -216,7 +216,7 @@ void main() {
     await pumpForMode(ActiveWorkflowMode.cleanout);
   });
 
-  testWidgets('Build 171 Completions includes shared Drillout / Cleanout tool',
+  testWidgets('Build 205 Completions menu uses workflow-first navigation',
       (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
     await ActiveWorkflowModeService.instance
@@ -238,12 +238,7 @@ void main() {
     }
 
     await expectToolVisible('Drillout / Cleanout');
-    await expectToolVisible('Rate Calculator');
-    await expectToolVisible('Gas Accum Calculator');
-    await expectToolVisible('Bottoms Up Calculator');
-    await expectToolVisible('Multiple Choke Calculator');
-    await expectToolVisible('Conversion Calculator');
-    await expectToolVisible('Chlorides Calculator');
+    await expectToolVisible('Calculators');
   });
 
   test('Well name precedence replaces placeholders with lease names', () {

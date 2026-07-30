@@ -42,13 +42,21 @@ enum _DrilloutGaugeTarget {
 
 enum _DrilloutMode { shiftChange, update }
 
+enum DrilloutShiftLaunchMode { shiftChange, update }
+
+enum DrilloutShiftLaunchAction { none, preview, copy }
+
 class DrilloutShiftChangeScreen extends StatefulWidget {
   const DrilloutShiftChangeScreen({
     super.key,
     this.initialWorkflow,
+    this.initialMode,
+    this.initialAction = DrilloutShiftLaunchAction.none,
   });
 
   final ActiveWorkflowMode? initialWorkflow;
+  final DrilloutShiftLaunchMode? initialMode;
+  final DrilloutShiftLaunchAction initialAction;
 
   @override
   State<DrilloutShiftChangeScreen> createState() =>
@@ -103,6 +111,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   String _lastLoggedEventKey = '';
   _DrilloutMode _mode = _DrilloutMode.shiftChange;
   ActiveWorkflowMode _workflow = ActiveWorkflowMode.drillout;
+  bool _launchActionApplied = false;
 
   bool _includeRateOverride = false;
   bool _includeSurfaceTotalFluid = false;
@@ -300,6 +309,12 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
             : _defaultShiftHour;
 
     if (!mounted) return;
+    final initialMode = widget.initialMode;
+    final resolvedMode = initialMode == null
+        ? _modeFromStorage(saved['mode'] as String?)
+        : initialMode == DrilloutShiftLaunchMode.update
+            ? _DrilloutMode.update
+            : _DrilloutMode.shiftChange;
     setState(() {
       _activeJob = activeJob;
       _workflow = savedWorkflow == ActiveWorkflowMode.cleanout
@@ -313,7 +328,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
       _showGasTank2 = false;
       _choke = normalizedChoke;
       _selectedTime = DateTime(2000, 1, 1, savedHour);
-      _mode = _modeFromStorage(saved['mode'] as String?);
+      _mode = resolvedMode;
       _includeRateOverride = _resolveIncludeToggle(
         saved: saved,
         key: 'includeRateOverride',
@@ -419,6 +434,28 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         _rate.text = _fmtTrim(latestRate);
       }
     });
+
+    if (!_launchActionApplied &&
+        widget.initialAction != DrilloutShiftLaunchAction.none) {
+      _launchActionApplied = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _runLaunchAction(widget.initialAction);
+      });
+    }
+  }
+
+  Future<void> _runLaunchAction(DrilloutShiftLaunchAction action) async {
+    switch (action) {
+      case DrilloutShiftLaunchAction.none:
+        return;
+      case DrilloutShiftLaunchAction.preview:
+        await _preview();
+        return;
+      case DrilloutShiftLaunchAction.copy:
+        await _copy();
+        return;
+    }
   }
 
   bool _resolveIncludeToggle({

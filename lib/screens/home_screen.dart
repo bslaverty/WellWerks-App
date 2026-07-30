@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../models/job_box_inventory.dart';
 import '../widgets/app_header.dart';
 import '../widgets/tool_card.dart';
 import '../services/app_settings_service.dart';
@@ -10,25 +9,20 @@ import '../services/rate_timer_notification_service.dart';
 import '../services/rate_timer_service.dart';
 import '../services/recovery_state_service.dart';
 import 'module_menu_screen.dart';
+import 'completions_calculators_screen.dart';
 import 'rate_calculator_screen.dart';
-import 'rate_calculator_menu_screen.dart';
 import 'equipment_layout_screen.dart';
 import 'rig_up_inventory_screen.dart';
 import 'rig_up_history_screen.dart';
 import 'jsa_screen.dart';
 import 'production_dashboard_screen.dart';
 import 'production_history_screen.dart';
-import 'gas_accum_screen.dart';
-import 'bottoms_up_screen.dart';
-import 'multiple_choke_screen.dart';
 import 'chart_reference_screen.dart';
 import 'tank_charts_menu_screen.dart';
-import 'conversion_calculator_screen.dart';
 import 'settings_screen.dart';
 import 'about_support_screen.dart';
 import 'drillout_cleanout_module_screen.dart';
 import 'flywheel_diesel_tank_screen.dart';
-import 'job_box_inventory_screen.dart';
 import 'operations_log_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -311,58 +305,21 @@ class _HomeScreenState extends State<HomeScreen> {
             context: context,
             icon: Icons.build,
             title: 'Completions',
-            subtitle: 'Field calculators for pumping and choke operations',
+            subtitle: 'Drillout workflow and dedicated calculators',
             tools: [
-              const ModuleTool(
-                icon: Icons.speed,
-                title: 'Rate Calculator',
-                subtitle: 'FS3, SandX, flowback, and production rate tools',
-                screen: RateCalculatorMenuScreen(),
-              ),
-              const ModuleTool(
-                icon: Icons.local_fire_department,
-                title: 'Gas Accum Calculator',
-                subtitle: 'Hourly gas rate from totalizer readings',
-                screen: GasAccumScreen(),
-              ),
-              const ModuleTool(
-                icon: Icons.arrow_downward,
-                title: 'Bottoms Up Calculator',
-                subtitle: 'Pipe volume, lag time, and ETA',
-                screen: BottomsUpScreen(),
-              ),
-              const ModuleTool(
-                icon: Icons.tune,
-                title: 'Multiple Choke Calculator',
-                subtitle: 'Equivalent choke and total flow area',
-                screen: MultipleChokeScreen(),
-              ),
               const ModuleTool(
                 icon: Icons.text_snippet_outlined,
                 title: 'Drillout / Cleanout',
                 subtitle:
-                    'Shared shift update workflow, JSA, preview, and copy',
+                    'Operations Log, Rate Calculator, STS, updates, and shift tools',
                 screen: DrilloutCleanoutModuleScreen(),
               ),
               const ModuleTool(
-                icon: Icons.inventory_2_outlined,
-                title: 'Job Box Inventory',
-                subtitle: 'Track completions job box items and copy updates',
-                screen: JobBoxInventoryScreen(
-                  source: JobBoxInventorySource.completions,
-                ),
-              ),
-              const ModuleTool(
-                icon: Icons.straighten,
-                title: 'Conversion Calculator',
-                subtitle: 'Length, volume, pressure, flow, gas, and oilfield',
-                screen: ConversionCalculatorScreen(),
-              ),
-              ModuleTool(
-                icon: Icons.science,
-                title: 'Chlorides Calculator',
-                subtitle: 'Chlorides and salinity calculator and chart lookup',
-                screen: _chloridesCalculatorScreen(),
+                icon: Icons.calculate_outlined,
+                title: 'Calculators',
+                subtitle:
+                    'Gas Accum, Bottoms Up, Multiple Choke, Conversion, and Chlorides',
+                screen: CompletionsCalculatorsScreen(),
               ),
             ],
           ),
