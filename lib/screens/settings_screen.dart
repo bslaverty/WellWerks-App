@@ -447,6 +447,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
           _sectionCard(
+            title: 'Operations Log',
+            children: [
+              _switchTile(
+                title: 'Automatically Save Rate Calculations',
+                subtitle:
+                    'Save each successful Rate Calculator result to Operations Log.',
+                value: s.autoSaveRateCalculationsToOperationsLog,
+                onChanged: (value) => _save(
+                  s.copyWith(autoSaveRateCalculationsToOperationsLog: value),
+                ),
+              ),
+            ],
+          ),
+          _sectionCard(
             title: 'JSA',
             children: [
               _switchTile(

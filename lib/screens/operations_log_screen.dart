@@ -399,43 +399,6 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     return _parseNumericValue(entry.returnsRate);
   }
 
-  double? _estimatedStsDurationMinutes(OperationsLogEntry entry) {
-    final fromStructured = entry.structuredData['stsEstimatedDurationMinutes'];
-    if (fromStructured is num && fromStructured > 0) {
-      return fromStructured.toDouble();
-    }
-    if (entry.estimatedSts == null) return null;
-    final seconds = entry.estimatedSts!.difference(entry.entryTime).inSeconds;
-    if (seconds <= 0) return null;
-    return seconds / 60;
-  }
-
-  double? _actualStsDurationMinutes(OperationsLogEntry entry) {
-    final fromStructured = entry.structuredData['stsActualDurationMinutes'];
-    if (fromStructured is num && fromStructured > 0) {
-      return fromStructured.toDouble();
-    }
-    if (entry.sts == null) return null;
-    final seconds = entry.sts!.difference(entry.entryTime).inSeconds;
-    if (seconds <= 0) return null;
-    return seconds / 60;
-  }
-
-  double? _storedAdjustedAverageReturnRate(OperationsLogEntry entry) {
-    final raw = entry.structuredData['stsAdjustedAverageReturnRate'];
-    if (raw is num) return raw.toDouble();
-    final averageReturnRate = _averageReturnRateForStsEntry(entry);
-    final estimatedDuration = _estimatedStsDurationMinutes(entry);
-    final actualDuration = _actualStsDurationMinutes(entry);
-    if (averageReturnRate == null ||
-        estimatedDuration == null ||
-        actualDuration == null ||
-        actualDuration <= 0) {
-      return null;
-    }
-    return averageReturnRate * (estimatedDuration / actualDuration);
-  }
-
   String _stsEarlyLateLabelFromVariance(int varianceMinutes) {
     if (varianceMinutes == 0) return 'On time';
     if (varianceMinutes > 0) return '${varianceMinutes.abs()} min Late';
@@ -460,26 +423,6 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     final job = _activeJob;
     if (job == null) return;
 
-    final baseline =
-        estimatedSts.isBefore(actualSts) ? estimatedSts : actualSts;
-    final inferredSweepStart = baseline.subtract(const Duration(minutes: 1));
-
-    final estimatedDuration =
-        estimatedSts.difference(inferredSweepStart).inSeconds / 60;
-    final actualDuration =
-        actualSts.difference(inferredSweepStart).inSeconds / 60;
-
-    if (estimatedDuration <= 0 || actualDuration <= 0) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Estimated STS and Actual STS must be valid values.'),
-        ),
-      );
-      return;
-    }
-
-    final adjusted = averageReturnRate * (estimatedDuration / actualDuration);
     final varianceMinutes = actualSts.difference(estimatedSts).inMinutes;
     final earlyLateLabel = _stsEarlyLateLabelFromVariance(varianceMinutes);
 
@@ -487,9 +430,6 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     structured['stsRecordType'] = 'manualSts';
     structured['stsPumpRate'] = pumpRate.trim();
     structured['stsAverageReturnRate'] = averageReturnRate;
-    structured['stsEstimatedDurationMinutes'] = estimatedDuration;
-    structured['stsActualDurationMinutes'] = actualDuration;
-    structured['stsAdjustedAverageReturnRate'] = adjusted;
     structured['stsVarianceMinutes'] = varianceMinutes;
     structured['stsEarlyLateLabel'] = earlyLateLabel;
 
@@ -575,7 +515,6 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   Future<void> _showEntryDetails(OperationsLogEntry entry) async {
     final isStsEntry = _isStsEntry(entry);
     final averageReturns = _averageReturnRateForStsEntry(entry);
-    final adjustedReturns = _storedAdjustedAverageReturnRate(entry);
     final rows = <Widget>[
       Text('Entry Time: ${entry.entryTime.toLocal()}'),
       Text('Logged At: ${entry.loggedAt.toLocal()}'),
@@ -597,9 +536,6 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
           'Actual STS: ${_formatFieldTime(entry.sts!, readingTimestamp: entry.entryTime)}',
         ),
       if (isStsEntry) Text('Early/Late: ${_stsVarianceLabel(entry)}'),
-      if (isStsEntry && adjustedReturns != null)
-        Text(
-            'Adjusted Avg Return: ${adjustedReturns.toStringAsFixed(2)} bbl/min'),
       if (!isStsEntry &&
           _enabledFieldIds.contains('operationStage') &&
           entry.operationStage.isNotEmpty)
@@ -1890,7 +1826,6 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       final lines = <String>[];
       final pumpRate = _stsPumpRateValue(entry);
       final averageReturns = _averageReturnRateForStsEntry(entry);
-      final adjustedAverage = _storedAdjustedAverageReturnRate(entry);
       if (pumpRate.isNotEmpty) {
         lines.add('Pump $pumpRate');
       }
@@ -1899,9 +1834,6 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       }
       if (entry.sts != null) {
         lines.add(_stsVarianceLabel(entry));
-      }
-      if (adjustedAverage != null) {
-        lines.add('Adj Avg ${adjustedAverage.toStringAsFixed(2)} bbl/min');
       }
       if (lines.isNotEmpty) {
         return lines.take(4).toList(growable: false);
@@ -2559,13 +2491,6 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
           ),
         ),
       if (isStsEntry) (label: 'Early/Late', value: _stsVarianceLabel(entry)),
-      if (isStsEntry)
-        (
-          label: 'Adjusted Avg Return',
-          value: _storedAdjustedAverageReturnRate(entry) == null
-              ? 'N/A'
-              : '${_storedAdjustedAverageReturnRate(entry)!.toStringAsFixed(2)} bbl/min',
-        ),
       if (!isStsEntry && entry.sweepInformation.trim().isNotEmpty)
         (label: 'Sweep', value: entry.sweepInformation.trim()),
       if (!isStsEntry && entry.equipmentStatus.trim().isNotEmpty)
@@ -2740,14 +2665,6 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                                           style: TextStyle(
                                             color: _stsStatusColor(entry),
                                             fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: Text(
-                                          'Adj Avg ${_storedAdjustedAverageReturnRate(entry)?.toStringAsFixed(2) ?? 'N/A'} bbl/min',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
                                           ),
                                         ),
                                       ),

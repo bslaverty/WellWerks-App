@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 import '../services/app_settings_service.dart';
 import '../services/job_storage_service.dart';
+import '../services/operations_log_service.dart';
 import '../services/rate_calculator_session_service.dart';
 import '../services/rate_timer_notification_service.dart';
 import '../services/rate_timer_service.dart';
@@ -130,6 +131,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   static const _rateLogQrSchemaVersion = '1.0.0';
   final _settingsService = AppSettingsService();
   final _jobStorage = JobStorageService();
+  final _operationsLogService = OperationsLogService();
   final _sessionService = RateCalculatorSessionService.instance;
   final _rateTimerService = RateTimerService();
   final _rateTimerNotifications = RateTimerNotificationService.instance;
@@ -1626,7 +1628,90 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     _clearCalculatorSession();
   }
 
-  void calculate() {
+  Future<void> _autoSaveCalculationToOperationsLog({
+    required DateTime readingTimestamp,
+    required String startGaugeValue,
+    required String endGaugeValue,
+    required double elapsedMinutes,
+    required double startInches,
+    required double endInches,
+    required double startBarrels,
+    required double endBarrels,
+    required double barrelChange,
+    required double bblPerMinute,
+    required double bblPerHour,
+  }) async {
+    final settings = await _settingsService.load();
+    if (!settings.autoSaveRateCalculationsToOperationsLog) return;
+
+    final activeJob = await _jobStorage.ensureActiveJobLoaded();
+    if (activeJob == null || activeJob.id.trim().isEmpty) {
+      return;
+    }
+
+    final workflowName = activeJob.workflow.trim().toLowerCase();
+    final workflow = workflowName == OperationsLogWorkflow.cleanout.name
+        ? OperationsLogWorkflow.cleanout
+        : OperationsLogWorkflow.drillout;
+    final wellEntries = activeJob.resolvedWellEntries;
+    final wellId = wellEntries.isNotEmpty ? wellEntries.first.id : '';
+    final wellName = activeJob.primaryWell.trim().isNotEmpty
+        ? activeJob.primaryWell.trim()
+        : activeJob.padName.trim();
+    if (wellName.isEmpty) return;
+
+    final selectedRateValue = _rateDisplayUnit == _RateDisplayUnit.bblPerHr
+        ? bblPerHour
+        : bblPerMinute;
+    final selectedRateUnit = _selectedRateUnitLabel;
+    final rateText = _rateDisplayUnit == _RateDisplayUnit.bblPerHr
+        ? selectedRateValue.toStringAsFixed(1)
+        : selectedRateValue.toStringAsFixed(3);
+    final generatedText =
+        'Rate Calculator (${widget.config.title})\nStart $startGaugeValue in\nEnd $endGaugeValue in\nElapsed ${elapsedMinutes.toStringAsFixed(2)} min\nRate $rateText $selectedRateUnit';
+
+    final stage = (activeJob.drilloutSetup['status'] as String? ??
+            activeJob.drilloutSetup['stage'] as String? ??
+            '')
+        .trim();
+    final entry = await _operationsLogService.createLocalEntry(
+      workflow: workflow,
+      jobId: activeJob.id,
+      wellId: wellId,
+      wellName: wellName,
+      readingTimestamp: readingTimestamp,
+      entryType: 'manualReading',
+      generatedText: generatedText,
+      structuredData: <String, dynamic>{
+        'rateCalculationRecordType': 'autoSave',
+        'rateCalculatorTankType': widget.config.title,
+        'rateCalculatorGaugeUnit': 'inches',
+        'rateCalculatorStartGauge': startGaugeValue,
+        'rateCalculatorEndGauge': endGaugeValue,
+        'rateCalculatorElapsedMinutes': elapsedMinutes,
+        'rateCalculatorStartInches': startInches,
+        'rateCalculatorEndInches': endInches,
+        'rateCalculatorStartBarrels': startBarrels,
+        'rateCalculatorEndBarrels': endBarrels,
+        'rateCalculatorBarrelChange': barrelChange,
+        'rateCalculatorBblPerMinute': bblPerMinute,
+        'rateCalculatorBblPerHour': bblPerHour,
+        'rateCalculatorSelectedRateValue': selectedRateValue,
+        'rateCalculatorSelectedRateUnit': selectedRateUnit,
+      },
+      operationStage: stage,
+      returnsRate: bblPerMinute.toStringAsFixed(3),
+      notes: 'Auto-saved from Rate Calculator.',
+    );
+
+    await _operationsLogService.upsertEntry(
+      workflow: workflow,
+      jobId: activeJob.id,
+      entry: entry,
+    );
+  }
+
+  Future<void> calculate() async {
     final hadKeypadOpen = _activeKeypadTarget != null;
     FocusScope.of(context).unfocus();
     if (hadKeypadOpen) {
@@ -1687,6 +1772,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     _countdownTimer = null;
     _clearTimerStatePersistence();
 
+    final now = DateTime.now();
     setState(() {
       bblPerMin = perMin;
       bblPerHr = perHour;
@@ -1701,7 +1787,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         _rateLogEntries.insert(
           0,
           _RateLogEntry(
-            timestamp: DateTime.now(),
+            timestamp: now,
             rateValue: value,
             rateUnit: _selectedRateUnitLabel,
             selected: true,
@@ -1710,6 +1796,27 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         _saveRateLogState();
       }
     });
+
+    try {
+      await _autoSaveCalculationToOperationsLog(
+        readingTimestamp: now,
+        startGaugeValue: startText,
+        endGaugeValue: endText,
+        elapsedMinutes: m,
+        startInches: startInches,
+        endInches: endInches,
+        startBarrels: startBbl,
+        endBarrels: endBbl,
+        barrelChange: change,
+        bblPerMinute: perMin,
+        bblPerHour: perHour,
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[RateCalculator] Failed to auto-save Operations Log rate entry: $error\n$stackTrace',
+      );
+    }
+
     _persistCalculatorSession();
   }
 

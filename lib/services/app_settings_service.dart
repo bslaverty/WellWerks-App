@@ -38,6 +38,7 @@ class AppSettingsDefaults {
   static const rateTimerSoundEnabled = true;
   static const estimatedStsReminderEnabled = true;
   static const estimatedStsReminderLeadMinutes = 10;
+  static const autoSaveRateCalculationsToOperationsLog = true;
   static const appTheme = 'wellwerks_default';
   static const activeCompany = JobProfileDefaultsService.companyNone;
   static const optionalReportSections = [
@@ -102,6 +103,8 @@ class AppSettingsData {
         AppSettingsDefaults.estimatedStsReminderEnabled,
     this.estimatedStsReminderLeadMinutes =
         AppSettingsDefaults.estimatedStsReminderLeadMinutes,
+    this.autoSaveRateCalculationsToOperationsLog =
+        AppSettingsDefaults.autoSaveRateCalculationsToOperationsLog,
     this.appTheme = AppSettingsDefaults.appTheme,
     this.activeCompany = AppSettingsDefaults.activeCompany,
   });
@@ -136,6 +139,7 @@ class AppSettingsData {
   final bool rateTimerSoundEnabled;
   final bool estimatedStsReminderEnabled;
   final int estimatedStsReminderLeadMinutes;
+  final bool autoSaveRateCalculationsToOperationsLog;
   final String appTheme;
   final String activeCompany;
 
@@ -181,6 +185,7 @@ class AppSettingsData {
     bool? rateTimerSoundEnabled,
     bool? estimatedStsReminderEnabled,
     int? estimatedStsReminderLeadMinutes,
+    bool? autoSaveRateCalculationsToOperationsLog,
     String? appTheme,
     String? activeCompany,
   }) {
@@ -230,6 +235,9 @@ class AppSettingsData {
           estimatedStsReminderEnabled ?? this.estimatedStsReminderEnabled,
       estimatedStsReminderLeadMinutes: estimatedStsReminderLeadMinutes ??
           this.estimatedStsReminderLeadMinutes,
+      autoSaveRateCalculationsToOperationsLog:
+          autoSaveRateCalculationsToOperationsLog ??
+              this.autoSaveRateCalculationsToOperationsLog,
       appTheme: appTheme ?? this.appTheme,
       activeCompany: activeCompany ?? this.activeCompany,
     );
@@ -266,6 +274,8 @@ class AppSettingsData {
         'rateTimerSoundEnabled': rateTimerSoundEnabled,
         'estimatedStsReminderEnabled': estimatedStsReminderEnabled,
         'estimatedStsReminderLeadMinutes': estimatedStsReminderLeadMinutes,
+        'autoSaveRateCalculationsToOperationsLog':
+            autoSaveRateCalculationsToOperationsLog,
         'appTheme': appTheme,
         'activeCompany': activeCompany,
       };
@@ -341,6 +351,9 @@ class AppSettingsData {
           _normalizeEstimatedStsReminderLeadMinutes(
         json['estimatedStsReminderLeadMinutes'],
       ),
+      autoSaveRateCalculationsToOperationsLog:
+          json['autoSaveRateCalculationsToOperationsLog'] as bool? ??
+              AppSettingsDefaults.autoSaveRateCalculationsToOperationsLog,
       appTheme: _normalizeTheme(json['appTheme'] as String?),
       activeCompany: _normalizeActiveCompany(json['activeCompany'] as String?),
       defaultOptionalReportSections: _normalizeOptionalSections(
@@ -587,6 +600,8 @@ class AppSettingsService {
           AppSettingsDefaults.estimatedStsReminderEnabled,
       estimatedStsReminderLeadMinutes:
           AppSettingsDefaults.estimatedStsReminderLeadMinutes,
+      autoSaveRateCalculationsToOperationsLog:
+          AppSettingsDefaults.autoSaveRateCalculationsToOperationsLog,
       appTheme: AppSettingsDefaults.appTheme,
       activeCompany: AppSettingsDefaults.activeCompany,
     );
