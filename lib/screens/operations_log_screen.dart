@@ -17,6 +17,7 @@ import '../services/operations_log_service.dart';
 import '../services/rate_timer_notification_service.dart';
 import '../services/wellwerks_qr_transfer_service.dart';
 import '../widgets/app_header.dart';
+import '../widgets/sts_date_time_selector_sheet.dart';
 import 'operations_log_entry_form_screen.dart';
 import 'wellwerks_qr_scanner_screen.dart';
 
@@ -47,9 +48,8 @@ enum _OperationsSmartFilter {
   textUpdates,
   shiftChanges,
   reports,
-  imports,
   sts,
-  pumpChanges,
+  rates,
   pressureChanges,
   chokeChanges,
   stageChanges,
@@ -298,16 +298,12 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                 .trim()
                 .isNotEmpty ||
             type == 'report';
-      case _OperationsSmartFilter.imports:
-        return type == 'qrImport' ||
-            type == 'handoffImport' ||
-            entry.isImported;
       case _OperationsSmartFilter.sts:
         return entry.estimatedSts != null ||
             entry.sts != null ||
             type == 'stsReached';
-      case _OperationsSmartFilter.pumpChanges:
-        return changed((e) => e.pumpRate);
+      case _OperationsSmartFilter.rates:
+        return changed((e) => '${e.pumpRate}|${e.returnsRate}');
       case _OperationsSmartFilter.pressureChanges:
         return changed(
             (e) => '${e.pumpPressure}|${e.casingPressure}|${e.tubingPressure}');
@@ -401,16 +397,22 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       if (_enabledFieldIds.contains('casingPressure') &&
           entry.casingPressure.isNotEmpty)
         Text('Casing pressure: ${entry.casingPressure}'),
-      if (_enabledFieldIds.contains('pumpPressure') &&
-          entry.pumpPressure.isNotEmpty)
-        Text('Pump pressure: ${entry.pumpPressure}'),
       if (_enabledFieldIds.contains('tubingPressure') &&
-          entry.tubingPressure.isNotEmpty)
-        Text('Tubing pressure: ${entry.tubingPressure}'),
+          _manifoldPsiValue(entry).isNotEmpty)
+        Text('Manifold PSI: ${_manifoldPsiValue(entry)}'),
+      if (_enabledFieldIds.contains('pumpPressure') &&
+          entry.pumpPressure.isNotEmpty &&
+          !_isLegacyManifoldFallback(entry))
+        Text('Pump PSI: ${entry.pumpPressure}'),
       if (_enabledFieldIds.contains('notes') && entry.notes.isNotEmpty)
         Text('Notes: ${entry.notes}'),
       if (_enabledFieldIds.contains('gas') && entry.gas.isNotEmpty)
         Text('Gas: ${entry.gas}'),
+      if (_enabledFieldIds.contains('waterHauled') &&
+          entry.waterHauled.isNotEmpty)
+        Text('Water Hauled: ${entry.waterHauled}'),
+      if (_enabledFieldIds.contains('oilHauled') && entry.oilHauled.isNotEmpty)
+        Text('Oil Hauled: ${entry.oilHauled}'),
       if (_enabledFieldIds.contains('sandOrSolids') &&
           entry.sandOrSolids.isNotEmpty)
         Text('Sand / Solids: ${entry.sandOrSolids}'),
@@ -881,7 +883,113 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     );
   }
 
+  Future<void> _recordStsForEntry(OperationsLogEntry entry) async {
+    final selection = await showStsDateTimeSelectorSheet(
+      context,
+      title: 'Record STS',
+      helperText: 'Set actual sweep-to-surface time.',
+      readingTimestamp: entry.entryTime,
+      initialValue: entry.sts ?? DateTime.now(),
+    );
+    if (selection == null || selection.cleared || selection.value == null) {
+      return;
+    }
+    if (!mounted) return;
+
+    final notesController = TextEditingController(text: entry.notes);
+    try {
+      final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('STS Notes (Optional)'),
+              content: TextField(
+                controller: notesController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Notes',
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!confirmed) return;
+
+      final job = _activeJob;
+      if (job == null) return;
+
+      var updated = entry.copyWith(
+        sts: selection.value,
+        notes: notesController.text.trim(),
+      );
+
+      final sweepId = entry.sweepId.trim();
+      if (sweepId.isNotEmpty) {
+        try {
+          await _stsReminderService.cancelBySweepId(sweepId);
+        } catch (_) {
+          // Keep save resilient when notification services are unavailable.
+        }
+        updated = updated.copyWith(
+          estimatedStsNotificationStatus: 'actualStsRecorded',
+          estimatedStsCancellationReason: 'actualStsRecorded',
+        );
+      }
+
+      await _logService.upsertEntry(
+        workflow: _workflow,
+        jobId: job.id,
+        entry: updated,
+      );
+      await _load();
+    } finally {
+      notesController.dispose();
+    }
+  }
+
   Future<void> _editEntry(OperationsLogEntry entry) async {
+    final type = _entryTypeValue(entry);
+    if (entry.estimatedSts != null || entry.sts != null || type == 'stsReached') {
+      await _recordStsForEntry(entry);
+      return;
+    }
+
+    if (type == 'manualReading') {
+      final job = _activeJob;
+      if (job == null) return;
+      final updated = await Navigator.of(context).push<OperationsLogEntry>(
+        MaterialPageRoute(
+          builder: (_) => OperationsLogEntryFormScreen(
+            workflow: _workflow,
+            title: widget.title,
+            activeJob: job,
+            defaultWells: _resolvedWells,
+            initialSelectedWellId: entry.persistentWellId,
+            initialSelectedWellName: entry.wellName,
+            initialStage: entry.operationStage,
+            initialReadingTimestamp: entry.entryTime,
+            stageOptions: DrilloutCleanoutFieldDefinitions.stageOptions,
+            enabledFieldIds: _enabledFieldIds,
+            logService: _logService,
+            existingEntries: _entries,
+            existingEntry: entry,
+          ),
+        ),
+      );
+      if (updated == null) return;
+      await _load();
+      return;
+    }
+
     final generatedController =
         TextEditingController(text: entry.generatedText);
     final notesController = TextEditingController(text: entry.notes);
@@ -1317,15 +1425,26 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
         entry.casingPressure.isNotEmpty) {
       parts.add('CSG ${entry.casingPressure}');
     }
+    if (_enabledFieldIds.contains('tubingPressure') &&
+        _manifoldPsiValue(entry).isNotEmpty) {
+      parts.add('Manifold ${_manifoldPsiValue(entry)}');
+    }
     if (_enabledFieldIds.contains('pumpPressure') &&
-        entry.pumpPressure.isNotEmpty) {
-      parts.add('PMP ${entry.pumpPressure}');
+        entry.pumpPressure.isNotEmpty &&
+        !_isLegacyManifoldFallback(entry)) {
+      parts.add('Pump PSI ${entry.pumpPressure}');
     }
     if (_enabledFieldIds.contains('notes') && entry.notes.isNotEmpty) {
       parts.add(entry.notes);
     }
     if (_enabledFieldIds.contains('gas') && entry.gas.isNotEmpty) {
       parts.add('Gas ${entry.gas}');
+    }
+    if (_enabledFieldIds.contains('waterHauled') && entry.waterHauled.isNotEmpty) {
+      parts.add('Water ${entry.waterHauled}');
+    }
+    if (_enabledFieldIds.contains('oilHauled') && entry.oilHauled.isNotEmpty) {
+      parts.add('Oil ${entry.oilHauled}');
     }
     if (_enabledFieldIds.contains('sandOrSolids') &&
         entry.sandOrSolids.isNotEmpty) {
@@ -1358,6 +1477,54 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       return '$trimmed bbl/min';
     }
     return trimmed;
+  }
+
+  String _manifoldPsiValue(OperationsLogEntry entry) {
+    final tubing = entry.tubingPressure.trim();
+    if (tubing.isNotEmpty) return tubing;
+    return entry.pumpPressure.trim();
+  }
+
+  bool _isLegacyManifoldFallback(OperationsLogEntry entry) {
+    return entry.tubingPressure.trim().isEmpty &&
+        entry.pumpPressure.trim().isNotEmpty;
+  }
+
+  List<({String label, String key})> _dataColumns() {
+    final columns = <({String label, String key})>[(label: 'Time', key: 'time')];
+
+    void addIfEnabled(String fieldId, String label, String key) {
+      if (_enabledFieldIds.contains(fieldId)) {
+        columns.add((label: label, key: key));
+      }
+    }
+
+    addIfEnabled('operationStage', 'Stage', 'stage');
+    addIfEnabled('pumpRate', 'Pump', 'pump');
+    addIfEnabled('returnsRate', 'Returns', 'returns');
+    addIfEnabled('tubingPressure', 'Manifold', 'manifold');
+    addIfEnabled('casingPressure', 'Casing', 'casing');
+    addIfEnabled('pumpPressure', 'Pump PSI', 'pumpPsi');
+    addIfEnabled('choke', 'Choke', 'choke');
+    addIfEnabled('waterHauled', 'Water', 'water');
+    addIfEnabled('oilHauled', 'Oil', 'oil');
+    addIfEnabled('gas', 'Gas', 'gas');
+    addIfEnabled('sandOrSolids', 'Sand', 'sand');
+    addIfEnabled('estimatedSts', 'Estimated STS', 'estimatedSts');
+    addIfEnabled('sts', 'Actual STS', 'actualSts');
+    addIfEnabled('notes', 'Notes', 'notes');
+
+    return columns;
+  }
+
+  String _effectiveDataSortField(List<({String label, String key})> columns) {
+    final allowed = columns
+        .where((col) => col.key != 'time')
+        .map((col) => col.key)
+        .toList(growable: false);
+    if (allowed.isEmpty) return 'time';
+    if (allowed.contains(_dataSortField)) return _dataSortField;
+    return allowed.first;
   }
 
   String _latestKnownValue(String Function(OperationsLogEntry entry) selector) {
@@ -1505,6 +1672,48 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   }
 
   List<String> _importantLines(OperationsLogEntry entry) {
+    final type = _entryTypeValue(entry);
+    final reportType =
+        (entry.structuredData['reportType'] as String? ?? '').trim();
+
+    if (reportType.isNotEmpty) {
+      return <String>['Type $reportType'];
+    }
+
+    if (type == 'textUpdate') {
+      final lines = <String>[];
+      final shift = (entry.structuredData['shift'] as String? ?? '').trim();
+      if (shift.isNotEmpty) {
+        lines.add('Shift ${shift[0].toUpperCase()}${shift.substring(1)}');
+      }
+      final wells = (entry.structuredData['wellsIncluded'] as String? ?? '')
+          .trim();
+      if (wells.isNotEmpty) {
+        lines.add('Wells $wells');
+      } else if (entry.wellName.trim().isNotEmpty) {
+        lines.add('Well ${entry.wellName.trim()}');
+      }
+      if (lines.isNotEmpty) return lines;
+    }
+
+    if (entry.estimatedSts != null || entry.sts != null || type == 'stsReached') {
+      final lines = <String>[];
+      if (entry.estimatedSts != null) {
+        lines.add(
+          'Estimated ${_formatFieldTime(entry.estimatedSts!, readingTimestamp: entry.entryTime)}',
+        );
+      }
+      if (entry.sts != null) {
+        lines.add(
+          'Actual ${_formatFieldTime(entry.sts!, readingTimestamp: entry.entryTime)}',
+        );
+        lines.add(_stsVarianceLabel(entry));
+      } else {
+        lines.add('STS Pending');
+      }
+      return lines;
+    }
+
     if (_workflow == OperationsLogWorkflow.drillout) {
       final lines = <String>[];
       void add(String value) {
@@ -1517,7 +1726,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       final returns =
           _carryForwardValueForEntry(entry, (item) => item.returnsRate);
       final manifold =
-          _carryForwardValueForEntry(entry, (item) => item.pumpPressure);
+          _carryForwardValueForEntry(entry, (item) => _manifoldPsiValue(item));
 
       add(stage.isEmpty ? '' : 'Stage $stage');
       add(choke.isEmpty ? '' : 'Choke $choke');
@@ -1549,9 +1758,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
         ? ''
         : 'Stage ${entry.operationStage.trim()}');
     add(entry.choke.trim().isEmpty ? '' : 'Choke ${entry.choke.trim()}');
-    add(entry.pumpPressure.trim().isEmpty
-        ? ''
-        : 'Manifold ${entry.pumpPressure.trim()}');
+    add(_manifoldPsiValue(entry).isEmpty ? '' : 'Manifold ${_manifoldPsiValue(entry)}');
     if (entry.estimatedSts != null && entry.sts == null) {
       add(_liveStsLabel(entry));
     }
@@ -1653,14 +1860,18 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     switch (key) {
       case 'time':
         return TimeOfDay.fromDateTime(entry.entryTime).format(context);
+      case 'stage':
+        return entry.operationStage;
       case 'pump':
         return entry.pumpRate;
       case 'returns':
-        return entry.returnsRate;
+        return _returnsDisplay(entry.returnsRate);
       case 'manifold':
-        return entry.pumpPressure;
+        return _manifoldPsiValue(entry);
       case 'casing':
         return entry.casingPressure;
+      case 'pumpPsi':
+        return _isLegacyManifoldFallback(entry) ? '' : entry.pumpPressure;
       case 'tubing':
         return entry.tubingPressure;
       case 'choke':
@@ -1668,20 +1879,51 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       case 'sweep':
         return entry.sweepInformation;
       case 'water':
-        return entry.waterRate;
+        return entry.waterHauled;
       case 'oil':
         return entry.oilHauled;
       case 'gas':
         return entry.gas;
       case 'sand':
         return entry.sandOrSolids;
+      case 'estimatedSts':
+        return entry.estimatedSts == null
+            ? ''
+            : _formatFieldTime(
+                entry.estimatedSts!,
+                readingTimestamp: entry.entryTime,
+              );
+      case 'actualSts':
+        return entry.sts == null
+            ? ''
+            : _formatFieldTime(
+                entry.sts!,
+                readingTimestamp: entry.entryTime,
+              );
+      case 'notes':
+        return entry.notes;
       default:
         return '';
     }
   }
 
-  List<OperationsLogEntry> _dataEntries() {
+  List<OperationsLogEntry> _dataEntries(List<({String label, String key})> columns) {
+    final selectedKeys = columns
+        .where((column) => column.key != 'time')
+        .map((column) => column.key)
+        .toList(growable: false);
     final list = List<OperationsLogEntry>.from(_visibleEntries);
+    if (selectedKeys.isNotEmpty) {
+      list.removeWhere((entry) {
+        for (final key in selectedKeys) {
+          if (_valueForColumn(entry, key).trim().isNotEmpty) {
+            return false;
+          }
+        }
+        return true;
+      });
+    }
+    final sortField = _effectiveDataSortField(columns);
     switch (_dataSortMode) {
       case _DataSortMode.newest:
         list.sort((a, b) => b.entryTime.compareTo(a.entryTime));
@@ -1692,8 +1934,8 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       case _DataSortMode.highest:
       case _DataSortMode.lowest:
         list.sort((a, b) {
-          final av = _parseValue(_valueForColumn(a, _dataSortField)) ?? -999999;
-          final bv = _parseValue(_valueForColumn(b, _dataSortField)) ?? -999999;
+          final av = _parseValue(_valueForColumn(a, sortField)) ?? -999999;
+          final bv = _parseValue(_valueForColumn(b, sortField)) ?? -999999;
           return _dataSortMode == _DataSortMode.highest
               ? bv.compareTo(av)
               : av.compareTo(bv);
@@ -1714,7 +1956,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
           break;
         case _FocusCategory.pressures:
           value =
-              'M ${entry.pumpPressure} | C ${entry.casingPressure} | T ${entry.tubingPressure}';
+            'M ${_manifoldPsiValue(entry)} | C ${entry.casingPressure} | P ${_isLegacyManifoldFallback(entry) ? '' : entry.pumpPressure}';
           break;
         case _FocusCategory.tanks:
           value = entry.tankLevel;
@@ -1750,7 +1992,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       case _ChartMetric.returnsRate:
         return _parseValue(entry.returnsRate);
       case _ChartMetric.manifoldPsi:
-        return _parseValue(entry.pumpPressure);
+        return _parseValue(_manifoldPsiValue(entry));
       case _ChartMetric.casingPsi:
         return _parseValue(entry.casingPressure);
       case _ChartMetric.tubingPsi:
@@ -1935,7 +2177,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   Widget _foundationCards() {
     final latest = _sortedEntries.isEmpty ? null : _sortedEntries.last;
     final latestKnownManifold =
-        _latestKnownValue((entry) => entry.pumpPressure);
+      _latestKnownValue((entry) => _manifoldPsiValue(entry));
     final latestKnownChoke = _latestKnownValue((entry) => entry.choke);
     final latestKnownReturns = _latestKnownValue((entry) => entry.returnsRate);
     final latestTextUpdate = _sortedEntries.reversed
@@ -2051,15 +2293,19 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
         (label: 'Choke', value: entry.choke.trim()),
       if (entry.returnsRate.trim().isNotEmpty)
         (label: 'Returns', value: _returnsDisplay(entry.returnsRate)),
-      if (entry.pumpPressure.trim().isNotEmpty)
-        (label: 'Manifold', value: entry.pumpPressure.trim()),
+      if (_manifoldPsiValue(entry).isNotEmpty)
+        (label: 'Manifold', value: _manifoldPsiValue(entry)),
+      if (entry.pumpPressure.trim().isNotEmpty && !_isLegacyManifoldFallback(entry))
+        (label: 'Pump PSI', value: entry.pumpPressure.trim()),
       if (entry.casingPressure.trim().isNotEmpty)
         (label: 'Casing', value: entry.casingPressure.trim()),
-      if (entry.tubingPressure.trim().isNotEmpty)
-        (label: 'Tubing', value: entry.tubingPressure.trim()),
       if (entry.gas.trim().isNotEmpty) (label: 'Gas', value: entry.gas.trim()),
       if (entry.sandOrSolids.trim().isNotEmpty)
         (label: 'Sand / Solids', value: entry.sandOrSolids.trim()),
+      if (entry.waterHauled.trim().isNotEmpty)
+        (label: 'Water', value: entry.waterHauled.trim()),
+      if (entry.oilHauled.trim().isNotEmpty)
+        (label: 'Oil', value: entry.oilHauled.trim()),
       if (entry.tankLevel.trim().isNotEmpty)
         (label: 'Tank', value: entry.tankLevel.trim()),
       if (entry.estimatedSts != null)
@@ -2088,7 +2334,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.fromLTRB(10, 12, 12, 12),
+      padding: const EdgeInsets.fromLTRB(12, 14, 14, 14),
       decoration: BoxDecoration(
         color: _wwPanel,
         borderRadius: BorderRadius.circular(16),
@@ -2198,11 +2444,20 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                 const SizedBox(height: 4),
                 for (final line in lines)
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
+                    padding: const EdgeInsets.only(bottom: 4),
                     child: Text(
                       line,
                       style: const TextStyle(
-                          fontSize: 14.5, color: Colors.white70),
+                          fontSize: 15, color: Colors.white70),
+                    ),
+                  ),
+                if (entry.estimatedSts != null && entry.sts == null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6, bottom: 2),
+                    child: FilledButton.icon(
+                      onPressed: () => _recordStsForEntry(entry),
+                      icon: const Icon(Icons.timer_outlined),
+                      label: const Text('Record STS'),
                     ),
                   ),
                 AnimatedSize(
@@ -2316,21 +2571,12 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
           ],
         );
       case _OperationsLogViewMode.data:
-        final rows = _dataEntries();
-        const columns = <({String label, String key})>[
-          (label: 'Time', key: 'time'),
-          (label: 'Pump', key: 'pump'),
-          (label: 'Returns', key: 'returns'),
-          (label: 'Manifold', key: 'manifold'),
-          (label: 'Casing', key: 'casing'),
-          (label: 'Tubing', key: 'tubing'),
-          (label: 'Choke', key: 'choke'),
-          (label: 'Sweep', key: 'sweep'),
-          (label: 'Water', key: 'water'),
-          (label: 'Oil', key: 'oil'),
-          (label: 'Gas', key: 'gas'),
-          (label: 'Sand', key: 'sand'),
-        ];
+        final columns = _dataColumns();
+        final rows = _dataEntries(columns);
+        final sortField = _effectiveDataSortField(columns);
+        final sortableColumns = columns
+            .where((column) => column.key != 'time')
+            .toList(growable: false);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2355,27 +2601,24 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                         value: _DataSortMode.lowest, child: Text('Lowest')),
                   ],
                 ),
-                DropdownButton<String>(
-                  value: _dataSortField,
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() => _dataSortField = value);
-                  },
-                  items: const [
-                    DropdownMenuItem(value: 'pump', child: Text('Pump')),
-                    DropdownMenuItem(value: 'returns', child: Text('Returns')),
-                    DropdownMenuItem(
-                        value: 'manifold', child: Text('Manifold')),
-                    DropdownMenuItem(value: 'casing', child: Text('Casing')),
-                    DropdownMenuItem(value: 'tubing', child: Text('Tubing')),
-                    DropdownMenuItem(value: 'water', child: Text('Water')),
-                    DropdownMenuItem(value: 'oil', child: Text('Oil')),
-                    DropdownMenuItem(value: 'gas', child: Text('Gas')),
-                  ],
-                ),
+                if (sortableColumns.isNotEmpty)
+                  DropdownButton<String>(
+                    value: sortField,
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _dataSortField = value);
+                    },
+                    items: [
+                      for (final col in sortableColumns)
+                        DropdownMenuItem(value: col.key, child: Text(col.label)),
+                    ],
+                  ),
               ],
             ),
             const SizedBox(height: 8),
+            if (rows.isEmpty)
+              const Text('No rows match selected fields and current filters.')
+            else
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
@@ -2386,13 +2629,12 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                 rows: [
                   for (final entry in rows)
                     DataRow(
+                      onSelectChanged: (_) => _showEntryDetails(entry),
                       cells: [
                         for (final col in columns)
                           DataCell(
                             Text(
-                              _valueForColumn(entry, col.key).trim().isEmpty
-                                  ? '--'
-                                  : _valueForColumn(entry, col.key),
+                              _valueForColumn(entry, col.key),
                             ),
                           ),
                       ],
@@ -2631,10 +2873,8 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                             _OperationsSmartFilter.shiftChanges =>
                               'Shift Changes',
                             _OperationsSmartFilter.reports => 'Reports',
-                            _OperationsSmartFilter.imports => 'Imports',
                             _OperationsSmartFilter.sts => 'STS',
-                            _OperationsSmartFilter.pumpChanges =>
-                              'Pump Changes',
+                            _OperationsSmartFilter.rates => 'Rates',
                             _OperationsSmartFilter.pressureChanges =>
                               'Pressure Changes',
                             _OperationsSmartFilter.chokeChanges =>
@@ -2685,7 +2925,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                if (_viewMode != _OperationsLogViewMode.timeline)
+                if (_viewMode == _OperationsLogViewMode.charts)
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(

@@ -26,6 +26,7 @@ class OperationsLogEntryFormScreen extends StatefulWidget {
     required this.enabledFieldIds,
     required this.logService,
     this.existingEntries = const <OperationsLogEntry>[],
+    this.existingEntry,
   });
 
   final OperationsLogWorkflow workflow;
@@ -40,6 +41,7 @@ class OperationsLogEntryFormScreen extends StatefulWidget {
   final Set<String> enabledFieldIds;
   final OperationsLogService logService;
   final List<OperationsLogEntry> existingEntries;
+  final OperationsLogEntry? existingEntry;
 
   @override
   State<OperationsLogEntryFormScreen> createState() =>
@@ -54,6 +56,8 @@ class _OperationsLogEntryFormScreenState
   late final TextEditingController _pumpPressureController;
   late final TextEditingController _returnsRateController;
   late final TextEditingController _tankLevelController;
+  late final TextEditingController _waterHauledController;
+  late final TextEditingController _oilHauledController;
   late final TextEditingController _equipmentStatusController;
   late final TextEditingController _downtimeController;
   late final TextEditingController _notesController;
@@ -83,6 +87,8 @@ class _OperationsLogEntryFormScreenState
     _pumpPressureController = TextEditingController();
     _returnsRateController = TextEditingController();
     _tankLevelController = TextEditingController();
+    _waterHauledController = TextEditingController();
+    _oilHauledController = TextEditingController();
     _equipmentStatusController = TextEditingController();
     _downtimeController = TextEditingController();
     _notesController = TextEditingController();
@@ -113,7 +119,11 @@ class _OperationsLogEntryFormScreenState
       _selectedWellId = '';
     }
 
-    _applyCarryForwardDefaultsForWell();
+    if (widget.existingEntry != null) {
+      _seedFromExistingEntry(widget.existingEntry!);
+    } else {
+      _applyCarryForwardDefaultsForWell();
+    }
     _loadReminderDefaults();
   }
 
@@ -125,6 +135,8 @@ class _OperationsLogEntryFormScreenState
     _pumpPressureController.dispose();
     _returnsRateController.dispose();
     _tankLevelController.dispose();
+    _waterHauledController.dispose();
+    _oilHauledController.dispose();
     _equipmentStatusController.dispose();
     _downtimeController.dispose();
     _notesController.dispose();
@@ -165,10 +177,58 @@ class _OperationsLogEntryFormScreenState
   }
 
   String get _formTitle {
+    if (widget.existingEntry != null) {
+      final workflowLabel = widget.workflow == OperationsLogWorkflow.drillout
+          ? 'Drillout'
+          : 'Cleanout';
+      return 'Edit $workflowLabel Reading';
+    }
     final workflowLabel = widget.workflow == OperationsLogWorkflow.drillout
         ? 'Drillout'
         : 'Cleanout';
     return 'Add $workflowLabel Reading';
+  }
+
+  void _seedFromExistingEntry(OperationsLogEntry entry) {
+    _readingTimestamp = entry.entryTime;
+    final stage = entry.operationStage.trim();
+    _selectedStage = widget.stageOptions.contains(stage) ? stage : '';
+    _choke = _parseChokeSelection(entry.choke) ?? _choke;
+    _pumpRateController.text = entry.pumpRate;
+    _returnsRateController.text = entry.returnsRate;
+    _casingPressureController.text = entry.casingPressure;
+    _tubingPressureController.text = entry.tubingPressure;
+    _pumpPressureController.text = entry.pumpPressure;
+    _waterHauledController.text = entry.waterHauled;
+    _oilHauledController.text = entry.oilHauled;
+    _tankLevelController.text = entry.tankLevel;
+    _equipmentStatusController.text = entry.equipmentStatus;
+    _downtimeController.text = entry.downtime;
+    _notesController.text = entry.notes;
+    _estimatedSts = entry.estimatedSts;
+    _sts = entry.sts;
+
+    final wellId = entry.persistentWellId.trim();
+    if (wellId.isNotEmpty &&
+        widget.defaultWells.any((item) => item.id == wellId)) {
+      _selectedWellId = wellId;
+    } else {
+      final byName = widget.defaultWells.where(
+        (item) => item.name.trim() == entry.wellName.trim(),
+      );
+      if (byName.isNotEmpty) {
+        _selectedWellId = byName.first.id;
+      }
+    }
+
+    final gas = entry.gas.trim();
+    if (DrilloutCleanoutFieldDefinitions.gasOptions.contains(gas)) {
+      _selectedGas = gas;
+    }
+    final sand = entry.sandOrSolids.trim();
+    if (DrilloutCleanoutFieldDefinitions.sandOptions.contains(sand)) {
+      _selectedSand = sand;
+    }
   }
 
   String get _selectedWellName {
@@ -390,6 +450,12 @@ class _OperationsLogEntryFormScreenState
     if (_returnsRateController.text.trim().isEmpty) {
       _returnsRateController.text = latest((entry) => entry.returnsRate);
     }
+    if (_waterHauledController.text.trim().isEmpty) {
+      _waterHauledController.text = latest((entry) => entry.waterHauled);
+    }
+    if (_oilHauledController.text.trim().isEmpty) {
+      _oilHauledController.text = latest((entry) => entry.oilHauled);
+    }
     if (_tankLevelController.text.trim().isEmpty) {
       _tankLevelController.text = latest((entry) => entry.tankLevel);
     }
@@ -454,44 +520,101 @@ class _OperationsLogEntryFormScreenState
     setState(() => _saving = true);
     try {
       final job = widget.activeJob;
-      var entry = await widget.logService.createLocalEntry(
-        workflow: widget.workflow,
-        jobId: job.id,
-        wellId: _selectedWellId,
-        wellName: _selectedWellName,
-        readingTimestamp: _readingTimestamp,
-        operationStage:
-            _isEnabled('operationStage') ? _selectedStage.trim() : '',
-        choke: _isEnabled('choke') ? formatChokeDisplay(_choke) : '',
-        pumpRate: _pumpRateController.text.trim(),
-        casingPressure: _casingPressureController.text.trim(),
-        tubingPressure: _isEnabled('tubingPressure')
-            ? _tubingPressureController.text.trim()
-            : '',
-        pumpPressure: _isEnabled('pumpPressure')
-            ? _pumpPressureController.text.trim()
-            : '',
-        gas: _isEnabled('gas') ? _selectedGas.trim() : '',
-        returnsRate:
-            _isEnabled('returnsRate') ? _returnsRateController.text.trim() : '',
-        estimatedSts: _isEnabled('estimatedSts') ? _estimatedSts : null,
-        sts: _isEnabled('sts') ? _sts : null,
-        tankLevel:
-            _isEnabled('tankLevel') ? _tankLevelController.text.trim() : '',
-        sandOrSolids: _isEnabled('sandOrSolids') ? _selectedSand.trim() : '',
-        equipmentStatus: _isEnabled('equipmentStatus')
-            ? _equipmentStatusController.text.trim()
-            : '',
-        downtime: _isEnabled('downtime') ? _downtimeController.text.trim() : '',
-        notes: _notesController.text.trim(),
-      );
+      final existing = widget.existingEntry;
+      var entry = existing != null
+          ? existing.copyWith(
+              persistentWellId: _selectedWellId,
+              wellName: _selectedWellName,
+              readingTimestamp: _readingTimestamp,
+              operationStage:
+                  _isEnabled('operationStage') ? _selectedStage.trim() : '',
+              choke: _isEnabled('choke') ? formatChokeDisplay(_choke) : '',
+              pumpRate: _pumpRateController.text.trim(),
+              casingPressure: _casingPressureController.text.trim(),
+              tubingPressure: _isEnabled('tubingPressure')
+                  ? _tubingPressureController.text.trim()
+                  : '',
+              pumpPressure: _isEnabled('pumpPressure')
+                  ? _pumpPressureController.text.trim()
+                  : '',
+              gas: _isEnabled('gas') ? _selectedGas.trim() : '',
+              returnsRate: _isEnabled('returnsRate')
+                  ? _returnsRateController.text.trim()
+                  : '',
+              estimatedSts: _isEnabled('estimatedSts') ? _estimatedSts : null,
+              sts: _isEnabled('sts') ? _sts : null,
+              tankLevel: _isEnabled('tankLevel')
+                  ? _tankLevelController.text.trim()
+                  : '',
+              waterHauled: _isEnabled('waterHauled')
+                  ? _waterHauledController.text.trim()
+                  : '',
+              oilHauled: _isEnabled('oilHauled')
+                  ? _oilHauledController.text.trim()
+                  : '',
+              sandOrSolids:
+                  _isEnabled('sandOrSolids') ? _selectedSand.trim() : '',
+              equipmentStatus: _isEnabled('equipmentStatus')
+                  ? _equipmentStatusController.text.trim()
+                  : '',
+              downtime:
+                  _isEnabled('downtime') ? _downtimeController.text.trim() : '',
+              notes: _notesController.text.trim(),
+            )
+          : await widget.logService.createLocalEntry(
+              workflow: widget.workflow,
+              jobId: job.id,
+              wellId: _selectedWellId,
+              wellName: _selectedWellName,
+              readingTimestamp: _readingTimestamp,
+              operationStage:
+                  _isEnabled('operationStage') ? _selectedStage.trim() : '',
+              choke: _isEnabled('choke') ? formatChokeDisplay(_choke) : '',
+              pumpRate: _pumpRateController.text.trim(),
+              casingPressure: _casingPressureController.text.trim(),
+              tubingPressure: _isEnabled('tubingPressure')
+                  ? _tubingPressureController.text.trim()
+                  : '',
+              pumpPressure: _isEnabled('pumpPressure')
+                  ? _pumpPressureController.text.trim()
+                  : '',
+              gas: _isEnabled('gas') ? _selectedGas.trim() : '',
+              returnsRate: _isEnabled('returnsRate')
+                  ? _returnsRateController.text.trim()
+                  : '',
+              estimatedSts: _isEnabled('estimatedSts') ? _estimatedSts : null,
+              sts: _isEnabled('sts') ? _sts : null,
+              tankLevel: _isEnabled('tankLevel')
+                  ? _tankLevelController.text.trim()
+                  : '',
+              waterHauled: _isEnabled('waterHauled')
+                  ? _waterHauledController.text.trim()
+                  : '',
+              oilHauled: _isEnabled('oilHauled')
+                  ? _oilHauledController.text.trim()
+                  : '',
+              sandOrSolids:
+                  _isEnabled('sandOrSolids') ? _selectedSand.trim() : '',
+              equipmentStatus: _isEnabled('equipmentStatus')
+                  ? _equipmentStatusController.text.trim()
+                  : '',
+              downtime:
+                  _isEnabled('downtime') ? _downtimeController.text.trim() : '',
+              notes: _notesController.text.trim(),
+            );
 
-      final resolvedLinkedSweepId =
-          _sts != null ? _oldestOpenEstimatedSweepId() : '';
+      final resolvedLinkedSweepId = _sts != null
+          ? ((existing?.linkedSweepId.trim().isNotEmpty ?? false)
+              ? existing!.linkedSweepId.trim()
+              : _oldestOpenEstimatedSweepId())
+          : '';
+      final existingSweepId = existing?.sweepId.trim() ?? '';
       final sweepId = (_estimatedSts != null || _sts != null)
           ? (resolvedLinkedSweepId.isNotEmpty
               ? resolvedLinkedSweepId
-              : 'sweep_${entry.entryId}')
+              : (existingSweepId.isNotEmpty
+                  ? existingSweepId
+                  : 'sweep_${entry.entryId}'))
           : '';
       entry = entry.copyWith(
         sweepId: sweepId,
@@ -617,6 +740,18 @@ class _OperationsLogEntryFormScreenState
     if (_isEnabled('pumpPressure') &&
         _pumpPressureController.text.trim().isNotEmpty) {
       lines.add('Pump PSI: ${_pumpPressureController.text.trim()}');
+    }
+    if (_isEnabled('tubingPressure') &&
+        _tubingPressureController.text.trim().isNotEmpty) {
+      lines.add('Manifold PSI: ${_tubingPressureController.text.trim()}');
+    }
+    if (_isEnabled('waterHauled') &&
+        _waterHauledController.text.trim().isNotEmpty) {
+      lines.add('Water Hauled: ${_waterHauledController.text.trim()}');
+    }
+    if (_isEnabled('oilHauled') &&
+        _oilHauledController.text.trim().isNotEmpty) {
+      lines.add('Oil Hauled: ${_oilHauledController.text.trim()}');
     }
     if (_isEnabled('estimatedSts') && _estimatedSts != null) {
       lines.add('Estimated STS: ${_formatOptionalDateTime(_estimatedSts)}');
@@ -895,6 +1030,30 @@ class _OperationsLogEntryFormScreenState
               key: const Key('operations-log-form-tank-level-field'),
               controller: _tankLevelController,
               decoration: const InputDecoration(labelText: 'Tank Level'),
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (_isEnabled('waterHauled')) ...[
+            TextFormField(
+              key: const Key('operations-log-form-water-hauled-field'),
+              controller: _waterHauledController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: _labelFor('waterHauled', fallback: 'Water Hauled'),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (_isEnabled('oilHauled')) ...[
+            TextFormField(
+              key: const Key('operations-log-form-oil-hauled-field'),
+              controller: _oilHauledController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: _labelFor('oilHauled', fallback: 'Oil Hauled'),
+              ),
             ),
             const SizedBox(height: 12),
           ],
