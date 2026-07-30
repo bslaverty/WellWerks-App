@@ -460,16 +460,20 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     final job = _activeJob;
     if (job == null) return;
 
+    final baseline =
+        estimatedSts.isBefore(actualSts) ? estimatedSts : actualSts;
+    final inferredSweepStart = baseline.subtract(const Duration(minutes: 1));
+
     final estimatedDuration =
-        estimatedSts.difference(entry.entryTime).inSeconds / 60;
-    final actualDuration = actualSts.difference(entry.entryTime).inSeconds / 60;
+        estimatedSts.difference(inferredSweepStart).inSeconds / 60;
+    final actualDuration =
+        actualSts.difference(inferredSweepStart).inSeconds / 60;
+
     if (estimatedDuration <= 0 || actualDuration <= 0) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Estimated STS and Actual STS must be after the entry timestamp.',
-          ),
+          content: Text('Estimated STS and Actual STS must be valid values.'),
         ),
       );
       return;
@@ -517,10 +521,24 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       jobId: job.id,
       entry: updated,
     );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('STS saved to Operations Log.')),
+      );
+    }
     await _load();
   }
 
   Future<void> _addSts() async {
+    final job = _activeJob;
+    if (job == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Set an active job before adding STS.')),
+      );
+      return;
+    }
+
     final result =
         await Navigator.of(context).push<OperationsLogStsEntryResult>(
       MaterialPageRoute(
@@ -529,8 +547,6 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     );
     if (result == null) return;
 
-    final job = _activeJob;
-    if (job == null) return;
     final latest = _sortedEntries.isEmpty ? null : _sortedEntries.last;
     final entry = await _logService.createLocalEntry(
       workflow: _workflow,
