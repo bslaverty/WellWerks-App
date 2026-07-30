@@ -378,17 +378,11 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     }
   }
 
-  OperationsLogEntry? _oldestOpenEstimatedStsEntry() {
-    final open = _sortedEntries
-        .where((entry) => entry.estimatedSts != null && entry.sts == null)
-        .toList(growable: false)
-      ..sort((a, b) {
-        final byEstimated = a.estimatedSts!.compareTo(b.estimatedSts!);
-        if (byEstimated != 0) return byEstimated;
-        return a.entryTime.compareTo(b.entryTime);
-      });
-    if (open.isEmpty) return null;
-    return open.first;
+  bool _isStsEntry(OperationsLogEntry entry) {
+    final type = _entryTypeValue(entry);
+    final recordType =
+        (entry.structuredData['stsRecordType'] as String? ?? '').trim();
+    return type == 'stsReached' || recordType == 'manualSts';
   }
 
   double? _parseNumericValue(String rawValue) {
@@ -399,34 +393,30 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     return double.tryParse(match.group(0) ?? '');
   }
 
-  double? _mostRecentAverageReturnRate() {
-    for (final item in _sortedEntries.reversed) {
-      final parsed = _parseNumericValue(item.returnsRate);
-      if (parsed != null) return parsed;
-    }
-    return null;
-  }
-
   double? _averageReturnRateForStsEntry(OperationsLogEntry entry) {
     final fromStructured = entry.structuredData['stsAverageReturnRate'];
     if (fromStructured is num) return fromStructured.toDouble();
-    final parsed = _parseNumericValue(entry.returnsRate);
-    if (parsed != null) return parsed;
-    return _mostRecentAverageReturnRate();
+    return _parseNumericValue(entry.returnsRate);
   }
 
   double? _estimatedStsDurationMinutes(OperationsLogEntry entry) {
+    final fromStructured = entry.structuredData['stsEstimatedDurationMinutes'];
+    if (fromStructured is num && fromStructured > 0) {
+      return fromStructured.toDouble();
+    }
     if (entry.estimatedSts == null) return null;
     final seconds = entry.estimatedSts!.difference(entry.entryTime).inSeconds;
     if (seconds <= 0) return null;
     return seconds / 60;
   }
 
-  double? _actualStsDurationMinutes(
-    OperationsLogEntry entry,
-    DateTime actualSts,
-  ) {
-    final seconds = actualSts.difference(entry.entryTime).inSeconds;
+  double? _actualStsDurationMinutes(OperationsLogEntry entry) {
+    final fromStructured = entry.structuredData['stsActualDurationMinutes'];
+    if (fromStructured is num && fromStructured > 0) {
+      return fromStructured.toDouble();
+    }
+    if (entry.sts == null) return null;
+    final seconds = entry.sts!.difference(entry.entryTime).inSeconds;
     if (seconds <= 0) return null;
     return seconds / 60;
   }
@@ -434,43 +424,76 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   double? _storedAdjustedAverageReturnRate(OperationsLogEntry entry) {
     final raw = entry.structuredData['stsAdjustedAverageReturnRate'];
     if (raw is num) return raw.toDouble();
-    return null;
+    final averageReturnRate = _averageReturnRateForStsEntry(entry);
+    final estimatedDuration = _estimatedStsDurationMinutes(entry);
+    final actualDuration = _actualStsDurationMinutes(entry);
+    if (averageReturnRate == null ||
+        estimatedDuration == null ||
+        actualDuration == null ||
+        actualDuration <= 0) {
+      return null;
+    }
+    return averageReturnRate * (estimatedDuration / actualDuration);
   }
 
-  Future<void> _completeStsEntry({
+  String _stsEarlyLateLabelFromVariance(int varianceMinutes) {
+    if (varianceMinutes == 0) return 'On time';
+    if (varianceMinutes > 0) return '${varianceMinutes.abs()} min Late';
+    return '${varianceMinutes.abs()} min Early';
+  }
+
+  String _stsPumpRateValue(OperationsLogEntry entry) {
+    final fromStructured =
+        (entry.structuredData['stsPumpRate'] as String? ?? '').trim();
+    if (fromStructured.isNotEmpty) return fromStructured;
+    return entry.pumpRate.trim();
+  }
+
+  Future<void> _saveStsEntry({
     required OperationsLogEntry entry,
+    required String pumpRate,
+    required double averageReturnRate,
+    required DateTime estimatedSts,
     required DateTime actualSts,
     required String notes,
-    required double? averageReturnRate,
   }) async {
     final job = _activeJob;
     if (job == null) return;
 
-    final estimatedDuration = _estimatedStsDurationMinutes(entry);
-    final actualDuration = _actualStsDurationMinutes(entry, actualSts);
-    double? adjusted;
-    if (averageReturnRate != null &&
-        estimatedDuration != null &&
-        actualDuration != null &&
-        actualDuration > 0) {
-      adjusted = averageReturnRate * (estimatedDuration / actualDuration);
+    final estimatedDuration =
+        estimatedSts.difference(entry.entryTime).inSeconds / 60;
+    final actualDuration = actualSts.difference(entry.entryTime).inSeconds / 60;
+    if (estimatedDuration <= 0 || actualDuration <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Estimated STS and Actual STS must be after the entry timestamp.',
+          ),
+        ),
+      );
+      return;
     }
+
+    final adjusted = averageReturnRate * (estimatedDuration / actualDuration);
+    final varianceMinutes = actualSts.difference(estimatedSts).inMinutes;
+    final earlyLateLabel = _stsEarlyLateLabelFromVariance(varianceMinutes);
 
     final structured = Map<String, dynamic>.from(entry.structuredData);
-    if (averageReturnRate != null) {
-      structured['stsAverageReturnRate'] = averageReturnRate;
-    }
-    if (estimatedDuration != null) {
-      structured['stsEstimatedDurationMinutes'] = estimatedDuration;
-    }
-    if (actualDuration != null) {
-      structured['stsActualDurationMinutes'] = actualDuration;
-    }
-    if (adjusted != null) {
-      structured['stsAdjustedAverageReturnRate'] = adjusted;
-    }
+    structured['stsRecordType'] = 'manualSts';
+    structured['stsPumpRate'] = pumpRate.trim();
+    structured['stsAverageReturnRate'] = averageReturnRate;
+    structured['stsEstimatedDurationMinutes'] = estimatedDuration;
+    structured['stsActualDurationMinutes'] = actualDuration;
+    structured['stsAdjustedAverageReturnRate'] = adjusted;
+    structured['stsVarianceMinutes'] = varianceMinutes;
+    structured['stsEarlyLateLabel'] = earlyLateLabel;
 
     var updated = entry.copyWith(
+      entryType: 'stsReached',
+      pumpRate: pumpRate.trim(),
+      returnsRate: averageReturnRate.toStringAsFixed(2),
+      estimatedSts: estimatedSts,
       sts: actualSts,
       notes: notes.trim(),
       structuredData: structured,
@@ -498,41 +521,45 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   }
 
   Future<void> _addSts() async {
-    final target = _oldestOpenEstimatedStsEntry();
-    if (target == null || target.estimatedSts == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No pending STS entries are available.')),
-      );
-      return;
-    }
-
-    final pumpRate = target.pumpRate.trim().isEmpty
-        ? _latestKnownValue((entry) => entry.pumpRate)
-        : target.pumpRate.trim();
-    final averageReturns = _averageReturnRateForStsEntry(target);
-    final result = await Navigator.of(context).push<OperationsLogStsEntryResult>(
+    final result =
+        await Navigator.of(context).push<OperationsLogStsEntryResult>(
       MaterialPageRoute(
-        builder: (_) => OperationsLogStsEntryScreen(
-          estimatedSts: target.estimatedSts!,
-          pumpRate: pumpRate,
-          averageReturnRate: averageReturns,
-          initialActualSts: DateTime.now(),
-          initialNotes: target.notes,
-        ),
+        builder: (_) => const OperationsLogStsEntryScreen(),
       ),
     );
     if (result == null) return;
 
-    await _completeStsEntry(
-      entry: target,
+    final job = _activeJob;
+    if (job == null) return;
+    final latest = _sortedEntries.isEmpty ? null : _sortedEntries.last;
+    final entry = await _logService.createLocalEntry(
+      workflow: _workflow,
+      jobId: job.id,
+      wellId: latest?.persistentWellId ??
+          (_resolvedWells.isNotEmpty ? _resolvedWells.first.id : ''),
+      wellName: latest?.wellName ?? _currentWellName,
+      readingTimestamp: DateTime.now(),
+      entryType: 'stsReached',
+      generatedText: 'STS entry recorded.',
+      structuredData: const <String, dynamic>{'stsRecordType': 'manualSts'},
+      operationStage: latest?.operationStage ?? _currentStage,
+      notes: result.notes,
+    );
+
+    await _saveStsEntry(
+      entry: entry,
+      pumpRate: result.pumpRate,
+      averageReturnRate: result.averageReturnRate,
+      estimatedSts: result.estimatedSts,
       actualSts: result.actualSts,
       notes: result.notes,
-      averageReturnRate: averageReturns,
     );
   }
 
   Future<void> _showEntryDetails(OperationsLogEntry entry) async {
+    final isStsEntry = _isStsEntry(entry);
+    final averageReturns = _averageReturnRateForStsEntry(entry);
+    final adjustedReturns = _storedAdjustedAverageReturnRate(entry);
     final rows = <Widget>[
       Text('Entry Time: ${entry.entryTime.toLocal()}'),
       Text('Logged At: ${entry.loggedAt.toLocal()}'),
@@ -540,50 +567,85 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
           .trim()
           .isNotEmpty)
         Text('Shared Via: ${entry.structuredData['sharedVia']}'),
-      if (_enabledFieldIds.contains('operationStage') &&
+      if (isStsEntry && _stsPumpRateValue(entry).isNotEmpty)
+        Text('Pump Rate: ${_stsPumpRateValue(entry)}'),
+      if (isStsEntry && averageReturns != null)
+        Text(
+            'Average Return Rate: ${averageReturns.toStringAsFixed(2)} bbl/min'),
+      if (isStsEntry && entry.estimatedSts != null)
+        Text(
+          'Estimated STS: ${_formatFieldTime(entry.estimatedSts!, readingTimestamp: entry.entryTime)}',
+        ),
+      if (isStsEntry && entry.sts != null)
+        Text(
+          'Actual STS: ${_formatFieldTime(entry.sts!, readingTimestamp: entry.entryTime)}',
+        ),
+      if (isStsEntry) Text('Early/Late: ${_stsVarianceLabel(entry)}'),
+      if (isStsEntry && adjustedReturns != null)
+        Text(
+            'Adjusted Avg Return: ${adjustedReturns.toStringAsFixed(2)} bbl/min'),
+      if (!isStsEntry &&
+          _enabledFieldIds.contains('operationStage') &&
           entry.operationStage.isNotEmpty)
         Text('Operation: ${entry.operationStage}'),
-      if (_enabledFieldIds.contains('pumpRate') && entry.pumpRate.isNotEmpty)
+      if (!isStsEntry &&
+          _enabledFieldIds.contains('pumpRate') &&
+          entry.pumpRate.isNotEmpty)
         Text('Pump rate: ${entry.pumpRate}'),
-      if (_enabledFieldIds.contains('returnsRate') &&
+      if (!isStsEntry &&
+          _enabledFieldIds.contains('returnsRate') &&
           entry.returnsRate.isNotEmpty)
         Text('Returns: ${_returnsDisplay(entry.returnsRate)}'),
-      if (_enabledFieldIds.contains('casingPressure') &&
+      if (!isStsEntry &&
+          _enabledFieldIds.contains('casingPressure') &&
           entry.casingPressure.isNotEmpty)
         Text('Casing pressure: ${entry.casingPressure}'),
-      if (_enabledFieldIds.contains('tubingPressure') &&
+      if (!isStsEntry &&
+          _enabledFieldIds.contains('tubingPressure') &&
           _manifoldPsiValue(entry).isNotEmpty)
         Text('Manifold PSI: ${_manifoldPsiValue(entry)}'),
-      if (_enabledFieldIds.contains('pumpPressure') &&
+      if (!isStsEntry &&
+          _enabledFieldIds.contains('pumpPressure') &&
           entry.pumpPressure.isNotEmpty &&
           !_isLegacyManifoldFallback(entry))
         Text('Pump PSI: ${entry.pumpPressure}'),
       if (_enabledFieldIds.contains('notes') && entry.notes.isNotEmpty)
         Text('Notes: ${entry.notes}'),
-      if (_enabledFieldIds.contains('gas') && entry.gas.isNotEmpty)
+      if (!isStsEntry &&
+          _enabledFieldIds.contains('gas') &&
+          entry.gas.isNotEmpty)
         Text('Gas: ${entry.gas}'),
-      if (_enabledFieldIds.contains('waterHauled') &&
+      if (!isStsEntry &&
+          _enabledFieldIds.contains('waterHauled') &&
           entry.waterHauled.isNotEmpty)
         Text('Water Hauled: ${entry.waterHauled}'),
-      if (_enabledFieldIds.contains('oilHauled') && entry.oilHauled.isNotEmpty)
+      if (!isStsEntry &&
+          _enabledFieldIds.contains('oilHauled') &&
+          entry.oilHauled.isNotEmpty)
         Text('Oil Hauled: ${entry.oilHauled}'),
-      if (_enabledFieldIds.contains('sandOrSolids') &&
+      if (!isStsEntry &&
+          _enabledFieldIds.contains('sandOrSolids') &&
           entry.sandOrSolids.isNotEmpty)
         Text('Sand / Solids: ${entry.sandOrSolids}'),
-      if (_enabledFieldIds.contains('choke') && entry.choke.isNotEmpty)
+      if (!isStsEntry &&
+          _enabledFieldIds.contains('choke') &&
+          entry.choke.isNotEmpty)
         Text('Choke: ${entry.choke}'),
-      if (_enabledFieldIds.contains('estimatedSts') &&
+      if (!isStsEntry &&
+          _enabledFieldIds.contains('estimatedSts') &&
           entry.estimatedSts != null)
         Text(
           'Estimated STS: ${_formatFieldTime(entry.estimatedSts!, readingTimestamp: entry.entryTime)}',
         ),
-      if (_enabledFieldIds.contains('sts') && entry.sts != null)
+      if (!isStsEntry && _enabledFieldIds.contains('sts') && entry.sts != null)
         Text(
           'STS: ${_formatFieldTime(entry.sts!, readingTimestamp: entry.entryTime)}',
         ),
-      if (entry.sweepInformation.isNotEmpty)
+      if (!isStsEntry && entry.sweepInformation.isNotEmpty)
         Text('Legacy Sweep Information: ${entry.sweepInformation}'),
-      if (_enabledFieldIds.contains('tankLevel') && entry.tankLevel.isNotEmpty)
+      if (!isStsEntry &&
+          _enabledFieldIds.contains('tankLevel') &&
+          entry.tankLevel.isNotEmpty)
         Text('Tank Information: ${entry.tankLevel}'),
     ];
 
@@ -1038,25 +1100,28 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   }
 
   Future<void> _recordStsForEntry(OperationsLogEntry entry) async {
-    if (entry.estimatedSts == null) return;
     final averageReturns = _averageReturnRateForStsEntry(entry);
-    final result = await Navigator.of(context).push<OperationsLogStsEntryResult>(
+    final result =
+        await Navigator.of(context).push<OperationsLogStsEntryResult>(
       MaterialPageRoute(
         builder: (_) => OperationsLogStsEntryScreen(
-          estimatedSts: entry.estimatedSts!,
-          pumpRate: entry.pumpRate,
-          averageReturnRate: averageReturns,
+          title: 'Edit STS',
+          initialPumpRate: _stsPumpRateValue(entry),
+          initialAverageReturnRate: averageReturns,
+          initialEstimatedSts: entry.estimatedSts,
           initialActualSts: entry.sts ?? DateTime.now(),
           initialNotes: entry.notes,
         ),
       ),
     );
     if (result == null) return;
-    await _completeStsEntry(
+    await _saveStsEntry(
       entry: entry,
+      pumpRate: result.pumpRate,
+      averageReturnRate: result.averageReturnRate,
+      estimatedSts: result.estimatedSts,
       actualSts: result.actualSts,
       notes: result.notes,
-      averageReturnRate: averageReturns,
     );
   }
 
@@ -1805,6 +1870,28 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       if (lines.isNotEmpty) return lines;
     }
 
+    if (_isStsEntry(entry)) {
+      final lines = <String>[];
+      final pumpRate = _stsPumpRateValue(entry);
+      final averageReturns = _averageReturnRateForStsEntry(entry);
+      final adjustedAverage = _storedAdjustedAverageReturnRate(entry);
+      if (pumpRate.isNotEmpty) {
+        lines.add('Pump $pumpRate');
+      }
+      if (averageReturns != null) {
+        lines.add('Avg Return ${averageReturns.toStringAsFixed(2)} bbl/min');
+      }
+      if (entry.sts != null) {
+        lines.add(_stsVarianceLabel(entry));
+      }
+      if (adjustedAverage != null) {
+        lines.add('Adj Avg ${adjustedAverage.toStringAsFixed(2)} bbl/min');
+      }
+      if (lines.isNotEmpty) {
+        return lines.take(4).toList(growable: false);
+      }
+    }
+
     if (entry.estimatedSts != null ||
         entry.sts != null ||
         type == 'stsReached') {
@@ -1888,6 +1975,8 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   }
 
   int? _stsVarianceMinutes(OperationsLogEntry entry) {
+    final fromStructured = entry.structuredData['stsVarianceMinutes'];
+    if (fromStructured is num) return fromStructured.toInt();
     final estimated = entry.estimatedSts;
     final actual = entry.sts;
     if (estimated == null || actual == null) return null;
@@ -1895,6 +1984,9 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   }
 
   String _stsVarianceLabel(OperationsLogEntry entry) {
+    final fromStructured =
+        (entry.structuredData['stsEarlyLateLabel'] as String? ?? '').trim();
+    if (fromStructured.isNotEmpty) return fromStructured;
     final variance = _stsVarianceMinutes(entry);
     if (variance == null) return 'STS pending';
     if (variance == 0) return 'On time';
@@ -2396,32 +2488,43 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
 
   Widget _buildTimelineItem(OperationsLogEntry entry) {
     final expanded = _expandedEntryIds.contains(entry.entryId);
+    final isStsEntry = _isStsEntry(entry);
     final iconColor = _eventColor(entry);
     final lines = _importantLines(entry);
     final detailRows = <({String label, String value})>[
-      if (entry.operationStage.trim().isNotEmpty)
+      if (!isStsEntry && entry.operationStage.trim().isNotEmpty)
         (label: 'Stage', value: entry.operationStage.trim()),
-      if (entry.pumpRate.trim().isNotEmpty)
+      if (isStsEntry && _stsPumpRateValue(entry).isNotEmpty)
+        (label: 'Pump', value: _stsPumpRateValue(entry)),
+      if (!isStsEntry && entry.pumpRate.trim().isNotEmpty)
         (label: 'Pump', value: entry.pumpRate.trim()),
-      if (entry.choke.trim().isNotEmpty)
+      if (isStsEntry && _averageReturnRateForStsEntry(entry) != null)
+        (
+          label: 'Average Return',
+          value:
+              '${_averageReturnRateForStsEntry(entry)!.toStringAsFixed(2)} bbl/min',
+        ),
+      if (!isStsEntry && entry.choke.trim().isNotEmpty)
         (label: 'Choke', value: entry.choke.trim()),
-      if (entry.returnsRate.trim().isNotEmpty)
+      if (!isStsEntry && entry.returnsRate.trim().isNotEmpty)
         (label: 'Returns', value: _returnsDisplay(entry.returnsRate)),
-      if (_manifoldPsiValue(entry).isNotEmpty)
+      if (!isStsEntry && _manifoldPsiValue(entry).isNotEmpty)
         (label: 'Manifold', value: _manifoldPsiValue(entry)),
-      if (entry.pumpPressure.trim().isNotEmpty &&
+      if (!isStsEntry &&
+          entry.pumpPressure.trim().isNotEmpty &&
           !_isLegacyManifoldFallback(entry))
         (label: 'Pump PSI', value: entry.pumpPressure.trim()),
-      if (entry.casingPressure.trim().isNotEmpty)
+      if (!isStsEntry && entry.casingPressure.trim().isNotEmpty)
         (label: 'Casing', value: entry.casingPressure.trim()),
-      if (entry.gas.trim().isNotEmpty) (label: 'Gas', value: entry.gas.trim()),
-      if (entry.sandOrSolids.trim().isNotEmpty)
+      if (!isStsEntry && entry.gas.trim().isNotEmpty)
+        (label: 'Gas', value: entry.gas.trim()),
+      if (!isStsEntry && entry.sandOrSolids.trim().isNotEmpty)
         (label: 'Sand / Solids', value: entry.sandOrSolids.trim()),
-      if (entry.waterHauled.trim().isNotEmpty)
+      if (!isStsEntry && entry.waterHauled.trim().isNotEmpty)
         (label: 'Water', value: entry.waterHauled.trim()),
-      if (entry.oilHauled.trim().isNotEmpty)
+      if (!isStsEntry && entry.oilHauled.trim().isNotEmpty)
         (label: 'Oil', value: entry.oilHauled.trim()),
-      if (entry.tankLevel.trim().isNotEmpty)
+      if (!isStsEntry && entry.tankLevel.trim().isNotEmpty)
         (label: 'Tank', value: entry.tankLevel.trim()),
       if (entry.estimatedSts != null)
         (
@@ -2439,11 +2542,19 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
             readingTimestamp: entry.entryTime,
           ),
         ),
-      if (entry.sweepInformation.trim().isNotEmpty)
+      if (isStsEntry) (label: 'Early/Late', value: _stsVarianceLabel(entry)),
+      if (isStsEntry)
+        (
+          label: 'Adjusted Avg Return',
+          value: _storedAdjustedAverageReturnRate(entry) == null
+              ? 'N/A'
+              : '${_storedAdjustedAverageReturnRate(entry)!.toStringAsFixed(2)} bbl/min',
+        ),
+      if (!isStsEntry && entry.sweepInformation.trim().isNotEmpty)
         (label: 'Sweep', value: entry.sweepInformation.trim()),
-      if (entry.equipmentStatus.trim().isNotEmpty)
+      if (!isStsEntry && entry.equipmentStatus.trim().isNotEmpty)
         (label: 'Equipment', value: entry.equipmentStatus.trim()),
-      if (entry.downtime.trim().isNotEmpty)
+      if (!isStsEntry && entry.downtime.trim().isNotEmpty)
         (label: 'Downtime', value: entry.downtime.trim()),
     ];
     return AnimatedContainer(
@@ -2618,7 +2729,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                                       ),
                                       Expanded(
                                         child: Text(
-                                          'Adj Avg ${_storedAdjustedAverageReturnRate(entry)?.toStringAsFixed(2) ?? '--'} bbl/min',
+                                          'Adj Avg ${_storedAdjustedAverageReturnRate(entry)?.toStringAsFixed(2) ?? 'N/A'} bbl/min',
                                           style: const TextStyle(
                                             fontWeight: FontWeight.w700,
                                           ),

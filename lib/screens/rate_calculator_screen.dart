@@ -285,6 +285,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
   Future<void> _persistCalculatorSession() async {
     final prefs = await SharedPreferences.getInstance();
+    final activeState = _activeTimerState;
+    final activeCalculatorId = activeState?.calculatorId;
     final payload = <String, dynamic>{
       'startGauge': startGauge.text,
       'endGauge': endGauge.text,
@@ -297,6 +299,12 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       'timerFinished': _timerFinished,
       'remainingSeconds': _remainingSeconds,
       'thirtySecondAlertShown': _thirtySecondAlertShown,
+      'activeCalculatorId': activeCalculatorId,
+      'timerStartedAtMs': activeState?.startedAtMs,
+      'timerEndsAtMs': activeState?.endsAtMs,
+      'timerDurationSeconds': activeState?.durationSeconds,
+      'rateDisplayUnit':
+          _rateDisplayUnit == _RateDisplayUnit.bblPerHr ? 'bbl_hr' : 'bbl_min',
     };
     await prefs.setString(_sessionStatePrefKey, jsonEncode(payload));
   }
@@ -344,6 +352,14 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
             (map['remainingSeconds'] as num?)?.toInt() ?? _remainingSeconds;
         _thirtySecondAlertShown =
             map['thirtySecondAlertShown'] as bool? ?? _thirtySecondAlertShown;
+
+        final sessionRateUnit =
+            (map['rateDisplayUnit'] as String? ?? '').trim();
+        if (sessionRateUnit == 'bbl_hr') {
+          _rateDisplayUnit = _RateDisplayUnit.bblPerHr;
+        } else if (sessionRateUnit == 'bbl_min') {
+          _rateDisplayUnit = _RateDisplayUnit.bblPerMin;
+        }
       });
     } catch (_) {
       // Ignore malformed session state.
@@ -762,6 +778,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         await _rateTimerNotifications.cancelNotifications(active);
       }
       await _rateTimerService.clearActiveTimer();
+      _persistCalculatorSession();
       return;
     }
 
@@ -783,6 +800,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       _timerFinished = false;
       _thirtySecondAlertShown = remaining <= 30;
     });
+    _persistCalculatorSession();
 
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       _syncTimerFromClock(timer);
@@ -1155,6 +1173,25 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   bool get _showResetButton =>
       bblPerMin != null || bblPerHr != null || bblPerDay != null;
 
+  bool get _isCurrentCalculatorTimerActive =>
+      _activeTimerState?.calculatorId == _calculatorStorageId;
+
+  String _timerStartedText() {
+    final state = _activeTimerState;
+    if (state == null || !_isCurrentCalculatorTimerActive) return '--';
+    return TimeOfDay.fromDateTime(state.startedAt).format(context);
+  }
+
+  String _timerElapsedText() {
+    final state = _activeTimerState;
+    if (state == null || !_isCurrentCalculatorTimerActive) return '--';
+    final elapsed = DateTime.now().difference(state.startedAt).inSeconds;
+    final safeElapsed = elapsed < 0 ? 0 : elapsed;
+    final mm = (safeElapsed ~/ 60).toString().padLeft(2, '0');
+    final ss = (safeElapsed % 60).toString().padLeft(2, '0');
+    return '$mm:$ss';
+  }
+
   String get _timerStatusText {
     if (_timerRunning) return 'Timer running...';
     if (_activeTimerState != null &&
@@ -1228,6 +1265,27 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                           color: Colors.white,
                           fontWeight: FontWeight.w700,
                         ),
+                      ),
+                    ),
+                  if (_timerRunning && _isCurrentCalculatorTimerActive)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Started ${_timerStartedText()}',
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                          ),
+                          Text(
+                            'Elapsed ${_timerElapsedText()}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   const SizedBox(height: 10),
@@ -1844,7 +1902,14 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) {
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        _persistTimerState();
+        _persistCalculatorSession();
+        _saveRateLogState();
+      },
+      child: Scaffold(
         appBar: AppHeader(title: widget.config.title, showBack: true),
         body: Column(
           children: [
@@ -1961,5 +2026,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
             _sharedGaugeKeypad(),
           ],
         ),
-      );
+      ),
+    );
+  }
 }
