@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 import '../services/app_settings_service.dart';
 import '../services/job_storage_service.dart';
+import '../services/rate_calculator_session_service.dart';
 import '../services/rate_timer_notification_service.dart';
 import '../services/rate_timer_service.dart';
 import '../services/wellwerks_qr_transfer_service.dart';
@@ -127,9 +128,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   static const _timerMinutesPrefKey = 'wellwerks_rate_timer_minutes';
   static const _rateLogQrFileType = 'wellwerks_rate_log';
   static const _rateLogQrSchemaVersion = '1.0.0';
-  static const _sessionStatePrefBase = 'wellwerks_rate_session_v1';
   final _settingsService = AppSettingsService();
   final _jobStorage = JobStorageService();
+  final _sessionService = RateCalculatorSessionService.instance;
   final _rateTimerService = RateTimerService();
   final _rateTimerNotifications = RateTimerNotificationService.instance;
   final _qrTransferService = const WellWerksQrTransferService();
@@ -171,6 +172,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     factor.addListener(_handleSessionFieldChanged);
     minutes.addListener(_handleMinutesChanged);
     _loadSavedTimerMinutes().then((_) async {
+      await _sessionService.ensureInitialized();
       await _restoreCalculatorSession();
       await _applyPendingNotificationAction();
       await _restoreTimerState();
@@ -209,10 +211,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
   String get _displayUnitPrefKey {
     return 'wellwerks_rate_display_unit_$_calculatorStorageId';
-  }
-
-  String get _sessionStatePrefKey {
-    return '$_sessionStatePrefBase:$_calculatorStorageId';
   }
 
   Future<void> _loadRateLogState() async {
@@ -283,90 +281,106 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     _persistCalculatorSession();
   }
 
-  Future<void> _persistCalculatorSession() async {
-    final prefs = await SharedPreferences.getInstance();
+  bool get _hasSessionData {
+    return startGauge.text.trim().isNotEmpty ||
+        endGauge.text.trim().isNotEmpty ||
+        bblPerMin != null ||
+        bblPerHr != null ||
+        bblPerDay != null ||
+        _timerRunning ||
+        _activeTimerState != null ||
+        _timerFinished ||
+        _rateLogEnabled ||
+        _rateLogEntries.isNotEmpty ||
+        (error?.trim().isNotEmpty ?? false);
+  }
+
+  RateCalculatorSession _buildSessionSnapshot() {
     final activeState = _activeTimerState;
-    final activeCalculatorId = activeState?.calculatorId;
-    final payload = <String, dynamic>{
-      'startGauge': startGauge.text,
-      'endGauge': endGauge.text,
-      'minutes': minutes.text,
-      'factor': factor.text,
-      'bblPerMin': bblPerMin,
-      'bblPerHr': bblPerHr,
-      'bblPerDay': bblPerDay,
-      'error': error,
-      'timerFinished': _timerFinished,
-      'remainingSeconds': _remainingSeconds,
-      'thirtySecondAlertShown': _thirtySecondAlertShown,
-      'activeCalculatorId': activeCalculatorId,
-      'timerStartedAtMs': activeState?.startedAtMs,
-      'timerEndsAtMs': activeState?.endsAtMs,
-      'timerDurationSeconds': activeState?.durationSeconds,
-      'rateDisplayUnit':
+    return RateCalculatorSession(
+      calculatorId: _calculatorStorageId,
+      calculatorTitle: widget.config.title,
+      chartId: widget.config.chartId ?? '',
+      usesChart: widget.config.usesChart,
+      startGauge: startGauge.text,
+      endGauge: endGauge.text,
+      minutes: minutes.text,
+      factor: factor.text,
+      rateDisplayUnit:
           _rateDisplayUnit == _RateDisplayUnit.bblPerHr ? 'bbl_hr' : 'bbl_min',
-    };
-    await prefs.setString(_sessionStatePrefKey, jsonEncode(payload));
+      rateLogEnabled: _rateLogEnabled,
+      rateLogExpanded: _rateLogExpanded,
+      bblPerMin: bblPerMin,
+      bblPerHr: bblPerHr,
+      bblPerDay: bblPerDay,
+      error: error,
+      timerFinished: _timerFinished,
+      remainingSeconds: _remainingSeconds,
+      thirtySecondAlertShown: _thirtySecondAlertShown,
+      timerStartedAtMs: activeState?.startedAtMs,
+      timerEndsAtMs: activeState?.endsAtMs,
+      timerDurationSeconds: activeState?.durationSeconds,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  Future<void> _persistCalculatorSession() async {
+    await _sessionService.saveSession(
+      _buildSessionSnapshot(),
+      setActive: _hasSessionData,
+    );
   }
 
   Future<void> _clearCalculatorSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_sessionStatePrefKey);
+    await _sessionService.clearSession(_calculatorStorageId);
   }
 
   Future<void> _restoreCalculatorSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_sessionStatePrefKey);
-    if (raw == null || raw.trim().isEmpty) return;
+    final session = _sessionService.sessionForCalculator(_calculatorStorageId);
+    if (session == null) return;
+    if (!mounted) return;
 
-    try {
-      final map = Map<String, dynamic>.from(jsonDecode(raw) as Map);
-      if (!mounted) return;
-      setState(() {
-        startGauge.text = (map['startGauge'] as String? ?? '').trim();
-        endGauge.text = (map['endGauge'] as String? ?? '').trim();
+    setState(() {
+      startGauge.text = session.startGauge;
+      endGauge.text = session.endGauge;
+      if (session.minutes.trim().isNotEmpty) {
+        minutes.text = session.minutes;
+      }
+      if (session.factor.trim().isNotEmpty) {
+        factor.text = session.factor;
+      }
 
-        final savedMinutes = (map['minutes'] as String? ?? '').trim();
-        if (savedMinutes.isNotEmpty) {
-          minutes.text = savedMinutes;
-        }
+      bblPerMin = session.bblPerMin;
+      bblPerHr = session.bblPerHr;
+      bblPerDay = session.bblPerDay;
+      error = (session.error ?? '').trim().isEmpty ? null : session.error;
+      _timerFinished = session.timerFinished;
+      _remainingSeconds = session.remainingSeconds;
+      _thirtySecondAlertShown = session.thirtySecondAlertShown;
+      _rateLogEnabled = session.rateLogEnabled;
+      _rateLogExpanded = session.rateLogExpanded;
 
-        final savedFactor = (map['factor'] as String? ?? '').trim();
-        if (savedFactor.isNotEmpty) {
-          factor.text = savedFactor;
-        }
-
-        final perMin = map['bblPerMin'];
-        final perHr = map['bblPerHr'];
-        final perDay = map['bblPerDay'];
-        bblPerMin = perMin is num ? perMin.toDouble() : null;
-        bblPerHr = perHr is num ? perHr.toDouble() : null;
-        bblPerDay = perDay is num ? perDay.toDouble() : null;
-
-        error = (map['error'] as String?)?.trim().isEmpty == false
-            ? (map['error'] as String).trim()
-            : null;
-
-        _timerFinished = map['timerFinished'] as bool? ?? _timerFinished;
-        _remainingSeconds =
-            (map['remainingSeconds'] as num?)?.toInt() ?? _remainingSeconds;
-        _thirtySecondAlertShown =
-            map['thirtySecondAlertShown'] as bool? ?? _thirtySecondAlertShown;
-
-        final sessionRateUnit =
-            (map['rateDisplayUnit'] as String? ?? '').trim();
-        if (sessionRateUnit == 'bbl_hr') {
-          _rateDisplayUnit = _RateDisplayUnit.bblPerHr;
-        } else if (sessionRateUnit == 'bbl_min') {
-          _rateDisplayUnit = _RateDisplayUnit.bblPerMin;
-        }
-      });
-    } catch (_) {
-      // Ignore malformed session state.
-    }
+      if (session.rateDisplayUnit == 'bbl_hr') {
+        _rateDisplayUnit = _RateDisplayUnit.bblPerHr;
+      } else {
+        _rateDisplayUnit = _RateDisplayUnit.bblPerMin;
+      }
+    });
   }
 
   Future<void> _loadSavedDisplayUnit() async {
+    await _sessionService.ensureInitialized();
+    final session = _sessionService.sessionForCalculator(_calculatorStorageId);
+    if (session != null && session.rateDisplayUnit.trim().isNotEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _rateDisplayUnit = session.rateDisplayUnit == 'bbl_hr'
+            ? _RateDisplayUnit.bblPerHr
+            : _RateDisplayUnit.bblPerMin;
+      });
+      return;
+    }
+
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_displayUnitPrefKey);
     final settings = await _settingsService.load();
@@ -422,6 +436,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     if (_rateDisplayUnit == unit) return;
     setState(() => _rateDisplayUnit = unit);
     _saveDisplayUnit();
+    _persistCalculatorSession();
   }
 
   void _showShareMessage(String message) {
@@ -786,10 +801,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       setState(() {
         _activeTimerState = active;
         _timerEndsAt = null;
-        _remainingSeconds = 0;
-        _timerFinished = false;
-        _thirtySecondAlertShown = false;
       });
+      _persistCalculatorSession();
       return;
     }
 
@@ -1135,7 +1148,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     }
 
     if (action.type == RateTimerPendingActionType.stopTimer) {
-      _cancelTimedRate();
+      _cancelTimedRate(discardSession: false);
       return;
     }
 
@@ -1148,7 +1161,41 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     }
   }
 
-  void _cancelTimedRate() {
+  Future<void> _confirmStopTimerDiscard() async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Stop Timer'),
+        content: const Text(
+          'Do you want to keep this calculation session or discard it?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.of(dialogContext).pop('keep'),
+            child: const Text('Stop, Keep Session'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop('discard'),
+            child: const Text('Stop & Discard'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == 'keep') {
+      _cancelTimedRate(discardSession: false);
+      return;
+    }
+    if (choice == 'discard') {
+      _cancelTimedRate(discardSession: true);
+    }
+  }
+
+  void _cancelTimedRate({required bool discardSession}) {
     _countdownTimer?.cancel();
     _countdownTimer = null;
     _clearTimerStatePersistence();
@@ -1159,7 +1206,19 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       _remainingSeconds = configuredSeconds;
       _thirtySecondAlertShown = false;
       _timerFinished = false;
+      if (discardSession) {
+        startGauge.clear();
+        endGauge.clear();
+        bblPerMin = null;
+        bblPerHr = null;
+        bblPerDay = null;
+        error = null;
+      }
     });
+    if (discardSession) {
+      _clearCalculatorSession();
+      return;
+    }
     _persistCalculatorSession();
   }
 
@@ -1293,7 +1352,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton(
-                        onPressed: _cancelTimedRate,
+                        onPressed: _confirmStopTimerDiscard,
                         child: const Text('Stop Timer'),
                       ),
                     )
@@ -1999,6 +2058,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                     onChanged: (value) {
                       setState(() => _rateLogEnabled = value);
                       _saveRateLogState();
+                      _persistCalculatorSession();
                     },
                     title: const Text('Rate Log'),
                     subtitle: const Text('Save each CALCULATE result to log'),
