@@ -392,14 +392,27 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Customize Fields'));
+    for (var i = 0;
+        i < 10 &&
+            find
+                .byKey(const Key('operations-log-customize-fields-button'))
+                .evaluate()
+                .isEmpty;
+        i++) {
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -220));
+      await tester.pumpAndSettle();
+    }
+    expect(find.byKey(const Key('operations-log-customize-fields-button')),
+        findsOneWidget);
+    await tester
+        .tap(find.byKey(const Key('operations-log-customize-fields-button')));
     await tester.pumpAndSettle();
 
     for (final field in DrilloutCleanoutFieldDefinitions.readingFields.where(
       (f) => f.id != DrilloutCleanoutFieldDefinitions.sweepInformationId,
     )) {
       await tester.scrollUntilVisible(
-        find.text(field.label),
+        find.text(field.label).last,
         180,
         scrollable: find.byType(Scrollable).last,
       );
@@ -489,7 +502,20 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Customize Fields'));
+    for (var i = 0;
+        i < 10 &&
+            find
+                .byKey(const Key('operations-log-customize-fields-button'))
+                .evaluate()
+                .isEmpty;
+        i++) {
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -220));
+      await tester.pumpAndSettle();
+    }
+    expect(find.byKey(const Key('operations-log-customize-fields-button')),
+        findsOneWidget);
+    await tester
+        .tap(find.byKey(const Key('operations-log-customize-fields-button')));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.widgetWithText(CheckboxListTile, 'Gas'),

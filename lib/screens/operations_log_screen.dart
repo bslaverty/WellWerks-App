@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -31,13 +34,58 @@ class OperationsLogScreen extends StatefulWidget {
   State<OperationsLogScreen> createState() => _OperationsLogScreenState();
 }
 
-enum _OperationsEntryFilter {
+enum _OperationsLogViewMode {
+  timeline,
+  data,
+  focus,
+  charts,
+}
+
+enum _OperationsSmartFilter {
   all,
-  manualReadings,
+  manual,
   textUpdates,
   shiftChanges,
+  reports,
   imports,
-  handoffs,
+  sts,
+  pumpChanges,
+  pressureChanges,
+  chokeChanges,
+  stageChanges,
+}
+
+enum _DataSortMode {
+  newest,
+  oldest,
+  highest,
+  lowest,
+}
+
+enum _FocusCategory {
+  pump,
+  pressures,
+  tanks,
+  gas,
+  sweep,
+  stage,
+  choke,
+  sts,
+}
+
+enum _ChartMetric {
+  pumpRate,
+  returnsRate,
+  manifoldPsi,
+  casingPsi,
+  tubingPsi,
+  waterRate,
+  oilRate,
+  gasRate,
+  sweep,
+  sand,
+  tankLevels,
+  stsPerformance,
 }
 
 enum _ReportDataSource {
@@ -48,6 +96,11 @@ enum _ReportDataSource {
 }
 
 class _OperationsLogScreenState extends State<OperationsLogScreen> {
+  static const Color _wwGold = Color(0xFFD9A63C);
+  static const Color _wwBlack = Color(0xFF0F0F0F);
+  static const Color _wwPanel = Color(0xFF171717);
+  static const Color _wwPanelSoft = Color(0xFF1F1F1F);
+
   final _jobStorage = JobStorageService();
   final _logService = OperationsLogService();
   final _fieldConfigService = OperationsLogFieldConfigService();
@@ -62,22 +115,37 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   Set<String> _enabledFieldIds =
       DrilloutCleanoutFieldDefinitions.defaultEnabledFieldIds;
   bool _loading = true;
-  bool _newestFirst = false;
+  final bool _newestFirst = false;
   bool _expandedTimeline = false;
-  _OperationsEntryFilter _entryFilter = _OperationsEntryFilter.all;
+  bool _multiSelectMode = false;
+  _OperationsLogViewMode _viewMode = _OperationsLogViewMode.timeline;
+  _OperationsSmartFilter _smartFilter = _OperationsSmartFilter.all;
+  _DataSortMode _dataSortMode = _DataSortMode.newest;
+  _FocusCategory _focusCategory = _FocusCategory.pump;
+  _ChartMetric _chartMetric = _ChartMetric.pumpRate;
+  String _dataSortField = 'pump';
+  DateTime? _dateFilter;
+  String _shiftFilter = 'all';
   Set<String> _expandedEntryIds = <String>{};
   String _lastFinalizedReportKey = '';
+  DateTime _clockNow = DateTime.now();
+  Timer? _clockTicker;
 
   @override
   void initState() {
     super.initState();
     _jobStorage.activeJobListenable.addListener(_reload);
+    _clockTicker = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted) return;
+      setState(() => _clockNow = DateTime.now());
+    });
     _load();
   }
 
   @override
   void dispose() {
     _jobStorage.activeJobListenable.removeListener(_reload);
+    _clockTicker?.cancel();
     super.dispose();
   }
 
@@ -184,19 +252,64 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
 
   bool _matchesFilter(OperationsLogEntry entry) {
     final type = _entryTypeValue(entry);
-    switch (_entryFilter) {
-      case _OperationsEntryFilter.all:
+    final date = _dateFilter;
+    if (date != null) {
+      final local = entry.entryTime.toLocal();
+      if (local.year != date.year ||
+          local.month != date.month ||
+          local.day != date.day) {
+        return false;
+      }
+    }
+
+    if (_shiftFilter != 'all') {
+      final shiftValue =
+          (entry.structuredData['shift'] as String? ?? _activeJob?.shift ?? '')
+              .trim()
+              .toLowerCase();
+      if (shiftValue != _shiftFilter) return false;
+    }
+
+    bool changed(String Function(OperationsLogEntry e) selector) {
+      final ordered = _sortedEntries;
+      final index = ordered.indexWhere((item) => item.entryId == entry.entryId);
+      if (index <= 0) return false;
+      final prev = selector(ordered[index - 1]).trim();
+      final now = selector(entry).trim();
+      return now.isNotEmpty && prev != now;
+    }
+
+    switch (_smartFilter) {
+      case _OperationsSmartFilter.all:
         return true;
-      case _OperationsEntryFilter.manualReadings:
+      case _OperationsSmartFilter.manual:
         return type == 'manualReading';
-      case _OperationsEntryFilter.textUpdates:
+      case _OperationsSmartFilter.textUpdates:
         return type == 'textUpdate';
-      case _OperationsEntryFilter.shiftChanges:
+      case _OperationsSmartFilter.shiftChanges:
         return type == 'shiftChange';
-      case _OperationsEntryFilter.imports:
-        return type == 'qrImport' || entry.isImported;
-      case _OperationsEntryFilter.handoffs:
-        return type == 'handoffImport';
+      case _OperationsSmartFilter.reports:
+        return (entry.structuredData['reportType'] as String? ?? '')
+                .trim()
+                .isNotEmpty ||
+            type == 'report';
+      case _OperationsSmartFilter.imports:
+        return type == 'qrImport' ||
+            type == 'handoffImport' ||
+            entry.isImported;
+      case _OperationsSmartFilter.sts:
+        return entry.estimatedSts != null ||
+            entry.sts != null ||
+            type == 'stsReached';
+      case _OperationsSmartFilter.pumpChanges:
+        return changed((e) => e.pumpRate);
+      case _OperationsSmartFilter.pressureChanges:
+        return changed(
+            (e) => '${e.pumpPressure}|${e.casingPressure}|${e.tubingPressure}');
+      case _OperationsSmartFilter.chokeChanges:
+        return changed((e) => e.choke);
+      case _OperationsSmartFilter.stageChanges:
+        return changed((e) => e.operationStage);
     }
   }
 
@@ -1256,311 +1369,1259 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     return '$dateLabel $timeLabel';
   }
 
+  String _eventTitle(OperationsLogEntry entry) {
+    final type = _entryTypeValue(entry);
+    if ((entry.structuredData['reportType'] as String? ?? '')
+        .trim()
+        .isNotEmpty) {
+      return 'Report';
+    }
+    if (entry.estimatedSts != null ||
+        entry.sts != null ||
+        type == 'stsReached') {
+      return 'STS';
+    }
+    switch (type) {
+      case 'manualReading':
+        return 'Manual Reading';
+      case 'textUpdate':
+        return 'Text Update';
+      case 'shiftChange':
+        return 'Shift Change';
+      case 'qrImport':
+        return 'QR Import';
+      case 'handoffImport':
+        return 'Handoff';
+      case 'jobStarted':
+      case 'jobEnded':
+      case 'stageChange':
+        return 'Job Event';
+      default:
+        return _entryTypeLabel(entry);
+    }
+  }
+
+  IconData _eventIcon(OperationsLogEntry entry) {
+    final type = _entryTypeValue(entry);
+    if ((entry.structuredData['reportType'] as String? ?? '')
+        .trim()
+        .isNotEmpty) {
+      return Icons.description_outlined;
+    }
+    if (entry.estimatedSts != null ||
+        entry.sts != null ||
+        type == 'stsReached') {
+      return Icons.timer_outlined;
+    }
+    switch (type) {
+      case 'manualReading':
+        return Icons.edit_note;
+      case 'textUpdate':
+        return Icons.sms_outlined;
+      case 'shiftChange':
+        return Icons.swap_horiz;
+      case 'qrImport':
+        return Icons.qr_code_scanner_outlined;
+      case 'handoffImport':
+        return Icons.hub_outlined;
+      case 'jobStarted':
+        return Icons.play_arrow_rounded;
+      case 'jobEnded':
+        return Icons.stop_rounded;
+      default:
+        return Icons.timeline;
+    }
+  }
+
+  Color _eventColor(OperationsLogEntry entry) {
+    final type = _entryTypeValue(entry);
+    if (entry.sts != null) return _stsStatusColor(entry);
+    switch (type) {
+      case 'manualReading':
+        return _wwGold;
+      case 'textUpdate':
+        return Colors.lightBlueAccent;
+      case 'shiftChange':
+        return Colors.amberAccent;
+      case 'qrImport':
+      case 'handoffImport':
+        return Colors.tealAccent;
+      case 'jobEnded':
+        return Colors.redAccent;
+      default:
+        return Colors.white70;
+    }
+  }
+
+  String _dateLabel(DateTime value) {
+    final local = value.toLocal();
+    final now = _clockNow;
+    final sameDay = local.year == now.year &&
+        local.month == now.month &&
+        local.day == now.day;
+    if (sameDay) return 'Today';
+    return MaterialLocalizations.of(context).formatCompactDate(local);
+  }
+
+  List<String> _importantLines(OperationsLogEntry entry) {
+    final lines = <String>[];
+    void add(String value) {
+      if (value.trim().isEmpty || lines.length >= 2) return;
+      lines.add(value.trim());
+    }
+
+    add(entry.pumpRate.trim().isEmpty ? '' : 'Pump ${entry.pumpRate.trim()}');
+    add(entry.operationStage.trim().isEmpty
+        ? ''
+        : 'Stage ${entry.operationStage.trim()}');
+    add(entry.choke.trim().isEmpty ? '' : 'Choke ${entry.choke.trim()}');
+    add(entry.pumpPressure.trim().isEmpty
+        ? ''
+        : 'Manifold ${entry.pumpPressure.trim()}');
+    if (entry.estimatedSts != null && entry.sts == null) {
+      add(_liveStsLabel(entry));
+    }
+    if (entry.sts != null) {
+      add(_stsVarianceLabel(entry));
+    }
+    if (lines.isEmpty) {
+      final compact = _compactMetrics(entry);
+      if (compact.trim().isNotEmpty) {
+        lines.addAll(compact.split(' • ').take(2));
+      }
+    }
+    return lines;
+  }
+
+  int? _stsVarianceMinutes(OperationsLogEntry entry) {
+    final estimated = entry.estimatedSts;
+    final actual = entry.sts;
+    if (estimated == null || actual == null) return null;
+    return actual.difference(estimated).inMinutes;
+  }
+
+  String _stsVarianceLabel(OperationsLogEntry entry) {
+    final variance = _stsVarianceMinutes(entry);
+    if (variance == null) return 'STS pending';
+    if (variance == 0) return 'On time';
+    if (variance > 0) return '+${variance.abs()} min Late';
+    return '${variance.abs()} min Early';
+  }
+
+  Color _stsStatusColor(OperationsLogEntry entry) {
+    final variance = _stsVarianceMinutes(entry);
+    if (variance == null) return Colors.white60;
+    final absValue = variance.abs();
+    if (absValue <= 5) return Colors.greenAccent.shade400;
+    if (absValue <= 15) return Colors.amberAccent;
+    return Colors.redAccent;
+  }
+
+  String _liveStsLabel(OperationsLogEntry entry) {
+    final estimated = entry.estimatedSts;
+    if (estimated == null) return 'STS pending';
+    if (entry.sts != null) return 'STS Complete • ${_stsVarianceLabel(entry)}';
+    final minutes = estimated.difference(_clockNow).inMinutes;
+    if (minutes > 0) return '$minutes min to STS';
+    return '${minutes.abs()} min past STS';
+  }
+
+  Map<String, String> _stsDashboard() {
+    final rows = _sortedEntries
+        .where((entry) => entry.estimatedSts != null && entry.sts != null)
+        .toList(growable: false);
+    if (rows.isEmpty) {
+      return const {
+        'Total STS Events': '0',
+        'Average Variance': '--',
+        'Average Early': '--',
+        'Average Late': '--',
+        'Best Estimate': '--',
+        'Worst Estimate': '--',
+        'Within ±5 Minutes': '0',
+        'Within ±10 Minutes': '0',
+      };
+    }
+    final variances =
+        rows.map((entry) => _stsVarianceMinutes(entry) ?? 0).toList();
+    final early = variances.where((value) => value < 0).toList();
+    final late = variances.where((value) => value > 0).toList();
+    final absValues = variances.map((value) => value.abs()).toList();
+    final best = absValues.reduce((a, b) => a < b ? a : b);
+    final worst = absValues.reduce((a, b) => a > b ? a : b);
+    final avgVariance = variances.reduce((a, b) => a + b) / variances.length;
+    final avgEarly = early.isEmpty
+        ? null
+        : early.reduce((a, b) => a + b).abs() / early.length;
+    final avgLate =
+        late.isEmpty ? null : late.reduce((a, b) => a + b) / late.length;
+    return {
+      'Total STS Events': '${rows.length}',
+      'Average Variance': '${avgVariance.round()} min',
+      'Average Early': avgEarly == null ? '--' : '${avgEarly.round()} min',
+      'Average Late': avgLate == null ? '--' : '${avgLate.round()} min',
+      'Best Estimate': '$best min',
+      'Worst Estimate': '$worst min',
+      'Within ±5 Minutes': '${absValues.where((value) => value <= 5).length}',
+      'Within ±10 Minutes': '${absValues.where((value) => value <= 10).length}',
+    };
+  }
+
+  double? _parseValue(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    final match = RegExp(r'-?\d+(?:\.\d+)?').firstMatch(trimmed);
+    if (match == null) return null;
+    return double.tryParse(match.group(0) ?? '');
+  }
+
+  String _valueForColumn(OperationsLogEntry entry, String key) {
+    switch (key) {
+      case 'time':
+        return TimeOfDay.fromDateTime(entry.entryTime).format(context);
+      case 'pump':
+        return entry.pumpRate;
+      case 'returns':
+        return entry.returnsRate;
+      case 'manifold':
+        return entry.pumpPressure;
+      case 'casing':
+        return entry.casingPressure;
+      case 'tubing':
+        return entry.tubingPressure;
+      case 'choke':
+        return entry.choke;
+      case 'sweep':
+        return entry.sweepInformation;
+      case 'water':
+        return entry.waterRate;
+      case 'oil':
+        return entry.oilHauled;
+      case 'gas':
+        return entry.gas;
+      case 'sand':
+        return entry.sandOrSolids;
+      default:
+        return '';
+    }
+  }
+
+  List<OperationsLogEntry> _dataEntries() {
+    final list = List<OperationsLogEntry>.from(_visibleEntries);
+    switch (_dataSortMode) {
+      case _DataSortMode.newest:
+        list.sort((a, b) => b.entryTime.compareTo(a.entryTime));
+        break;
+      case _DataSortMode.oldest:
+        list.sort((a, b) => a.entryTime.compareTo(b.entryTime));
+        break;
+      case _DataSortMode.highest:
+      case _DataSortMode.lowest:
+        list.sort((a, b) {
+          final av = _parseValue(_valueForColumn(a, _dataSortField)) ?? -999999;
+          final bv = _parseValue(_valueForColumn(b, _dataSortField)) ?? -999999;
+          return _dataSortMode == _DataSortMode.highest
+              ? bv.compareTo(av)
+              : av.compareTo(bv);
+        });
+        break;
+    }
+    return list;
+  }
+
+  List<({String time, String value})> _focusRows() {
+    final rows = <({String time, String value})>[];
+    for (final entry in _visibleEntries) {
+      final time = TimeOfDay.fromDateTime(entry.entryTime).format(context);
+      String value = '';
+      switch (_focusCategory) {
+        case _FocusCategory.pump:
+          value = entry.pumpRate;
+          break;
+        case _FocusCategory.pressures:
+          value =
+              'M ${entry.pumpPressure} | C ${entry.casingPressure} | T ${entry.tubingPressure}';
+          break;
+        case _FocusCategory.tanks:
+          value = entry.tankLevel;
+          break;
+        case _FocusCategory.gas:
+          value = entry.gas;
+          break;
+        case _FocusCategory.sweep:
+          value = entry.sweepInformation;
+          break;
+        case _FocusCategory.stage:
+          value = entry.operationStage;
+          break;
+        case _FocusCategory.choke:
+          value = entry.choke;
+          break;
+        case _FocusCategory.sts:
+          value = entry.sts == null
+              ? _liveStsLabel(entry)
+              : _stsVarianceLabel(entry);
+          break;
+      }
+      if (value.trim().isEmpty || value.trim() == 'M  | C  | T') continue;
+      rows.add((time: time, value: value.trim()));
+    }
+    return rows;
+  }
+
+  double? _chartValue(OperationsLogEntry entry, _ChartMetric metric) {
+    switch (metric) {
+      case _ChartMetric.pumpRate:
+        return _parseValue(entry.pumpRate);
+      case _ChartMetric.returnsRate:
+        return _parseValue(entry.returnsRate);
+      case _ChartMetric.manifoldPsi:
+        return _parseValue(entry.pumpPressure);
+      case _ChartMetric.casingPsi:
+        return _parseValue(entry.casingPressure);
+      case _ChartMetric.tubingPsi:
+        return _parseValue(entry.tubingPressure);
+      case _ChartMetric.waterRate:
+        return _parseValue(entry.waterRate);
+      case _ChartMetric.oilRate:
+        return _parseValue(entry.oilHauled);
+      case _ChartMetric.gasRate:
+        return _parseValue(entry.gas);
+      case _ChartMetric.sweep:
+        return _parseValue(entry.sweepInformation);
+      case _ChartMetric.sand:
+        return _parseValue(entry.sandOrSolids);
+      case _ChartMetric.tankLevels:
+        return _parseValue(entry.tankLevel);
+      case _ChartMetric.stsPerformance:
+        return (_stsVarianceMinutes(entry) ?? 0).toDouble();
+    }
+  }
+
+  String _chartMetricLabel(_ChartMetric metric) {
+    switch (metric) {
+      case _ChartMetric.pumpRate:
+        return 'Pump Rate';
+      case _ChartMetric.returnsRate:
+        return 'Returns Rate';
+      case _ChartMetric.manifoldPsi:
+        return 'Manifold PSI';
+      case _ChartMetric.casingPsi:
+        return 'Casing PSI';
+      case _ChartMetric.tubingPsi:
+        return 'Tubing PSI';
+      case _ChartMetric.waterRate:
+        return 'Water Rate';
+      case _ChartMetric.oilRate:
+        return 'Oil Rate';
+      case _ChartMetric.gasRate:
+        return 'Gas Rate';
+      case _ChartMetric.sweep:
+        return 'Sweep';
+      case _ChartMetric.sand:
+        return 'Sand';
+      case _ChartMetric.tankLevels:
+        return 'Tank Levels';
+      case _ChartMetric.stsPerformance:
+        return 'STS Performance';
+    }
+  }
+
+  Future<void> _toggleMultiSelectMode() async {
+    setState(() {
+      _multiSelectMode = !_multiSelectMode;
+      if (!_multiSelectMode) {
+        _selectedEntryIds.clear();
+      }
+    });
+  }
+
+  Future<void> _pickDateFilter() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _dateFilter ?? _clockNow,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (selected == null) return;
+    setState(() => _dateFilter = selected);
+  }
+
+  Future<void> _pickShiftFilter() async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              title: const Text('All'),
+              onTap: () => Navigator.of(sheetContext).pop('all'),
+            ),
+            ListTile(
+              title: const Text('Day'),
+              onTap: () => Navigator.of(sheetContext).pop('day'),
+            ),
+            ListTile(
+              title: const Text('Night'),
+              onTap: () => Navigator.of(sheetContext).pop('night'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (selected == null) return;
+    setState(() => _shiftFilter = selected);
+  }
+
+  String _lastUpdatedText() {
+    if (_entries.isEmpty) return 'Updated: --';
+    final latest = _sortedEntries.last.loggedAt;
+    return 'Updated: ${TimeOfDay.fromDateTime(latest).format(context)}';
+  }
+
+  Widget _activeJobHeader(JobSetup? job) {
+    Widget field(String label, String value) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: _wwPanelSoft,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final customer = (job?.company ?? '').trim().isEmpty ? '--' : job!.company;
+    final well = _currentWellName.trim().isEmpty ? '--' : _currentWellName;
+    final stage = _currentStage.trim().isEmpty ? '--' : _currentStage;
+    final status =
+        (job?.drilloutSetup['jobStatus'] as String? ?? job?.shift ?? '--')
+            .toString();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _wwPanel,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _wwGold.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Active Job',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: _wwGold,
+            ),
+          ),
+          const SizedBox(height: 10),
+          GridView.count(
+            crossAxisCount: 2,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 2.4,
+            physics: const NeverScrollableScrollPhysics(),
+            shrinkWrap: true,
+            children: [
+              field('Customer', customer),
+              field('Well', well),
+              field('Stage', stage),
+              field('Job Status', status.trim().isEmpty ? '--' : status.trim()),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _foundationCards() {
+    final latest = _sortedEntries.isEmpty ? null : _sortedEntries.last;
+    final latestTextUpdate = _sortedEntries.reversed
+        .where((entry) => _entryTypeValue(entry) == 'textUpdate')
+        .toList(growable: false);
+    final cards = <({String title, String value})>[
+      (
+        title: 'Current Pump',
+        value:
+            latest?.pumpRate.trim().isNotEmpty == true ? latest!.pumpRate : '--'
+      ),
+      (
+        title: 'Current Manifold',
+        value: latest?.pumpPressure.trim().isNotEmpty == true
+            ? latest!.pumpPressure
+            : '--'
+      ),
+      (
+        title: 'Current Stage',
+        value: latest?.operationStage.trim().isNotEmpty == true
+            ? latest!.operationStage
+            : '--'
+      ),
+      (
+        title: 'Current Choke',
+        value: latest?.choke.trim().isNotEmpty == true ? latest!.choke : '--'
+      ),
+      (
+        title: 'Current STS Status',
+        value: latest == null ? '--' : _liveStsLabel(latest)
+      ),
+      (
+        title: 'Current Tank Status',
+        value: latest?.tankLevel.trim().isNotEmpty == true
+            ? latest!.tankLevel
+            : '--'
+      ),
+      (
+        title: 'Latest Reading',
+        value: latest == null
+            ? '--'
+            : '${TimeOfDay.fromDateTime(latest.entryTime).format(context)} ${latest.wellName}'
+      ),
+      (
+        title: 'Latest Text Update',
+        value: latestTextUpdate.isEmpty
+            ? '--'
+            : (latestTextUpdate.first.generatedText.trim().isEmpty
+                ? '--'
+                : latestTextUpdate.first.generatedText.trim().split('\n').first)
+      ),
+    ];
+
+    return SizedBox(
+      height: 132,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemBuilder: (context, index) {
+          final card = cards[index];
+          return Container(
+            width: 220,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: _wwPanel,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  card.title,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: Text(
+                    card.value,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemCount: cards.length,
+      ),
+    );
+  }
+
+  Widget _buildTimelineItem(OperationsLogEntry entry) {
+    final expanded =
+        _expandedTimeline || _expandedEntryIds.contains(entry.entryId);
+    final iconColor = _eventColor(entry);
+    final lines = _importantLines(entry);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(10, 12, 12, 12),
+      decoration: BoxDecoration(
+        color: _wwPanel,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 84,
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 17,
+                  top: 0,
+                  bottom: 0,
+                  child: Container(width: 2, color: Colors.white12),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _wwBlack,
+                        border: Border.all(color: iconColor, width: 2),
+                      ),
+                      child:
+                          Icon(_eventIcon(entry), size: 18, color: iconColor),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      TimeOfDay.fromDateTime(entry.entryTime).format(context),
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w800),
+                    ),
+                    Text(
+                      _dateLabel(entry.entryTime),
+                      style:
+                          const TextStyle(fontSize: 11, color: Colors.white60),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    if (_multiSelectMode)
+                      Checkbox(
+                        value: _selectedEntryIds.contains(entry.entryId),
+                        onChanged: (value) =>
+                            _toggleSelectedEntry(entry.entryId, value ?? false),
+                      ),
+                    Expanded(
+                      child: Text(
+                        _eventTitle(entry),
+                        style: const TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => _toggleExpandedEntry(entry.entryId),
+                      icon: AnimatedRotation(
+                        duration: const Duration(milliseconds: 220),
+                        turns: expanded ? 0.25 : 0,
+                        child: const Icon(Icons.chevron_right),
+                      ),
+                    ),
+                    PopupMenuButton<String>(
+                      onSelected: (value) {
+                        if (value == 'share') {
+                          _shareReading(entry);
+                        } else if (value == 'details') {
+                          _showEntryDetails(entry);
+                        } else if (value == 'delete') {
+                          _deleteEntry(entry);
+                        } else if (value == 'edit') {
+                          _editEntry(entry);
+                        } else if (value == 'duplicate') {
+                          _duplicateEntry(entry);
+                        } else if (value == 'copy') {
+                          _copyEntryAgain(entry);
+                        }
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                            value: 'details', child: Text('View Details')),
+                        PopupMenuItem(
+                            value: 'share', child: Text('Share Reading')),
+                        PopupMenuItem(value: 'edit', child: Text('Edit')),
+                        PopupMenuItem(
+                            value: 'duplicate', child: Text('Duplicate')),
+                        PopupMenuItem(value: 'copy', child: Text('Copy Again')),
+                        PopupMenuItem(value: 'delete', child: Text('Delete')),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                for (final line in lines)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Text(
+                      line,
+                      style: const TextStyle(
+                          fontSize: 14.5, color: Colors.white70),
+                    ),
+                  ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 220),
+                  child: expanded
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (entry.estimatedSts != null)
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black26,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: _stsStatusColor(entry)
+                                          .withValues(alpha: 0.55),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          'Estimated ${entry.estimatedSts == null ? '--' : TimeOfDay.fromDateTime(entry.estimatedSts!).format(context)}',
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          'Actual ${entry.sts == null ? '--' : TimeOfDay.fromDateTime(entry.sts!).format(context)}',
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          _stsVarianceLabel(entry),
+                                          style: TextStyle(
+                                            color: _stsStatusColor(entry),
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              if (entry.generatedText.trim().isNotEmpty)
+                                SelectableText(
+                                  entry.generatedText,
+                                  style: const TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontSize: 12.5,
+                                  ),
+                                ),
+                              if (entry.notes.trim().isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Text('Notes: ${entry.notes.trim()}'),
+                                ),
+                            ],
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _viewBody() {
+    if (_visibleEntries.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 40),
+        child: Center(child: Text('No Operations Log readings are available.')),
+      );
+    }
+
+    switch (_viewMode) {
+      case _OperationsLogViewMode.timeline:
+        return Column(
+          children: [
+            for (final entry in _visibleEntries) _buildTimelineItem(entry)
+          ],
+        );
+      case _OperationsLogViewMode.data:
+        final rows = _dataEntries();
+        const columns = <({String label, String key})>[
+          (label: 'Time', key: 'time'),
+          (label: 'Pump', key: 'pump'),
+          (label: 'Returns', key: 'returns'),
+          (label: 'Manifold', key: 'manifold'),
+          (label: 'Casing', key: 'casing'),
+          (label: 'Tubing', key: 'tubing'),
+          (label: 'Choke', key: 'choke'),
+          (label: 'Sweep', key: 'sweep'),
+          (label: 'Water', key: 'water'),
+          (label: 'Oil', key: 'oil'),
+          (label: 'Gas', key: 'gas'),
+          (label: 'Sand', key: 'sand'),
+        ];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                DropdownButton<_DataSortMode>(
+                  value: _dataSortMode,
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _dataSortMode = value);
+                  },
+                  items: const [
+                    DropdownMenuItem(
+                        value: _DataSortMode.newest, child: Text('Newest')),
+                    DropdownMenuItem(
+                        value: _DataSortMode.oldest, child: Text('Oldest')),
+                    DropdownMenuItem(
+                        value: _DataSortMode.highest, child: Text('Highest')),
+                    DropdownMenuItem(
+                        value: _DataSortMode.lowest, child: Text('Lowest')),
+                  ],
+                ),
+                DropdownButton<String>(
+                  value: _dataSortField,
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _dataSortField = value);
+                  },
+                  items: const [
+                    DropdownMenuItem(value: 'pump', child: Text('Pump')),
+                    DropdownMenuItem(value: 'returns', child: Text('Returns')),
+                    DropdownMenuItem(
+                        value: 'manifold', child: Text('Manifold')),
+                    DropdownMenuItem(value: 'casing', child: Text('Casing')),
+                    DropdownMenuItem(value: 'tubing', child: Text('Tubing')),
+                    DropdownMenuItem(value: 'water', child: Text('Water')),
+                    DropdownMenuItem(value: 'oil', child: Text('Oil')),
+                    DropdownMenuItem(value: 'gas', child: Text('Gas')),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                headingRowColor: WidgetStateProperty.all(_wwPanelSoft),
+                columns: [
+                  for (final col in columns) DataColumn(label: Text(col.label))
+                ],
+                rows: [
+                  for (final entry in rows)
+                    DataRow(
+                      cells: [
+                        for (final col in columns)
+                          DataCell(
+                            Text(
+                              _valueForColumn(entry, col.key).trim().isEmpty
+                                  ? '--'
+                                  : _valueForColumn(entry, col.key),
+                            ),
+                          ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      case _OperationsLogViewMode.focus:
+        final rows = _focusRows();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DropdownButton<_FocusCategory>(
+              value: _focusCategory,
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() => _focusCategory = value);
+              },
+              items: const [
+                DropdownMenuItem(
+                    value: _FocusCategory.pump, child: Text('Pump')),
+                DropdownMenuItem(
+                    value: _FocusCategory.pressures, child: Text('Pressures')),
+                DropdownMenuItem(
+                    value: _FocusCategory.tanks, child: Text('Tanks')),
+                DropdownMenuItem(value: _FocusCategory.gas, child: Text('Gas')),
+                DropdownMenuItem(
+                    value: _FocusCategory.sweep, child: Text('Sweep')),
+                DropdownMenuItem(
+                    value: _FocusCategory.stage, child: Text('Stage')),
+                DropdownMenuItem(
+                    value: _FocusCategory.choke, child: Text('Choke')),
+                DropdownMenuItem(value: _FocusCategory.sts, child: Text('STS')),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (rows.isEmpty)
+              const Text('No values available for this focus category.')
+            else
+              Container(
+                decoration: BoxDecoration(
+                  color: _wwPanel,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: Column(
+                  children: [
+                    for (final row in rows)
+                      ListTile(
+                        title: Text(
+                          row.time,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        subtitle: Text(row.value),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      case _OperationsLogViewMode.charts:
+        final spots = <FlSpot>[];
+        var index = 0;
+        for (final entry in _visibleEntries) {
+          final value = _chartValue(entry, _chartMetric);
+          if (value == null) continue;
+          spots.add(FlSpot(index.toDouble(), value));
+          index += 1;
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DropdownButton<_ChartMetric>(
+              value: _chartMetric,
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() => _chartMetric = value);
+              },
+              items: [
+                for (final metric in _ChartMetric.values)
+                  DropdownMenuItem(
+                    value: metric,
+                    child: Text(_chartMetricLabel(metric)),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (spots.isEmpty)
+              const Text('No numeric data available for this chart yet.')
+            else
+              Container(
+                height: 280,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _wwPanel,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: LineChart(
+                  LineChartData(
+                    lineBarsData: [
+                      LineChartBarData(
+                        spots: spots,
+                        isCurved: true,
+                        color: _wwGold,
+                        barWidth: 3,
+                        dotData: const FlDotData(show: false),
+                        belowBarData: BarAreaData(
+                          show: true,
+                          color: _wwGold.withValues(alpha: 0.18),
+                        ),
+                      ),
+                    ],
+                    borderData: FlBorderData(
+                      show: true,
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    gridData:
+                        const FlGridData(show: true, drawVerticalLine: false),
+                    titlesData: const FlTitlesData(
+                      rightTitles:
+                          AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      topTitles:
+                          AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final job = _activeJob;
+    final stats = _stsDashboard();
     return Scaffold(
       appBar: AppHeader(title: widget.title, showBack: true),
+      backgroundColor: _wwBlack,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                _infoCard(
-                  'Current job',
-                  job?.padName.isNotEmpty == true
-                      ? job!.padName
-                      : 'No active job',
-                ),
-                _infoCard('Selected well', _currentWellName),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: _addReading,
-                        child: const Text('Add Reading'),
+                _activeJobHeader(job),
+                const SizedBox(height: 12),
+                _foundationCards(),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _wwPanel,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _toggleMultiSelectMode,
+                        icon: Icon(
+                            _multiSelectMode ? Icons.close : Icons.checklist),
+                        label:
+                            Text(_multiSelectMode ? 'Exit Select' : 'Select'),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
+                      OutlinedButton.icon(
                         onPressed: _shareSelectedReadings,
                         icon: const Icon(Icons.qr_code_2),
                         label: const Text('Share Selected'),
                       ),
+                      FilledButton(
+                        onPressed: _openCreateReportMenu,
+                        child: const Text('Create Report'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _importReading,
+                        icon: const Icon(Icons.import_export),
+                        label: const Text('Import Reading'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton(
+                    key: const Key('operations-log-customize-fields-button'),
+                    onPressed: _customizeFields,
+                    child: const Text('Customize Fields'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SegmentedButton<_OperationsLogViewMode>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(
+                      value: _OperationsLogViewMode.timeline,
+                      label: Text('Timeline'),
+                    ),
+                    ButtonSegment(
+                      value: _OperationsLogViewMode.data,
+                      label: Text('Data'),
+                    ),
+                    ButtonSegment(
+                      value: _OperationsLogViewMode.focus,
+                      label: Text('Focus'),
+                    ),
+                    ButtonSegment(
+                      value: _OperationsLogViewMode.charts,
+                      label: Text('Charts'),
                     ),
                   ],
+                  selected: {_viewMode},
+                  onSelectionChanged: (selection) {
+                    setState(() => _viewMode = selection.first);
+                  },
                 ),
                 const SizedBox(height: 12),
-                FilledButton(
-                  onPressed: _openCreateReportMenu,
-                  child: const Text('Create Report'),
-                ),
-                const SizedBox(height: 12),
-                if (_currentStage.isNotEmpty)
-                  _infoCard('Current stage', _currentStage),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _customizeFields,
-                    icon: const Icon(Icons.tune),
-                    label: const Text('Customize Fields'),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _importReading,
-                    icon: const Icon(Icons.import_export),
-                    label: const Text('Import Reading'),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  value: _newestFirst,
-                  onChanged: (value) => setState(() => _newestFirst = value),
-                  title: const Text('Newest first'),
-                  subtitle: const Text('Turn off for oldest first.'),
-                ),
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  value: _expandedTimeline,
-                  onChanged: (value) =>
-                      setState(() => _expandedTimeline = value),
-                  title: const Text('Expanded timeline cards'),
-                  subtitle: const Text('Turn off for compact cards.'),
-                ),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    ChoiceChip(
-                      selected: _entryFilter == _OperationsEntryFilter.all,
-                      label: const Text('All Entries'),
-                      onSelected: (_) => setState(
-                          () => _entryFilter = _OperationsEntryFilter.all),
-                    ),
-                    ChoiceChip(
-                      selected:
-                          _entryFilter == _OperationsEntryFilter.manualReadings,
-                      label: const Text('Manual Readings'),
-                      onSelected: (_) => setState(
-                        () => _entryFilter =
-                            _OperationsEntryFilter.manualReadings,
+                    for (final filter in _OperationsSmartFilter.values)
+                      ChoiceChip(
+                        selected: _smartFilter == filter,
+                        label: Text(
+                          switch (filter) {
+                            _OperationsSmartFilter.all => 'All',
+                            _OperationsSmartFilter.manual => 'Manual',
+                            _OperationsSmartFilter.textUpdates =>
+                              'Text Updates',
+                            _OperationsSmartFilter.shiftChanges =>
+                              'Shift Changes',
+                            _OperationsSmartFilter.reports => 'Reports',
+                            _OperationsSmartFilter.imports => 'Imports',
+                            _OperationsSmartFilter.sts => 'STS',
+                            _OperationsSmartFilter.pumpChanges =>
+                              'Pump Changes',
+                            _OperationsSmartFilter.pressureChanges =>
+                              'Pressure Changes',
+                            _OperationsSmartFilter.chokeChanges =>
+                              'Choke Changes',
+                            _OperationsSmartFilter.stageChanges =>
+                              'Stage Changes',
+                          },
+                        ),
+                        onSelected: (_) =>
+                            setState(() => _smartFilter = filter),
+                      ),
+                    OutlinedButton(
+                      onPressed: _pickDateFilter,
+                      child: Text(
+                        _dateFilter == null
+                            ? 'Date'
+                            : MaterialLocalizations.of(context)
+                                .formatCompactDate(_dateFilter!),
                       ),
                     ),
-                    ChoiceChip(
-                      selected:
-                          _entryFilter == _OperationsEntryFilter.textUpdates,
-                      label: const Text('Text Updates'),
-                      onSelected: (_) => setState(
-                        () => _entryFilter = _OperationsEntryFilter.textUpdates,
+                    if (_dateFilter != null)
+                      OutlinedButton(
+                        onPressed: () => setState(() => _dateFilter = null),
+                        child: const Text('Clear Date'),
                       ),
+                    OutlinedButton(
+                      onPressed: _pickShiftFilter,
+                      child: Text(
+                          'Shift: ${_shiftFilter == 'all' ? 'All' : _shiftFilter}'),
                     ),
-                    ChoiceChip(
-                      selected:
-                          _entryFilter == _OperationsEntryFilter.shiftChanges,
-                      label: const Text('Shift Changes'),
-                      onSelected: (_) => setState(
-                        () =>
-                            _entryFilter = _OperationsEntryFilter.shiftChanges,
-                      ),
+                    Switch(
+                      value: _expandedTimeline,
+                      onChanged: (value) =>
+                          setState(() => _expandedTimeline = value),
                     ),
-                    ChoiceChip(
-                      selected: _entryFilter == _OperationsEntryFilter.imports,
-                      label: const Text('Imports'),
-                      onSelected: (_) => setState(
-                        () => _entryFilter = _OperationsEntryFilter.imports,
-                      ),
+                    const Text('Expand'),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (_viewMode != _OperationsLogViewMode.timeline)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _wwPanel,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white10),
                     ),
-                    ChoiceChip(
-                      selected: _entryFilter == _OperationsEntryFilter.handoffs,
-                      label: const Text('Handoffs'),
-                      onSelected: (_) => setState(
-                        () => _entryFilter = _OperationsEntryFilter.handoffs,
-                      ),
+                    child: Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        for (final item in stats.entries)
+                          Container(
+                            width: 170,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.black26,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.key,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.white60,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  item.value,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w800),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 14),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 250),
+                  child: _viewBody(),
+                ),
+                const SizedBox(height: 96),
+              ],
+            ),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+        decoration: BoxDecoration(
+          color: _wwPanel,
+          border:
+              Border(top: BorderSide(color: _wwGold.withValues(alpha: 0.25))),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _lastUpdatedText(),
+                      style:
+                          const TextStyle(fontSize: 12, color: Colors.white70),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${_visibleEntries.length} entries',
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w800),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                const SizedBox(height: 16),
-                if (_visibleEntries.isEmpty)
-                  const Text('No Operations Log readings are available.')
-                else
-                  ..._visibleEntries.map(
-                    (entry) => Card(
-                      child: InkWell(
-                        onTap: () => _toggleExpandedEntry(entry.entryId),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Checkbox(
-                                    value: _selectedEntryIds
-                                        .contains(entry.entryId),
-                                    onChanged: (value) => _toggleSelectedEntry(
-                                      entry.entryId,
-                                      value ?? false,
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(top: 10),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            '${TimeOfDay.fromDateTime(entry.entryTime).format(context)} • ${_entryTypeLabel(entry)}',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w800,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            _compactMetrics(entry),
-                                            maxLines:
-                                                _expandedTimeline ? null : 2,
-                                            overflow: _expandedTimeline
-                                                ? TextOverflow.visible
-                                                : TextOverflow.ellipsis,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  PopupMenuButton<String>(
-                                    onSelected: (value) {
-                                      if (value == 'share') {
-                                        _shareReading(entry);
-                                      } else if (value == 'details') {
-                                        _showEntryDetails(entry);
-                                      } else if (value == 'delete') {
-                                        _deleteEntry(entry);
-                                      }
-                                    },
-                                    itemBuilder: (_) => [
-                                      const PopupMenuItem(
-                                        value: 'details',
-                                        child: Text('View Details'),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'share',
-                                        child: Text('Share Reading'),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'delete',
-                                        child: Text('Delete'),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              if (_expandedTimeline ||
-                                  _expandedEntryIds.contains(entry.entryId))
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(48, 2, 10, 8),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      if (entry.generatedText.trim().isNotEmpty)
-                                        Padding(
-                                          padding:
-                                              const EdgeInsets.only(bottom: 8),
-                                          child: SelectableText(
-                                            entry.generatedText,
-                                            style: const TextStyle(
-                                              fontFamily: 'monospace',
-                                            ),
-                                          ),
-                                        ),
-                                      if (entry.notes.trim().isNotEmpty)
-                                        Padding(
-                                          padding:
-                                              const EdgeInsets.only(bottom: 8),
-                                          child: Text(
-                                              'Notes: ${entry.notes.trim()}'),
-                                        ),
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children: [
-                                          OutlinedButton.icon(
-                                            onPressed: () => _editEntry(entry),
-                                            icon:
-                                                const Icon(Icons.edit_outlined),
-                                            label: const Text('Edit'),
-                                          ),
-                                          OutlinedButton.icon(
-                                            onPressed: () =>
-                                                _duplicateEntry(entry),
-                                            icon: const Icon(Icons.copy_all),
-                                            label: const Text('Duplicate'),
-                                          ),
-                                          OutlinedButton.icon(
-                                            onPressed: () =>
-                                                _deleteEntry(entry),
-                                            icon: const Icon(
-                                                Icons.delete_outline),
-                                            label: const Text('Delete'),
-                                          ),
-                                          OutlinedButton.icon(
-                                            onPressed: () =>
-                                                _shareReading(entry),
-                                            icon: const Icon(Icons.qr_code_2),
-                                            label: const Text('Share QR'),
-                                          ),
-                                          OutlinedButton.icon(
-                                            onPressed: () =>
-                                                _copyEntryAgain(entry),
-                                            icon:
-                                                const Icon(Icons.copy_outlined),
-                                            label: const Text('Copy Again'),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-    );
-  }
-
-  Widget _infoCard(String label, String value) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(value),
-                ],
               ),
-            ),
-          ],
+              const SizedBox(width: 10),
+              SizedBox(
+                height: 52,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _wwGold,
+                    foregroundColor: Colors.black,
+                    textStyle: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w900),
+                  ),
+                  onPressed: _addReading,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Reading'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

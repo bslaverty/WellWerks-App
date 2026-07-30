@@ -1836,6 +1836,42 @@
 				"-r",
 				"0cb8030"
 			]
+		},
+		{
+			"label": "build192-focused-qr-tests",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/wellwerks_qr_transfer_build187_test.dart",
+				"-r",
+				"expanded"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "build192-focused-qr-tests-rerun",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/wellwerks_qr_transfer_build187_test.dart",
+				"-r",
+				"expanded"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "build192-focused-qr-tests-rerun2",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"test",
+				"test/wellwerks_qr_transfer_build187_test.dart",
+				"-r",
+				"expanded"
+			],
+			"isBackground": false
 		}
 	]
 }
