@@ -1667,8 +1667,12 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     final rateText = _rateDisplayUnit == _RateDisplayUnit.bblPerHr
         ? selectedRateValue.toStringAsFixed(1)
         : selectedRateValue.toStringAsFixed(3);
+    final elapsedSeconds = (elapsedMinutes * 60).round();
+    final elapsedDuration = Duration(seconds: elapsedSeconds);
+    final elapsedLabel =
+        '${elapsedDuration.inMinutes}:${(elapsedDuration.inSeconds % 60).toString().padLeft(2, '0')}';
     final generatedText =
-        'Rate Calculator (${widget.config.title})\nStart $startGaugeValue in\nEnd $endGaugeValue in\nElapsed ${elapsedMinutes.toStringAsFixed(2)} min\nRate $rateText $selectedRateUnit';
+        'RATE\n\n${widget.config.title}\n\nRate: $rateText $selectedRateUnit\n\n$startGaugeValue" -> $endGaugeValue"\n\nElapsed: $elapsedLabel';
 
     final stage = (activeJob.drilloutSetup['status'] as String? ??
             activeJob.drilloutSetup['stage'] as String? ??
