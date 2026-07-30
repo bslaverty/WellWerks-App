@@ -64,7 +64,6 @@ class _OperationsLogEntryFormScreenState
   String _reminderChoice = StsReminderChoice.useDefault;
   int _defaultReminderLeadMinutes =
       AppSettingsDefaults.estimatedStsReminderLeadMinutes;
-  String _linkedSweepId = '';
   late String _selectedWellId;
   String _selectedStage = '';
   String _selectedGas = '';
@@ -114,6 +113,7 @@ class _OperationsLogEntryFormScreenState
       _selectedWellId = '';
     }
 
+    _applyCarryForwardDefaultsForWell();
     _loadReminderDefaults();
   }
 
@@ -323,7 +323,19 @@ class _OperationsLogEntryFormScreenState
     );
   }
 
-  List<DropdownMenuItem<String>> _estimatedSweepLinkOptions() {
+  String _latestKnownValue(String Function(OperationsLogEntry entry) selector) {
+    final selectedWell = _selectedWellName.trim();
+    final ordered = List<OperationsLogEntry>.from(widget.existingEntries)
+      ..sort((a, b) => b.entryTime.compareTo(a.entryTime));
+    for (final entry in ordered) {
+      if (entry.wellName.trim() != selectedWell) continue;
+      final value = selector(entry).trim();
+      if (value.isNotEmpty) return value;
+    }
+    return '';
+  }
+
+  String _oldestOpenEstimatedSweepId() {
     final selectedWell = _selectedWellName.trim();
     final open = widget.existingEntries
         .where((entry) =>
@@ -332,20 +344,76 @@ class _OperationsLogEntryFormScreenState
             entry.estimatedSts != null &&
             entry.sts == null)
         .toList(growable: false)
-      ..sort((a, b) => a.estimatedSts!.compareTo(b.estimatedSts!));
+      ..sort((a, b) {
+        final byEstimated = a.estimatedSts!.compareTo(b.estimatedSts!);
+        if (byEstimated != 0) return byEstimated;
+        return a.entryTime.compareTo(b.entryTime);
+      });
+    if (open.isEmpty) return '';
+    return open.first.sweepId.trim();
+  }
 
-    return <DropdownMenuItem<String>>[
-      const DropdownMenuItem<String>(
-        value: '',
-        child: Text('No link'),
-      ),
-      for (final item in open)
-        DropdownMenuItem<String>(
-          value: item.sweepId,
-          child:
-              Text('Estimated ${_formatOptionalDateTime(item.estimatedSts)}'),
-        ),
-    ];
+  ChokeSelection? _parseChokeSelection(String rawValue) {
+    final normalized = rawValue.trim();
+    if (normalized.isEmpty) return null;
+    final lower = normalized.toLowerCase();
+    if (lower.contains('none') || lower.contains('clear')) {
+      return const ChokeSelection(type: ChokeTypes.none);
+    }
+    final sizeMatch = RegExp(r'(\d+)\s*/\s*64').firstMatch(normalized);
+    final size =
+        sizeMatch == null ? null : int.tryParse(sizeMatch.group(1) ?? '');
+    if (size == null) return null;
+    final type = lower.contains('positive')
+        ? ChokeTypes.positive
+        : ChokeTypes.adjustable;
+    return ChokeSelection(type: type, size64: size);
+  }
+
+  void _applyCarryForwardDefaultsForWell() {
+    String latest(String Function(OperationsLogEntry entry) selector) {
+      return _latestKnownValue(selector);
+    }
+
+    if (_pumpRateController.text.trim().isEmpty) {
+      _pumpRateController.text = latest((entry) => entry.pumpRate);
+    }
+    if (_casingPressureController.text.trim().isEmpty) {
+      _casingPressureController.text = latest((entry) => entry.casingPressure);
+    }
+    if (_tubingPressureController.text.trim().isEmpty) {
+      _tubingPressureController.text = latest((entry) => entry.tubingPressure);
+    }
+    if (_pumpPressureController.text.trim().isEmpty) {
+      _pumpPressureController.text = latest((entry) => entry.pumpPressure);
+    }
+    if (_returnsRateController.text.trim().isEmpty) {
+      _returnsRateController.text = latest((entry) => entry.returnsRate);
+    }
+    if (_tankLevelController.text.trim().isEmpty) {
+      _tankLevelController.text = latest((entry) => entry.tankLevel);
+    }
+    if (_choke.isNone) {
+      final carryChoke = latest((entry) => entry.choke);
+      if (carryChoke.isNotEmpty) {
+        final parsed = _parseChokeSelection(carryChoke);
+        if (parsed != null) {
+          _choke = parsed;
+        }
+      }
+    }
+    if (_selectedGas.trim().isEmpty) {
+      final carryGas = latest((entry) => entry.gas);
+      if (DrilloutCleanoutFieldDefinitions.gasOptions.contains(carryGas)) {
+        _selectedGas = carryGas;
+      }
+    }
+    if (_selectedSand.trim().isEmpty) {
+      final carrySand = latest((entry) => entry.sandOrSolids);
+      if (DrilloutCleanoutFieldDefinitions.sandOptions.contains(carrySand)) {
+        _selectedSand = carrySand;
+      }
+    }
   }
 
   Future<bool> _ensureEstimatedStsPermission() async {
@@ -418,14 +486,16 @@ class _OperationsLogEntryFormScreenState
         notes: _notesController.text.trim(),
       );
 
+      final resolvedLinkedSweepId =
+          _sts != null ? _oldestOpenEstimatedSweepId() : '';
       final sweepId = (_estimatedSts != null || _sts != null)
-          ? (_linkedSweepId.trim().isNotEmpty
-              ? _linkedSweepId.trim()
+          ? (resolvedLinkedSweepId.isNotEmpty
+              ? resolvedLinkedSweepId
               : 'sweep_${entry.entryId}')
           : '';
       entry = entry.copyWith(
         sweepId: sweepId,
-        linkedSweepId: _linkedSweepId.trim(),
+        linkedSweepId: resolvedLinkedSweepId,
         estimatedStsReminderChoice: _reminderChoice,
       );
 
@@ -479,8 +549,8 @@ class _OperationsLogEntryFormScreenState
           );
         }
 
-        if (_sts != null && _linkedSweepId.trim().isNotEmpty) {
-          await _stsReminderService.cancelBySweepId(_linkedSweepId.trim());
+        if (_sts != null && resolvedLinkedSweepId.isNotEmpty) {
+          await _stsReminderService.cancelBySweepId(resolvedLinkedSweepId);
           entry = entry.copyWith(
             estimatedStsNotificationStatus: 'actualStsRecorded',
             estimatedStsCancellationReason: 'actualStsRecorded',
@@ -515,6 +585,15 @@ class _OperationsLogEntryFormScreenState
     }
   }
 
+  String _returnsDisplay(String rawValue) {
+    final trimmed = rawValue.trim();
+    if (trimmed.isEmpty) return '';
+    if (widget.workflow == OperationsLogWorkflow.drillout) {
+      return '$trimmed bbl/min';
+    }
+    return trimmed;
+  }
+
   List<String> _previewLines() {
     final lines = <String>[
       'Entry Time: ${MaterialLocalizations.of(context).formatCompactDate(_readingTimestamp)} ${TimeOfDay.fromDateTime(_readingTimestamp).format(context)}',
@@ -530,7 +609,7 @@ class _OperationsLogEntryFormScreenState
     }
     if (_isEnabled('returnsRate') &&
         _returnsRateController.text.trim().isNotEmpty) {
-      lines.add('Returns Rate: ${_returnsRateController.text.trim()}');
+      lines.add('Returns: ${_returnsDisplay(_returnsRateController.text)}');
     }
     if (_isEnabled('choke') && !_choke.isNone) {
       lines.add('Choke: ${formatChokeDisplay(_choke)}');
@@ -628,7 +707,10 @@ class _OperationsLogEntryFormScreenState
             ],
             onChanged: (value) {
               if (value == null) return;
-              setState(() => _selectedWellId = value);
+              setState(() {
+                _selectedWellId = value;
+                _applyCarryForwardDefaultsForWell();
+              });
             },
           ),
           const SizedBox(height: 12),
@@ -715,28 +797,6 @@ class _OperationsLogEntryFormScreenState
             ),
             const SizedBox(height: 12),
           ],
-          if (_isEnabled('gas')) ...[
-            DropdownButtonFormField<String>(
-              key: const Key('operations-log-form-gas-dropdown'),
-              initialValue: _selectedGas,
-              decoration: InputDecoration(
-                labelText: _labelFor('gas', fallback: 'Gas'),
-              ),
-              items: [
-                const DropdownMenuItem<String>(
-                    value: '', child: Text('Select gas')),
-                for (final option
-                    in DrilloutCleanoutFieldDefinitions.gasOptions)
-                  DropdownMenuItem<String>(
-                    value: option,
-                    child: Text(option),
-                  ),
-              ],
-              onChanged: (value) =>
-                  setState(() => _selectedGas = (value ?? '').trim()),
-            ),
-            const SizedBox(height: 12),
-          ],
           if (_isEnabled('returnsRate')) ...[
             TextFormField(
               key: const Key('operations-log-form-returns-rate-field'),
@@ -744,16 +804,8 @@ class _OperationsLogEntryFormScreenState
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(
-                labelText: _labelFor('returnsRate', fallback: 'Returns Rate'),
+                labelText: _labelFor('returnsRate', fallback: 'Returns'),
               ),
-            ),
-            const SizedBox(height: 12),
-          ],
-          if (_isEnabled('tankLevel')) ...[
-            TextFormField(
-              key: const Key('operations-log-form-tank-level-field'),
-              controller: _tankLevelController,
-              decoration: const InputDecoration(labelText: 'Tank Level'),
             ),
             const SizedBox(height: 12),
           ],
@@ -836,42 +888,13 @@ class _OperationsLogEntryFormScreenState
                     style: TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                 ),
-                if (_sts != null)
-                  DropdownButtonFormField<String>(
-                    key: const Key('operations-log-form-link-estimated-sweep'),
-                    initialValue: _linkedSweepId,
-                    decoration: const InputDecoration(
-                      labelText: 'Link to Estimated Sweep',
-                    ),
-                    items: _estimatedSweepLinkOptions(),
-                    onChanged: (value) {
-                      setState(() => _linkedSweepId = (value ?? '').trim());
-                    },
-                  ),
-                if (_sts != null) const SizedBox(height: 12),
               ],
             ),
-          if (_isEnabled('sandOrSolids')) ...[
-            DropdownButtonFormField<String>(
-              key: const Key('operations-log-form-sand-dropdown'),
-              initialValue: _selectedSand,
-              decoration: InputDecoration(
-                labelText: _labelFor('sandOrSolids', fallback: 'Sand / Solids'),
-              ),
-              items: [
-                const DropdownMenuItem<String>(
-                  value: '',
-                  child: Text('Select sand / solids'),
-                ),
-                for (final option
-                    in DrilloutCleanoutFieldDefinitions.sandOptions)
-                  DropdownMenuItem<String>(
-                    value: option,
-                    child: Text(option),
-                  ),
-              ],
-              onChanged: (value) =>
-                  setState(() => _selectedSand = (value ?? '').trim()),
+          if (_isEnabled('tankLevel')) ...[
+            TextFormField(
+              key: const Key('operations-log-form-tank-level-field'),
+              controller: _tankLevelController,
+              decoration: const InputDecoration(labelText: 'Tank Level'),
             ),
             const SizedBox(height: 12),
           ],
@@ -888,6 +911,71 @@ class _OperationsLogEntryFormScreenState
               key: const Key('operations-log-form-downtime-field'),
               controller: _downtimeController,
               decoration: const InputDecoration(labelText: 'Downtime'),
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (_isEnabled('gas') || _isEnabled('sandOrSolids')) ...[
+            const SizedBox(height: 4),
+            const Text(
+              'Conditions',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_isEnabled('gas'))
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      key: const Key('operations-log-form-gas-dropdown'),
+                      initialValue: _selectedGas,
+                      decoration: InputDecoration(
+                        labelText: _labelFor('gas', fallback: 'Gas'),
+                      ),
+                      items: [
+                        const DropdownMenuItem<String>(
+                          value: '',
+                          child: Text('Select gas'),
+                        ),
+                        for (final option
+                            in DrilloutCleanoutFieldDefinitions.gasOptions)
+                          DropdownMenuItem<String>(
+                            value: option,
+                            child: Text(option),
+                          ),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => _selectedGas = (value ?? '').trim()),
+                    ),
+                  ),
+                if (_isEnabled('gas') && _isEnabled('sandOrSolids'))
+                  const SizedBox(width: 12),
+                if (_isEnabled('sandOrSolids'))
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      key: const Key('operations-log-form-sand-dropdown'),
+                      initialValue: _selectedSand,
+                      decoration: InputDecoration(
+                        labelText: _labelFor('sandOrSolids',
+                            fallback: 'Sand / Solids'),
+                      ),
+                      items: [
+                        const DropdownMenuItem<String>(
+                          value: '',
+                          child: Text('Select sand / solids'),
+                        ),
+                        for (final option
+                            in DrilloutCleanoutFieldDefinitions.sandOptions)
+                          DropdownMenuItem<String>(
+                            value: option,
+                            child: Text(option),
+                          ),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => _selectedSand = (value ?? '').trim()),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 12),
           ],

@@ -117,11 +117,11 @@ class DrilloutCleanoutFieldDefinitions {
     ),
     DrilloutCleanoutFieldDefinition(
       id: returnsRateId,
-      label: 'Returns Rate',
+      label: 'Returns',
       unitLabel: 'bbl/min',
       inputType: DrilloutCleanoutInputType.numeric,
       displayOrder: 40,
-      includeToggleLabel: 'Include Returns Rate',
+      includeToggleLabel: 'Include Returns',
       validation: DrilloutCleanoutFieldValidation.numeric,
     ),
     DrilloutCleanoutFieldDefinition(

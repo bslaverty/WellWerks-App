@@ -115,8 +115,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   Set<String> _enabledFieldIds =
       DrilloutCleanoutFieldDefinitions.defaultEnabledFieldIds;
   bool _loading = true;
-  final bool _newestFirst = false;
-  bool _expandedTimeline = false;
+  bool _timelineNewestFirst = true;
   bool _multiSelectMode = false;
   _OperationsLogViewMode _viewMode = _OperationsLogViewMode.timeline;
   _OperationsSmartFilter _smartFilter = _OperationsSmartFilter.all;
@@ -207,10 +206,16 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
 
   List<OperationsLogEntry> get _sortedEntries {
     final items = List<OperationsLogEntry>.from(_entries);
-    items.sort((a, b) {
-      final compare = a.entryTime.compareTo(b.entryTime);
-      return _newestFirst ? -compare : compare;
-    });
+    items.sort((a, b) => a.entryTime.compareTo(b.entryTime));
+    return items;
+  }
+
+  List<OperationsLogEntry> get _timelineEntries {
+    final items = List<OperationsLogEntry>.from(_visibleEntries);
+    items.sort((a, b) => a.entryTime.compareTo(b.entryTime));
+    if (_timelineNewestFirst) {
+      return items.reversed.toList(growable: false);
+    }
     return items;
   }
 
@@ -392,7 +397,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
         Text('Pump rate: ${entry.pumpRate}'),
       if (_enabledFieldIds.contains('returnsRate') &&
           entry.returnsRate.isNotEmpty)
-        Text('Returns rate: ${entry.returnsRate}'),
+        Text('Returns: ${_returnsDisplay(entry.returnsRate)}'),
       if (_enabledFieldIds.contains('casingPressure') &&
           entry.casingPressure.isNotEmpty)
         Text('Casing pressure: ${entry.casingPressure}'),
@@ -1306,7 +1311,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     }
     if (_enabledFieldIds.contains('returnsRate') &&
         entry.returnsRate.isNotEmpty) {
-      parts.add('Returns ${entry.returnsRate}');
+      parts.add('Returns ${_returnsDisplay(entry.returnsRate)}');
     }
     if (_enabledFieldIds.contains('casingPressure') &&
         entry.casingPressure.isNotEmpty) {
@@ -1344,6 +1349,42 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       parts.add('Legacy Sweep ${entry.sweepInformation}');
     }
     return parts.join(' • ');
+  }
+
+  String _returnsDisplay(String rawValue) {
+    final trimmed = rawValue.trim();
+    if (trimmed.isEmpty) return '';
+    if (_workflow == OperationsLogWorkflow.drillout) {
+      return '$trimmed bbl/min';
+    }
+    return trimmed;
+  }
+
+  String _latestKnownValue(String Function(OperationsLogEntry entry) selector) {
+    for (final item in _sortedEntries.reversed) {
+      final value = selector(item).trim();
+      if (value.isNotEmpty) {
+        return value;
+      }
+    }
+    return '';
+  }
+
+  String _carryForwardValueForEntry(
+    OperationsLogEntry target,
+    String Function(OperationsLogEntry entry) selector,
+  ) {
+    String latest = '';
+    for (final item in _sortedEntries) {
+      final value = selector(item).trim();
+      if (value.isNotEmpty) {
+        latest = value;
+      }
+      if (item.entryId == target.entryId) {
+        break;
+      }
+    }
+    return latest;
   }
 
   String _formatFieldTime(
@@ -1464,6 +1505,39 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   }
 
   List<String> _importantLines(OperationsLogEntry entry) {
+    if (_workflow == OperationsLogWorkflow.drillout) {
+      final lines = <String>[];
+      void add(String value) {
+        if (value.trim().isEmpty || lines.length >= 4) return;
+        lines.add(value.trim());
+      }
+
+      final stage = entry.operationStage.trim();
+      final choke = _carryForwardValueForEntry(entry, (item) => item.choke);
+      final returns =
+          _carryForwardValueForEntry(entry, (item) => item.returnsRate);
+      final manifold =
+          _carryForwardValueForEntry(entry, (item) => item.pumpPressure);
+
+      add(stage.isEmpty ? '' : 'Stage $stage');
+      add(choke.isEmpty ? '' : 'Choke $choke');
+      add(returns.isEmpty ? '' : 'Returns ${_returnsDisplay(returns)}');
+
+      if (manifold.isNotEmpty) {
+        add('Manifold $manifold');
+      } else if (entry.sweepInformation.trim().isNotEmpty) {
+        add('Sweep ${entry.sweepInformation.trim()}');
+      } else if (entry.estimatedSts != null) {
+        add(
+          'Estimated STS ${_formatFieldTime(entry.estimatedSts!, readingTimestamp: entry.entryTime)}',
+        );
+      }
+
+      if (lines.isNotEmpty) {
+        return lines;
+      }
+    }
+
     final lines = <String>[];
     void add(String value) {
       if (value.trim().isEmpty || lines.length >= 2) return;
@@ -1703,7 +1777,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       case _ChartMetric.pumpRate:
         return 'Pump Rate';
       case _ChartMetric.returnsRate:
-        return 'Returns Rate';
+        return 'Returns';
       case _ChartMetric.manifoldPsi:
         return 'Manifold PSI';
       case _ChartMetric.casingPsi:
@@ -1860,6 +1934,10 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
 
   Widget _foundationCards() {
     final latest = _sortedEntries.isEmpty ? null : _sortedEntries.last;
+    final latestKnownManifold =
+        _latestKnownValue((entry) => entry.pumpPressure);
+    final latestKnownChoke = _latestKnownValue((entry) => entry.choke);
+    final latestKnownReturns = _latestKnownValue((entry) => entry.returnsRate);
     final latestTextUpdate = _sortedEntries.reversed
         .where((entry) => _entryTypeValue(entry) == 'textUpdate')
         .toList(growable: false);
@@ -1871,9 +1949,13 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       ),
       (
         title: 'Current Manifold',
-        value: latest?.pumpPressure.trim().isNotEmpty == true
-            ? latest!.pumpPressure
-            : '--'
+        value: latestKnownManifold.isEmpty ? '--' : latestKnownManifold
+      ),
+      (
+        title: 'Current Returns',
+        value: latestKnownReturns.isEmpty
+            ? '--'
+            : _returnsDisplay(latestKnownReturns)
       ),
       (
         title: 'Current Stage',
@@ -1883,7 +1965,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       ),
       (
         title: 'Current Choke',
-        value: latest?.choke.trim().isNotEmpty == true ? latest!.choke : '--'
+        value: latestKnownChoke.isEmpty ? '--' : latestKnownChoke
       ),
       (
         title: 'Current STS Status',
@@ -1957,10 +2039,52 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   }
 
   Widget _buildTimelineItem(OperationsLogEntry entry) {
-    final expanded =
-        _expandedTimeline || _expandedEntryIds.contains(entry.entryId);
+    final expanded = _expandedEntryIds.contains(entry.entryId);
     final iconColor = _eventColor(entry);
     final lines = _importantLines(entry);
+    final detailRows = <({String label, String value})>[
+      if (entry.operationStage.trim().isNotEmpty)
+        (label: 'Stage', value: entry.operationStage.trim()),
+      if (entry.pumpRate.trim().isNotEmpty)
+        (label: 'Pump', value: entry.pumpRate.trim()),
+      if (entry.choke.trim().isNotEmpty)
+        (label: 'Choke', value: entry.choke.trim()),
+      if (entry.returnsRate.trim().isNotEmpty)
+        (label: 'Returns', value: _returnsDisplay(entry.returnsRate)),
+      if (entry.pumpPressure.trim().isNotEmpty)
+        (label: 'Manifold', value: entry.pumpPressure.trim()),
+      if (entry.casingPressure.trim().isNotEmpty)
+        (label: 'Casing', value: entry.casingPressure.trim()),
+      if (entry.tubingPressure.trim().isNotEmpty)
+        (label: 'Tubing', value: entry.tubingPressure.trim()),
+      if (entry.gas.trim().isNotEmpty) (label: 'Gas', value: entry.gas.trim()),
+      if (entry.sandOrSolids.trim().isNotEmpty)
+        (label: 'Sand / Solids', value: entry.sandOrSolids.trim()),
+      if (entry.tankLevel.trim().isNotEmpty)
+        (label: 'Tank', value: entry.tankLevel.trim()),
+      if (entry.estimatedSts != null)
+        (
+          label: 'Estimated STS',
+          value: _formatFieldTime(
+            entry.estimatedSts!,
+            readingTimestamp: entry.entryTime,
+          ),
+        ),
+      if (entry.sts != null)
+        (
+          label: 'Actual STS',
+          value: _formatFieldTime(
+            entry.sts!,
+            readingTimestamp: entry.entryTime,
+          ),
+        ),
+      if (entry.sweepInformation.trim().isNotEmpty)
+        (label: 'Sweep', value: entry.sweepInformation.trim()),
+      if (entry.equipmentStatus.trim().isNotEmpty)
+        (label: 'Equipment', value: entry.equipmentStatus.trim()),
+      if (entry.downtime.trim().isNotEmpty)
+        (label: 'Downtime', value: entry.downtime.trim()),
+    ];
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       margin: const EdgeInsets.only(bottom: 12),
@@ -2125,6 +2249,31 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                                     ],
                                   ),
                                 ),
+                              if (detailRows.isNotEmpty)
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 6,
+                                  children: [
+                                    for (final row in detailRows)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black26,
+                                          borderRadius:
+                                              BorderRadius.circular(999),
+                                          border:
+                                              Border.all(color: Colors.white12),
+                                        ),
+                                        child: Text(
+                                          '${row.label}: ${row.value}',
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                  ],
+                                ),
                               if (entry.generatedText.trim().isNotEmpty)
                                 SelectableText(
                                   entry.generatedText,
@@ -2163,7 +2312,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       case _OperationsLogViewMode.timeline:
         return Column(
           children: [
-            for (final entry in _visibleEntries) _buildTimelineItem(entry)
+            for (final entry in _timelineEntries) _buildTimelineItem(entry)
           ],
         );
       case _OperationsLogViewMode.data:
@@ -2516,12 +2665,23 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                       child: Text(
                           'Shift: ${_shiftFilter == 'all' ? 'All' : _shiftFilter}'),
                     ),
-                    Switch(
-                      value: _expandedTimeline,
-                      onChanged: (value) =>
-                          setState(() => _expandedTimeline = value),
+                    DropdownButton<bool>(
+                      value: _timelineNewestFirst,
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() => _timelineNewestFirst = value);
+                      },
+                      items: const [
+                        DropdownMenuItem<bool>(
+                          value: true,
+                          child: Text('Newest First'),
+                        ),
+                        DropdownMenuItem<bool>(
+                          value: false,
+                          child: Text('Oldest First'),
+                        ),
+                      ],
                     ),
-                    const Text('Expand'),
                   ],
                 ),
                 const SizedBox(height: 12),
