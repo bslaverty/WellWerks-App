@@ -31,6 +31,15 @@ class OperationsLogScreen extends StatefulWidget {
   State<OperationsLogScreen> createState() => _OperationsLogScreenState();
 }
 
+enum _OperationsEntryFilter {
+  all,
+  manualReadings,
+  textUpdates,
+  shiftChanges,
+  imports,
+  handoffs,
+}
+
 class _OperationsLogScreenState extends State<OperationsLogScreen> {
   final _jobStorage = JobStorageService();
   final _logService = OperationsLogService();
@@ -48,6 +57,8 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   bool _loading = true;
   bool _newestFirst = false;
   bool _expandedTimeline = false;
+  _OperationsEntryFilter _entryFilter = _OperationsEntryFilter.all;
+  Set<String> _expandedEntryIds = <String>{};
 
   @override
   void initState() {
@@ -86,6 +97,9 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       _selectedEntryIds = _selectedEntryIds
           .where((entryId) => entries.any((item) => item.entryId == entryId))
           .toSet();
+      _expandedEntryIds = _expandedEntryIds
+          .where((entryId) => entries.any((item) => item.entryId == entryId))
+          .toSet();
       _loading = false;
     });
   }
@@ -122,6 +136,60 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       return _newestFirst ? -compare : compare;
     });
     return items;
+  }
+
+  List<OperationsLogEntry> get _visibleEntries {
+    return _sortedEntries.where(_matchesFilter).toList(growable: false);
+  }
+
+  String _entryTypeValue(OperationsLogEntry entry) {
+    final raw = entry.entryType.trim();
+    if (raw.isNotEmpty) return raw;
+    if (entry.isImported) return 'qrImport';
+    return 'manualReading';
+  }
+
+  String _entryTypeLabel(OperationsLogEntry entry) {
+    switch (_entryTypeValue(entry)) {
+      case 'textUpdate':
+        return 'Text Update';
+      case 'shiftChange':
+        return 'Shift Change';
+      case 'handoffImport':
+        return 'Handoff Import';
+      case 'qrImport':
+        return 'QR Import';
+      case 'jobStarted':
+        return 'Job Started';
+      case 'jobEnded':
+        return 'Job Ended';
+      case 'stageChange':
+        return 'Stage Change';
+      case 'stsReminder':
+        return 'STS Reminder';
+      case 'stsReached':
+        return 'STS Reached';
+      default:
+        return 'Manual Reading';
+    }
+  }
+
+  bool _matchesFilter(OperationsLogEntry entry) {
+    final type = _entryTypeValue(entry);
+    switch (_entryFilter) {
+      case _OperationsEntryFilter.all:
+        return true;
+      case _OperationsEntryFilter.manualReadings:
+        return type == 'manualReading';
+      case _OperationsEntryFilter.textUpdates:
+        return type == 'textUpdate';
+      case _OperationsEntryFilter.shiftChanges:
+        return type == 'shiftChange';
+      case _OperationsEntryFilter.imports:
+        return type == 'qrImport' || entry.isImported;
+      case _OperationsEntryFilter.handoffs:
+        return type == 'handoffImport';
+    }
   }
 
   List<JobSetupWell> get _resolvedWells {
@@ -493,9 +561,13 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
 
     switch (choice) {
       case 'shift':
-        await _createPdfReport(
-          reportLabel: 'Shift Change Report',
-          fileLabel: 'shift_change_report',
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Use the Shift Change module for full shift report workflows.',
+            ),
+          ),
         );
         break;
       case 'text':
@@ -538,6 +610,158 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     );
     final encoded = _logService.encodePackage(package);
     await _showShareQrDialog(encoded, 'Share Reading QR');
+  }
+
+  void _toggleExpandedEntry(String entryId) {
+    setState(() {
+      final next = Set<String>.from(_expandedEntryIds);
+      if (next.contains(entryId)) {
+        next.remove(entryId);
+      } else {
+        next.add(entryId);
+      }
+      _expandedEntryIds = next;
+    });
+  }
+
+  Future<void> _copyEntryAgain(OperationsLogEntry entry) async {
+    final fallback = _entrySubtitle(entry);
+    final text = entry.generatedText.trim().isEmpty
+        ? '$fallback\n${entry.notes.trim()}'
+        : entry.generatedText;
+    await Clipboard.setData(ClipboardData(text: text.trim()));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Entry copied to clipboard.')),
+    );
+  }
+
+  Future<void> _editEntry(OperationsLogEntry entry) async {
+    final generatedController =
+        TextEditingController(text: entry.generatedText);
+    final notesController = TextEditingController(text: entry.notes);
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Edit Timeline Entry'),
+            content: SizedBox(
+              width: 460,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: generatedController,
+                      maxLines: 8,
+                      decoration: const InputDecoration(
+                        labelText: 'Generated Text',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: notesController,
+                      maxLines: 4,
+                      decoration: const InputDecoration(labelText: 'Notes'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!confirmed) return;
+    final job = _activeJob;
+    if (job == null) return;
+    await _logService.upsertEntry(
+      workflow: _workflow,
+      jobId: job.id,
+      entry: entry.copyWith(
+        generatedText: generatedController.text.trim(),
+        notes: notesController.text.trim(),
+      ),
+    );
+    await _load();
+  }
+
+  Future<void> _duplicateEntry(OperationsLogEntry entry) async {
+    final job = _activeJob;
+    if (job == null) return;
+    final duplicate = await _logService.createLocalEntry(
+      workflow: _workflow,
+      jobId: job.id,
+      wellId: entry.persistentWellId,
+      wellName: entry.wellName,
+      readingTimestamp: DateTime.now(),
+      entryType: _entryTypeValue(entry),
+      generatedText: entry.generatedText,
+      structuredData: entry.structuredData,
+      operationStage: entry.operationStage,
+      choke: entry.choke,
+      casingPressure: entry.casingPressure,
+      tubingPressure: entry.tubingPressure,
+      pumpPressure: entry.pumpPressure,
+      pumpRate: entry.pumpRate,
+      gas: entry.gas,
+      plugNumber: entry.plugNumber,
+      surfaceTotalFluid: entry.surfaceTotalFluid,
+      waterHauled: entry.waterHauled,
+      oilHauled: entry.oilHauled,
+      returnsRate: entry.returnsRate,
+      waterRate: entry.waterRate,
+      flowRate: entry.flowRate,
+      estimatedSts: entry.estimatedSts,
+      sts: entry.sts,
+      tankLevel: entry.tankLevel,
+      sweepInformation: entry.sweepInformation,
+      sandOrSolids: entry.sandOrSolids,
+      equipmentStatus: entry.equipmentStatus,
+      downtime: entry.downtime,
+      notes: entry.notes,
+    );
+    await _logService.upsertEntry(
+        workflow: _workflow, jobId: job.id, entry: duplicate);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Timeline entry duplicated.')),
+    );
+    await _load();
+  }
+
+  String _compactMetrics(OperationsLogEntry entry) {
+    final values = <String>[];
+    if (entry.pumpRate.trim().isNotEmpty) {
+      values.add('Pump ${entry.pumpRate.trim()}');
+    }
+    if (entry.choke.trim().isNotEmpty) {
+      values.add('Choke ${entry.choke.trim()}');
+    }
+    if (entry.operationStage.trim().isNotEmpty) {
+      values.add('Stage ${entry.operationStage.trim()}');
+    }
+    if (entry.estimatedSts != null) {
+      values.add(
+        'Est. STS ${_formatFieldTime(entry.estimatedSts!, readingTimestamp: entry.readingTimestamp)}',
+      );
+    }
+    if (entry.sts != null) {
+      values.add(
+        'STS ${_formatFieldTime(entry.sts!, readingTimestamp: entry.readingTimestamp)}',
+      );
+    }
+    if (values.isEmpty) return 'No key metrics';
+    return values.join(' • ');
   }
 
   Future<void> _showShareQrDialog(String qrValue, String title) async {
@@ -922,15 +1146,12 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                       : 'No active job',
                 ),
                 _infoCard('Selected well', _currentWellName),
-                if (_currentStage.isNotEmpty)
-                  _infoCard('Current stage', _currentStage),
                 Row(
                   children: [
                     Expanded(
-                      child: FilledButton.icon(
+                      child: FilledButton(
                         onPressed: _addReading,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add Reading'),
+                        child: const Text('Add Reading'),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -944,6 +1165,13 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
+                FilledButton(
+                  onPressed: _openCreateReportMenu,
+                  child: const Text('Create Report'),
+                ),
+                const SizedBox(height: 12),
+                if (_currentStage.isNotEmpty)
+                  _infoCard('Current stage', _currentStage),
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
@@ -977,19 +1205,67 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                   title: const Text('Expanded timeline cards'),
                   subtitle: const Text('Turn off for compact cards.'),
                 ),
-                const SizedBox(height: 8),
-                FilledButton(
-                  onPressed: _openCreateReportMenu,
-                  child: const Text('Create Report'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ChoiceChip(
+                      selected: _entryFilter == _OperationsEntryFilter.all,
+                      label: const Text('All Entries'),
+                      onSelected: (_) => setState(
+                          () => _entryFilter = _OperationsEntryFilter.all),
+                    ),
+                    ChoiceChip(
+                      selected:
+                          _entryFilter == _OperationsEntryFilter.manualReadings,
+                      label: const Text('Manual Readings'),
+                      onSelected: (_) => setState(
+                        () => _entryFilter =
+                            _OperationsEntryFilter.manualReadings,
+                      ),
+                    ),
+                    ChoiceChip(
+                      selected:
+                          _entryFilter == _OperationsEntryFilter.textUpdates,
+                      label: const Text('Text Updates'),
+                      onSelected: (_) => setState(
+                        () => _entryFilter = _OperationsEntryFilter.textUpdates,
+                      ),
+                    ),
+                    ChoiceChip(
+                      selected:
+                          _entryFilter == _OperationsEntryFilter.shiftChanges,
+                      label: const Text('Shift Changes'),
+                      onSelected: (_) => setState(
+                        () =>
+                            _entryFilter = _OperationsEntryFilter.shiftChanges,
+                      ),
+                    ),
+                    ChoiceChip(
+                      selected: _entryFilter == _OperationsEntryFilter.imports,
+                      label: const Text('Imports'),
+                      onSelected: (_) => setState(
+                        () => _entryFilter = _OperationsEntryFilter.imports,
+                      ),
+                    ),
+                    ChoiceChip(
+                      selected: _entryFilter == _OperationsEntryFilter.handoffs,
+                      label: const Text('Handoffs'),
+                      onSelected: (_) => setState(
+                        () => _entryFilter = _OperationsEntryFilter.handoffs,
+                      ),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 8),
                 const SizedBox(height: 16),
-                if (_sortedEntries.isEmpty)
+                if (_visibleEntries.isEmpty)
                   const Text('No Operations Log readings are available.')
                 else
-                  ..._sortedEntries.map(
+                  ..._visibleEntries.map(
                     (entry) => Card(
                       child: InkWell(
-                        onTap: () => _showEntryDetails(entry),
+                        onTap: () => _toggleExpandedEntry(entry.entryId),
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
                           child: Column(
@@ -1014,16 +1290,14 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            '${TimeOfDay.fromDateTime(entry.readingTimestamp).format(context)} • ${entry.wellName}',
+                                            '${TimeOfDay.fromDateTime(entry.readingTimestamp).format(context)} • ${_entryTypeLabel(entry)}',
                                             style: const TextStyle(
                                               fontWeight: FontWeight.w800,
                                             ),
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            _entrySubtitle(entry).trim().isEmpty
-                                                ? 'No additional details'
-                                                : _entrySubtitle(entry),
+                                            _compactMetrics(entry),
                                             maxLines:
                                                 _expandedTimeline ? null : 2,
                                             overflow: _expandedTimeline
@@ -1038,16 +1312,22 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                                     onSelected: (value) {
                                       if (value == 'share') {
                                         _shareReading(entry);
+                                      } else if (value == 'details') {
+                                        _showEntryDetails(entry);
                                       } else if (value == 'delete') {
                                         _deleteEntry(entry);
                                       }
                                     },
-                                    itemBuilder: (_) => const [
-                                      PopupMenuItem(
+                                    itemBuilder: (_) => [
+                                      const PopupMenuItem(
+                                        value: 'details',
+                                        child: Text('View Details'),
+                                      ),
+                                      const PopupMenuItem(
                                         value: 'share',
                                         child: Text('Share Reading'),
                                       ),
-                                      PopupMenuItem(
+                                      const PopupMenuItem(
                                         value: 'delete',
                                         child: Text('Delete'),
                                       ),
@@ -1055,48 +1335,71 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                                   ),
                                 ],
                               ),
-                              if (_expandedTimeline)
+                              if (_expandedTimeline ||
+                                  _expandedEntryIds.contains(entry.entryId))
                                 Padding(
                                   padding:
                                       const EdgeInsets.fromLTRB(48, 2, 10, 8),
-                                  child: Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      if (entry.operationStage
-                                          .trim()
-                                          .isNotEmpty)
-                                        Chip(
-                                          label: Text(
-                                            'Stage ${entry.operationStage.trim()}',
+                                      if (entry.generatedText.trim().isNotEmpty)
+                                        Padding(
+                                          padding:
+                                              const EdgeInsets.only(bottom: 8),
+                                          child: SelectableText(
+                                            entry.generatedText,
+                                            style: const TextStyle(
+                                              fontFamily: 'monospace',
+                                            ),
                                           ),
                                         ),
-                                      if (entry.pumpRate.trim().isNotEmpty)
-                                        Chip(
-                                          label: Text(
-                                            'Pump ${entry.pumpRate.trim()}',
-                                          ),
+                                      if (entry.notes.trim().isNotEmpty)
+                                        Padding(
+                                          padding:
+                                              const EdgeInsets.only(bottom: 8),
+                                          child: Text(
+                                              'Notes: ${entry.notes.trim()}'),
                                         ),
-                                      if (entry.returnsRate.trim().isNotEmpty)
-                                        Chip(
-                                          label: Text(
-                                            'Returns ${entry.returnsRate.trim()}',
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          OutlinedButton.icon(
+                                            onPressed: () => _editEntry(entry),
+                                            icon:
+                                                const Icon(Icons.edit_outlined),
+                                            label: const Text('Edit'),
                                           ),
-                                        ),
-                                      if (entry.casingPressure
-                                          .trim()
-                                          .isNotEmpty)
-                                        Chip(
-                                          label: Text(
-                                            'CSG ${entry.casingPressure.trim()}',
+                                          OutlinedButton.icon(
+                                            onPressed: () =>
+                                                _duplicateEntry(entry),
+                                            icon: const Icon(Icons.copy_all),
+                                            label: const Text('Duplicate'),
                                           ),
-                                        ),
-                                      if (entry.choke.trim().isNotEmpty)
-                                        Chip(
-                                          label: Text(
-                                            'Choke ${entry.choke.trim()}',
+                                          OutlinedButton.icon(
+                                            onPressed: () =>
+                                                _deleteEntry(entry),
+                                            icon: const Icon(
+                                                Icons.delete_outline),
+                                            label: const Text('Delete'),
                                           ),
-                                        ),
+                                          OutlinedButton.icon(
+                                            onPressed: () =>
+                                                _shareReading(entry),
+                                            icon: const Icon(Icons.qr_code_2),
+                                            label: const Text('Share QR'),
+                                          ),
+                                          OutlinedButton.icon(
+                                            onPressed: () =>
+                                                _copyEntryAgain(entry),
+                                            icon:
+                                                const Icon(Icons.copy_outlined),
+                                            label: const Text('Copy Again'),
+                                          ),
+                                        ],
+                                      ),
                                     ],
                                   ),
                                 ),

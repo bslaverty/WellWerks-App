@@ -15,8 +15,11 @@ class OperationsLogEntry {
     required this.sourceOperatorInitials,
     required this.sourceDeviceId,
     required this.isImported,
+    this.entryType = 'manualReading',
     this.importedAt,
     this.qrPackageId = '',
+    this.generatedText = '',
+    this.structuredData = const <String, dynamic>{},
     this.operationStage = '',
     this.choke = '',
     this.casingPressure = '',
@@ -65,8 +68,11 @@ class OperationsLogEntry {
   final String sourceOperatorInitials;
   final String sourceDeviceId;
   final bool isImported;
+  final String entryType;
   final DateTime? importedAt;
   final String qrPackageId;
+  final String generatedText;
+  final Map<String, dynamic> structuredData;
   final String operationStage;
   final String choke;
   final String casingPressure;
@@ -115,8 +121,11 @@ class OperationsLogEntry {
     String? sourceOperatorInitials,
     String? sourceDeviceId,
     bool? isImported,
+    String? entryType,
     DateTime? importedAt,
     String? qrPackageId,
+    String? generatedText,
+    Map<String, dynamic>? structuredData,
     String? operationStage,
     String? choke,
     String? casingPressure,
@@ -167,8 +176,11 @@ class OperationsLogEntry {
           sourceOperatorInitials ?? this.sourceOperatorInitials,
       sourceDeviceId: sourceDeviceId ?? this.sourceDeviceId,
       isImported: isImported ?? this.isImported,
+      entryType: entryType ?? this.entryType,
       importedAt: importedAt ?? this.importedAt,
       qrPackageId: qrPackageId ?? this.qrPackageId,
+      generatedText: generatedText ?? this.generatedText,
+      structuredData: structuredData ?? this.structuredData,
       operationStage: operationStage ?? this.operationStage,
       choke: choke ?? this.choke,
       casingPressure: casingPressure ?? this.casingPressure,
@@ -227,8 +239,11 @@ class OperationsLogEntry {
         'sourceOperatorInitials': sourceOperatorInitials,
         'sourceDeviceId': sourceDeviceId,
         'isImported': isImported,
+        'entryType': entryType,
         'importedAt': importedAt?.toIso8601String(),
         'qrPackageId': qrPackageId,
+        'generatedText': generatedText,
+        'structuredData': structuredData,
         'operationStage': operationStage,
         'choke': choke,
         'casingPressure': casingPressure,
@@ -287,8 +302,13 @@ class OperationsLogEntry {
           (json['sourceOperatorInitials'] as String? ?? '').trim(),
       sourceDeviceId: (json['sourceDeviceId'] as String? ?? '').trim(),
       isImported: json['isImported'] as bool? ?? false,
+      entryType: (json['entryType'] as String? ?? 'manualReading').trim(),
       importedAt: DateTime.tryParse(json['importedAt'] as String? ?? ''),
       qrPackageId: (json['qrPackageId'] as String? ?? '').trim(),
+      generatedText: (json['generatedText'] as String? ?? '').trim(),
+      structuredData: json['structuredData'] is Map
+          ? Map<String, dynamic>.from(json['structuredData'] as Map)
+          : const <String, dynamic>{},
       operationStage: (json['operationStage'] as String? ?? '').trim(),
       choke: (json['choke'] as String? ?? '').trim(),
       casingPressure: (json['casingPressure'] as String? ?? '').trim(),

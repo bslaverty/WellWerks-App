@@ -5,6 +5,7 @@ import '../models/job_setup.dart';
 import '../models/production_shift.dart';
 import '../services/app_settings_service.dart';
 import '../services/job_storage_service.dart';
+import '../services/operations_log_service.dart';
 import '../services/production_report_continuity_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/recovery_state_service.dart';
@@ -28,6 +29,7 @@ class _ProductionShiftChangeScreenState
   final _jobStorage = JobStorageService();
   final _recoveryState = RecoveryStateService();
   final _continuityService = const ProductionReportContinuityService();
+  final _operationsLogService = OperationsLogService();
   final _previewKey = GlobalKey();
 
   AppSettingsData _settings = const AppSettingsData(
@@ -264,6 +266,7 @@ class _ProductionShiftChangeScreenState
       _shift = _shift.copyWith(selectedTextHour: selectedHour);
       await _shiftService.saveActiveShift(_shift);
     }
+    await _logShiftChangeEvent(trigger: 'copy');
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Production Shift Change copied.')),
@@ -277,6 +280,65 @@ class _ProductionShiftChangeScreenState
       context,
       duration: const Duration(milliseconds: 200),
     );
+    await _logShiftChangeEvent(trigger: 'preview');
+  }
+
+  OperationsLogWorkflow _operationsWorkflowForActiveJob() {
+    final workflow = (_activeJob?.workflow ?? '').trim().toLowerCase();
+    if (workflow == OperationsLogWorkflow.cleanout.name) {
+      return OperationsLogWorkflow.cleanout;
+    }
+    return OperationsLogWorkflow.drillout;
+  }
+
+  Future<void> _logShiftChangeEvent({required String trigger}) async {
+    final activeJob = _activeJob;
+    if (activeJob == null) return;
+    final rows = _orderedSelectedRows;
+    if (rows.isEmpty) return;
+
+    final firstWell = rows.first.well.trim();
+    final matchedWell = activeJob.resolvedWellEntries.where((entry) {
+      return entry.name.trim().toLowerCase() == firstWell.toLowerCase();
+    }).toList();
+    final selectedWellId = matchedWell.isEmpty
+        ? (activeJob.wellIds.isEmpty ? '' : activeJob.wellIds.first)
+        : matchedWell.first.id;
+
+    try {
+      await _operationsLogService.appendEventEntry(
+        workflow: _operationsWorkflowForActiveJob(),
+        jobId: activeJob.id,
+        wellId: selectedWellId,
+        wellName: firstWell.isEmpty ? activeJob.primaryWell : firstWell,
+        entryType: 'shiftChange',
+        timestamp: DateTime.now(),
+        generatedText: _preview,
+        structuredData: <String, dynamic>{
+          'source': 'productionShiftChangeScreen',
+          'trigger': trigger,
+          'selectedHour': _selectedHour,
+          'wellCount': rows.length,
+          'rows': rows
+              .map(
+                (row) => <String, dynamic>{
+                  'well': row.well,
+                  'time': row.time,
+                  'waterHauled': row.waterHauled,
+                  'oilHauled': row.oilHauled,
+                  'choke': row.choke,
+                },
+              )
+              .toList(growable: false),
+        },
+        notes:
+            'Production Shift Change generated from ${trigger.toLowerCase()}.',
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[ProductionShiftChange] Failed to append Operations Log entry: $error\n$stackTrace',
+      );
+    }
   }
 
   Widget _section(String title, List<Widget> children) {

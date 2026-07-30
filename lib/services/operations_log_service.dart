@@ -183,6 +183,9 @@ class OperationsLogService {
     required String wellId,
     required String wellName,
     required DateTime readingTimestamp,
+    String entryType = 'manualReading',
+    String generatedText = '',
+    Map<String, dynamic> structuredData = const <String, dynamic>{},
     String operationStage = '',
     String choke = '',
     String casingPressure = '',
@@ -227,8 +230,11 @@ class OperationsLogService {
       sourceOperatorInitials: profile.initials,
       sourceDeviceId: deviceId,
       isImported: false,
+      entryType: entryType,
       importedAt: null,
       qrPackageId: packageId,
+      generatedText: generatedText,
+      structuredData: structuredData,
       operationStage: operationStage,
       choke: choke,
       casingPressure: casingPressure,
@@ -252,6 +258,42 @@ class OperationsLogService {
       downtime: downtime,
       notes: notes,
     );
+  }
+
+  Future<OperationsLogEntry> appendEventEntry({
+    required OperationsLogWorkflow workflow,
+    required String jobId,
+    required String wellId,
+    required String wellName,
+    required String entryType,
+    required DateTime timestamp,
+    String generatedText = '',
+    Map<String, dynamic> structuredData = const <String, dynamic>{},
+    String operationStage = '',
+    String pumpRate = '',
+    String choke = '',
+    DateTime? estimatedSts,
+    DateTime? sts,
+    String notes = '',
+  }) async {
+    final entry = await createLocalEntry(
+      workflow: workflow,
+      jobId: jobId,
+      wellId: wellId,
+      wellName: wellName,
+      readingTimestamp: timestamp,
+      entryType: entryType,
+      generatedText: generatedText,
+      structuredData: structuredData,
+      operationStage: operationStage,
+      pumpRate: pumpRate,
+      choke: choke,
+      estimatedSts: estimatedSts,
+      sts: sts,
+      notes: notes,
+    );
+    await upsertEntry(workflow: workflow, jobId: jobId, entry: entry);
+    return entry;
   }
 
   Future<void> upsertEntry({

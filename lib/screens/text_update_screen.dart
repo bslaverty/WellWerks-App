@@ -6,6 +6,7 @@ import '../models/production_shift.dart';
 import '../services/app_settings_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/job_profile_defaults_service.dart';
+import '../services/operations_log_service.dart';
 import '../services/production_report_continuity_service.dart';
 import '../services/production_shift_service.dart';
 import '../services/recovery_state_service.dart';
@@ -28,6 +29,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   final _recoveryState = RecoveryStateService();
   final _profileDefaults = JobProfileDefaultsService();
   final _continuityService = const ProductionReportContinuityService();
+  final _operationsLogService = OperationsLogService();
 
   AppSettingsData _settings = const AppSettingsData(
     defaultGasUnit: AppSettingsDefaults.gasUnit,
@@ -726,10 +728,69 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
       _shift = _shift.copyWith(selectedTextHour: selectedHour);
       await _shiftService.saveActiveShift(_shift);
     }
+    await _logTextUpdateEvent();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Text Update copied.')),
     );
+  }
+
+  OperationsLogWorkflow _operationsWorkflowForActiveJob() {
+    final workflow = (_activeJob?.workflow ?? '').trim().toLowerCase();
+    if (workflow == OperationsLogWorkflow.cleanout.name) {
+      return OperationsLogWorkflow.cleanout;
+    }
+    return OperationsLogWorkflow.drillout;
+  }
+
+  Future<void> _logTextUpdateEvent() async {
+    final activeJob = _activeJob;
+    if (activeJob == null) return;
+    final rows = _orderedSelectedRows;
+    if (rows.isEmpty) return;
+
+    final firstWell = rows.first.well.trim();
+    final matchedWell = activeJob.resolvedWellEntries.where((entry) {
+      return entry.name.trim().toLowerCase() == firstWell.toLowerCase();
+    }).toList();
+    final selectedWellId = matchedWell.isEmpty
+        ? (activeJob.wellIds.isEmpty ? '' : activeJob.wellIds.first)
+        : matchedWell.first.id;
+
+    try {
+      await _operationsLogService.appendEventEntry(
+        workflow: _operationsWorkflowForActiveJob(),
+        jobId: activeJob.id,
+        wellId: selectedWellId,
+        wellName: firstWell.isEmpty ? activeJob.primaryWell : firstWell,
+        entryType: 'textUpdate',
+        timestamp: DateTime.now(),
+        generatedText: _preview,
+        structuredData: <String, dynamic>{
+          'source': 'textUpdateScreen',
+          'selectedHour': _selectedHour,
+          'wellCount': rows.length,
+          'rows': rows
+              .map(
+                (row) => <String, dynamic>{
+                  'well': row.well,
+                  'time': row.time,
+                  'casingPressure': row.csg,
+                  'choke': row.choke,
+                  'gasRate': row.gas24HourRate,
+                  'waterHauled': row.waterHauled,
+                  'oilHauled': row.oilHauled,
+                },
+              )
+              .toList(growable: false),
+        },
+        notes: 'Text Update copied from Production workflow.',
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[TextUpdate] Failed to append Operations Log entry: $error\n$stackTrace',
+      );
+    }
   }
 
   Widget _section(String title, List<Widget> children) {

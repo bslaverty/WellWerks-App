@@ -309,10 +309,7 @@ void main() {
     expect(find.text('QR Handoff'), findsOneWidget);
     await tester.tap(find.text('Shift Change Report'));
     await tester.pumpAndSettle();
-
-    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
-    await tester.pumpAndSettle();
-    expect(find.text('Add Drillout Reading'), findsOneWidget);
+    expect(find.text('Create Report'), findsOneWidget);
   });
 
   testWidgets('operations log gas and sand use text-update dropdown options',

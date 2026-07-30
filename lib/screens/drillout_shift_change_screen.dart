@@ -14,6 +14,7 @@ import '../services/app_settings_service.dart';
 import '../services/drillout_cleanout_field_definitions.dart';
 import '../services/job_profile_defaults_service.dart';
 import '../services/job_storage_service.dart';
+import '../services/operations_log_service.dart';
 import '../utils/gauge_keypad_input.dart';
 import '../utils/gauge_parser.dart';
 import '../widgets/app_header.dart';
@@ -58,6 +59,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   final _settingsService = AppSettingsService();
   final _activeCompanyService = ActiveCompanyService.instance;
   final _workflowModeService = ActiveWorkflowModeService.instance;
+  final _operationsLogService = OperationsLogService();
 
   final _customer = TextEditingController();
   final _wellName = TextEditingController();
@@ -1058,6 +1060,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
         ],
       ),
     );
+    await _logOperationsEvent(trigger: 'preview');
   }
 
   Future<void> _edit() async {
@@ -1092,10 +1095,67 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
   Future<void> _copy() async {
     final text = _currentOutputText();
     await Clipboard.setData(ClipboardData(text: text));
+    await _logOperationsEvent(trigger: 'copy');
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Shift change copied to clipboard.')),
     );
+  }
+
+  OperationsLogWorkflow get _operationsWorkflow {
+    return _workflow == ActiveWorkflowMode.cleanout
+        ? OperationsLogWorkflow.cleanout
+        : OperationsLogWorkflow.drillout;
+  }
+
+  Future<void> _logOperationsEvent({required String trigger}) async {
+    final activeJob = _activeJob;
+    if (activeJob == null) return;
+
+    final text = _currentOutputText();
+    final wellName = _wellName.text.trim().isEmpty
+        ? activeJob.primaryWell
+        : _wellName.text.trim();
+    final wellId = activeJob.wellIds.isEmpty ? '' : activeJob.wellIds.first;
+
+    final entryType =
+        _mode == _DrilloutMode.update ? 'textUpdate' : 'shiftChange';
+
+    try {
+      await _operationsLogService.appendEventEntry(
+        workflow: _operationsWorkflow,
+        jobId: activeJob.id,
+        wellId: wellId,
+        wellName: wellName,
+        entryType: entryType,
+        timestamp: DateTime.now(),
+        generatedText: text,
+        structuredData: <String, dynamic>{
+          'source': 'drilloutShiftChangeScreen',
+          'trigger': trigger,
+          'workflow': _workflow.name,
+          'mode': _modeStorageValue,
+          'company': _customer.text.trim(),
+          'wellName': _wellName.text.trim(),
+          'status': _status ?? '',
+          'plugNumber': _plugNumber.text.trim(),
+          'coilDepth': _coilDepth.text.trim(),
+          'rate': _rate.text.trim(),
+          'manifoldPsi': _manifoldPsi.text.trim(),
+          'casingPsi': _casingPsi.text.trim(),
+          'pumpPsi': _pumpPsi.text.trim(),
+          'tankConfigurationV1': _tankConfig.toJson(),
+        },
+        operationStage: _status ?? '',
+        pumpRate: _rate.text.trim(),
+        choke: formatChokeDisplay(_choke),
+        notes: _notes.text.trim(),
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[DrilloutShiftChange] Failed to append Operations Log entry: $error\n$stackTrace',
+      );
+    }
   }
 
   Future<void> _clearCurrentShiftValues() async {
