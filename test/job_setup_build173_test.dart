@@ -39,6 +39,22 @@ void main() {
     expect(find.text('Job Type'), findsNothing);
   });
 
+  testWidgets('Build 220 company is editable when starting a new job',
+      (WidgetTester tester) async {
+    await ActiveWorkflowModeService.instance
+        .setMode(ActiveWorkflowMode.production);
+    await _pumpSetup(tester);
+
+    await tester.tap(find.text('Start Job').first);
+    await tester.pumpAndSettle();
+
+    final companyField = find.byKey(const Key('job-info-company-field')).first;
+    await tester.enterText(companyField, 'Devon');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Devon'), findsOneWidget);
+  });
+
   testWidgets('Build 212 Add Well appends rows and preserves names',
       (WidgetTester tester) async {
     await ActiveWorkflowModeService.instance

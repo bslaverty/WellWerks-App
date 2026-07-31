@@ -68,6 +68,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   String productionFlowPath = _flowPathFlare;
   final selectedChemicals = <String>[];
   String shift = 'Day';
+  final _company = TextEditingController(text: 'Mach Energy');
   final padName = TextEditingController();
   final notes = TextEditingController();
   final leaseName = TextEditingController();
@@ -131,6 +132,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   List<TextEditingController> get _autoSaveControllers => [
+        _company,
         padName,
         notes,
         leaseName,
@@ -820,6 +822,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
 
   void _applyJobToForm(JobSetup job) {
     company = _profileDefaults.normalizeCompany(job.company);
+    _company.text = company;
     jobType = _profileDefaults.normalizeJobType(job.jobType);
     final defaults = _profileDefaults.profileForCompany(company);
     wellFieldKeys = job.wellFieldKeys.isEmpty
@@ -956,6 +959,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   void _resetFormForNewJob() {
     final globalCompany = _activeCompanyService.activeCompany.value.trim();
     company = globalCompany.isEmpty ? 'Mach Energy' : globalCompany;
+    _company.text = company;
     jobType = JobProfileDefaultsService.jobTypeSingleWell;
     final defaults = _profileDefaults.profileForCompany(company);
     wellFieldKeys = List<String>.from(defaults.wellFieldKeys);
@@ -1701,9 +1705,14 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   List<Widget> _buildProductionSetupPages() {
     return [
       _StepPage(title: '1. Job Information', children: [
-        InputDecorator(
-          decoration: const InputDecoration(labelText: 'Customer'),
-          child: Text(company.trim().isEmpty ? 'None' : company),
+        TextField(
+          key: const Key('job-info-company-field'),
+          controller: _company,
+          decoration: const InputDecoration(labelText: 'Company'),
+          onChanged: (value) {
+            company = value;
+            _scheduleAutoSave();
+          },
         ),
         const SizedBox(height: 12),
         CheckboxListTile(
@@ -2368,9 +2377,14 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        InputDecorator(
+        TextField(
+          key: const Key('job-info-company-field'),
+          controller: _company,
           decoration: const InputDecoration(labelText: 'Company'),
-          child: Text(company.trim().isEmpty ? '-' : company),
+          onChanged: (value) {
+            company = value;
+            _scheduleAutoSave();
+          },
         ),
         const SizedBox(height: 12),
         TextField(
