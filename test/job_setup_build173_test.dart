@@ -37,6 +37,48 @@ void main() {
     expect(find.text('Job Type'), findsNothing);
   });
 
+  testWidgets('Build 212 Add Well appends rows and preserves names',
+      (WidgetTester tester) async {
+    await ActiveWorkflowModeService.instance
+        .setMode(ActiveWorkflowMode.production);
+    await _pumpSetup(tester);
+
+    await tester.tap(find.text('Start Job').first);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Multi-Well Pad'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextFormField, 'Well 1 Name'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'Well 2 Name'), findsNothing);
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Well 1 Name'),
+      'Gathers 28-20-17-11-10 #1MH',
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('Add Well'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Add Well'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextFormField, 'Well 2 Name'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('Add Well'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Add Well'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextFormField, 'Well 3 Name'), findsOneWidget);
+
+    expect(find.text('Gathers 28-20-17-11-10 #1MH'), findsOneWidget);
+  });
+
   testWidgets('Build 173 drillout setup hides production-only controls',
       (WidgetTester tester) async {
     await ActiveWorkflowModeService.instance

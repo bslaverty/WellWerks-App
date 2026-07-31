@@ -226,12 +226,25 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   TextEditingController _wellNameControllerAt(int index) {
-    _ensurePerWellCapacity(index + 1);
+    while (_wellNameControllers.length <= index) {
+      _wellNameControllers.add(TextEditingController());
+    }
+    if (index >= 0 && index < wells.length) {
+      final nextText = wells[index];
+      if (_wellNameControllers[index].text != nextText) {
+        _wellNameControllers[index].text = nextText;
+      }
+    }
     return _wellNameControllers[index];
   }
 
   FocusNode _wellNameFocusNodeAt(int index) {
-    _ensurePerWellCapacity(index + 1);
+    while (_wellNameFocusNodes.length <= index) {
+      _wellNameFocusNodes.add(FocusNode());
+    }
+    if (index >= 0 && index < wellIds.length) {
+      _wellRowKeys.putIfAbsent(wellIds[index], () => GlobalKey());
+    }
     return _wellNameFocusNodes[index];
   }
 
