@@ -33,6 +33,8 @@ class JobSetupScreen extends StatefulWidget {
 class _JobSetupScreenState extends State<JobSetupScreen> {
   static const String _gasRateSourceAccumulation = 'gasAccumulation';
   static const String _gasRateSourceInstantSpot = 'instantSpotRate';
+  static const String _flowPathFlare = 'flare';
+  static const String _flowPathEcd = 'ecd';
   static const String _wellStatusNotStarted = JobSetup.wellStatusNotStarted;
   static const String _wellStatusActive = JobSetup.wellStatusActive;
   static const String _wellStatusComplete = JobSetup.wellStatusComplete;
@@ -63,6 +65,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   bool includeNotesSection = true;
   bool flareEcdGasRateEnabled = true;
   String gasRateSource = _gasRateSourceAccumulation;
+  String productionFlowPath = _flowPathFlare;
   final selectedChemicals = <String>[];
   String shift = 'Day';
   final padName = TextEditingController();
@@ -492,6 +495,56 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     return _gasRateSourceAccumulation;
   }
 
+  String _normalizeProductionFlowPath(
+    dynamic value, {
+    required String fallback,
+  }) {
+    final normalized = (value ?? '').toString().trim().toLowerCase();
+    if (normalized == _flowPathEcd) {
+      return _flowPathEcd;
+    }
+    if (normalized == _flowPathFlare) {
+      return _flowPathFlare;
+    }
+    return fallback;
+  }
+
+  String _inferLegacyProductionFlowPath({
+    required int flareCount,
+    required int ecdCount,
+  }) {
+    if (ecdCount > 0 && flareCount <= 0) {
+      return _flowPathEcd;
+    }
+    return _flowPathFlare;
+  }
+
+  String _flowPathLabel(String value) {
+    return value == _flowPathEcd ? 'ECD' : 'Flare';
+  }
+
+  List<String> _equipmentDisplayLabels(
+    List<String> sourceSections, {
+    required String flowPath,
+  }) {
+    final labels = <String>[];
+    for (final section in sourceSections) {
+      final normalized = section.trim();
+      if (normalized.isEmpty) continue;
+      if (normalized == 'FLARE / ECD') {
+        final flowLabel = _flowPathLabel(flowPath);
+        if (!labels.contains(flowLabel)) {
+          labels.add(flowLabel);
+        }
+        continue;
+      }
+      if (!labels.contains(normalized)) {
+        labels.add(normalized);
+      }
+    }
+    return labels;
+  }
+
   Map<String, String> _wellStatusesFromSetup(Map<String, dynamic> setup) {
     final raw = setup['wellStatuses'];
     if (raw is! Map) return <String, String>{};
@@ -736,6 +789,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     mergedSetup['flareEcdGasRateEnabled'] = flareEcdGasRateEnabled;
     mergedSetup['includeNotesSection'] = includeNotesSection;
     mergedSetup['gasRateSource'] = gasRateSource;
+    mergedSetup['productionFlowPath'] = productionFlowPath;
     mergedSetup.addAll(_buildDrilloutSetupPayload());
 
     return JobSetup(
@@ -791,6 +845,12 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
         }
         continue;
       }
+      if (upper.contains('ECD')) {
+        if (!normalizedSections.contains('FLARE / ECD')) {
+          normalizedSections.add('FLARE / ECD');
+        }
+        continue;
+      }
       if (upper == 'NOTES') {
         includeNotesSection = true;
         continue;
@@ -806,6 +866,13 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     flareEcdGasRateEnabled =
         _legacyBool(setup['flareEcdGasRateEnabled'], fallback: true);
     gasRateSource = _normalizeGasRateSource(setup['gasRateSource']);
+    productionFlowPath = _normalizeProductionFlowPath(
+      setup['productionFlowPath'],
+      fallback: _inferLegacyProductionFlowPath(
+        flareCount: job.flares,
+        ecdCount: job.ecds,
+      ),
+    );
     shift = job.shift;
     padName.text = job.padName;
     notes.text = job.notes;
@@ -892,6 +959,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     includeNotesSection = true;
     flareEcdGasRateEnabled = true;
     gasRateSource = _gasRateSourceAccumulation;
+    productionFlowPath = _flowPathFlare;
     selectedChemicals
       ..clear()
       ..addAll(const <String>[]);
@@ -1015,6 +1083,21 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       mergedSetup.remove('draftMultiWellsV1');
     }
 
+    var nextEcds = _i(ecds);
+    var nextFlares = _i(flares);
+    if (activeEquipmentSections.contains('FLARE / ECD')) {
+      if (productionFlowPath == _flowPathEcd) {
+        if (nextEcds <= 0) nextEcds = 1;
+        nextFlares = 0;
+      } else {
+        if (nextFlares <= 0) nextFlares = 1;
+        nextEcds = 0;
+      }
+    } else {
+      nextEcds = 0;
+      nextFlares = 0;
+    }
+
     return JobSetup(
       company: company,
       workflow: _workflowStorageValue(),
@@ -1042,9 +1125,9 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       chokeManifolds: _i(chokeManifolds),
       lineHeaters: _i(lineHeaters),
       testUnits: _i(testUnits),
-      ecds: _i(ecds),
+      ecds: nextEcds,
       vrus: _i(vrus),
-      flares: _i(flares),
+      flares: nextFlares,
       transferPumps: _i(transferPumps),
       oilTanks: _i(oilTanks),
       oilTankCapacity: oilTankCapacity.text.trim(),
@@ -1400,6 +1483,155 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     return value.trim().isEmpty ? fallback : value.trim();
   }
 
+  String _productionJobTypeLabel(String value) {
+    return value == JobProfileDefaultsService.jobTypeMultiWellPad
+        ? 'Multi-Well Production'
+        : 'Single Well';
+  }
+
+  List<String> _configuredWellNamesForReview() {
+    final names = <String>[];
+    for (int i = 0; i < wells.length; i++) {
+      final lease = i < leaseNames.length ? leaseNames[i].trim() : '';
+      final preferred = wells[i].trim();
+      final resolved = JobSetup.resolveDisplayWellName(
+        preferredWellName: preferred,
+        leaseName: lease,
+        legacyWellName: preferred,
+      );
+      if (resolved.isNotEmpty && !names.contains(resolved)) {
+        names.add(resolved);
+      }
+    }
+    return names;
+  }
+
+  List<String> _optionalSectionsForReview() {
+    return includeNotesSection ? const <String>['Notes'] : const <String>[];
+  }
+
+  Widget _jobReviewSection(String title, List<Widget> children) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Color(0xFFCDA56A),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProductionJobReviewCard() {
+    final configuredWells = _configuredWellNamesForReview();
+    final isMultiWell = _isMultiWellPad;
+    final equipmentLabels = _equipmentDisplayLabels(
+      activeEquipmentSections,
+      flowPath: productionFlowPath,
+    );
+    final optionalSections = _optionalSectionsForReview();
+    const productionDataFields = <String>[
+      'Choke',
+      'Casing Pressure',
+      'BWPH',
+      'BOPH',
+      'Gas Rate',
+      'Static PSI',
+      'Differential PSI',
+      'Gas Temperature',
+      'Prop / Sand',
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Job Review',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _jobReviewSection('CUSTOMER', [
+              Text(_displayValue(company, fallback: 'None')),
+            ]),
+            _jobReviewSection('WORKFLOW', const [
+              Text('Production'),
+            ]),
+            _jobReviewSection('JOB TYPE', [
+              Text(_productionJobTypeLabel(jobType)),
+            ]),
+            if (isMultiWell)
+              _jobReviewSection('PAD', [
+                Text(_displayValue(padName.text, fallback: 'Not entered')),
+              ]),
+            _jobReviewSection('WELLS', [
+              Text('${configuredWells.length} configured well(s)'),
+              const SizedBox(height: 4),
+              if (configuredWells.isEmpty)
+                const Text('None')
+              else
+                for (final well in configuredWells) Text('• $well'),
+            ]),
+            _jobReviewSection('PRODUCTION DATA', [
+              for (final field in productionDataFields) Text('• $field'),
+            ]),
+            _jobReviewSection('TANK SETUP', [
+              if (configuredWells.isEmpty)
+                const Text('No configured wells')
+              else
+                for (int i = 0; i < configuredWells.length; i++) ...[
+                  Text(
+                    configuredWells[i],
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  Text(
+                    '${oilTanks.text.trim().isEmpty ? '0' : oilTanks.text.trim()} Oil Tanks (${_displayValue(oilTankCapacity.text, fallback: '0')} bbl)',
+                  ),
+                  Text(
+                    '${waterTanks.text.trim().isEmpty ? '0' : waterTanks.text.trim()} Water Tanks (${_displayValue(waterTankCapacity.text, fallback: '0')} bbl)',
+                  ),
+                  if (i < configuredWells.length - 1) const SizedBox(height: 8),
+                ],
+            ]),
+            _jobReviewSection('EQUIPMENT', [
+              if (equipmentLabels.isEmpty)
+                const Text('None')
+              else
+                for (final item in equipmentLabels) Text('• $item'),
+            ]),
+            _jobReviewSection('CHEMICALS', [
+              if (selectedChemicals.isEmpty)
+                const Text('None')
+              else
+                for (final chemical in selectedChemicals) Text('• $chemical'),
+            ]),
+            _jobReviewSection('OPTIONAL SECTIONS', [
+              if (optionalSections.isEmpty)
+                const Text('None')
+              else
+                for (final section in optionalSections) Text('• $section'),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+
   List<Widget> _buildProductionSetupPages() {
     return [
       _StepPage(title: '1. Job Information', children: [
@@ -1583,6 +1815,34 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
               fontWeight: FontWeight.w700,
             ),
           ),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              ChoiceChip(
+                label: const Text('Flare'),
+                selected: productionFlowPath == _flowPathFlare,
+                onSelected: (selected) {
+                  if (!selected) return;
+                  setState(() {
+                    productionFlowPath = _flowPathFlare;
+                  });
+                  _scheduleAutoSave();
+                },
+              ),
+              ChoiceChip(
+                label: const Text('ECD'),
+                selected: productionFlowPath == _flowPathEcd,
+                onSelected: (selected) {
+                  if (!selected) return;
+                  setState(() {
+                    productionFlowPath = _flowPathEcd;
+                  });
+                  _scheduleAutoSave();
+                },
+              ),
+            ],
+          ),
           CheckboxListTile(
             value: flareEcdGasRateEnabled,
             title: const Text('Include Gas Rate'),
@@ -1618,14 +1878,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           ),
         ],
         const SizedBox(height: 10),
-        _countField('Sand Separators', sandSeparators),
-        _countField('Plug Catchers', plugCatchers),
-        _countField('Choke Manifolds', chokeManifolds),
-        _countField('Line Heaters', lineHeaters),
-        _countField('Test Units', testUnits),
-        _countField('ECDs', ecds),
         _countField('VRUs', vrus),
-        _countField('Flares', flares),
         _countField('Transfer Pumps', transferPumps),
         const SizedBox(height: 24),
         _navButtons(),
@@ -1646,7 +1899,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
         const SizedBox(height: 24),
         _navButtons(),
       ]),
-      _StepPage(title: '5. Chemicals', children: [
+      _StepPage(title: '5. Job Review', children: [
         ...JobSetup.chemicalOptions.map(
           (chemical) => CheckboxListTile(
             value: selectedChemicals.contains(chemical),
@@ -1668,14 +1921,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Text(
-              'Summary\n$company\n${_profileDefaults.jobTypeLabel(jobType)}\n${padName.text.trim().isEmpty ? 'No pad entered' : padName.text.trim()}\n${wells.where((item) => item.trim().isNotEmpty).length} well(s)\nChemicals: ${selectedChemicals.isEmpty ? 'None' : selectedChemicals.join(', ')}\nEquipment: ${activeEquipmentSections.isEmpty ? 'None' : activeEquipmentSections.join(', ')}\nOptional Sections: ${includeNotesSection ? 'Notes' : 'None'}\nGas Rate Source: ${gasRateSource == _gasRateSourceInstantSpot ? 'Instant Spot Rate' : 'Gas Accumulation'}',
-            ),
-          ),
-        ),
+        _buildProductionJobReviewCard(),
         const SizedBox(height: 24),
         _navButtons(finish: true),
       ]),
@@ -1746,15 +1992,119 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   Widget _buildActiveJobView(JobSetup job) {
     final defaults = _profileDefaults.profileForCompany(job.company);
     final isProduction = _activeWorkflowMode == ActiveWorkflowMode.production;
+    final resolvedWells = job.resolvedWellNames
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+    final configuredWellCount = resolvedWells.length;
+    final configuredWells = configuredWellCount == 0
+        ? const <String>['Not entered']
+        : List<String>.from(resolvedWells);
+    final productionFlowPath = _normalizeProductionFlowPath(
+      job.drilloutSetup['productionFlowPath'],
+      fallback: _inferLegacyProductionFlowPath(
+        flareCount: job.flares,
+        ecdCount: job.ecds,
+      ),
+    );
+    final productionEquipment = _equipmentDisplayLabels(
+      job.activeEquipmentSections.isEmpty
+          ? defaults.defaultActiveSections
+          : job.activeEquipmentSections,
+      flowPath: productionFlowPath,
+    );
+    final productionStatus = job.status.trim().isEmpty
+        ? 'Active'
+        : '${job.status.trim()[0].toUpperCase()}${job.status.trim().substring(1)}';
+
+    if (isProduction) {
+      return ListView(
+        padding: const EdgeInsets.all(18),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Active Job',
+                          style: TextStyle(
+                            color: Color(0xFFCDA56A),
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      Chip(label: Text(job.status.toUpperCase())),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildOverviewValue('Customer', _displayValue(job.company)),
+                  _buildOverviewValue('Workflow', 'Production'),
+                  _buildOverviewValue('Pad', _displayValue(job.padName)),
+                  _buildOverviewValue(
+                    'Configured Wells',
+                    '$configuredWellCount well(s): ${configuredWells.join(', ')}',
+                  ),
+                  _buildOverviewValue('Shift', _displayValue(job.shift)),
+                  _buildOverviewValue(
+                    'Equipment',
+                    productionEquipment.isEmpty
+                        ? 'None'
+                        : productionEquipment.join(', '),
+                  ),
+                  _buildOverviewValue(
+                    'Gas Rate Source',
+                    _normalizeGasRateSource(
+                                job.drilloutSetup['gasRateSource']) ==
+                            _gasRateSourceInstantSpot
+                        ? 'Instant Spot Rate'
+                        : 'Gas Accumulation',
+                  ),
+                  _buildOverviewValue(
+                      'Started', _formatTimestamp(job.startedAt)),
+                  _buildOverviewValue('Production Status', productionStatus),
+                  _buildOverviewValue('Notes', _displayValue(job.notes)),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _editActiveJob,
+                      icon: const Icon(Icons.edit),
+                      label: const Text('Update Active Job'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _confirmEndJob,
+                      icon: const Icon(Icons.stop_circle_outlined),
+                      label: const Text('End Job'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     final bestIdentifier = job.primaryWell.trim().isNotEmpty
         ? job.primaryWell.trim()
         : (job.padName.trim().isNotEmpty ? job.padName.trim() : '-');
-    final resolvedWells = job.resolvedWellEntries;
+    final resolvedWellEntries = job.resolvedWellEntries;
     final statuses = _normalizedWellStatuses(
-      entries: resolvedWells,
+      entries: resolvedWellEntries,
       activeWellId: job.activeWellId,
       source: job.wellStatuses,
     );
+
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
@@ -1788,7 +2138,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                 _buildOverviewValue(
                     'Location / Pad', _displayValue(job.padName)),
                 _buildOverviewValue('Well Name', _displayValue(bestIdentifier)),
-                if (resolvedWells.isNotEmpty) ...[
+                if (resolvedWellEntries.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   const Text(
                     'Well Sessions',
@@ -1799,7 +2149,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  for (final well in resolvedWells)
+                  for (final well in resolvedWellEntries)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Row(
@@ -1826,39 +2176,6 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                         ],
                       ),
                     ),
-                ],
-                if (isProduction) ...[
-                  _buildOverviewValue(
-                    'Job Type',
-                    _profileDefaults.jobTypeLabel(job.jobType),
-                  ),
-                  _buildOverviewValue(
-                    'Chemicals',
-                    job.selectedChemicals.isEmpty
-                        ? 'Not selected'
-                        : job.selectedChemicals.join(', '),
-                  ),
-                  _buildOverviewValue(
-                    'Active Equipment',
-                    job.activeEquipmentSections.isEmpty
-                        ? defaults.defaultActiveSections.join(', ')
-                        : job.activeEquipmentSections.join(', '),
-                  ),
-                  _buildOverviewValue(
-                    'Optional Sections',
-                    _legacyBool(job.drilloutSetup['includeNotesSection'],
-                            fallback: true)
-                        ? 'Notes'
-                        : 'None',
-                  ),
-                  _buildOverviewValue(
-                    'Gas Rate Source',
-                    _normalizeGasRateSource(
-                                job.drilloutSetup['gasRateSource']) ==
-                            _gasRateSourceInstantSpot
-                        ? 'Instant Spot Rate'
-                        : 'Gas Accumulation',
-                  ),
                 ],
                 _buildOverviewValue('Shift', _displayValue(job.shift)),
                 _buildOverviewValue('Date', _displayValue(job.dateStarted)),
