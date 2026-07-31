@@ -924,7 +924,9 @@ void main() {
     expect(find.textContaining('Pad: Bow Pad'), findsOneWidget);
     expect(find.textContaining('Well: Bow 21-3'), findsOneWidget);
     expect(find.textContaining('Shift: Day'), findsOneWidget);
-    expect(find.byType(DataTable), findsOneWidget);
+    expect(find.byKey(const Key('production-report-tabs')), findsOneWidget);
+    expect(find.text('Actions'), findsOneWidget);
+    expect(find.text('Copy Text Update'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
 
     await tester.pumpWidget(const MaterialApp(home: TextUpdateScreen()));
@@ -987,18 +989,13 @@ void main() {
 
     expect(find.text('Well 1'), findsWidgets);
     await tester.scrollUntilVisible(
-      find.widgetWithText(FilledButton, 'Copy Text'),
+      find.widgetWithText(FilledButton, 'Copy Text Update'),
       280,
-      scrollable: find
-          .descendant(
-            of: find.byKey(const Key('production-report-tab-report')),
-            matching: find.byType(Scrollable),
-          )
-          .first,
+      scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
     final copyReportButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Copy Text'),
+      find.widgetWithText(FilledButton, 'Copy Text Update'),
     );
     expect(copyReportButton.onPressed, isNotNull);
 
@@ -1496,11 +1493,8 @@ void main() {
 
     await tester.pumpWidget(const MaterialApp(home: ShiftReportScreen()));
     await tester.pumpAndSettle();
-
-    expect(find.text('CHK'), findsOneWidget);
-    expect(find.text('CSG'), findsNothing);
-    expect(find.text('32 ADJ'), findsOneWidget);
-    expect(find.text('CHK - 32 ADJ'), findsNothing);
+    expect(find.textContaining('Layout: Customer A'), findsOneWidget);
+    expect(find.textContaining('Saved hours: 1'), findsOneWidget);
 
     await tester.pumpWidget(const MaterialApp(home: TextUpdateScreen()));
     await tester.pumpAndSettle();

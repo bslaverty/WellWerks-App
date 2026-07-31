@@ -9,14 +9,10 @@ import '../widgets/app_header.dart';
 import '../widgets/tool_card.dart';
 import 'job_management_screen.dart';
 import 'pressure_entry_screen.dart';
-import 'job_box_inventory_screen.dart';
 import 'production_inventory_screen.dart';
 import 'production_history_screen.dart';
 import 'report_template_screen.dart';
 import 'shift_report_screen.dart';
-import 'shift_handoff_screen.dart';
-import 'production_shift_change_screen.dart';
-import 'text_update_screen.dart';
 
 class ProductionDashboardScreen extends StatefulWidget {
   const ProductionDashboardScreen({super.key});
@@ -223,9 +219,50 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
         children: [
           if (_workflowMode == ActiveWorkflowMode.production)
             _activeJobCard(context),
+          Card(
+            color: const Color(0xFF17130E),
+            margin: const EdgeInsets.only(bottom: 14),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: const Padding(
+              padding: EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Production Workflow',
+                    style: TextStyle(
+                      color: Color(0xFFCDA56A),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    '1. Enter production data in Quick Round.',
+                    style: TextStyle(color: Colors.white70, fontSize: 15),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    '2. Review current shift production in Production Report.',
+                    style: TextStyle(color: Colors.white70, fontSize: 15),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    '3. Generate production outputs from Production Report actions.',
+                    style: TextStyle(color: Colors.white70, fontSize: 15),
+                  ),
+                ],
+              ),
+            ),
+          ),
           const Text(
-            'Production flow: Job Setup -> Quick Round data entry -> Tank Inventory totals/database -> Report/Text/History.',
-            style: TextStyle(color: Colors.white70, fontSize: 15),
+            'Primary Workflow',
+            style: TextStyle(
+              color: Color(0xFFCDA56A),
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: 14),
           ToolCard(
@@ -238,54 +275,39 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
           ToolCard(
             icon: Icons.table_chart,
             title: 'Production Report',
-            subtitle: 'Read-only saved hourly table for the active shift',
+            subtitle:
+                'Central reporting workspace for the current active shift and output actions',
             onTap: () => _open(context, const ShiftReportScreen()),
-          ),
-          ToolCard(
-            icon: Icons.sms,
-            title: 'Text Update',
-            subtitle: 'Select an hour, preview, and copy the text update',
-            onTap: () => _open(context, const TextUpdateScreen()),
-          ),
-          ToolCard(
-            icon: Icons.change_circle_outlined,
-            title: 'Production Shift Change',
-            subtitle:
-                'Select a saved hour, preview, and copy shift change text',
-            onTap: () => _open(context, const ProductionShiftChangeScreen()),
-          ),
-          ToolCard(
-            icon: Icons.compare_arrows,
-            title: 'Production Handoff',
-            subtitle:
-                'Create/share .wellwerks and merge imported production data',
-            onTap: () => _open(context, const ShiftHandoffScreen()),
           ),
           ToolCard(
             icon: Icons.local_drink,
             title: 'Tank Inventory',
-            subtitle: 'Production database, running totals, and setup defaults',
+            subtitle: 'Tank levels, running totals, and production inventory',
             onTap: () => _open(context, const ProductionInventoryScreen()),
           ),
+          const SizedBox(height: 12),
+          const Text(
+            'Secondary',
+            style: TextStyle(
+              color: Color(0xFFCDA56A),
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 12),
           ToolCard(
-            icon: Icons.inventory_2_outlined,
-            title: 'Job Box Inventory',
-            subtitle: 'Track common job box items and copy updates',
-            onTap: () => _open(context, const JobBoxInventoryScreen()),
+            icon: Icons.inventory,
+            title: 'Production Setup',
+            subtitle: 'Company, wells, report layout, and production defaults',
+            onTap: () => _open(context,
+                const ReportTemplateScreen(initialSection: 'inventory')),
           ),
           ToolCard(
             icon: Icons.history,
             title: 'Production History',
             subtitle:
-                'Archived inventory, reports, hourly checks, and text updates',
+                'Archived production reports, hourly checks, text updates, and JSA records',
             onTap: () => _open(context, const ProductionHistoryScreen()),
-          ),
-          ToolCard(
-            icon: Icons.inventory,
-            title: 'Production Setup',
-            subtitle: 'Company, wells, reports, and production defaults',
-            onTap: () => _open(context,
-                const ReportTemplateScreen(initialSection: 'inventory')),
           ),
         ],
       ),

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/app_settings_service.dart';
 import '../models/job_setup.dart';
 import '../models/production_shift.dart';
 import '../services/job_profile_defaults_service.dart';
@@ -17,7 +18,10 @@ import '../services/recovery_state_service.dart';
 import '../services/report_profile_service.dart';
 import '../utils/choke_parsing.dart';
 import '../utils/production_day.dart';
+import '../utils/production_text_update_builder.dart';
 import '../widgets/app_header.dart';
+import 'production_shift_change_screen.dart';
+import 'shift_handoff_screen.dart';
 
 class ShiftReportScreen extends StatefulWidget {
   const ShiftReportScreen({super.key});
@@ -30,6 +34,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   static const _chartPrefsBase = 'wellwerks_production_report_chart_v1';
   static const _reportViewPrefsBase = 'wellwerks_production_report_view_v1';
 
+  final _settingsService = AppSettingsService();
   final _shiftService = ProductionShiftService();
   final _layoutService = ReportProfileService();
   final _jobStorage = JobStorageService();
@@ -37,6 +42,14 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   final _profileDefaults = JobProfileDefaultsService();
   final _continuityService = const ProductionReportContinuityService();
 
+  AppSettingsData _settings = const AppSettingsData(
+    defaultGasUnit: AppSettingsDefaults.gasUnit,
+    defaultGaugeType: AppSettingsDefaults.gaugeType,
+    defaultBblPerInch: AppSettingsDefaults.bblPerInch,
+    defaultGasCalculationMethod: AppSettingsDefaults.gasCalculationMethod,
+    defaultChokeDisplay: AppSettingsDefaults.chokeDisplay,
+    defaultOptionalReportSections: AppSettingsDefaults.optionalReportSections,
+  );
   ProductionShift _shift = ProductionShift.empty();
   JobSetup? _activeJob;
   ReportLayoutProfile _layout = ReportProfileService().defaultProfile();
@@ -70,6 +83,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   Future<void> _load() async {
     var shift = await _shiftService.loadActiveShift();
     final activeJob = await _jobStorage.ensureActiveJobLoaded();
+    final settings = await _settingsService.load();
     final prefs = await SharedPreferences.getInstance();
     if (activeJob != null && shift.activeJobId != activeJob.id) {
       shift = shift.copyWith(activeJobId: activeJob.id);
@@ -101,11 +115,15 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     final reportView = reportViewRaw == _ReportView.timeline.name
         ? _ReportView.timeline
         : _ReportView.dailyTabs;
-    final selectedProductionDay =
+    final selectedProductionDayRaw =
         (reportPrefs['selectedProductionDay'] as String? ?? '').trim();
+    final selectedProductionDay = selectedProductionDayRaw == '__overview__'
+        ? ''
+        : selectedProductionDayRaw;
 
     if (!mounted) return;
     setState(() {
+      _settings = settings;
       _shift = shift;
       _activeJob = activeJob;
       _layout = layout;
@@ -199,11 +217,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       shift: shift,
       activeJob: activeJob,
     );
-    final rows = activeJob == null
-        ? List<ProductionReportRow>.from(normalizedRows)
-        : (shift.activeJobId != activeJob.id
-            ? <ProductionReportRow>[]
-            : List<ProductionReportRow>.from(normalizedRows));
+    final rows = List<ProductionReportRow>.from(normalizedRows);
 
     final order = _resolveWellOrderSource(shift, activeJob);
     final indexed = rows.asMap().entries.toList(growable: false);
@@ -557,21 +571,85 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         .join('\n');
   }
 
+  int? get _selectedActionHour {
+    final rows = _activeJobRows;
+    if (rows.isEmpty) return null;
+
+    if (_reportView == _ReportView.dailyTabs) {
+      final selectedDay = _selectedProductionDay.isEmpty
+          ? _effectiveSelectedProductionDay
+          : _selectedProductionDay;
+      if (selectedDay.isNotEmpty && selectedDay != '__overview__') {
+        final rowsForDay =
+            _rowsByProductionDay[selectedDay] ?? const <ProductionReportRow>[];
+        if (rowsForDay.isNotEmpty) {
+          return rowsForDay
+              .map((row) => row.hourIndex)
+              .reduce((a, b) => a > b ? a : b);
+        }
+      }
+    }
+
+    return rows.map((row) => row.hourIndex).reduce((a, b) => a > b ? a : b);
+  }
+
+  List<ProductionReportRow> _orderedRowsForHour(int hourIndex) {
+    final rows = _activeJobRows
+        .where((row) => row.hourIndex == hourIndex)
+        .toList(growable: false);
+    final order = _wellOrder;
+    rows.sort((a, b) {
+      final ai = order.indexOf(a.well);
+      final bi = order.indexOf(b.well);
+      if (ai == -1 && bi == -1) return a.well.compareTo(b.well);
+      if (ai == -1) return 1;
+      if (bi == -1) return -1;
+      return ai.compareTo(bi);
+    });
+    return rows;
+  }
+
+  String _textUpdatePreviewForHour(int hourIndex) {
+    final rows = _orderedRowsForHour(hourIndex);
+    if (rows.isEmpty) return _emptyStateMessage;
+    return ProductionTextUpdateBuilder(
+      settings: _settings,
+      shift: _shift,
+      activeJob: _activeJob,
+      layout: _layout,
+      orderedRows: rows,
+    ).buildPreview();
+  }
+
+  Future<void> _saveSelectedHourForActions(int hourIndex) async {
+    final updatedShift = _shift.copyWith(selectedTextHour: hourIndex);
+    await _shiftService.saveActiveShift(updatedShift);
+    if (!mounted) return;
+    setState(() => _shift = updatedShift);
+  }
+
   Future<void> _copyReport() async {
-    await Clipboard.setData(ClipboardData(text: _reportText));
+    final hourIndex = _selectedActionHour;
+    if (hourIndex == null) return;
+    await _saveSelectedHourForActions(hourIndex);
+    final preview = _textUpdatePreviewForHour(hourIndex);
+    await Clipboard.setData(ClipboardData(text: preview));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Production Report copied.')),
+      const SnackBar(content: Text('Text Update copied.')),
     );
   }
 
   Future<void> _previewReport() async {
-    final text = _reportText;
+    final hourIndex = _selectedActionHour;
+    if (hourIndex == null) return;
+    await _saveSelectedHourForActions(hourIndex);
+    final text = _textUpdatePreviewForHour(hourIndex);
     if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Preview Text'),
+        title: const Text('Preview Text Update'),
         content: SizedBox(
           width: double.maxFinite,
           child: SingleChildScrollView(
@@ -585,6 +663,32 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _openShiftChangeFromActions() async {
+    final hourIndex = _selectedActionHour;
+    if (hourIndex == null) return;
+    await _saveSelectedHourForActions(hourIndex);
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ProductionShiftChangeScreen()),
+    );
+    await _load();
+  }
+
+  Future<void> _openHandoffFromActions() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ShiftHandoffScreen()),
+    );
+    await _load();
+  }
+
+  Future<void> _shareReport() async {
+    if (_activeJobRows.isEmpty) return;
+    await Share.share(
+      _reportText,
+      subject: 'Production Report',
     );
   }
 
@@ -1516,34 +1620,98 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
                 : _buildTimelineContent(),
           ),
         ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _activeJobRows.isEmpty ? null : _previewReport,
-            icon: const Icon(Icons.preview_outlined),
-            label: const Text('Preview Text'),
-          ),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: _activeJobRows.isEmpty ? null : _copyReport,
-            icon: const Icon(Icons.copy_all),
-            label: const Text('Copy Text'),
-          ),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _activeJobRows.isEmpty ? null : _exportReport,
-            icon: const Icon(Icons.share_outlined),
-            label: const Text('Export Production Report'),
-          ),
-        ),
       ],
+    );
+  }
+
+  Widget _actionButton({
+    required String label,
+    required IconData icon,
+    required VoidCallback? onPressed,
+    required String keyName,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: FilledButton.tonalIcon(
+        key: Key(keyName),
+        onPressed: onPressed,
+        icon: Icon(icon),
+        label: Text(label),
+      ),
+    );
+  }
+
+  Widget _pinnedActionsSection() {
+    final colors = Theme.of(context).colorScheme;
+    final disabled = _activeJobRows.isEmpty;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border(top: BorderSide(color: colors.outlineVariant)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Actions',
+                style: TextStyle(
+                  color: Color(0xFFCDA56A),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _actionButton(
+                      keyName: 'production-report-action-preview-text-update',
+                      label: 'Preview Text Update',
+                      icon: Icons.preview_outlined,
+                      onPressed: disabled ? null : _previewReport,
+                    ),
+                    _actionButton(
+                      keyName: 'production-report-action-copy-text-update',
+                      label: 'Copy Text Update',
+                      icon: Icons.copy_all,
+                      onPressed: disabled ? null : _copyReport,
+                    ),
+                    _actionButton(
+                      keyName: 'production-report-action-generate-shift-change',
+                      label: 'Generate Shift Change',
+                      icon: Icons.change_circle_outlined,
+                      onPressed: disabled ? null : _openShiftChangeFromActions,
+                    ),
+                    _actionButton(
+                      keyName: 'production-report-action-handoff',
+                      label: 'Production Handoff',
+                      icon: Icons.compare_arrows,
+                      onPressed: disabled ? null : _openHandoffFromActions,
+                    ),
+                    _actionButton(
+                      keyName: 'production-report-action-share',
+                      label: 'Share',
+                      icon: Icons.share_outlined,
+                      onPressed: disabled ? null : _shareReport,
+                    ),
+                    _actionButton(
+                      keyName: 'production-report-action-export',
+                      label: 'Export',
+                      icon: Icons.ios_share,
+                      onPressed: disabled ? null : _exportReport,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1763,6 +1931,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       length: 2,
       child: Scaffold(
         appBar: const AppHeader(title: 'Production Report', showBack: true),
+        bottomNavigationBar: _pinnedActionsSection(),
         body: Column(
           children: [
             Material(

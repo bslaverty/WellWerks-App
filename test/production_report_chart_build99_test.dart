@@ -77,6 +77,7 @@ Future<void> _seedShiftRows({
 }
 
 Future<void> _pump(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(1400, 2600));
   await tester.pumpWidget(const MaterialApp(home: ShiftReportScreen()));
   await tester.pumpAndSettle();
 }
@@ -100,15 +101,7 @@ Future<void> _openChartTab(WidgetTester tester) async {
 }
 
 Future<void> _scrollToChart(WidgetTester tester) async {
-  final chartScrollable = find.descendant(
-    of: find.byKey(const Key('production-report-tab-chart')),
-    matching: find.byType(Scrollable),
-  );
-  await tester.scrollUntilVisible(
-    find.byKey(const Key('production-line-chart')),
-    280,
-    scrollable: chartScrollable.first,
-  );
+  await tester.ensureVisible(find.byKey(const Key('production-line-chart')));
   await tester.pumpAndSettle();
 }
 
@@ -123,15 +116,7 @@ Future<void> _expectChartText(
   WidgetTester tester,
   String text,
 ) async {
-  final chartScrollable = find.descendant(
-    of: find.byKey(const Key('production-report-tab-chart')),
-    matching: find.byType(Scrollable),
-  );
-  await tester.scrollUntilVisible(
-    find.text(text),
-    240,
-    scrollable: chartScrollable.first,
-  );
+  await tester.ensureVisible(find.text(text).first);
   await tester.pumpAndSettle();
   expect(find.text(text), findsOneWidget);
 }
@@ -141,29 +126,13 @@ FilterChip _seriesChip(WidgetTester tester, String id) {
 }
 
 Future<FilterChip> _visibleSeriesChip(WidgetTester tester, String id) async {
-  final chartScrollable = find.descendant(
-    of: find.byKey(const Key('production-report-tab-chart')),
-    matching: find.byType(Scrollable),
-  );
-  await tester.scrollUntilVisible(
-    find.byKey(Key('chart-series-$id')),
-    220,
-    scrollable: chartScrollable.first,
-  );
+  await tester.ensureVisible(find.byKey(Key('chart-series-$id')));
   await tester.pumpAndSettle();
   return _seriesChip(tester, id);
 }
 
 Future<void> _scrollToChartControls(WidgetTester tester) async {
-  final chartScrollable = find.descendant(
-    of: find.byKey(const Key('production-report-tab-chart')),
-    matching: find.byType(Scrollable),
-  );
-  await tester.scrollUntilVisible(
-    find.byKey(const Key('chart-select-all')),
-    -240,
-    scrollable: chartScrollable.first,
-  );
+  await tester.ensureVisible(find.byKey(const Key('chart-select-all')));
   await tester.pumpAndSettle();
 }
 
@@ -256,7 +225,8 @@ void main() {
 
     expect(find.text('Report'), findsOneWidget);
     expect(find.text('Chart'), findsOneWidget);
-    expect(find.byType(DataTable), findsOneWidget);
+    expect(
+        find.byKey(const Key('production-report-tab-report')), findsOneWidget);
 
     await _openChartTab(tester);
     await _scrollToChart(tester);
@@ -272,9 +242,11 @@ void main() {
     );
 
     await _pump(tester);
-    expect(find.byType(DataTable), findsOneWidget);
+    expect(
+        find.byKey(const Key('production-report-tab-report')), findsOneWidget);
     await _openChartTab(tester);
-    expect(find.byType(DataTable), findsNothing);
+    expect(
+        find.byKey(const Key('production-report-tab-chart')), findsOneWidget);
   });
 
   testWidgets('Chart reads from existing Production Report entries',
