@@ -79,6 +79,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   final wellNameManuallyEdited = <bool>[];
   final _wellNameControllers = <TextEditingController>[];
   final _wellNameFocusNodes = <FocusNode>[];
+  final _wellRowKeys = <String, GlobalKey>{};
 
   final sandSeparators = TextEditingController(text: '2');
   final plugCatchers = TextEditingController(text: '1');
@@ -190,6 +191,9 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     while (_wellNameFocusNodes.length < normalized) {
       _wellNameFocusNodes.add(FocusNode());
     }
+    for (final id in wellIds) {
+      _wellRowKeys.putIfAbsent(id, () => GlobalKey());
+    }
 
     if (wells.length > normalized) {
       wells.removeRange(normalized, wells.length);
@@ -210,6 +214,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     while (_wellNameFocusNodes.length > normalized) {
       _wellNameFocusNodes.removeLast().dispose();
     }
+    final activeIds = wellIds.toSet();
+    _wellRowKeys.removeWhere((id, _) => !activeIds.contains(id));
 
     for (int i = 0; i < normalized; i++) {
       final nextText = i < wells.length ? wells[i] : '';
@@ -227,6 +233,43 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   FocusNode _wellNameFocusNodeAt(int index) {
     _ensurePerWellCapacity(index + 1);
     return _wellNameFocusNodes[index];
+  }
+
+  void _focusAndRevealWellAt(int index) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (index < 0 || index >= wellIds.length) return;
+
+      _wellNameFocusNodeAt(index).requestFocus();
+
+      final key = _wellRowKeys[wellIds[index]];
+      final rowContext = key?.currentContext;
+      if (rowContext != null) {
+        Scrollable.ensureVisible(
+          rowContext,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          alignment: 0.9,
+        );
+      }
+    });
+  }
+
+  List<Map<String, String>> _draftMultiWellsFromSetup(
+      Map<String, dynamic> setup) {
+    final raw = setup['draftMultiWellsV1'];
+    if (raw is! List) return const <Map<String, String>>[];
+
+    final rows = <Map<String, String>>[];
+    for (final item in raw) {
+      if (item is! Map) continue;
+      rows.add(<String, String>{
+        'id': (item['id'] ?? '').toString().trim(),
+        'name': (item['name'] ?? '').toString(),
+        'lease': (item['lease'] ?? '').toString(),
+      });
+    }
+    return rows;
   }
 
   void _syncWellNameFromLease(int index, {bool force = false}) {
@@ -759,16 +802,33 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     dateStarted.text = job.dateStarted.trim().isEmpty
         ? DateFormat('MM/dd/yyyy').format(DateTime.now())
         : job.dateStarted;
-    wells
-      ..clear()
-      ..addAll(job.wells);
-    wellIds
-      ..clear()
-      ..addAll(job.wellIds);
-    final resolvedLeases = job.resolvedLeaseNames;
-    leaseNames
-      ..clear()
-      ..addAll(resolvedLeases);
+    final draftRows = _draftMultiWellsFromSetup(setup);
+    if (jobType == JobProfileDefaultsService.jobTypeMultiWellPad &&
+        draftRows.isNotEmpty) {
+      wells
+        ..clear()
+        ..addAll(draftRows.map((row) => row['name'] ?? ''));
+      wellIds
+        ..clear()
+        ..addAll(draftRows.map((row) {
+          final rawId = (row['id'] ?? '').trim();
+          return rawId.isEmpty ? JobSetup.generateWellId() : rawId;
+        }));
+      leaseNames
+        ..clear()
+        ..addAll(draftRows.map((row) => row['lease'] ?? ''));
+    } else {
+      wells
+        ..clear()
+        ..addAll(job.wells);
+      wellIds
+        ..clear()
+        ..addAll(job.wellIds);
+      final resolvedLeases = job.resolvedLeaseNames;
+      leaseNames
+        ..clear()
+        ..addAll(resolvedLeases);
+    }
     _ensurePerWellCapacity(wells.length);
     for (int i = 0; i < wells.length; i++) {
       final lease = i < leaseNames.length ? leaseNames[i].trim() : '';
@@ -925,6 +985,22 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
         .name
         .trim();
     mergedSetup['wellStatuses'] = normalizedStatuses;
+    if (jobType == JobProfileDefaultsService.jobTypeMultiWellPad) {
+      final draftRows = <Map<String, String>>[];
+      for (int i = 0; i < wells.length; i++) {
+        final id = i < wellIds.length && wellIds[i].trim().isNotEmpty
+            ? wellIds[i].trim()
+            : JobSetup.generateWellId();
+        draftRows.add(<String, String>{
+          'id': id,
+          'name': i < wells.length ? wells[i] : '',
+          'lease': i < leaseNames.length ? leaseNames[i] : '',
+        });
+      }
+      mergedSetup['draftMultiWellsV1'] = draftRows;
+    } else {
+      mergedSetup.remove('draftMultiWellsV1');
+    }
 
     return JobSetup(
       company: company,
@@ -1009,9 +1085,13 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   void _addMultiWellRow() {
+    if (!_isMultiWellPad) return;
+    int nextIndex = wells.length;
     setState(() {
       _ensurePerWellCapacity(wells.length + 1);
+      nextIndex = wells.length - 1;
     });
+    _focusAndRevealWellAt(nextIndex);
     _scheduleAutoSave();
   }
 
@@ -1356,6 +1436,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           const SizedBox(height: 8),
           for (int i = 0; i < wells.length; i++) ...[
             Row(
+              key: _wellRowKeys[wellIds[i]],
               children: [
                 Expanded(
                   child: TextFormField(
