@@ -1815,7 +1815,7 @@ void main() {
     await tester.tap(find.text('Templates'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Production'), findsOneWidget);
+    expect(find.text('Production'), findsWidgets);
     expect(find.text('Production Startup'), findsOneWidget);
     expect(find.text('Drillout'), findsOneWidget);
 

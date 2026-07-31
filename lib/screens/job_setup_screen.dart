@@ -1347,6 +1347,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   void _startJobSetup() {
+    _workflowModeService.setMode(_activeWorkflowMode);
     if (_activeWorkflowMode == ActiveWorkflowMode.production) {
       _resetFormForNewJob();
     } else {
@@ -1362,6 +1363,65 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     if (_page.hasClients) {
       _page.jumpToPage(0);
     }
+  }
+
+  void _setStartJobWorkflowMode(ActiveWorkflowMode mode) {
+    if (_activeWorkflowMode == mode) return;
+    setState(() {
+      _activeWorkflowMode = mode;
+      _step = 0;
+    });
+    if (mode == ActiveWorkflowMode.production) {
+      _resetFormForNewJob();
+      if (_page.hasClients) {
+        _page.jumpToPage(0);
+      }
+    } else {
+      _resetDrilloutSetupForNewJob();
+    }
+    _workflowModeService.setMode(mode);
+  }
+
+  Widget _startJobWorkflowSelector() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Job Type',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SegmentedButton<ActiveWorkflowMode>(
+              segments: const [
+                ButtonSegment<ActiveWorkflowMode>(
+                  value: ActiveWorkflowMode.production,
+                  label: Text('Production'),
+                ),
+                ButtonSegment<ActiveWorkflowMode>(
+                  value: ActiveWorkflowMode.drillout,
+                  label: Text('Drillout'),
+                ),
+                ButtonSegment<ActiveWorkflowMode>(
+                  value: ActiveWorkflowMode.cleanout,
+                  label: Text('Cleanout'),
+                ),
+              ],
+              selected: {_activeWorkflowMode},
+              onSelectionChanged: (selection) {
+                if (selection.isEmpty) return;
+                _setStartJobWorkflowMode(selection.first);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _editActiveJob() {
@@ -1962,6 +2022,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                   'Start a job to keep the current company, pad, well, shift, and notes active on this device.',
                   style: TextStyle(color: Colors.white70, fontSize: 15),
                 ),
+                const SizedBox(height: 16),
+                _startJobWorkflowSelector(),
                 const SizedBox(height: 22),
                 SizedBox(
                   width: double.infinity,
@@ -2282,6 +2344,10 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
+        if (_startingFreshJob) ...[
+          _startJobWorkflowSelector(),
+          const SizedBox(height: 12),
+        ],
         Text(
           '$workflowLabel Job Setup',
           style: const TextStyle(
