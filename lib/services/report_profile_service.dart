@@ -130,7 +130,6 @@ class ReportProfileService {
     ReportField(key: 'propRate', label: 'PROP / SAND RATE'),
     ReportField(key: 'h2oSg', label: 'H2O SG'),
     ReportField(key: 'wht', label: 'WHT'),
-    ReportField(key: 'wtrTmp', label: 'WTR TMP'),
     ReportField(key: 'flareRt', label: 'FLARE RT'),
     ReportField(key: 'flarePilotTemp', label: 'FLARE PILOT TEMP'),
     ReportField(key: 'flareEcdTemp', label: 'FLARE / ECD TEMP'),

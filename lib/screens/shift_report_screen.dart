@@ -248,34 +248,6 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     return _resolveActiveJobRows(_shift, _activeJob);
   }
 
-  List<ProductionReportRow> get _normalizedRows {
-    return _continuityService.normalizedRowsForJob(
-      shift: _shift,
-      activeJob: _activeJob,
-    );
-  }
-
-  Map<String, List<ProductionReportRow>> get _rowsByProductionDay {
-    return _continuityService.groupByProductionDay(_normalizedRows);
-  }
-
-  List<String> get _productionDayKeys {
-    final keys = _rowsByProductionDay.keys.toList()..sort();
-    return keys;
-  }
-
-  String get _effectiveSelectedProductionDay {
-    final keys = _productionDayKeys;
-    if (keys.isEmpty) return '';
-    if (_selectedProductionDay.isNotEmpty &&
-        keys.contains(_selectedProductionDay)) {
-      return _selectedProductionDay;
-    }
-    final current = productionDayKey(DateTime.now());
-    if (keys.contains(current)) return current;
-    return keys.last;
-  }
-
   List<String> get _wellOrder {
     return _resolveWellOrder(_activeJobRows, _shift, _activeJob);
   }
@@ -371,6 +343,15 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     return true;
   }
 
+  List<String> get _activeChemicals {
+    return _activeJob?.selectedChemicals ?? const <String>[];
+  }
+
+  bool _chemicalEnabled(String name) {
+    return _activeChemicals
+        .any((item) => item.toLowerCase() == name.toLowerCase());
+  }
+
   List<ProductionReportRow> _rowsForWell(String well) {
     final rows = _activeJobRows.where((row) => row.well == well).toList()
       ..sort((a, b) => a.hourIndex.compareTo(b.hourIndex));
@@ -464,7 +445,44 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   ];
 
   List<String> get _visibleFieldKeys {
-    return _productionFieldOrder;
+    return _productionFieldOrder.where(_fieldVisible).toList(growable: false);
+  }
+
+  bool _fieldVisible(String key) {
+    switch (key) {
+      case 'gasCoolerInTemp':
+      case 'gasCoolerOutTemp':
+      case 'gasCoolingDelta':
+        return _showGasCoolerSection;
+      case 'waterCoolerInTemp':
+      case 'waterCoolerOutTemp':
+      case 'waterCoolingDelta':
+        return _showWaterCoolerSection;
+      case 'flareEcdTemp':
+        return _showFlareSection;
+      case 'flareEcdGasRate':
+        return _showFlareSection && _flareEcdGasRateEnabled;
+      case 'vruGasRt':
+      case 'vruSuct':
+      case 'vruDisc':
+      case 'vruSuction':
+      case 'vruDischarge':
+        return _showVruSection;
+      case 'compressorInj':
+        return _showCompressorSection;
+      case 'biocide':
+        return _chemicalEnabled('Biocide');
+      case 'scavenger':
+        return _chemicalEnabled('Scavenger');
+      case 'defoamer':
+        return _chemicalEnabled('Defoamer');
+      case 'scaleInhibitor':
+        return _chemicalEnabled('Scale Inhibitor');
+      case 'notes':
+        return _showNotesSection;
+      default:
+        return true;
+    }
   }
 
   String _headerLabel(String key) {
@@ -508,8 +526,6 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         return 'WATER COOLING DELTA';
       case 'wht':
         return 'WHT';
-      case 'wtrTmp':
-        return 'WTR TMP';
       case 'flareEcdGasRate':
         return 'FLARE / ECD GAS RATE';
       case 'flareEcdTemp':
@@ -588,8 +604,6 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         return row.waterSpecificGravity;
       case 'wht':
         return row.wellheadTemp;
-      case 'wtrTmp':
-        return row.waterTemp;
       case 'flareRt':
         return _gasString(row.flareRate);
       case 'flarePilotTemp':
@@ -636,7 +650,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   }
 
   String get _reportText {
-    final rows = _activeJobRows;
+    final rows = _rowsForSelectedWell;
     if (rows.isEmpty) {
       return _emptyStateMessage;
     }
@@ -662,7 +676,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     final headers = _visibleFieldKeys.map(_headerLabel).toList();
     final csvRows = <List<String>>[
       headers,
-      for (final row in _activeJobRows)
+      for (final row in _rowsForSelectedWell)
         _visibleFieldKeys.map((key) => _valueFor(row, key)).toList(),
     ];
 
@@ -752,9 +766,9 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     return DateFormat('MMM d').format(parsed);
   }
 
-  Widget _buildOverviewCard() {
-    final rows = _normalizedRows;
-    final dayCount = _productionDayKeys.length;
+  Widget _buildOverviewCard(List<ProductionReportRow> rows) {
+    final grouped = _continuityService.groupByProductionDay(rows);
+    final dayCount = grouped.length;
     final first = rows
         .map((row) => DateTime.tryParse(row.originalTimestampIso))
         .whereType<DateTime>()
@@ -776,7 +790,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
 
     final customer = (_activeJob?.company ?? _shift.header.company).trim();
     final jobName = (_activeJob?.padName ?? _shift.header.pad).trim();
-    final wells = _wellOrder.join(' / ');
+    final selectedWell = _selectedWell?.trim() ?? '';
 
     return Card(
       child: Padding(
@@ -794,7 +808,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
             const SizedBox(height: 10),
             Text('Customer: ${customer.isEmpty ? '-' : customer}'),
             Text('Job: ${jobName.isEmpty ? '-' : jobName}'),
-            Text('Wells: ${wells.isEmpty ? '-' : wells}'),
+            Text('Well: ${selectedWell.isEmpty ? '-' : selectedWell}'),
             Text(
               'Current Production Day: ${_prettyProductionDay(productionDayKey(DateTime.now()))}',
             ),
@@ -817,8 +831,12 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   }
 
   Widget _buildDailyTabsContent() {
-    final dayKeys = _productionDayKeys;
-    final selectedDay = _effectiveSelectedProductionDay;
+    final selectedRows = _rowsForSelectedWell;
+    final grouped = _continuityService.groupByProductionDay(selectedRows);
+    final dayKeys = grouped.keys.toList()..sort();
+    final selectedDay = dayKeys.contains(_selectedProductionDay)
+        ? _selectedProductionDay
+        : (dayKeys.isEmpty ? '' : dayKeys.last);
 
     final chips = <Widget>[
       ChoiceChip(
@@ -850,7 +868,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         _selectedProductionDay.isEmpty ? selectedDay : _selectedProductionDay;
     final rowsForDay = showOverview
         ? const <ProductionReportRow>[]
-        : (_rowsByProductionDay[activeDay] ?? const <ProductionReportRow>[]);
+        : (grouped[activeDay] ?? const <ProductionReportRow>[]);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -869,7 +887,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         ),
         const SizedBox(height: 10),
         if (showOverview)
-          _buildOverviewCard()
+          _buildOverviewCard(selectedRows)
         else
           Card(
             child: Padding(
@@ -882,7 +900,8 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   }
 
   Widget _buildTimelineContent() {
-    final grouped = _rowsByProductionDay;
+    final grouped =
+        _continuityService.groupByProductionDay(_rowsForSelectedWell);
     final dayKeys = grouped.keys.toList()..sort();
     if (dayKeys.isEmpty) {
       return const Padding(
@@ -1600,7 +1619,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Saved hours: ${_activeJobRows.length}',
+                  'Saved hours: ${_rowsForSelectedWell.length}',
                   style: const TextStyle(color: Colors.white70),
                 ),
               ],

@@ -156,6 +156,13 @@ class _ActiveJobModeBannerState extends State<_ActiveJobModeBanner> {
     return '$company • $middle';
   }
 
+  String _workflowLabel(JobSetup? job) {
+    final raw = (job?.workflow ?? '').trim().toLowerCase();
+    if (raw == 'drillout') return 'Drillout';
+    if (raw == 'cleanout') return 'Cleanout';
+    return 'Production';
+  }
+
   Future<void> _openActiveJobHub() async {
     final activeJob = _jobStorage.activeJobListenable.value;
     final jobs = await _jobStorage.loadJobs();
@@ -362,36 +369,11 @@ class _ActiveJobModeBannerState extends State<_ActiveJobModeBanner> {
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
-              PopupMenuButton<ActiveWorkflowMode>(
-                padding: EdgeInsets.zero,
-                onSelected: (mode) => _workflowMode.setMode(mode),
-                itemBuilder: (context) => const [
-                  PopupMenuItem(
-                    value: ActiveWorkflowMode.production,
-                    child: Text('Production'),
-                  ),
-                  PopupMenuItem(
-                    value: ActiveWorkflowMode.drillout,
-                    child: Text('Drillout'),
-                  ),
-                  PopupMenuItem(
-                    value: ActiveWorkflowMode.cleanout,
-                    child: Text('Cleanout'),
-                  ),
-                ],
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      ActiveWorkflowModeService.labelFor(
-                          _workflowMode.mode.value),
-                      style: TextStyle(
-                        color: colors.primary,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    Icon(Icons.arrow_drop_down, color: colors.primary),
-                  ],
+              Text(
+                _workflowLabel(job),
+                style: TextStyle(
+                  color: colors.primary,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ],

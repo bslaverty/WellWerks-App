@@ -160,6 +160,17 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       shift = shift.copyWith(activeJobId: activeJob.id);
       await _service.saveActiveShift(shift);
     }
+    final syncedInventoryShift =
+        _syncInventoryToActiveJobTanks(shift, activeJob);
+    if (syncedInventoryShift.inventory.waterTanks.length !=
+            shift.inventory.waterTanks.length ||
+        syncedInventoryShift.inventory.oilTanks.length !=
+            shift.inventory.oilTanks.length) {
+      shift = syncedInventoryShift;
+      await _service.saveActiveShift(shift);
+    } else {
+      shift = syncedInventoryShift;
+    }
     final desiredGasMethod = activeJob == null
         ? shift.inventory.gasCalculationMethod
         : (activeJob.drilloutSetup['gasRateSource'] == 'instantSpotRate'
@@ -437,6 +448,71 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     return migrated;
   }
 
+  ProductionShift _syncInventoryToActiveJobTanks(
+    ProductionShift shift,
+    JobSetup? activeJob,
+  ) {
+    if (activeJob == null || !shift.inventory.useJobSetupTanks) {
+      return shift;
+    }
+
+    final targetWaterCount = activeJob.waterTanks > 0
+        ? activeJob.waterTanks
+        : shift.inventory.waterTanks.length;
+    final targetOilCount = activeJob.oilTanks > 0
+        ? activeJob.oilTanks
+        : shift.inventory.oilTanks.length;
+
+    final waterCount = targetWaterCount < 1 ? 1 : targetWaterCount;
+    final oilCount = targetOilCount < 1 ? 1 : targetOilCount;
+
+    if (shift.inventory.waterTanks.length == waterCount &&
+        shift.inventory.oilTanks.length == oilCount) {
+      return shift;
+    }
+
+    final fallbackFactor = activeJob.productionTankFactor.trim().isEmpty
+        ? (shift.inventory.waterTanks.isNotEmpty
+            ? shift.inventory.waterTanks.first.bblPerInch
+            : (shift.inventory.oilTanks.isNotEmpty
+                ? shift.inventory.oilTanks.first.bblPerInch
+                : '1.67'))
+        : activeJob.productionTankFactor.trim();
+
+    List<ProductionTank> resized(
+      List<ProductionTank> existing,
+      int count,
+      String prefix,
+    ) {
+      return List<ProductionTank>.generate(
+        count,
+        (index) {
+          if (index < existing.length) {
+            final current = existing[index];
+            return current.copyWith(
+              name: current.name.trim().isEmpty
+                  ? '$prefix ${index + 1}'
+                  : current.name,
+            );
+          }
+          return ProductionTank(
+            name: '$prefix ${index + 1}',
+            bblPerInch: fallbackFactor,
+          );
+        },
+        growable: false,
+      );
+    }
+
+    return shift.copyWith(
+      inventory: shift.inventory.copyWith(
+        waterTanks:
+            resized(shift.inventory.waterTanks, waterCount, 'Water Tank'),
+        oilTanks: resized(shift.inventory.oilTanks, oilCount, 'Oil Tank'),
+      ),
+    );
+  }
+
   List<String> _fallbackWells() {
     final fromJob = (_activeJob?.resolvedWellNames ?? const <String>[])
         .where((item) => item.trim().isNotEmpty)
@@ -619,7 +695,6 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (_showWaterCoolerSection) data.waterCoolerOutTemp,
       data.waterSpecificGravity,
       data.wellheadTemp,
-      data.waterTemp,
       if (_showFlareSection) data.flareRate,
       if (_showFlareSection) data.flarePilotTemp,
       ..._chemicalValues(data),
@@ -947,6 +1022,39 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     if (sand < 2.5) return 'Light';
     if (sand < 3.5) return 'Medium';
     return 'Heavy';
+  }
+
+  String _normalizedSandRateValue(String rawValue) {
+    final sand = double.tryParse(rawValue.trim()) ?? 0;
+    if (sand <= 0) return '0';
+    if (sand < 1.5) return '1';
+    if (sand < 2.5) return '2';
+    if (sand < 3.5) return '3';
+    return '4';
+  }
+
+  Widget _sandRateDropdown(_HourlyCheckControllers controller) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        initialValue: _normalizedSandRateValue(controller.sandRate.text),
+        decoration: const InputDecoration(labelText: 'Sand Amount'),
+        items: const [
+          DropdownMenuItem(value: '0', child: Text('None')),
+          DropdownMenuItem(value: '1', child: Text('Trace')),
+          DropdownMenuItem(value: '2', child: Text('Light')),
+          DropdownMenuItem(value: '3', child: Text('Medium')),
+          DropdownMenuItem(value: '4', child: Text('Heavy')),
+        ],
+        onChanged: (value) {
+          if (value == null) return;
+          setState(() {
+            controller.sandRate.text = value;
+          });
+          _persistShift();
+        },
+      ),
+    );
   }
 
   Widget _sandClassificationLine(String rawValue) {
@@ -2543,7 +2651,6 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       ],
       _field('Water Specific Gravity', controller.waterSpecificGravity),
       _field('Wellhead Temperature', controller.wellheadTemp, suffix: '°'),
-      _field('Water Temperature', controller.waterTemp, suffix: '°'),
       if (_showFlareSection && _flareEcdGasRateEnabled)
         _field('Flare / ECD Gas Rate', controller.flareRate,
             suffix: _gasUnitLabel),
@@ -2657,8 +2764,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (_showInventorySection)
         _field('Oil Pumped This Hour (Selected Well)', controller.oilPumped,
             suffix: 'BBL'),
-      _field('Sand Rate (0 None, 1 Trace, 2 Light, 3 Medium, 4 Heavy)',
-          controller.sandRate),
+      _sandRateDropdown(controller),
       _field('Prop / Sand Optional Rate', controller.sandOptionalRate),
       _section('Calculated (Read Only)', [
         if (waterMeterMode)

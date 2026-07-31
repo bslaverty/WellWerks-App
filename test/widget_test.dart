@@ -593,11 +593,6 @@ void main() {
     await tester.enterText(labeledTextField('Gas Static').first, '300');
     await tester.enterText(labeledTextField('Gas Differential').first, '20');
     await tester.enterText(labeledTextField('Gas Temperature').first, '88');
-    await tester.enterText(
-        labeledTextField(
-                'Sand Rate (0 None, 1 Trace, 2 Light, 3 Medium, 4 Heavy)')
-            .first,
-        '.5');
 
     await tester.scrollUntilVisible(
       find.text('Current Water Tank Gauges (Selected Well)').first,
