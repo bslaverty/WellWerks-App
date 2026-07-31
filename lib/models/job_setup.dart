@@ -1,6 +1,10 @@
 import 'drillout_tank_configuration.dart';
 
 class JobSetup {
+  static const String wellStatusNotStarted = 'notStarted';
+  static const String wellStatusActive = 'active';
+  static const String wellStatusComplete = 'complete';
+
   static const _unset = Object();
   static final RegExp _placeholderWellPattern =
       RegExp(r'^well\s*\d+$', caseSensitive: false);
@@ -101,8 +105,41 @@ class JobSetup {
   final List<String> selectedChemicals;
   final List<String> reportTimes;
 
-  String get primaryWell =>
-      resolvedWellNames.isEmpty ? '' : resolvedWellNames.first;
+  String get activeWellId {
+    final candidate = (drilloutSetup['activeWellId'] as String? ?? '').trim();
+    if (candidate.isEmpty) {
+      return wellIds.isNotEmpty ? wellIds.first : '';
+    }
+    if (wellIds.contains(candidate)) return candidate;
+    return wellIds.isNotEmpty ? wellIds.first : candidate;
+  }
+
+  String get activeWellName {
+    final id = activeWellId;
+    if (id.isNotEmpty) {
+      final entries = resolvedWellEntries;
+      for (final entry in entries) {
+        if (entry.id == id && entry.name.trim().isNotEmpty) {
+          return entry.name.trim();
+        }
+      }
+    }
+    final fallback = (drilloutSetup['activeWellName'] as String? ?? '').trim();
+    if (fallback.isNotEmpty) return fallback;
+    return resolvedWellNames.isEmpty ? '' : resolvedWellNames.first;
+  }
+
+  Map<String, String> get wellStatuses {
+    final raw = drilloutSetup['wellStatuses'];
+    if (raw is Map) {
+      return raw.map(
+        (key, value) => MapEntry(key.toString(), value.toString().trim()),
+      );
+    }
+    return const <String, String>{};
+  }
+
+  String get primaryWell => activeWellName;
 
   static bool isPlaceholderWellName(String value) {
     final trimmed = value.trim();

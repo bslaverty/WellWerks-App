@@ -5,10 +5,14 @@ import 'package:intl/intl.dart';
 
 import '../models/drillout_tank_configuration.dart';
 import '../models/job_setup.dart';
+import '../models/operations_log_entry.dart';
 import '../services/active_company_service.dart';
 import '../services/active_workflow_mode_service.dart';
+import '../services/job_history_service.dart';
 import '../services/job_profile_defaults_service.dart';
 import '../services/job_storage_service.dart';
+import '../services/operations_log_service.dart';
+import '../services/production_shift_service.dart';
 import '../widgets/app_header.dart';
 import '../widgets/ww_number_field.dart';
 
@@ -29,11 +33,17 @@ class JobSetupScreen extends StatefulWidget {
 class _JobSetupScreenState extends State<JobSetupScreen> {
   static const String _gasRateSourceAccumulation = 'gasAccumulation';
   static const String _gasRateSourceInstantSpot = 'instantSpotRate';
+  static const String _wellStatusNotStarted = JobSetup.wellStatusNotStarted;
+  static const String _wellStatusActive = JobSetup.wellStatusActive;
+  static const String _wellStatusComplete = JobSetup.wellStatusComplete;
 
   final _storage = JobStorageService();
   final _profileDefaults = JobProfileDefaultsService();
   final _activeCompanyService = ActiveCompanyService.instance;
   final _workflowModeService = ActiveWorkflowModeService.instance;
+  final _historyService = JobHistoryService();
+  final _operationsLogService = OperationsLogService();
+  final _productionShiftService = ProductionShiftService();
   final _page = PageController();
   Timer? _autoSaveTimer;
   bool _autoSaving = false;
@@ -395,6 +405,41 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     return _gasRateSourceAccumulation;
   }
 
+  Map<String, String> _wellStatusesFromSetup(Map<String, dynamic> setup) {
+    final raw = setup['wellStatuses'];
+    if (raw is! Map) return <String, String>{};
+    return raw.map(
+      (key, value) => MapEntry(key.toString().trim(), value.toString().trim()),
+    );
+  }
+
+  Map<String, String> _normalizedWellStatuses({
+    required List<JobSetupWell> entries,
+    required String activeWellId,
+    required Map<String, String> source,
+  }) {
+    final result = <String, String>{};
+    for (final entry in entries) {
+      final status = (source[entry.id] ?? '').trim();
+      if (entry.id == activeWellId) {
+        result[entry.id] = _wellStatusActive;
+      } else if (status == _wellStatusComplete) {
+        result[entry.id] = _wellStatusComplete;
+      } else {
+        result[entry.id] = _wellStatusNotStarted;
+      }
+    }
+    return result;
+  }
+
+  OperationsLogWorkflow _operationsWorkflowForJob(JobSetup job) {
+    final workflow = job.workflow.trim().toLowerCase();
+    if (workflow == OperationsLogWorkflow.cleanout.name) {
+      return OperationsLogWorkflow.cleanout;
+    }
+    return OperationsLogWorkflow.drillout;
+  }
+
   void _resetDrilloutSetupForNewJob() {
     final active = _activeJob;
     _drilloutWellName.text = active?.primaryWell ?? '';
@@ -604,6 +649,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     mergedSetup['flareEcdGasRateEnabled'] = flareEcdGasRateEnabled;
     mergedSetup['includeNotesSection'] = includeNotesSection;
     mergedSetup['gasRateSource'] = gasRateSource;
+    mergedSetup.addAll(_buildDrilloutSetupPayload());
 
     return JobSetup(
       company: company.trim(),
@@ -627,7 +673,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       wellFieldKeys: const <String>[],
       activeEquipmentSections: const <String>[],
       selectedChemicals: const <String>[],
-      drilloutSetup: _buildDrilloutSetupPayload(),
+      drilloutSetup: mergedSetup,
     );
   }
 
@@ -819,11 +865,35 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           name: item.value,
         ),
     ];
+    final existingActiveWellId =
+        (_activeJob?.drilloutSetup['activeWellId'] as String? ?? '').trim();
+    final resolvedActiveWellId = safeWellEntries.any(
+      (entry) => entry.id == existingActiveWellId,
+    )
+        ? existingActiveWellId
+        : (safeWellEntries.isEmpty ? '' : safeWellEntries.first.id);
+    final existingStatuses = _wellStatusesFromSetup(
+      _activeJob?.drilloutSetup ?? const <String, dynamic>{},
+    );
+    final normalizedStatuses = _normalizedWellStatuses(
+      entries: safeWellEntries,
+      activeWellId: resolvedActiveWellId,
+      source: existingStatuses,
+    );
     final mergedSetup =
         Map<String, dynamic>.from(_activeJob?.drilloutSetup ?? const {});
     mergedSetup['flareEcdGasRateEnabled'] = flareEcdGasRateEnabled;
     mergedSetup['includeNotesSection'] = includeNotesSection;
     mergedSetup['gasRateSource'] = gasRateSource;
+    mergedSetup['activeWellId'] = resolvedActiveWellId;
+    mergedSetup['activeWellName'] = safeWellEntries
+        .firstWhere(
+          (entry) => entry.id == resolvedActiveWellId,
+          orElse: () => const JobSetupWell(id: '', name: ''),
+        )
+        .name
+        .trim();
+    mergedSetup['wellStatuses'] = normalizedStatuses;
 
     return JobSetup(
       company: company,
@@ -885,6 +955,170 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       _step,
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOut,
+    );
+  }
+
+  bool get _isMultiWellPad =>
+      jobType == JobProfileDefaultsService.jobTypeMultiWellPad;
+
+  void _setMultiWellPad(bool enabled) {
+    setState(() {
+      jobType = enabled
+          ? JobProfileDefaultsService.jobTypeMultiWellPad
+          : JobProfileDefaultsService.jobTypeSingleWell;
+      if (enabled) {
+        if (wells.isEmpty) {
+          _ensurePerWellCapacity(1);
+        }
+      } else {
+        _ensurePerWellCapacity(1);
+      }
+    });
+    _scheduleAutoSave();
+  }
+
+  void _addMultiWellRow() {
+    setState(() {
+      _ensurePerWellCapacity(wells.length + 1);
+    });
+    _scheduleAutoSave();
+  }
+
+  void _removeMultiWellRow(int index) {
+    if (index < 0 || index >= wells.length) return;
+    if (wells.length <= 1) return;
+    setState(() {
+      wells.removeAt(index);
+      if (index < wellIds.length) wellIds.removeAt(index);
+      if (index < leaseNames.length) leaseNames.removeAt(index);
+      if (index < wellNameManuallyEdited.length) {
+        wellNameManuallyEdited.removeAt(index);
+      }
+      _ensurePerWellCapacity(wells.length);
+    });
+    _scheduleAutoSave();
+  }
+
+  String _wellStatusLabel(String status) {
+    switch (status.trim()) {
+      case _wellStatusActive:
+        return 'Active';
+      case _wellStatusComplete:
+        return 'Complete';
+      default:
+        return 'Not Started';
+    }
+  }
+
+  Future<void> _switchActiveWell(String nextWellId) async {
+    final active = _activeJob;
+    if (active == null) return;
+    final currentWellId = active.activeWellId;
+    if (nextWellId.trim().isEmpty || nextWellId == currentWellId) return;
+
+    final entries = active.resolvedWellEntries;
+    final currentName = entries
+        .firstWhere(
+          (entry) => entry.id == currentWellId,
+          orElse: () => const JobSetupWell(id: '', name: ''),
+        )
+        .name
+        .trim();
+    final nextName = entries
+        .firstWhere(
+          (entry) => entry.id == nextWellId,
+          orElse: () => const JobSetupWell(id: '', name: ''),
+        )
+        .name
+        .trim();
+    if (nextName.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Switch Active Well?'),
+            content: Text(
+              'Switch from ${currentName.isEmpty ? 'current well' : currentName} to $nextName? The current well session will be finalized and the next well session will start.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Switch Well'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed) return;
+
+    final workflow = _operationsWorkflowForJob(active);
+    final now = DateTime.now();
+    final statuses = _wellStatusesFromSetup(active.drilloutSetup);
+    for (final entry in entries) {
+      statuses.putIfAbsent(entry.id, () => _wellStatusNotStarted);
+    }
+    if (currentWellId.isNotEmpty && currentWellId != nextWellId) {
+      statuses[currentWellId] = _wellStatusComplete;
+    }
+    statuses[nextWellId] = _wellStatusActive;
+
+    final updatedSetup = Map<String, dynamic>.from(active.drilloutSetup)
+      ..['activeWellId'] = nextWellId
+      ..['activeWellName'] = nextName
+      ..['wellStatuses'] = statuses;
+
+    final updatedJob = active.copyWith(drilloutSetup: updatedSetup);
+
+    final existingEntries = await _operationsLogService.loadEntries(
+      workflow: workflow,
+      jobId: active.id,
+    );
+    final sessionMarkers = <OperationsLogEntry>[];
+    if (currentWellId.isNotEmpty) {
+      sessionMarkers.add(await _operationsLogService.createLocalEntry(
+        workflow: workflow,
+        jobId: active.id,
+        wellId: currentWellId,
+        wellName: currentName,
+        readingTimestamp: now,
+        entryType: 'wellSessionFinalized',
+        generatedText: 'Well session finalized before switching to $nextName.',
+        notes: 'Well session finalized before switching to $nextName.',
+      ));
+    }
+    sessionMarkers.add(await _operationsLogService.createLocalEntry(
+      workflow: workflow,
+      jobId: active.id,
+      wellId: nextWellId,
+      wellName: nextName,
+      readingTimestamp: now,
+      entryType: 'wellSessionStarted',
+      generatedText: 'Well session started for $nextName.',
+      notes: 'Well session started for $nextName.',
+    ));
+
+    await _operationsLogService.saveEntries(
+      workflow: workflow,
+      jobId: active.id,
+      entries: [...existingEntries, ...sessionMarkers],
+    );
+
+    await _historyService.archiveCurrentJobOrShift();
+    await _productionShiftService.archiveActiveShift();
+    await _productionShiftService.clearActiveShift();
+    final saved = await _storage.updateActiveJob(updatedJob);
+
+    if (!mounted) return;
+    setState(() {
+      _activeJob = saved;
+      _lastAutoSaveAt = DateTime.now();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Active well switched to $nextName')),
     );
   }
 
@@ -1036,6 +1270,290 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     return value.trim().isEmpty ? fallback : value.trim();
   }
 
+  List<Widget> _buildProductionSetupPages() {
+    return [
+      _StepPage(title: '1. Job Information', children: [
+        InputDecorator(
+          decoration: const InputDecoration(labelText: 'Customer'),
+          child: Text(company.trim().isEmpty ? 'None' : company),
+        ),
+        const SizedBox(height: 12),
+        CheckboxListTile(
+          value: _isMultiWellPad,
+          title: const Text('Multi-Well Pad'),
+          subtitle: const Text(
+              'Enable when this job includes multiple wells on the same pad.'),
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+          onChanged: (enabled) => _setMultiWellPad(enabled ?? false),
+        ),
+        const SizedBox(height: 10),
+        if (!_isMultiWellPad)
+          TextField(
+            controller: leaseName,
+            decoration: const InputDecoration(labelText: 'Well Name'),
+            onChanged: (value) {
+              setState(() {
+                _ensurePerWellCapacity(1);
+                _setLeaseNameAt(0, value);
+                _setWellNameAt(0, value);
+              });
+              _scheduleAutoSave();
+            },
+          )
+        else ...[
+          TextField(
+            controller: padName,
+            decoration: const InputDecoration(labelText: 'Pad Name'),
+            onChanged: (_) => _scheduleAutoSave(),
+          ),
+          const SizedBox(height: 12),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Wells',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (int i = 0; i < wells.length; i++) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    key: ValueKey('job-info-well-$i-${wells[i]}'),
+                    initialValue: wells[i],
+                    decoration:
+                        InputDecoration(labelText: 'Well ${i + 1} Name'),
+                    onChanged: (value) {
+                      setState(() {
+                        _setWellNameAt(i, value);
+                        _setLeaseNameAt(i, value);
+                      });
+                      _scheduleAutoSave();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed:
+                      wells.length > 1 ? () => _removeMultiWellRow(i) : null,
+                  tooltip: 'Remove Well',
+                  icon: const Icon(Icons.remove_circle_outline),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+          ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: _addMultiWellRow,
+              icon: const Icon(Icons.add),
+              label: const Text('Add Well'),
+            ),
+          ),
+        ],
+        const SizedBox(height: 24),
+        _navButtons(),
+      ]),
+      _StepPage(title: '2. Production Data', children: [
+        if (!_isMultiWellPad)
+          TextField(
+            controller: padName,
+            decoration: const InputDecoration(labelText: 'Pad Name (Optional)'),
+            onChanged: (_) => _scheduleAutoSave(),
+          ),
+        if (!_isMultiWellPad) const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          initialValue: shift,
+          decoration: const InputDecoration(labelText: 'Shift'),
+          items: const [
+            DropdownMenuItem(value: 'Day', child: Text('Day')),
+            DropdownMenuItem(value: 'Night', child: Text('Night')),
+          ],
+          onChanged: (value) {
+            setState(() => shift = value ?? 'Day');
+            _scheduleAutoSave();
+          },
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: dateStarted,
+          decoration: const InputDecoration(labelText: 'Date'),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: county,
+          decoration: const InputDecoration(labelText: 'County'),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: state,
+          decoration: const InputDecoration(labelText: 'State'),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: notes,
+          maxLines: 3,
+          decoration: const InputDecoration(labelText: 'Notes'),
+        ),
+        const SizedBox(height: 12),
+        _countField('Oil Tanks', oilTanks),
+        WwNumberField(
+          label: 'Oil Tank Capacity',
+          controller: oilTankCapacity,
+          onChanged: (_) => _scheduleAutoSave(),
+        ),
+        const SizedBox(height: 10),
+        _countField('Water Tanks', waterTanks),
+        WwNumberField(
+          label: 'Water Tank Capacity',
+          controller: waterTankCapacity,
+          onChanged: (_) => _scheduleAutoSave(),
+        ),
+        const SizedBox(height: 10),
+        WwNumberField(
+          label: 'Production Tank Factor (BBL/In)',
+          controller: productionTankFactor,
+          allowDecimal: true,
+          onChanged: (_) => _scheduleAutoSave(),
+        ),
+        const SizedBox(height: 24),
+        _navButtons(),
+      ]),
+      _StepPage(title: '3. Active Equipment', children: [
+        ..._profileDefaults.profileForCompany(company).optionalSections.map(
+              (section) => CheckboxListTile(
+                value: activeEquipmentSections.contains(section),
+                title: Text(section),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                onChanged: (enabled) {
+                  setState(() {
+                    if (enabled ?? false) {
+                      if (!activeEquipmentSections.contains(section)) {
+                        activeEquipmentSections.add(section);
+                      }
+                    } else {
+                      activeEquipmentSections.remove(section);
+                    }
+                  });
+                  _scheduleAutoSave();
+                },
+              ),
+            ),
+        if (activeEquipmentSections.contains('FLARE / ECD')) ...[
+          const SizedBox(height: 8),
+          const Text(
+            'Flare / ECD Configuration',
+            style: TextStyle(
+              color: Color(0xFFCDA56A),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          CheckboxListTile(
+            value: flareEcdGasRateEnabled,
+            title: const Text('Include Gas Rate'),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+            onChanged: (enabled) {
+              setState(() {
+                flareEcdGasRateEnabled = enabled ?? true;
+              });
+              _scheduleAutoSave();
+            },
+          ),
+          DropdownButtonFormField<String>(
+            initialValue: gasRateSource,
+            decoration: const InputDecoration(labelText: 'Gas Rate Source'),
+            items: const [
+              DropdownMenuItem(
+                value: _gasRateSourceInstantSpot,
+                child: Text('Instant Spot Rate'),
+              ),
+              DropdownMenuItem(
+                value: _gasRateSourceAccumulation,
+                child: Text('Gas Accumulation'),
+              ),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() {
+                gasRateSource = value;
+              });
+              _scheduleAutoSave();
+            },
+          ),
+        ],
+        const SizedBox(height: 10),
+        _countField('Sand Separators', sandSeparators),
+        _countField('Plug Catchers', plugCatchers),
+        _countField('Choke Manifolds', chokeManifolds),
+        _countField('Line Heaters', lineHeaters),
+        _countField('Test Units', testUnits),
+        _countField('ECDs', ecds),
+        _countField('VRUs', vrus),
+        _countField('Flares', flares),
+        _countField('Transfer Pumps', transferPumps),
+        const SizedBox(height: 24),
+        _navButtons(),
+      ]),
+      _StepPage(title: '4. Optional Sections', children: [
+        CheckboxListTile(
+          value: includeNotesSection,
+          title: const Text('Notes'),
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+          onChanged: (enabled) {
+            setState(() {
+              includeNotesSection = enabled ?? true;
+            });
+            _scheduleAutoSave();
+          },
+        ),
+        const SizedBox(height: 24),
+        _navButtons(),
+      ]),
+      _StepPage(title: '5. Chemicals', children: [
+        ...JobSetup.chemicalOptions.map(
+          (chemical) => CheckboxListTile(
+            value: selectedChemicals.contains(chemical),
+            title: Text(chemical),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+            onChanged: (enabled) {
+              setState(() {
+                if (enabled ?? false) {
+                  if (!selectedChemicals.contains(chemical)) {
+                    selectedChemicals.add(chemical);
+                  }
+                } else {
+                  selectedChemicals.remove(chemical);
+                }
+              });
+              _scheduleAutoSave();
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Text(
+              'Summary\n$company\n${_profileDefaults.jobTypeLabel(jobType)}\n${padName.text.trim().isEmpty ? 'No pad entered' : padName.text.trim()}\n${wells.where((item) => item.trim().isNotEmpty).length} well(s)\nChemicals: ${selectedChemicals.isEmpty ? 'None' : selectedChemicals.join(', ')}\nEquipment: ${activeEquipmentSections.isEmpty ? 'None' : activeEquipmentSections.join(', ')}\nOptional Sections: ${includeNotesSection ? 'Notes' : 'None'}\nGas Rate Source: ${gasRateSource == _gasRateSourceInstantSpot ? 'Instant Spot Rate' : 'Gas Accumulation'}',
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        _navButtons(finish: true),
+      ]),
+    ];
+  }
+
   Widget _buildOverviewValue(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
@@ -1103,6 +1621,12 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     final bestIdentifier = job.primaryWell.trim().isNotEmpty
         ? job.primaryWell.trim()
         : (job.padName.trim().isNotEmpty ? job.padName.trim() : '-');
+    final resolvedWells = job.resolvedWellEntries;
+    final statuses = _normalizedWellStatuses(
+      entries: resolvedWells,
+      activeWellId: job.activeWellId,
+      source: job.wellStatuses,
+    );
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
@@ -1136,6 +1660,45 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                 _buildOverviewValue(
                     'Location / Pad', _displayValue(job.padName)),
                 _buildOverviewValue('Well Name', _displayValue(bestIdentifier)),
+                if (resolvedWells.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Well Sessions',
+                    style: TextStyle(
+                      color: Color(0xFFCDA56A),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  for (final well in resolvedWells)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              well.name.trim().isEmpty
+                                  ? 'Unnamed Well'
+                                  : well.name.trim(),
+                            ),
+                          ),
+                          Chip(
+                            label: Text(
+                              _wellStatusLabel(
+                                statuses[well.id] ?? _wellStatusNotStarted,
+                              ),
+                            ),
+                          ),
+                          if (well.id != job.activeWellId)
+                            TextButton(
+                              onPressed: () => _switchActiveWell(well.id),
+                              child: const Text('Switch'),
+                            ),
+                        ],
+                      ),
+                    ),
+                ],
                 if (isProduction) ...[
                   _buildOverviewValue(
                     'Job Type',
@@ -1260,473 +1823,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                       child: PageView(
                         controller: _page,
                         physics: const NeverScrollableScrollPhysics(),
-                        children: [
-                          _StepPage(title: '1. Company', children: [
-                            InputDecorator(
-                              decoration:
-                                  const InputDecoration(labelText: 'Company'),
-                              child: Text(
-                                  company.trim().isEmpty ? 'None' : company),
-                            ),
-                            const SizedBox(height: 12),
-                            DropdownButtonFormField<String>(
-                              initialValue: jobType,
-                              decoration:
-                                  const InputDecoration(labelText: 'Job Type'),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: JobProfileDefaultsService
-                                      .jobTypeSingleWell,
-                                  child: Text('Single Well'),
-                                ),
-                                DropdownMenuItem(
-                                  value: JobProfileDefaultsService
-                                      .jobTypeMultiWellPad,
-                                  child: Text('Multi-Well / Pad'),
-                                ),
-                              ],
-                              onChanged: (value) {
-                                final nextType =
-                                    _profileDefaults.normalizeJobType(value ??
-                                        JobProfileDefaultsService
-                                            .jobTypeSingleWell);
-                                setState(() {
-                                  jobType = nextType;
-                                  if (jobType ==
-                                          JobProfileDefaultsService
-                                              .jobTypeSingleWell &&
-                                      wells.length != 1) {
-                                    _ensurePerWellCapacity(1);
-                                  }
-                                  if (jobType ==
-                                          JobProfileDefaultsService
-                                              .jobTypeMultiWellPad &&
-                                      wells.isEmpty) {
-                                    _ensurePerWellCapacity(2);
-                                  }
-                                });
-                                _scheduleAutoSave();
-                              },
-                            ),
-                            const SizedBox(height: 14),
-                            const SizedBox(height: 20),
-                            const Text(
-                              'Company controls default labels/sections. Job Type controls one well vs multiple wells. Select active chemicals for Quick Round and reports.',
-                              style: TextStyle(color: Colors.white70),
-                            ),
-                            const SizedBox(height: 14),
-                            const Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                'Chemicals',
-                                style: TextStyle(
-                                  color: Color(0xFFCDA56A),
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            ...JobSetup.chemicalOptions.map(
-                              (chemical) => CheckboxListTile(
-                                value: selectedChemicals.contains(chemical),
-                                title: Text(chemical),
-                                controlAffinity:
-                                    ListTileControlAffinity.leading,
-                                contentPadding: EdgeInsets.zero,
-                                onChanged: (enabled) {
-                                  setState(() {
-                                    if (enabled ?? false) {
-                                      if (!selectedChemicals
-                                          .contains(chemical)) {
-                                        selectedChemicals.add(chemical);
-                                      }
-                                    } else {
-                                      selectedChemicals.remove(chemical);
-                                    }
-                                  });
-                                  _scheduleAutoSave();
-                                },
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                            const Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                'Well Fields',
-                                style: TextStyle(
-                                  color: Color(0xFFCDA56A),
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                for (final field in wellFieldKeys)
-                                  Chip(
-                                    label: Text(field.toUpperCase()),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            const Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                'Active Equipment Sections',
-                                style: TextStyle(
-                                  color: Color(0xFFCDA56A),
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            ..._profileDefaults
-                                .profileForCompany(company)
-                                .optionalSections
-                                .map(
-                                  (section) => CheckboxListTile(
-                                    value: activeEquipmentSections
-                                        .contains(section),
-                                    title: Text(section),
-                                    controlAffinity:
-                                        ListTileControlAffinity.leading,
-                                    contentPadding: EdgeInsets.zero,
-                                    onChanged: (enabled) {
-                                      setState(() {
-                                        if (enabled ?? false) {
-                                          if (!activeEquipmentSections
-                                              .contains(section)) {
-                                            activeEquipmentSections
-                                                .add(section);
-                                          }
-                                        } else {
-                                          activeEquipmentSections
-                                              .remove(section);
-                                        }
-                                      });
-                                      _scheduleAutoSave();
-                                    },
-                                  ),
-                                ),
-                            if (activeEquipmentSections
-                                .contains('FLARE / ECD')) ...[
-                              const SizedBox(height: 8),
-                              const Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  'Flare / ECD Configuration',
-                                  style: TextStyle(
-                                    color: Color(0xFFCDA56A),
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              const Text(
-                                'Temperature (\u00B0F) is required in this section. Gas Rate is optional.',
-                                style: TextStyle(color: Colors.white70),
-                              ),
-                              const SizedBox(height: 6),
-                              CheckboxListTile(
-                                value: flareEcdGasRateEnabled,
-                                title: const Text('Include Gas Rate'),
-                                controlAffinity:
-                                    ListTileControlAffinity.leading,
-                                contentPadding: EdgeInsets.zero,
-                                onChanged: (enabled) {
-                                  setState(() {
-                                    flareEcdGasRateEnabled = enabled ?? true;
-                                  });
-                                  _scheduleAutoSave();
-                                },
-                              ),
-                              DropdownButtonFormField<String>(
-                                initialValue: gasRateSource,
-                                decoration: const InputDecoration(
-                                  labelText: 'Gas Rate Source',
-                                ),
-                                items: const [
-                                  DropdownMenuItem(
-                                    value: _gasRateSourceInstantSpot,
-                                    child: Text('Instant Spot Rate'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: _gasRateSourceAccumulation,
-                                    child: Text('Gas Accumulation'),
-                                  ),
-                                ],
-                                onChanged: (value) {
-                                  if (value == null) return;
-                                  setState(() {
-                                    gasRateSource = value;
-                                  });
-                                  _scheduleAutoSave();
-                                },
-                              ),
-                            ],
-                            const SizedBox(height: 10),
-                            const Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                'Optional Sections',
-                                style: TextStyle(
-                                  color: Color(0xFFCDA56A),
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            CheckboxListTile(
-                              value: includeNotesSection,
-                              title: const Text('Notes'),
-                              controlAffinity: ListTileControlAffinity.leading,
-                              contentPadding: EdgeInsets.zero,
-                              onChanged: (enabled) {
-                                setState(() {
-                                  includeNotesSection = enabled ?? true;
-                                });
-                                _scheduleAutoSave();
-                              },
-                            ),
-                            const SizedBox(height: 24),
-                            _navButtons(),
-                          ]),
-                          _StepPage(title: '2. Job Info', children: [
-                            TextField(
-                              controller: padName,
-                              decoration:
-                                  const InputDecoration(labelText: 'Pad Name'),
-                            ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: notes,
-                              maxLines: 3,
-                              decoration: const InputDecoration(
-                                labelText: 'Notes (Optional)',
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            if (jobType ==
-                                JobProfileDefaultsService.jobTypeSingleWell)
-                              TextField(
-                                controller: leaseName,
-                                decoration: const InputDecoration(
-                                  labelText: 'Lease Name',
-                                ),
-                                onChanged: (value) {
-                                  setState(() {
-                                    _ensurePerWellCapacity(1);
-                                    _setLeaseNameAt(0, value);
-                                  });
-                                  _scheduleAutoSave();
-                                },
-                              )
-                            else ...[
-                              const Text(
-                                'Per-Well Lease Names',
-                                style: TextStyle(
-                                  color: Color(0xFFCDA56A),
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  const Expanded(
-                                    child: Text(
-                                      'Number of Wells',
-                                      style: TextStyle(color: Colors.white70),
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: 110,
-                                    child: TextFormField(
-                                      key: ValueKey(
-                                          'well-count-${wells.length}'),
-                                      initialValue:
-                                          '${wells.length < 2 ? 2 : wells.length}',
-                                      keyboardType: TextInputType.number,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Count',
-                                      ),
-                                      onChanged: (value) {
-                                        final parsed =
-                                            int.tryParse(value.trim()) ?? 2;
-                                        final next = parsed < 2 ? 2 : parsed;
-                                        setState(() {
-                                          _ensurePerWellCapacity(next);
-                                        });
-                                        _scheduleAutoSave();
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              for (int i = 0; i < wells.length; i++) ...[
-                                Text(
-                                  'Well ${i + 1}',
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                TextFormField(
-                                  key: ValueKey('lease-$i'),
-                                  initialValue: i < leaseNames.length
-                                      ? leaseNames[i]
-                                      : '',
-                                  decoration: const InputDecoration(
-                                    labelText: 'Lease Name',
-                                  ),
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _setLeaseNameAt(i, value);
-                                    });
-                                    _scheduleAutoSave();
-                                  },
-                                ),
-                                const SizedBox(height: 12),
-                              ],
-                            ],
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: county,
-                              decoration:
-                                  const InputDecoration(labelText: 'County'),
-                            ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: state,
-                              decoration:
-                                  const InputDecoration(labelText: 'State'),
-                            ),
-                            const SizedBox(height: 12),
-                            DropdownButtonFormField<String>(
-                              initialValue: shift,
-                              decoration:
-                                  const InputDecoration(labelText: 'Shift'),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'Day',
-                                  child: Text('Day'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'Night',
-                                  child: Text('Night'),
-                                ),
-                              ],
-                              onChanged: (value) {
-                                setState(() => shift = value ?? 'Day');
-                                _scheduleAutoSave();
-                              },
-                            ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: dateStarted,
-                              decoration:
-                                  const InputDecoration(labelText: 'Date'),
-                            ),
-                            const SizedBox(height: 24),
-                            _navButtons(),
-                          ]),
-                          _StepPage(title: '3. Wells', children: [
-                            if (jobType ==
-                                JobProfileDefaultsService.jobTypeSingleWell)
-                              const Padding(
-                                padding: EdgeInsets.only(bottom: 10),
-                                child: Text(
-                                  'Single Well selected. Add one well name.',
-                                  style: TextStyle(color: Colors.white70),
-                                ),
-                              )
-                            else
-                              const Padding(
-                                padding: EdgeInsets.only(bottom: 10),
-                                child: Text(
-                                  'Multi-Well / Pad selected. Add all well names for this pad.',
-                                  style: TextStyle(color: Colors.white70),
-                                ),
-                              ),
-                            for (int i = 0; i < wells.length; i++) ...[
-                              TextFormField(
-                                key: ValueKey('well-$i'),
-                                initialValue: wells[i],
-                                decoration: InputDecoration(
-                                  labelText: 'Well ${i + 1} Name',
-                                ),
-                                onChanged: (value) {
-                                  setState(() {
-                                    _setWellNameAt(i, value);
-                                  });
-                                  _scheduleAutoSave();
-                                },
-                              ),
-                              const SizedBox(height: 10),
-                              if (i < leaseNames.length &&
-                                  leaseNames[i].trim().isNotEmpty)
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Text(
-                                    'Lease Name: ${leaseNames[i].trim()}',
-                                    style:
-                                        const TextStyle(color: Colors.white70),
-                                  ),
-                                ),
-                              const SizedBox(height: 12),
-                            ],
-                            const SizedBox(height: 24),
-                            _navButtons(),
-                          ]),
-                          _StepPage(title: '4. Equipment', children: [
-                            _countField('Sand Separators', sandSeparators),
-                            _countField('Plug Catchers', plugCatchers),
-                            _countField('Choke Manifolds', chokeManifolds),
-                            _countField('Line Heaters', lineHeaters),
-                            _countField('Test Units', testUnits),
-                            _countField('ECDs', ecds),
-                            _countField('VRUs', vrus),
-                            _countField('Flares', flares),
-                            _countField('Transfer Pumps', transferPumps),
-                            const SizedBox(height: 24),
-                            _navButtons(),
-                          ]),
-                          _StepPage(title: '5. Tanks', children: [
-                            _countField('Oil Tanks', oilTanks),
-                            WwNumberField(
-                              label: 'Oil Tank Capacity',
-                              controller: oilTankCapacity,
-                            ),
-                            _countField('Water Tanks', waterTanks),
-                            WwNumberField(
-                              label: 'Water Tank Capacity',
-                              controller: waterTankCapacity,
-                            ),
-                            WwNumberField(
-                              label: 'Production Tank Factor (BBL/In)',
-                              controller: productionTankFactor,
-                              allowDecimal: true,
-                            ),
-                            const Text(
-                              'Default tank factor stays 1.67 unless you change it.',
-                              style: TextStyle(color: Colors.white70),
-                            ),
-                            const SizedBox(height: 18),
-                            Card(
-                              child: Padding(
-                                padding: const EdgeInsets.all(14),
-                                child: Text(
-                                  'Summary\n$company\n${_profileDefaults.jobTypeLabel(jobType)}\n${padName.text.trim().isEmpty ? 'No pad entered' : padName.text.trim()}\n${wells.length} well(s)\nChemicals: ${selectedChemicals.isEmpty ? 'None' : selectedChemicals.join(', ')}\nEquipment: ${activeEquipmentSections.isEmpty ? 'None' : activeEquipmentSections.join(', ')}\nOptional Sections: ${includeNotesSection ? 'Notes' : 'None'}\nGas Rate Source: ${gasRateSource == _gasRateSourceInstantSpot ? 'Instant Spot Rate' : 'Gas Accumulation'}\n${_i(sandSeparators) + _i(plugCatchers) + _i(chokeManifolds) + _i(lineHeaters) + _i(testUnits) + _i(ecds) + _i(vrus) + _i(flares) + _i(transferPumps)} equipment item(s)\n${_i(oilTanks) + _i(waterTanks)} tank(s)',
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            _navButtons(finish: true),
-                          ]),
-                        ],
+                        children: _buildProductionSetupPages(),
                       ),
                     ),
                   ],

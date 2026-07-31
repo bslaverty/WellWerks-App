@@ -32,8 +32,9 @@ void main() {
     await tester.tap(find.text('Start Job').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('Chemicals'), findsOneWidget);
-    expect(find.text('Job Type'), findsOneWidget);
+    expect(find.text('1. Job Information'), findsOneWidget);
+    expect(find.text('Multi-Well Pad'), findsOneWidget);
+    expect(find.text('Job Type'), findsNothing);
   });
 
   testWidgets('Build 173 drillout setup hides production-only controls',

@@ -208,10 +208,20 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
 
   OperationsLogWorkflow get _workflow => _resolveWorkflow(_activeJob);
 
+  String get _activeWellId {
+    final job = _activeJob;
+    if (job == null) return '';
+    final preferred = job.activeWellId.trim();
+    if (preferred.isNotEmpty) return preferred;
+    final wells = job.resolvedWellEntries;
+    if (wells.isEmpty) return '';
+    return wells.first.id.trim();
+  }
+
   String get _currentWellName {
     final job = _activeJob;
     if (job == null) return 'No active job';
-    return job.primaryWell.isNotEmpty ? job.primaryWell : job.padName;
+    return job.activeWellName.isNotEmpty ? job.activeWellName : job.padName;
   }
 
   String get _currentStage {
@@ -238,7 +248,14 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   }
 
   List<OperationsLogEntry> get _visibleEntries {
-    return _sortedEntries.where(_matchesFilter).toList(growable: false);
+    final activeWellId = _activeWellId;
+    return _sortedEntries.where((entry) {
+      if (!_matchesFilter(entry)) return false;
+      if (activeWellId.isEmpty) return true;
+      final entryWellId = entry.persistentWellId.trim();
+      if (entryWellId.isEmpty) return true;
+      return entryWellId == activeWellId;
+    }).toList(growable: false);
   }
 
   String _entryTypeValue(OperationsLogEntry entry) {
@@ -375,8 +392,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
             title: widget.title,
             activeJob: job,
             defaultWells: _resolvedWells,
-            initialSelectedWellId:
-                _resolvedWells.isNotEmpty ? _resolvedWells.first.id : '',
+            initialSelectedWellId: _activeWellId,
             initialSelectedWellName: _currentWellName,
             initialStage: _currentStage,
             initialReadingTimestamp: DateTime.now(),
@@ -515,8 +531,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     final entry = await _logService.createLocalEntry(
       workflow: _workflow,
       jobId: job.id,
-      wellId: latest?.persistentWellId ??
-          (_resolvedWells.isNotEmpty ? _resolvedWells.first.id : ''),
+      wellId: latest?.persistentWellId ?? _activeWellId,
       wellName: latest?.wellName ?? _currentWellName,
       readingTimestamp: DateTime.now(),
       entryType: 'stsReached',
@@ -660,8 +675,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     await _logService.appendEventEntry(
       workflow: _workflow,
       jobId: job.id,
-      wellId: latest?.persistentWellId ??
-          (_resolvedWells.isNotEmpty ? _resolvedWells.first.id : ''),
+      wellId: latest?.persistentWellId ?? _activeWellId,
       wellName: latest?.wellName ?? _currentWellName,
       entryType: 'pumpChange',
       timestamp: DateTime.now(),
@@ -724,8 +738,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     await _logService.appendEventEntry(
       workflow: _workflow,
       jobId: job.id,
-      wellId: latest?.persistentWellId ??
-          (_resolvedWells.isNotEmpty ? _resolvedWells.first.id : ''),
+      wellId: latest?.persistentWellId ?? _activeWellId,
       wellName: latest?.wellName ?? _currentWellName,
       entryType: 'note',
       timestamp: DateTime.now(),
@@ -1038,8 +1051,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     final entry = await _logService.appendEventEntry(
       workflow: _workflow,
       jobId: job.id,
-      wellId: latest?.persistentWellId ??
-          (job.wellIds.isEmpty ? '' : job.wellIds.first),
+      wellId: latest?.persistentWellId ?? _activeWellId,
       wellName: latest?.wellName ?? _currentWellName,
       entryType: reportType == 'Text Update' ? 'textUpdate' : 'shiftChange',
       timestamp: DateTime.now(),
