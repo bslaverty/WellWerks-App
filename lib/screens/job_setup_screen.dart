@@ -77,6 +77,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   final wellIds = <String>[];
   final leaseNames = <String>[];
   final wellNameManuallyEdited = <bool>[];
+  final _wellNameControllers = <TextEditingController>[];
+  final _wellNameFocusNodes = <FocusNode>[];
 
   final sandSeparators = TextEditingController(text: '2');
   final plugCatchers = TextEditingController(text: '1');
@@ -182,6 +184,12 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     while (wellNameManuallyEdited.length < normalized) {
       wellNameManuallyEdited.add(false);
     }
+    while (_wellNameControllers.length < normalized) {
+      _wellNameControllers.add(TextEditingController());
+    }
+    while (_wellNameFocusNodes.length < normalized) {
+      _wellNameFocusNodes.add(FocusNode());
+    }
 
     if (wells.length > normalized) {
       wells.removeRange(normalized, wells.length);
@@ -196,6 +204,29 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       wellNameManuallyEdited.removeRange(
           normalized, wellNameManuallyEdited.length);
     }
+    while (_wellNameControllers.length > normalized) {
+      _wellNameControllers.removeLast().dispose();
+    }
+    while (_wellNameFocusNodes.length > normalized) {
+      _wellNameFocusNodes.removeLast().dispose();
+    }
+
+    for (int i = 0; i < normalized; i++) {
+      final nextText = i < wells.length ? wells[i] : '';
+      if (_wellNameControllers[i].text != nextText) {
+        _wellNameControllers[i].text = nextText;
+      }
+    }
+  }
+
+  TextEditingController _wellNameControllerAt(int index) {
+    _ensurePerWellCapacity(index + 1);
+    return _wellNameControllers[index];
+  }
+
+  FocusNode _wellNameFocusNodeAt(int index) {
+    _ensurePerWellCapacity(index + 1);
+    return _wellNameFocusNodes[index];
   }
 
   void _syncWellNameFromLease(int index, {bool force = false}) {
@@ -994,6 +1025,12 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       if (index < wellNameManuallyEdited.length) {
         wellNameManuallyEdited.removeAt(index);
       }
+      if (index < _wellNameControllers.length) {
+        _wellNameControllers.removeAt(index).dispose();
+      }
+      if (index < _wellNameFocusNodes.length) {
+        _wellNameFocusNodes.removeAt(index).dispose();
+      }
       _ensurePerWellCapacity(wells.length);
     });
     _scheduleAutoSave();
@@ -1293,11 +1330,9 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
             controller: leaseName,
             decoration: const InputDecoration(labelText: 'Well Name'),
             onChanged: (value) {
-              setState(() {
-                _ensurePerWellCapacity(1);
-                _setLeaseNameAt(0, value);
-                _setWellNameAt(0, value);
-              });
+              _ensurePerWellCapacity(1);
+              _setLeaseNameAt(0, value);
+              _setWellNameAt(0, value);
               _scheduleAutoSave();
             },
           )
@@ -1324,15 +1359,14 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
               children: [
                 Expanded(
                   child: TextFormField(
-                    key: ValueKey('job-info-well-$i-${wells[i]}'),
-                    initialValue: wells[i],
+                    key: ValueKey('job-info-well-${wellIds[i]}'),
+                    controller: _wellNameControllerAt(i),
+                    focusNode: _wellNameFocusNodeAt(i),
                     decoration:
                         InputDecoration(labelText: 'Well ${i + 1} Name'),
                     onChanged: (value) {
-                      setState(() {
-                        _setWellNameAt(i, value);
-                        _setLeaseNameAt(i, value);
-                      });
+                      _setWellNameAt(i, value);
+                      _setLeaseNameAt(i, value);
                       _scheduleAutoSave();
                     },
                   ),
@@ -1771,6 +1805,12 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     }
     for (final controller in _autoSaveControllers) {
       controller.dispose();
+    }
+    for (final controller in _wellNameControllers) {
+      controller.dispose();
+    }
+    for (final focusNode in _wellNameFocusNodes) {
+      focusNode.dispose();
     }
     super.dispose();
   }
