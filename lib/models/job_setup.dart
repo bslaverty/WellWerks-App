@@ -54,7 +54,7 @@ class JobSetup {
     this.oilTanks = 0,
     this.oilTankCapacity = '400',
     this.waterTanks = 0,
-    this.waterTankCapacity = '500',
+    this.waterTankCapacity = '400',
     this.productionTankFactor = '1.67',
     this.selectedChemicals = const [],
     this.reportTimes = const [

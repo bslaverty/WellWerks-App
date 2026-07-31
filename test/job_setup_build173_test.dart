@@ -141,11 +141,8 @@ void main() {
         .pumpWidget(const MaterialApp(home: ProductionDashboardScreen()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Active Job'), findsWidgets);
-    expect(find.textContaining('Workflow: Production'), findsOneWidget);
-    expect(find.textContaining('Equipment: ECD, VRU'), findsOneWidget);
-    expect(find.textContaining('Equipment: FLARE / ECD'), findsNothing);
-    expect(find.textContaining('Gas Rate Source: Instant Spot Rate'),
-        findsOneWidget);
+    expect(find.textContaining('Production ready'), findsOneWidget);
+    expect(find.text('Open Job Management >'), findsOneWidget);
+    expect(find.textContaining('Workflow: Production'), findsNothing);
   });
 }

@@ -97,7 +97,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   final oilTanks = TextEditingController(text: '4');
   final oilTankCapacity = TextEditingController(text: '400');
   final waterTanks = TextEditingController(text: '6');
-  final waterTankCapacity = TextEditingController(text: '500');
+  final waterTankCapacity = TextEditingController(text: '400');
   final productionTankFactor = TextEditingController(text: '1.67');
 
   final _drilloutWellName = TextEditingController();
@@ -987,7 +987,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     oilTanks.text = '4';
     oilTankCapacity.text = '400';
     waterTanks.text = '6';
-    waterTankCapacity.text = '500';
+    waterTankCapacity.text = '400';
     productionTankFactor.text = '1.67';
   }
 
@@ -1764,14 +1764,14 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
         const SizedBox(height: 12),
         _countField('Oil Tanks', oilTanks),
         WwNumberField(
-          label: 'Oil Tank Capacity',
+          label: 'Oil Tank Capacity (per well)',
           controller: oilTankCapacity,
           onChanged: (_) => _scheduleAutoSave(),
         ),
         const SizedBox(height: 10),
         _countField('Water Tanks', waterTanks),
         WwNumberField(
-          label: 'Water Tank Capacity',
+          label: 'Water Tank Capacity (per well)',
           controller: waterTankCapacity,
           onChanged: (_) => _scheduleAutoSave(),
         ),

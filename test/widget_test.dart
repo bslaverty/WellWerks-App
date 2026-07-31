@@ -593,10 +593,14 @@ void main() {
     await tester.enterText(labeledTextField('Gas Static').first, '300');
     await tester.enterText(labeledTextField('Gas Differential').first, '20');
     await tester.enterText(labeledTextField('Gas Temperature').first, '88');
-    await tester.enterText(labeledTextField('Sand Rate').first, '.5');
+    await tester.enterText(
+        labeledTextField(
+                'Sand Rate (0 None, 1 Trace, 2 Light, 3 Medium, 4 Heavy)')
+            .first,
+        '.5');
 
     await tester.scrollUntilVisible(
-      find.text('Current Water Tank Gauges').first,
+      find.text('Current Water Tank Gauges (Selected Well)').first,
       300,
       scrollable: find.byType(Scrollable).first,
     );
@@ -606,11 +610,14 @@ void main() {
     await tester.enterText(labeledTextField('Current Gauge (in)').at(1), '40');
 
     await tester.enterText(
-        labeledTextField('Water Hauled This Hour').first, '120');
-    await tester.enterText(labeledTextField('Oil Hauled This Hour').first, '0');
+        labeledTextField('Water Hauled This Hour (Selected Well)').first,
+        '120');
     await tester.enterText(
-        labeledTextField('Water Pumped This Hour').first, '35');
-    await tester.enterText(labeledTextField('Oil Pumped This Hour').first, '0');
+        labeledTextField('Oil Hauled This Hour (Selected Well)').first, '0');
+    await tester.enterText(
+        labeledTextField('Water Pumped This Hour (Selected Well)').first, '35');
+    await tester.enterText(
+        labeledTextField('Oil Pumped This Hour (Selected Well)').first, '0');
     await tester.enterText(labeledTextField('Notes').first, 'Flowing steady.');
 
     await tester.ensureVisible(
@@ -633,9 +640,10 @@ void main() {
     await tester.enterText(labeledTextField('Current Gauge (in)').at(0), '60');
     await tester.enterText(labeledTextField('Current Gauge (in)').at(1), '35');
     await tester.enterText(
-        labeledTextField('Water Hauled This Hour').first, '120');
+        labeledTextField('Water Hauled This Hour (Selected Well)').first,
+        '120');
     await tester.enterText(
-        labeledTextField('Water Pumped This Hour').first, '35');
+        labeledTextField('Water Pumped This Hour (Selected Well)').first, '35');
     await tester.ensureVisible(
         find.widgetWithText(FilledButton, 'Save 7 AM Round').first);
     final saveSevenButton = tester.widget<FilledButton>(
@@ -926,7 +934,7 @@ void main() {
     expect(find.textContaining('Shift: Day'), findsOneWidget);
     expect(find.byKey(const Key('production-report-tabs')), findsOneWidget);
     expect(find.text('Actions'), findsOneWidget);
-    expect(find.text('Copy Text Update'), findsOneWidget);
+    expect(find.text('SHIFT HANDOFF'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
 
     await tester.pumpWidget(const MaterialApp(home: TextUpdateScreen()));
@@ -989,13 +997,13 @@ void main() {
 
     expect(find.text('Well 1'), findsWidgets);
     await tester.scrollUntilVisible(
-      find.widgetWithText(FilledButton, 'Copy Text Update'),
+      find.widgetWithText(FilledButton, 'SHIFT HANDOFF'),
       280,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
     final copyReportButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Copy Text Update'),
+      find.widgetWithText(FilledButton, 'SHIFT HANDOFF'),
     );
     expect(copyReportButton.onPressed, isNotNull);
 

@@ -56,11 +56,29 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   JobSetup? _activeJob;
   final List<_HourlyCheckControllers> _controllers = [];
 
-  bool get _showVruSection => _settings.isOptionalSectionEnabled('vru');
-  bool get _showFlareSection => _settings.isOptionalSectionEnabled('flare');
-  bool get _showEcdSection => _settings.isOptionalSectionEnabled('ecd');
+  bool _equipmentSectionSelected(String sectionName) {
+    final activeJob = _activeJob;
+    if (activeJob == null) {
+      return true;
+    }
+    final target = sectionName.trim().toLowerCase();
+    return activeJob.activeEquipmentSections.any(
+      (section) => section.trim().toLowerCase() == target,
+    );
+  }
+
+  bool get _showVruSection =>
+      _settings.isOptionalSectionEnabled('vru') &&
+      _equipmentSectionSelected('VRU');
+  bool get _showFlareSection =>
+      _settings.isOptionalSectionEnabled('flare') &&
+      _equipmentSectionSelected('FLARE / ECD');
+  bool get _showEcdSection =>
+      _settings.isOptionalSectionEnabled('ecd') &&
+      _equipmentSectionSelected('FLARE / ECD');
   bool get _showCompressorSection =>
-      _settings.isOptionalSectionEnabled('compressor');
+      _settings.isOptionalSectionEnabled('compressor') &&
+      _equipmentSectionSelected('Compressor');
   bool get _showInventorySection =>
       _settings.isOptionalSectionEnabled('inventory');
   bool get _showNotesSection => _settings.isOptionalSectionEnabled('notes');
@@ -909,6 +927,39 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     return rounded % 1 == 0
         ? rounded.toStringAsFixed(0)
         : rounded.toStringAsFixed(2);
+  }
+
+  String _sandClassLabel(String rawValue) {
+    final sand = double.tryParse(rawValue.trim()) ?? 0;
+    if (sand <= 0) return 'None';
+    if (sand < 1.5) return 'Trace';
+    if (sand < 2.5) return 'Light';
+    if (sand < 3.5) return 'Medium';
+    return 'Heavy';
+  }
+
+  Widget _sandClassificationLine(String rawValue) {
+    final sand = double.tryParse(rawValue.trim()) ?? 0;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Sand Classification',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
+          Text(
+            '${sand.round()} (${_sandClassLabel(rawValue)})',
+            style: const TextStyle(
+              color: Color(0xFFCDA56A),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   String _timeAtOffset(int offset) {
@@ -2395,6 +2446,11 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           _persistShift();
         },
       ),
+      const SizedBox(height: 8),
+      const Text(
+        'All quick-round values below are for the selected well only.',
+        style: TextStyle(color: Colors.white70),
+      ),
       const SizedBox(height: 12),
       ListTile(
         contentPadding: EdgeInsets.zero,
@@ -2407,8 +2463,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       ),
       const SizedBox(height: 8),
       _field('TBG', controller.tbg, suffix: 'PSI'),
-      _field('ICP', controller.icp, suffix: 'PSI'),
       _field('CSG', controller.csg, suffix: 'PSI'),
+      _field('ICP', controller.icp, suffix: 'PSI'),
       if (_useGasAccumulator)
         _field('Current Gas Accum', controller.currentGasAccum),
       if (!_useGasAccumulator)
@@ -2469,7 +2525,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       const SizedBox(height: 10),
       if (!waterMeterMode)
         _tankGaugeInputs(
-          title: 'Current Water Tank Gauges',
+          title: 'Current Water Tank Gauges (Selected Well)',
           tanks: _shift.inventory.waterTanks,
           entries: controller.waterTankGaugeEntries,
         ),
@@ -2507,7 +2563,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       const SizedBox(height: 10),
       if (!oilMeterMode)
         _tankGaugeInputs(
-          title: 'Current Oil Tank Gauges',
+          title: 'Current Oil Tank Gauges (Selected Well)',
           tanks: _shift.inventory.oilTanks,
           entries: controller.oilTankGaugeEntries,
         ),
@@ -2520,14 +2576,19 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         _field('Current Oil Meter Reading', controller.oilMeterReading),
       ],
       if (_showInventorySection)
-        _field('Water Hauled This Hour', controller.waterHauled, suffix: 'BBL'),
+        _field('Water Hauled This Hour (Selected Well)', controller.waterHauled,
+            suffix: 'BBL'),
       if (_showInventorySection)
-        _field('Oil Hauled This Hour', controller.oilHauled, suffix: 'BBL'),
+        _field('Oil Hauled This Hour (Selected Well)', controller.oilHauled,
+            suffix: 'BBL'),
       if (_showInventorySection)
-        _field('Water Pumped This Hour', controller.waterPumped, suffix: 'BBL'),
+        _field('Water Pumped This Hour (Selected Well)', controller.waterPumped,
+            suffix: 'BBL'),
       if (_showInventorySection)
-        _field('Oil Pumped This Hour', controller.oilPumped, suffix: 'BBL'),
-      _field('Sand Rate', controller.sandRate),
+        _field('Oil Pumped This Hour (Selected Well)', controller.oilPumped,
+            suffix: 'BBL'),
+      _field('Sand Rate (0 None, 1 Trace, 2 Light, 3 Medium, 4 Heavy)',
+          controller.sandRate),
       if (_showNotesSection)
         _field('Notes', controller.notes,
             keyboardType: TextInputType.text, lines: 3),
@@ -2572,6 +2633,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           _baseGasToDisplay(_gas24Hour(index)),
           suffix: _gasUnitLabel,
         ),
+        _sandClassificationLine(controller.sandRate.text),
       ]),
       if (_showEcdSection) _oilCushionSection(index),
     ]);

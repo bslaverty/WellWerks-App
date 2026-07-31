@@ -915,10 +915,10 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
                 dense: true,
                 contentPadding: EdgeInsets.zero,
                 title: Text(
-                  '${_historyTitle(entry)} • ${entry.handoffId.isEmpty ? '-' : entry.handoffId}',
+                  _historyTitle(entry),
                 ),
                 subtitle: Text(
-                  '${DateFormat('MMM d, h:mm a').format(DateTime.tryParse(entry.timestampIso)?.toLocal() ?? DateTime.now())}\n${_historySubtitle(entry)}\nJob: ${entry.sourceJobId.isEmpty ? '-' : entry.sourceJobId}',
+                  '${DateFormat('MMM d, h:mm a').format(DateTime.tryParse(entry.timestampIso)?.toLocal() ?? DateTime.now())}\n${_historySubtitle(entry)}',
                 ),
               ),
           ],

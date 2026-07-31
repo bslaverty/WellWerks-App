@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models/job_setup.dart';
 import '../models/production_shift.dart';
@@ -150,52 +149,8 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
       );
     }
 
-    final wellsText = _activeWells.isEmpty ? '-' : _activeWells.join(' / ');
     final companyName = _activeCompanyName;
     final padName = _activePadName;
-    final activeJob = _activeJob;
-    final setup = activeJob?.drilloutSetup ?? const <String, dynamic>{};
-    final flowPathRaw = (setup['productionFlowPath'] ?? '').toString().trim();
-    final flowPathLabel = flowPathRaw.toLowerCase() == 'ecd' ? 'ECD' : 'Flare';
-    final sections = activeJob?.activeEquipmentSections ?? const <String>[];
-    final equipment = <String>[];
-    for (final section in sections) {
-      final normalized = section.trim();
-      if (normalized.isEmpty) continue;
-      if (normalized == 'FLARE / ECD') {
-        if (!equipment.contains(flowPathLabel)) {
-          equipment.add(flowPathLabel);
-        }
-      } else if (!equipment.contains(normalized)) {
-        equipment.add(normalized);
-      }
-    }
-    final gasRateSourceRaw = (setup['gasRateSource'] ?? '').toString().trim();
-    final gasRateSource = gasRateSourceRaw == 'instantSpotRate'
-        ? 'Instant Spot Rate'
-        : 'Gas Accumulation';
-    final started = activeJob?.startedAt;
-    final startedLabel = started == null
-        ? 'Not started'
-        : DateFormat('MM/dd/yyyy h:mm a').format(started);
-    final status = activeJob?.status.trim().isNotEmpty == true
-        ? activeJob!.status.trim()
-        : 'active';
-    final productionStatus =
-        '${status[0].toUpperCase()}${status.substring(1).toLowerCase()}';
-    final shiftLabel = activeJob?.shift.trim().isNotEmpty == true
-        ? activeJob!.shift.trim()
-        : '-';
-
-    Widget detailLine(String label, String value) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Text(
-          '$label: ${value.trim().isEmpty ? '-' : value}',
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-        ),
-      );
-    }
 
     return Card(
       color: const Color(0xFF17130E),
@@ -206,39 +161,20 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Active Job',
-              style: TextStyle(
-                color: Color(0xFFCDA56A),
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 10),
             Text(
-              companyName.isEmpty ? 'Job in progress' : companyName,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              companyName.isEmpty
+                  ? 'Production ready'
+                  : 'Production ready • $companyName${padName.isEmpty ? '' : ' • $padName'}',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: 10),
-            detailLine('Customer',
-                companyName.isEmpty ? 'Job in progress' : companyName),
-            detailLine('Workflow', 'Production'),
-            detailLine('Pad', padName),
-            detailLine('Configured Wells', wellsText),
-            detailLine('Shift', shiftLabel),
-            detailLine(
-                'Equipment', equipment.isEmpty ? 'None' : equipment.join(', ')),
-            detailLine('Gas Rate Source', gasRateSource),
-            detailLine('Started', startedLabel),
-            detailLine('Production Status', productionStatus),
-            const SizedBox(height: 14),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => _open(context, const JobManagementScreen()),
-                icon: const Icon(Icons.build_circle_outlined),
-                label: const Text('Manage Job >'),
-              ),
+            TextButton.icon(
+              onPressed: () => _open(context, const JobManagementScreen()),
+              icon: const Icon(Icons.build_circle_outlined),
+              label: const Text('Open Job Management >'),
             ),
           ],
         ),
