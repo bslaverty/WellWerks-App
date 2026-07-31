@@ -401,6 +401,13 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     return '$value ${row.chokeType}';
   }
 
+  bool get _flareEcdGasRateEnabled {
+    final setup = _activeJob?.drilloutSetup;
+    final raw = setup?['flareEcdGasRateEnabled'];
+    if (raw is bool) return raw;
+    return true;
+  }
+
   List<ReportField> get _visibleColumns =>
       _layout.reportFields.where((field) => field.included).toList();
 
@@ -424,7 +431,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
 
     switch (key) {
       case 'gasSpotRt':
-        return 'GAS SPOT RT.';
+        return 'GAS RATE';
       case 'diff':
         return 'DIFF';
       case 'stat':
@@ -437,10 +444,10 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         return 'WHT';
       case 'wtrTmp':
         return 'WTR TMP';
-      case 'flareRt':
-        return 'FLARE RT';
-      case 'flarePilotTemp':
-        return 'FLARE PILOT TEMP';
+      case 'flareEcdGasRate':
+        return 'FLARE / ECD GAS RATE';
+      case 'flareEcdTemp':
+        return 'FLARE / ECD TEMP';
       case 'biocide':
         return 'BIOCIDE';
       case 'scavenger':
@@ -497,16 +504,11 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         return _gasString(row.flareRate);
       case 'flarePilotTemp':
         return row.flarePilotTemp;
-      case 'riserTemp':
-        return row.wellheadTemp;
-      case 'riserPl':
-        return '-';
-      case 'clrFlarePilot':
-        return row.flarePilotTemp;
-      case 'clrFlareRt':
+      case 'flareEcdGasRate':
+        if (!_flareEcdGasRateEnabled) return '';
         return _gasString(row.flareRate);
-      case 'clrFlareTemp':
-        return row.gasTemp;
+      case 'flareEcdTemp':
+        return row.flarePilotTemp;
       case 'biocide':
         return row.biocide;
       case 'scavenger':

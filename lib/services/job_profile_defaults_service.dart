@@ -92,10 +92,9 @@ class JobProfileDefaultsService {
   ];
 
   static const List<String> _defaultSections = <String>[
-    'RISER',
-    'CLR FLARE',
+    'FLARE / ECD',
     'VRU',
-    'Notes',
+    'Compressor',
   ];
 
   static const Map<String, String> _continentalReportLabels = <String, String>{
@@ -104,7 +103,7 @@ class JobProfileDefaultsService {
     'chk': 'CHK',
     'bwph': 'H2O',
     'boph': 'OIL',
-    'gasSpotRt': 'SALES Rt',
+    'gasSpotRt': 'GAS RATE',
     'stat': 'STAT',
     'diff': 'DIFF',
     'temp': 'TEMP',
@@ -118,7 +117,7 @@ class JobProfileDefaultsService {
     'csg': 'Csg',
     'bwph': 'Wtr/hr',
     'boph': 'Oil',
-    'gasSpotRt': '24/hr gas rate',
+    'gasSpotRt': 'Gas Rate',
     'prop': 'Sand',
   };
 
@@ -131,7 +130,7 @@ class JobProfileDefaultsService {
     'diff': 'Diff',
     'stat': 'Stat',
     'temp': 'Temp',
-    'gasSpotRt': 'MCF',
+    'gasSpotRt': 'GAS RATE',
     'prop': 'Sand',
   };
 
@@ -141,7 +140,7 @@ class JobProfileDefaultsService {
     'chk': 'CHK',
     'bwph': 'H2O',
     'boph': 'OIL',
-    'gasSpotRt': 'SALES Rt',
+    'gasSpotRt': 'GAS RATE',
     'stat': 'STAT',
     'diff': 'DIFF',
     'temp': 'TEMP',
@@ -155,7 +154,7 @@ class JobProfileDefaultsService {
     'csg': 'CSG',
     'bwph': 'WTR',
     'boph': 'OIL',
-    'gasSpotRt': 'GAS',
+    'gasSpotRt': 'GAS RATE',
     'prop': 'SAND',
   };
 
@@ -168,32 +167,34 @@ class JobProfileDefaultsService {
     'diff': 'Diff',
     'stat': 'Stat',
     'temp': 'Temp',
-    'gasSpotRt': 'MCF',
+    'gasSpotRt': 'GAS RATE',
     'prop': 'Sand',
   };
 
   static const Map<String, List<String>> _continentalEquipmentFields =
       <String, List<String>>{
-    'RISER': <String>['Temp', 'PL'],
-    'CLR FLARE': <String>['Pilot', 'FLARE Rt', 'Temp'],
+    'FLARE / ECD': <String>['Temperature', 'Gas Rate'],
     'VRU': <String>['GAS RT', 'SUCT', 'DISC'],
-    'Notes': <String>['Notes'],
+    'Compressor': <String>['COMP INJ'],
   };
 
   static const Map<String, List<String>> _machEquipmentFields =
       <String, List<String>>{
+    'FLARE / ECD': <String>['Temperature', 'Gas Rate'],
     'VRU': <String>['GAS RT', 'SUCT', 'DISC'],
-    'Notes': <String>['Notes'],
+    'Compressor': <String>['COMP INJ'],
   };
 
   static const Map<String, List<String>> _flywheelEquipmentFields =
       <String, List<String>>{
-    'Notes': <String>['Notes'],
+    'FLARE / ECD': <String>['Temperature', 'Gas Rate'],
+    'Compressor': <String>['COMP INJ'],
   };
 
   static const Map<String, List<String>> _customEquipmentFields =
       <String, List<String>>{
-    'Notes': <String>['Notes'],
+    'FLARE / ECD': <String>['Temperature', 'Gas Rate'],
+    'Compressor': <String>['COMP INJ'],
   };
 
   String normalizeCompany(String company) {
@@ -233,7 +234,7 @@ class JobProfileDefaultsService {
         company: companyContinental,
         wellFieldKeys: _continentalWellFields,
         optionalSections: _defaultSections,
-        defaultActiveSections: <String>['RISER', 'CLR FLARE', 'VRU', 'Notes'],
+        defaultActiveSections: <String>['FLARE / ECD', 'VRU', 'Compressor'],
         reportLabels: _continentalReportLabels,
         textLabels: _continentalTextLabels,
         equipmentSectionFields: _continentalEquipmentFields,
@@ -245,7 +246,7 @@ class JobProfileDefaultsService {
         company: companyMach,
         wellFieldKeys: _machWellFields,
         optionalSections: _defaultSections,
-        defaultActiveSections: <String>['VRU', 'Notes'],
+        defaultActiveSections: <String>['VRU', 'Compressor'],
         reportLabels: _machReportLabels,
         textLabels: _machTextLabels,
         equipmentSectionFields: _machEquipmentFields,
@@ -257,7 +258,7 @@ class JobProfileDefaultsService {
         company: companyFlywheel,
         wellFieldKeys: _flywheelWellFields,
         optionalSections: _defaultSections,
-        defaultActiveSections: <String>['Notes'],
+        defaultActiveSections: <String>['Compressor'],
         reportLabels: _flywheelReportLabels,
         textLabels: _flywheelTextLabels,
         equipmentSectionFields: _flywheelEquipmentFields,
@@ -275,13 +276,13 @@ class JobProfileDefaultsService {
         'prop',
       ],
       optionalSections: _defaultSections,
-      defaultActiveSections: <String>['Notes'],
+      defaultActiveSections: <String>['Compressor'],
       reportLabels: <String, String>{
         'chk': 'CHK',
         'csg': 'CSG',
         'bwph': 'WTR',
         'boph': 'OIL',
-        'gasSpotRt': 'GAS',
+        'gasSpotRt': 'GAS RATE',
         'prop': 'SAND',
       },
       textLabels: <String, String>{
@@ -289,7 +290,7 @@ class JobProfileDefaultsService {
         'csg': 'CSG',
         'bwph': 'WTR',
         'boph': 'OIL',
-        'gasSpotRt': 'GAS',
+        'gasSpotRt': 'GAS RATE',
         'prop': 'SAND',
       },
       equipmentSectionFields: _customEquipmentFields,

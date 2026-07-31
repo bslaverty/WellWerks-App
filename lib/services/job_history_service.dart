@@ -350,7 +350,7 @@ class JobHistoryService {
   String _headerLabel(List<ReportField> fields, String key) {
     switch (key) {
       case 'gasSpotRt':
-        return 'GAS SPOT RT.';
+        return 'GAS RATE';
       case 'diff':
         return 'DIFF';
       case 'stat':
@@ -505,7 +505,7 @@ class JobHistoryService {
       case 'boph':
         return 'BOPH - ${_fmt(row.oilProduction)} BBL/hr';
       case 'gasSpotRt':
-        return 'GAS SPOT RT. ${_fmt(_baseGasToDisplay(shift, row.gas24HourRate))} ${_gasUnitLabel(shift)}';
+        return 'GAS RATE ${_fmt(_baseGasToDisplay(shift, row.gas24HourRate))} ${_gasUnitLabel(shift)}';
       case 'diff':
         return 'DIFF - ${row.gasDifferential.isEmpty ? '-' : row.gasDifferential}"';
       case 'stat':

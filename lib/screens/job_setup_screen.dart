@@ -27,6 +27,9 @@ class JobSetupScreen extends StatefulWidget {
 }
 
 class _JobSetupScreenState extends State<JobSetupScreen> {
+  static const String _gasRateSourceAccumulation = 'gasAccumulation';
+  static const String _gasRateSourceInstantSpot = 'instantSpotRate';
+
   final _storage = JobStorageService();
   final _profileDefaults = JobProfileDefaultsService();
   final _activeCompanyService = ActiveCompanyService.instance;
@@ -47,6 +50,9 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   String jobType = JobProfileDefaultsService.jobTypeSingleWell;
   List<String> wellFieldKeys = const [];
   List<String> activeEquipmentSections = const [];
+  bool includeNotesSection = true;
+  bool flareEcdGasRateEnabled = true;
+  String gasRateSource = _gasRateSourceAccumulation;
   final selectedChemicals = <String>[];
   String shift = 'Day';
   final padName = TextEditingController();
@@ -360,6 +366,11 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     _waterTank1Gauge.text = _legacyString(setup['waterTank1Gauge']);
     _waterTank2Gauge.text = _legacyString(setup['waterTank2Gauge']);
     _sweepTankGauge.text = _legacyString(setup['sweepTankGauge']);
+    flareEcdGasRateEnabled =
+        _legacyBool(setup['flareEcdGasRateEnabled'], fallback: true);
+    includeNotesSection =
+        _legacyBool(setup['includeNotesSection'], fallback: true);
+    gasRateSource = _normalizeGasRateSource(setup['gasRateSource']);
 
     if (_drilloutWellName.text.trim().isEmpty && job.primaryWell.isNotEmpty) {
       _drilloutWellName.text = job.primaryWell;
@@ -369,6 +380,19 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   String _legacyString(dynamic value, {String fallback = ''}) {
     final text = (value ?? '').toString().trim();
     return text.isEmpty ? fallback : text;
+  }
+
+  bool _legacyBool(dynamic value, {bool fallback = false}) {
+    if (value is bool) return value;
+    return fallback;
+  }
+
+  String _normalizeGasRateSource(dynamic value) {
+    final normalized = (value ?? '').toString().trim();
+    if (normalized == _gasRateSourceInstantSpot) {
+      return _gasRateSourceInstantSpot;
+    }
+    return _gasRateSourceAccumulation;
   }
 
   void _resetDrilloutSetupForNewJob() {
@@ -389,6 +413,9 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     _waterTank1Gauge.clear();
     _waterTank2Gauge.clear();
     _sweepTankGauge.clear();
+    flareEcdGasRateEnabled = true;
+    includeNotesSection = true;
+    gasRateSource = _gasRateSourceAccumulation;
   }
 
   Map<String, dynamic> _buildDrilloutSetupPayload() {
@@ -405,6 +432,9 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       'plugNumber': _drilloutPlugNumber.text.trim(),
       'status': _drilloutStatus.text.trim(),
       'coilDepth': _drilloutCoilDepth.text.trim(),
+      'flareEcdGasRateEnabled': flareEcdGasRateEnabled,
+      'includeNotesSection': includeNotesSection,
+      'gasRateSource': gasRateSource,
       'tankConfigurationV1': _tankConfig.toJson(),
     };
 
@@ -569,6 +599,12 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     final existingId = (_activeJob?.wellEntries.isNotEmpty ?? false)
         ? _activeJob!.wellEntries.first.id
         : JobSetup.generateWellId();
+    final mergedSetup =
+        Map<String, dynamic>.from(_activeJob?.drilloutSetup ?? const {});
+    mergedSetup['flareEcdGasRateEnabled'] = flareEcdGasRateEnabled;
+    mergedSetup['includeNotesSection'] = includeNotesSection;
+    mergedSetup['gasRateSource'] = gasRateSource;
+
     return JobSetup(
       company: company.trim(),
       workflow: _workflowStorageValue(),
@@ -602,12 +638,41 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     wellFieldKeys = job.wellFieldKeys.isEmpty
         ? List<String>.from(defaults.wellFieldKeys)
         : List<String>.from(job.wellFieldKeys);
-    activeEquipmentSections = job.activeEquipmentSections.isEmpty
+    final legacySections = job.activeEquipmentSections.isEmpty
         ? List<String>.from(defaults.defaultActiveSections)
         : List<String>.from(job.activeEquipmentSections);
+    final normalizedSections = <String>[];
+    final allowedSections = defaults.optionalSections.toSet();
+    for (final section in legacySections) {
+      final normalized = section.trim();
+      final upper = section.trim().toUpperCase();
+      if (allowedSections.contains(normalized)) {
+        if (!normalizedSections.contains(normalized)) {
+          normalizedSections.add(normalized);
+        }
+        continue;
+      }
+      if (upper.contains('FLARE')) {
+        if (!normalizedSections.contains('FLARE / ECD')) {
+          normalizedSections.add('FLARE / ECD');
+        }
+        continue;
+      }
+      if (upper == 'NOTES') {
+        includeNotesSection = true;
+        continue;
+      }
+    }
+    activeEquipmentSections = normalizedSections;
     selectedChemicals
       ..clear()
       ..addAll(job.selectedChemicals);
+    final setup = job.drilloutSetup;
+    includeNotesSection = _legacyBool(setup['includeNotesSection'],
+        fallback: includeNotesSection);
+    flareEcdGasRateEnabled =
+        _legacyBool(setup['flareEcdGasRateEnabled'], fallback: true);
+    gasRateSource = _normalizeGasRateSource(setup['gasRateSource']);
     shift = job.shift;
     padName.text = job.padName;
     notes.text = job.notes;
@@ -674,6 +739,9 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     final defaults = _profileDefaults.profileForCompany(company);
     wellFieldKeys = List<String>.from(defaults.wellFieldKeys);
     activeEquipmentSections = List<String>.from(defaults.defaultActiveSections);
+    includeNotesSection = true;
+    flareEcdGasRateEnabled = true;
+    gasRateSource = _gasRateSourceAccumulation;
     selectedChemicals
       ..clear()
       ..addAll(const <String>[]);
@@ -751,6 +819,11 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           name: item.value,
         ),
     ];
+    final mergedSetup =
+        Map<String, dynamic>.from(_activeJob?.drilloutSetup ?? const {});
+    mergedSetup['flareEcdGasRateEnabled'] = flareEcdGasRateEnabled;
+    mergedSetup['includeNotesSection'] = includeNotesSection;
+    mergedSetup['gasRateSource'] = gasRateSource;
 
     return JobSetup(
       company: company,
@@ -791,7 +864,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           ? '1.67'
           : productionTankFactor.text.trim(),
       selectedChemicals: List<String>.from(selectedChemicals),
-      drilloutSetup: _activeJob?.drilloutSetup ?? const <String, dynamic>{},
+      drilloutSetup: mergedSetup,
     );
   }
 
@@ -1075,10 +1148,25 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                         : job.selectedChemicals.join(', '),
                   ),
                   _buildOverviewValue(
-                    'Active Sections',
+                    'Active Equipment',
                     job.activeEquipmentSections.isEmpty
                         ? defaults.defaultActiveSections.join(', ')
                         : job.activeEquipmentSections.join(', '),
+                  ),
+                  _buildOverviewValue(
+                    'Optional Sections',
+                    _legacyBool(job.drilloutSetup['includeNotesSection'],
+                            fallback: true)
+                        ? 'Notes'
+                        : 'None',
+                  ),
+                  _buildOverviewValue(
+                    'Gas Rate Source',
+                    _normalizeGasRateSource(
+                                job.drilloutSetup['gasRateSource']) ==
+                            _gasRateSourceInstantSpot
+                        ? 'Instant Spot Rate'
+                        : 'Gas Accumulation',
                   ),
                 ],
                 _buildOverviewValue('Shift', _displayValue(job.shift)),
@@ -1322,6 +1410,86 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                                     },
                                   ),
                                 ),
+                            if (activeEquipmentSections
+                                .contains('FLARE / ECD')) ...[
+                              const SizedBox(height: 8),
+                              const Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'Flare / ECD Configuration',
+                                  style: TextStyle(
+                                    color: Color(0xFFCDA56A),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              const Text(
+                                'Temperature (\u00B0F) is required in this section. Gas Rate is optional.',
+                                style: TextStyle(color: Colors.white70),
+                              ),
+                              const SizedBox(height: 6),
+                              CheckboxListTile(
+                                value: flareEcdGasRateEnabled,
+                                title: const Text('Include Gas Rate'),
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
+                                contentPadding: EdgeInsets.zero,
+                                onChanged: (enabled) {
+                                  setState(() {
+                                    flareEcdGasRateEnabled = enabled ?? true;
+                                  });
+                                  _scheduleAutoSave();
+                                },
+                              ),
+                              DropdownButtonFormField<String>(
+                                initialValue: gasRateSource,
+                                decoration: const InputDecoration(
+                                  labelText: 'Gas Rate Source',
+                                ),
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: _gasRateSourceInstantSpot,
+                                    child: Text('Instant Spot Rate'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: _gasRateSourceAccumulation,
+                                    child: Text('Gas Accumulation'),
+                                  ),
+                                ],
+                                onChanged: (value) {
+                                  if (value == null) return;
+                                  setState(() {
+                                    gasRateSource = value;
+                                  });
+                                  _scheduleAutoSave();
+                                },
+                              ),
+                            ],
+                            const SizedBox(height: 10),
+                            const Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'Optional Sections',
+                                style: TextStyle(
+                                  color: Color(0xFFCDA56A),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            CheckboxListTile(
+                              value: includeNotesSection,
+                              title: const Text('Notes'),
+                              controlAffinity: ListTileControlAffinity.leading,
+                              contentPadding: EdgeInsets.zero,
+                              onChanged: (enabled) {
+                                setState(() {
+                                  includeNotesSection = enabled ?? true;
+                                });
+                                _scheduleAutoSave();
+                              },
+                            ),
                             const SizedBox(height: 24),
                             _navButtons(),
                           ]),
@@ -1407,8 +1575,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                                 ),
                                 const SizedBox(height: 6),
                                 TextFormField(
-                                  key: ValueKey(
-                                      'lease-$i-${i < leaseNames.length ? leaseNames[i] : ''}'),
+                                  key: ValueKey('lease-$i'),
                                   initialValue: i < leaseNames.length
                                       ? leaseNames[i]
                                       : '',
@@ -1486,7 +1653,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                               ),
                             for (int i = 0; i < wells.length; i++) ...[
                               TextFormField(
-                                key: ValueKey('well-$i-${wells[i]}'),
+                                key: ValueKey('well-$i'),
                                 initialValue: wells[i],
                                 decoration: InputDecoration(
                                   labelText: 'Well ${i + 1} Name',
@@ -1552,7 +1719,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
                               child: Padding(
                                 padding: const EdgeInsets.all(14),
                                 child: Text(
-                                  'Summary\n$company\n${_profileDefaults.jobTypeLabel(jobType)}\n${padName.text.trim().isEmpty ? 'No pad entered' : padName.text.trim()}\n${wells.length} well(s)\nChemicals: ${selectedChemicals.isEmpty ? 'None' : selectedChemicals.join(', ')}\nSections: ${activeEquipmentSections.isEmpty ? 'None' : activeEquipmentSections.join(', ')}\n${_i(sandSeparators) + _i(plugCatchers) + _i(chokeManifolds) + _i(lineHeaters) + _i(testUnits) + _i(ecds) + _i(vrus) + _i(flares) + _i(transferPumps)} equipment item(s)\n${_i(oilTanks) + _i(waterTanks)} tank(s)',
+                                  'Summary\n$company\n${_profileDefaults.jobTypeLabel(jobType)}\n${padName.text.trim().isEmpty ? 'No pad entered' : padName.text.trim()}\n${wells.length} well(s)\nChemicals: ${selectedChemicals.isEmpty ? 'None' : selectedChemicals.join(', ')}\nEquipment: ${activeEquipmentSections.isEmpty ? 'None' : activeEquipmentSections.join(', ')}\nOptional Sections: ${includeNotesSection ? 'Notes' : 'None'}\nGas Rate Source: ${gasRateSource == _gasRateSourceInstantSpot ? 'Instant Spot Rate' : 'Gas Accumulation'}\n${_i(sandSeparators) + _i(plugCatchers) + _i(chokeManifolds) + _i(lineHeaters) + _i(testUnits) + _i(ecds) + _i(vrus) + _i(flares) + _i(transferPumps)} equipment item(s)\n${_i(oilTanks) + _i(waterTanks)} tank(s)',
                                 ),
                               ),
                             ),

@@ -51,8 +51,8 @@ class ReportFieldFormatter {
         key: 'oilRate', label: 'Oil', emailLabel: 'Oil Rate', unit: 'bbls/hr'),
     'gasRate': ReportFieldMeta(
         key: 'gasRate',
-        label: 'Sales RT',
-        machLabel: 'Gas',
+        label: 'Gas Rate',
+        machLabel: 'Gas Rate',
         emailLabel: 'Gas Rate',
         unit: 'mcf/d'),
     'diff': ReportFieldMeta(
@@ -134,7 +134,7 @@ class ReportFieldFormatter {
 
     if (email) return '$label: $formattedValue';
     if (company == 'Mach Energy' && field.key == 'gasRate') {
-      return '$formattedValue 24/hr gas rate';
+      return 'Gas Rate- $formattedValue';
     }
     if (company == 'Mach Energy' && field.key == 'choke') {
       return '$label $formattedValue';

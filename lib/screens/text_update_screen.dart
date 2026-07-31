@@ -182,6 +182,22 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
 
   bool get _showEcdSection => _settings.isOptionalSectionEnabled('ecd');
 
+  bool get _showFlareEcdSection => _showFlareSection || _showEcdSection;
+
+  bool get _flareEcdGasRateEnabled {
+    final setup = _activeJob?.drilloutSetup;
+    final raw = setup?['flareEcdGasRateEnabled'];
+    if (raw is bool) return raw;
+    return true;
+  }
+
+  bool get _notesSectionEnabled {
+    final setup = _activeJob?.drilloutSetup;
+    final raw = setup?['includeNotesSection'];
+    if (raw is bool) return raw;
+    return true;
+  }
+
   bool _chemicalSelected(String name) {
     final selected = _activeJob?.selectedChemicals ?? const <String>[];
     return selected.any((item) => item.toLowerCase() == name.toLowerCase());
@@ -328,9 +344,8 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     const flareKeys = {
       'flareRt',
       'flarePilotTemp',
-      'clrFlarePilot',
-      'clrFlareRt',
-      'clrFlareTemp',
+      'flareEcdGasRate',
+      'flareEcdTemp',
     };
     if (!_showVruSection && vruKeys.contains(key)) {
       return '';
@@ -356,7 +371,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
       case 'boph':
         return 'BOPH - ${_wholeFmt(row.oilProduction)} BBL/hr';
       case 'gasSpotRt':
-        return 'GAS SPOT RT. ${_fmt(_baseGasToDisplay(row.gas24HourRate))} $_gasUnitLabel';
+        return 'GAS RATE ${_fmt(_baseGasToDisplay(row.gas24HourRate))} $_gasUnitLabel';
       case 'diff':
         return 'DIFF - ${row.gasDifferential.isEmpty ? '-' : row.gasDifferential}"';
       case 'stat':
@@ -375,16 +390,11 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         return 'FLARE RT - ${row.flareRate.isEmpty ? '-' : _gasString(row.flareRate)} $_gasUnitLabel';
       case 'flarePilotTemp':
         return 'FLARE PILOT TEMP - ${row.flarePilotTemp.isEmpty ? '-' : row.flarePilotTemp}°';
-      case 'riserTemp':
-        return 'RISER TEMP - ${row.wellheadTemp.isEmpty ? '-' : row.wellheadTemp}°';
-      case 'riserPl':
-        return 'RISER PL - -';
-      case 'clrFlarePilot':
-        return 'CLR FLARE PILOT - ${row.flarePilotTemp.isEmpty ? '-' : row.flarePilotTemp}°';
-      case 'clrFlareRt':
-        return 'CLR FLARE Rt - ${row.flareRate.isEmpty ? '-' : _gasString(row.flareRate)} $_gasUnitLabel';
-      case 'clrFlareTemp':
-        return 'CLR FLARE TEMP - ${row.gasTemp.isEmpty ? '-' : row.gasTemp}°';
+      case 'flareEcdTemp':
+        return 'FLARE / ECD TEMP - ${row.flarePilotTemp.isEmpty ? '-' : row.flarePilotTemp}°F';
+      case 'flareEcdGasRate':
+        if (!_flareEcdGasRateEnabled) return '';
+        return 'FLARE / ECD GAS RATE - ${row.flareRate.isEmpty ? '-' : _gasString(row.flareRate)} $_gasUnitLabel';
       case 'biocide':
         final value = _biocideValue(row);
         return value == 'N/A' ? 'BIOCIDE - N/A' : 'BIOCIDE - $value GPD';
@@ -420,13 +430,8 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
       return '';
     }
     if (!_showFlareSection &&
-        const {
-          'flareRt',
-          'flarePilotTemp',
-          'clrFlarePilot',
-          'clrFlareRt',
-          'clrFlareTemp'
-        }.contains(key)) {
+        const {'flareRt', 'flarePilotTemp', 'flareEcdGasRate', 'flareEcdTemp'}
+            .contains(key)) {
       return '';
     }
     switch (key) {
@@ -456,16 +461,11 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         return row.sandRate.isEmpty ? '-' : row.sandRate;
       case 'wht':
         return row.wellheadTemp.isEmpty ? '-' : row.wellheadTemp;
-      case 'riserTemp':
-        return row.wellheadTemp.isEmpty ? '-' : row.wellheadTemp;
-      case 'riserPl':
-        return '-';
-      case 'clrFlarePilot':
+      case 'flareEcdTemp':
         return row.flarePilotTemp.isEmpty ? '-' : row.flarePilotTemp;
-      case 'clrFlareRt':
+      case 'flareEcdGasRate':
+        if (!_flareEcdGasRateEnabled) return '';
         return '${_gasString(row.flareRate)} $_gasUnitLabel';
-      case 'clrFlareTemp':
-        return row.gasTemp.isEmpty ? '-' : row.gasTemp;
       case 'biocide':
         return _biocideValue(row);
       case 'vruGasRt':
@@ -493,11 +493,16 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
       lines.add('OIL: ${_valueForProfileField(row, 'boph')}');
       lines.add('GAS: ${_valueForProfileField(row, 'gasSpotRt')}');
       lines.add('SAND: ${_valueForProfileField(row, 'prop')}');
-      if (_showEcdSection) {
+      if ((activeJob.activeEquipmentSections.contains('FLARE / ECD')) &&
+          _showFlareEcdSection) {
         lines.add('');
-        lines.add('ECD');
-        lines.add('STATUS - ON/OFF');
-        lines.add('TEMP - --');
+        lines.add('FLARE / ECD');
+        lines.add(
+            'Temperature: ${row.flarePilotTemp.isEmpty ? '-' : row.flarePilotTemp} °F');
+        if (_flareEcdGasRateEnabled) {
+          lines.add(
+              'Gas Rate: ${row.flareRate.isEmpty ? '-' : _gasString(row.flareRate)} $_gasUnitLabel');
+        }
       }
       if (i != rows.length - 1) {
         lines.add('');
@@ -581,28 +586,15 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         lines.add('$label: ${_valueForProfileField(row, key)}');
       }
 
-      if (activeSections.contains('RISER')) {
+      if (activeSections.contains('FLARE / ECD') && _showFlareEcdSection) {
         lines.add('');
-        lines.add('RISER');
-        lines.add('Temp: ${row.wellheadTemp.isEmpty ? '-' : row.wellheadTemp}');
-        lines.add('PL: -');
-      }
-
-      if (activeSections.contains('CLR FLARE') && _showFlareSection) {
-        lines.add('');
-        lines.add('CLR FLARE');
+        lines.add('FLARE / ECD');
         lines.add(
-            'Pilot: ${row.flarePilotTemp.isEmpty ? '-' : row.flarePilotTemp}');
-        lines.add(
-            'FLARE Rt: ${row.flareRate.isEmpty ? '-' : _gasString(row.flareRate)} $_gasUnitLabel');
-        lines.add('Temp: ${row.gasTemp.isEmpty ? '-' : row.gasTemp}');
-      }
-
-      if (_showEcdSection) {
-        lines.add('');
-        lines.add('ECD');
-        lines.add('STATUS - ON/OFF');
-        lines.add('TEMP - --');
+            'Temperature: ${row.flarePilotTemp.isEmpty ? '-' : row.flarePilotTemp} °F');
+        if (_flareEcdGasRateEnabled) {
+          lines.add(
+              'Gas Rate: ${row.flareRate.isEmpty ? '-' : _gasString(row.flareRate)} $_gasUnitLabel');
+        }
       }
 
       if (activeSections.contains('VRU') && _showVruSection) {
@@ -614,7 +606,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         lines.add('DISC: ${row.vruDischarge.isEmpty ? '-' : row.vruDischarge}');
       }
 
-      if (activeSections.contains('Notes')) {
+      if (_notesSectionEnabled) {
         lines.add('');
         lines.add('Notes');
         lines.add(row.notes.isEmpty ? '-' : row.notes);

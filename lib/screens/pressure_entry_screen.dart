@@ -65,6 +65,13 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       _settings.isOptionalSectionEnabled('inventory');
   bool get _showNotesSection => _settings.isOptionalSectionEnabled('notes');
 
+  bool get _flareEcdGasRateEnabled {
+    final setup = _activeJob?.drilloutSetup;
+    final raw = setup?['flareEcdGasRateEnabled'];
+    if (raw is bool) return raw;
+    return true;
+  }
+
   static const List<String> _roundTimes = [
     '6 AM',
     '7 AM',
@@ -127,6 +134,19 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     final settings = await _settingsService.load();
     if (activeJob != null && shift.activeJobId != activeJob.id) {
       shift = shift.copyWith(activeJobId: activeJob.id);
+      await _service.saveActiveShift(shift);
+    }
+    final desiredGasMethod = activeJob == null
+        ? shift.inventory.gasCalculationMethod
+        : (activeJob.drilloutSetup['gasRateSource'] == 'instantSpotRate'
+            ? 'manual'
+            : 'accumulator');
+    if (shift.inventory.gasCalculationMethod != desiredGasMethod) {
+      shift = shift.copyWith(
+        inventory: shift.inventory.copyWith(
+          gasCalculationMethod: desiredGasMethod,
+        ),
+      );
       await _service.saveActiveShift(shift);
     }
     _shift = shift;
@@ -1637,7 +1657,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       waterSpecificGravity: data.waterSpecificGravity.trim(),
       wellheadTemp: data.wellheadTemp.trim(),
       waterTemp: data.waterTemp.trim(),
-      flareRate: _showFlareSection ? _storeGasField(data.flareRate) : '',
+      flareRate: (_showFlareSection && _flareEcdGasRateEnabled)
+          ? _storeGasField(data.flareRate)
+          : '',
       flarePilotTemp: _showFlareSection ? data.flarePilotTemp.trim() : '',
       biocide: _chemicalEnabled('Biocide') ? data.biocide.trim() : '',
       scavenger: _chemicalEnabled('Scavenger') ? data.scavenger.trim() : '',
@@ -2149,7 +2171,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       ),
       const SizedBox(height: 8),
       Text(
-        'Gas Setup: ${_shift.inventory.gasUnit.toUpperCase()} • ${_useGasAccumulator ? 'Gas Accumulator' : 'Manual Sales Gas Rate'}',
+        'Gas Setup: ${_shift.inventory.gasUnit.toUpperCase()} • ${_useGasAccumulator ? 'Gas Accumulation' : 'Instant Spot Rate'}',
         style: const TextStyle(color: Colors.white70),
       ),
       const SizedBox(height: 10),
@@ -2373,18 +2395,18 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (_useGasAccumulator)
         _field('Current Gas Accum', controller.currentGasAccum),
       if (!_useGasAccumulator)
-        _field('Sales Gas Rate', controller.salesGasRate,
-            suffix: _gasUnitLabel),
+        _field('Gas Rate', controller.salesGasRate, suffix: _gasUnitLabel),
       _field('Gas Static', controller.gasStatic, suffix: 'PSI'),
       _field('Gas Differential', controller.gasDifferential, suffix: 'PSI'),
       _field('Gas Temperature', controller.gasTemp, suffix: '°'),
       _field('Water Specific Gravity', controller.waterSpecificGravity),
       _field('Wellhead Temperature', controller.wellheadTemp, suffix: '°'),
       _field('Water Temperature', controller.waterTemp, suffix: '°'),
+      if (_showFlareSection && _flareEcdGasRateEnabled)
+        _field('Flare / ECD Gas Rate', controller.flareRate,
+            suffix: _gasUnitLabel),
       if (_showFlareSection)
-        _field('Flare Rate', controller.flareRate, suffix: _gasUnitLabel),
-      if (_showFlareSection)
-        _field('Flare Pilot Temperature', controller.flarePilotTemp,
+        _field('Flare / ECD Temperature', controller.flarePilotTemp,
             suffix: '°'),
       if (_chemicalEnabled('Biocide'))
         _field('Biocide', controller.biocide, suffix: 'GPD'),
