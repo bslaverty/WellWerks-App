@@ -1058,7 +1058,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   Widget _sandClassificationLine(String rawValue) {
-    final sand = double.tryParse(rawValue.trim()) ?? 0;
+    final label = _sandClassLabel(rawValue);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -1070,7 +1070,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
             ),
           ),
           Text(
-            '${sand.round()} (${_sandClassLabel(rawValue)})',
+            label,
             style: const TextStyle(
               color: Color(0xFFCDA56A),
               fontWeight: FontWeight.w700,
@@ -2185,10 +2185,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     final nextSelectedTypes =
         Map<String, String>.from(_shift.wellSelectedChokeTypes);
     for (final row in rows) {
-      if (row.choke.trim().isEmpty) {
-        nextSelectedChokes.remove(row.well);
-        nextSelectedTypes.remove(row.well);
-      } else {
+      if (row.choke.trim().isNotEmpty) {
         nextSelectedChokes[row.well] = row.choke.trim();
         nextSelectedTypes[row.well] = row.chokeType;
       }
@@ -2259,14 +2256,33 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     if (_activeHourIndex >= _controllers.length - 1) {
       return;
     }
-    setState(() => _activeHourIndex += 1);
+    final nextIndex = _activeHourIndex + 1;
+    _applySavedChokeDefaultsToHour(nextIndex);
+    setState(() => _activeHourIndex = nextIndex);
   }
 
   void _goToPreviousHour() {
     if (_activeHourIndex <= 0) {
       return;
     }
-    setState(() => _activeHourIndex -= 1);
+    final previousIndex = _activeHourIndex - 1;
+    _applySavedChokeDefaultsToHour(previousIndex);
+    setState(() => _activeHourIndex = previousIndex);
+  }
+
+  void _applySavedChokeDefaultsToHour(int hourIndex) {
+    if (hourIndex < 0 || hourIndex >= _controllers.length) return;
+    final controller = _controllers[hourIndex];
+    for (final well in _activeWells) {
+      final savedChoke = _selectedChokeForWell(well).trim();
+      if (savedChoke.isEmpty) continue;
+      final savedType = _selectedChokeTypeForWell(well);
+      controller.applyChokeDefaultForWell(
+        well,
+        chokeValue: savedChoke,
+        chokeTypeValue: savedType,
+      );
+    }
   }
 
   Widget _hourNavigationControls() {
@@ -3728,6 +3744,32 @@ class _HourlyCheckControllers {
         ProductionWellCheckData(chokeType: nextChokeType);
     well = nextWell;
     _loadWellData(nextData, nextChokeType);
+  }
+
+  void applyChokeDefaultForWell(
+    String targetWell, {
+    required String chokeValue,
+    required String chokeTypeValue,
+  }) {
+    if (chokeValue.trim().isEmpty) return;
+    _wellDataByName[well] = _snapshotCurrentWellData();
+
+    final existing =
+        _wellDataByName[targetWell] ?? const ProductionWellCheckData();
+    if (existing.choke.trim().isNotEmpty) return;
+
+    final updated = ProductionWellCheckData.fromJson({
+      ...existing.toJson(),
+      'choke': chokeValue.trim(),
+      'chokeType':
+          chokeTypeValue.trim().isEmpty ? 'ADJ' : chokeTypeValue.trim(),
+    });
+    _wellDataByName[targetWell] = updated;
+
+    if (targetWell == well) {
+      _loadWellData(updated,
+          chokeTypeValue.trim().isEmpty ? 'ADJ' : chokeTypeValue.trim());
+    }
   }
 
   ProductionWellCheckData dataForWell(String targetWell, String chokeType) {

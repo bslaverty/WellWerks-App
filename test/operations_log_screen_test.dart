@@ -276,7 +276,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
-      find.text('Generate Shift Update'),
+      find.byKey(const Key('operations-log-action-generate-shift-update')),
       250,
       scrollable: find.byType(Scrollable).first,
     );

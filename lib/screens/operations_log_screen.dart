@@ -1027,8 +1027,10 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       if (subtitle.trim().isNotEmpty) {
         lines.add(subtitle);
       }
-      if (entry.generatedText.trim().isNotEmpty) {
-        lines.add(entry.generatedText.trim());
+      final generated = entry.generatedText.trim();
+      if (generated.isNotEmpty &&
+          (subtitle.trim().isEmpty || !generated.contains(subtitle.trim()))) {
+        lines.add(generated);
       }
       lines.add('');
     }
@@ -1114,7 +1116,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Shift Update Generated'),
+        title: const Text('Shift Change Text Preview'),
         content: SizedBox(
           width: 520,
           child: SingleChildScrollView(
@@ -1150,7 +1152,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Preview Text'),
+        title: const Text('Text Update Preview'),
         content: SizedBox(
           width: 520,
           child: SingleChildScrollView(
@@ -3333,47 +3335,42 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    FilledButton.tonalIcon(
-                      key: const Key(
-                          'operations-log-action-generate-shift-update'),
-                      onPressed: _generateShiftUpdateAction,
-                      icon: const Icon(Icons.text_snippet_outlined),
-                      label: const Text('Generate Shift Update'),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.tonalIcon(
-                      key: const Key('operations-log-action-preview-text'),
-                      onPressed: _previewTextAction,
-                      icon: const Icon(Icons.preview_outlined),
-                      label: const Text('Preview Text'),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.tonalIcon(
-                      key: const Key('operations-log-action-copy-update'),
-                      onPressed: _copyUpdateAction,
-                      icon: const Icon(Icons.copy_outlined),
-                      label: const Text('Copy Update'),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.tonalIcon(
-                      key: const Key('operations-log-action-share'),
-                      onPressed: _shareUpdateAction,
-                      icon: const Icon(Icons.share_outlined),
-                      label: const Text('Share'),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.tonalIcon(
-                      key: const Key('operations-log-action-export'),
-                      onPressed: _exportTimelineAction,
-                      icon: const Icon(Icons.ios_share),
-                      label: const Text('Export'),
-                    ),
-                  ],
-                ),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.tonalIcon(
+                    key: const Key(
+                        'operations-log-action-generate-shift-update'),
+                    onPressed: _generateShiftUpdateAction,
+                    icon: const Icon(Icons.swap_horiz),
+                    label: const Text('Shift Change Text'),
+                  ),
+                  FilledButton.tonalIcon(
+                    key: const Key('operations-log-action-preview-text'),
+                    onPressed: _previewTextAction,
+                    icon: const Icon(Icons.preview_outlined),
+                    label: const Text('Preview Text Update'),
+                  ),
+                  FilledButton.tonalIcon(
+                    key: const Key('operations-log-action-copy-update'),
+                    onPressed: _copyUpdateAction,
+                    icon: const Icon(Icons.copy_outlined),
+                    label: const Text('Copy Text Update'),
+                  ),
+                  FilledButton.tonalIcon(
+                    key: const Key('operations-log-action-share'),
+                    onPressed: _shareUpdateAction,
+                    icon: const Icon(Icons.share_outlined),
+                    label: const Text('Share Text Update'),
+                  ),
+                  FilledButton.tonalIcon(
+                    key: const Key('operations-log-action-export'),
+                    onPressed: _exportTimelineAction,
+                    icon: const Icon(Icons.ios_share),
+                    label: const Text('Export PDF'),
+                  ),
+                ],
               ),
             ],
           ),

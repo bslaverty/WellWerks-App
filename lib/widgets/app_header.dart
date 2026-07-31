@@ -152,7 +152,7 @@ class _ActiveJobModeBannerState extends State<_ActiveJobModeBanner> {
     final company = job.company.trim().isEmpty ? '-' : job.company.trim();
     final well = job.primaryWell.trim();
     final pad = job.padName.trim();
-    final middle = well.isNotEmpty ? well : (pad.isNotEmpty ? pad : '-');
+    final middle = pad.isNotEmpty ? pad : (well.isNotEmpty ? well : '-');
     return '$company • $middle';
   }
 

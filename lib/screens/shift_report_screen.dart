@@ -17,7 +17,9 @@ import '../services/report_profile_service.dart';
 import '../utils/choke_parsing.dart';
 import '../utils/production_day.dart';
 import '../widgets/app_header.dart';
+import 'production_shift_change_screen.dart';
 import 'shift_handoff_screen.dart';
+import 'text_update_screen.dart';
 
 class ShiftReportScreen extends StatefulWidget {
   const ShiftReportScreen({super.key});
@@ -311,12 +313,11 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
 
   String _sandRateDisplay(String value) {
     final sand = double.tryParse(value.trim()) ?? 0;
-    final label = sand <= 0
+    return sand <= 0
         ? 'None'
         : (sand < 1.5
             ? 'Trace'
             : (sand < 2.5 ? 'Light' : (sand < 3.5 ? 'Medium' : 'Heavy')));
-    return '${sand.round()} ($label)';
   }
 
   String _coolingDeltaDisplay(double value) {
@@ -689,6 +690,20 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   Future<void> _openHandoffFromActions() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const ShiftHandoffScreen()),
+    );
+    await _load();
+  }
+
+  Future<void> _openTextUpdateFromActions() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const TextUpdateScreen()),
+    );
+    await _load();
+  }
+
+  Future<void> _openShiftChangeFromActions() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ProductionShiftChangeScreen()),
     );
     await _load();
   }
@@ -1688,6 +1703,18 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
                       label: 'SHIFT HANDOFF',
                       icon: Icons.compare_arrows,
                       onPressed: disabled ? null : _openHandoffFromActions,
+                    ),
+                    _actionButton(
+                      keyName: 'production-report-action-text-update',
+                      label: 'TEXT UPDATE',
+                      icon: Icons.sms_outlined,
+                      onPressed: disabled ? null : _openTextUpdateFromActions,
+                    ),
+                    _actionButton(
+                      keyName: 'production-report-action-shift-change',
+                      label: 'SHIFT CHANGE',
+                      icon: Icons.change_circle_outlined,
+                      onPressed: disabled ? null : _openShiftChangeFromActions,
                     ),
                     _actionButton(
                       keyName: 'production-report-action-share',
