@@ -141,6 +141,18 @@ class JobSetup {
 
   String get primaryWell => activeWellName;
 
+  List<String> get resolvedActiveEquipmentSections {
+    if (activeEquipmentSections.isNotEmpty) {
+      return activeEquipmentSections;
+    }
+
+    final inferred = <String>[];
+    if (vrus > 0) inferred.add('VRU');
+    if (flares > 0 || ecds > 0) inferred.add('FLARE / ECD');
+    if (transferPumps > 0) inferred.add('Transfer Pump');
+    return inferred;
+  }
+
   static bool isPlaceholderWellName(String value) {
     final trimmed = value.trim();
     if (trimmed.isEmpty) return true;

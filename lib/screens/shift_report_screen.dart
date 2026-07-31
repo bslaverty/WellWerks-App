@@ -347,6 +347,30 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     return '${sand.round()} ($label)';
   }
 
+  String _coolingDeltaDisplay(double value) {
+    return _fmt(value);
+  }
+
+  bool _equipmentSectionSelected(String sectionName) {
+    final activeJob = _activeJob;
+    if (activeJob == null) return true;
+    final target = sectionName.trim().toLowerCase();
+    return activeJob.resolvedActiveEquipmentSections.any(
+      (section) => section.trim().toLowerCase() == target,
+    );
+  }
+
+  bool get _showVruSection => _equipmentSectionSelected('VRU');
+  bool get _showFlareSection => _equipmentSectionSelected('FLARE / ECD');
+  bool get _showGasCoolerSection => _equipmentSectionSelected('Gas Cooler');
+  bool get _showWaterCoolerSection => _equipmentSectionSelected('Water Cooler');
+  bool get _showCompressorSection => _equipmentSectionSelected('Compressor');
+  bool get _showNotesSection {
+    final raw = _activeJob?.drilloutSetup['includeNotesSection'];
+    if (raw is bool) return raw;
+    return true;
+  }
+
   List<ProductionReportRow> _rowsForWell(String well) {
     final rows = _activeJobRows.where((row) => row.well == well).toList()
       ..sort((a, b) => a.hourIndex.compareTo(b.hourIndex));
@@ -403,15 +427,44 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     return true;
   }
 
-  List<ReportField> get _visibleColumns =>
-      _layout.reportFields.where((field) => field.included).toList();
+  static const List<String> _productionFieldOrder = <String>[
+    'time',
+    'wellName',
+    'chk',
+    'tbg',
+    'csg',
+    'icp',
+    'stat',
+    'diff',
+    'temp',
+    'gasSpotRt',
+    'waterGaugeText',
+    'oilGaugeText',
+    'bwph',
+    'boph',
+    'gasCoolerInTemp',
+    'gasCoolerOutTemp',
+    'gasCoolingDelta',
+    'waterCoolerInTemp',
+    'waterCoolerOutTemp',
+    'waterCoolingDelta',
+    'flareEcdTemp',
+    'flareEcdGasRate',
+    'vruGasRt',
+    'vruSuct',
+    'vruDisc',
+    'compressorInj',
+    'biocide',
+    'scavenger',
+    'defoamer',
+    'scaleInhibitor',
+    'prop',
+    'propRate',
+    'notes',
+  ];
 
   List<String> get _visibleFieldKeys {
-    final activeJob = _activeJob;
-    if (activeJob != null && activeJob.wellFieldKeys.isNotEmpty) {
-      return List<String>.from(activeJob.wellFieldKeys);
-    }
-    return _visibleColumns.map((field) => field.key).toList();
+    return _productionFieldOrder;
   }
 
   String _headerLabel(String key) {
@@ -435,6 +488,24 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         return 'TEMP';
       case 'prop':
         return 'PROP';
+      case 'propRate':
+        return 'PROP / SAND RATE';
+      case 'waterGaugeText':
+        return 'WATER TANK READINGS';
+      case 'oilGaugeText':
+        return 'OIL TANK READINGS';
+      case 'gasCoolerInTemp':
+        return 'GAS IN TEMP';
+      case 'gasCoolerOutTemp':
+        return 'GAS OUT TEMP';
+      case 'gasCoolingDelta':
+        return 'GAS COOLING DELTA';
+      case 'waterCoolerInTemp':
+        return 'WATER IN TEMP';
+      case 'waterCoolerOutTemp':
+        return 'WATER OUT TEMP';
+      case 'waterCoolingDelta':
+        return 'WATER COOLING DELTA';
       case 'wht':
         return 'WHT';
       case 'wtrTmp':
@@ -471,6 +542,8 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         return row.well;
       case 'csg':
         return row.csg;
+      case 'tbg':
+        return row.tbg;
       case 'icp':
         return row.icp;
       case 'chk':
@@ -487,8 +560,30 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         return row.gasStatic;
       case 'temp':
         return row.gasTemp;
+      case 'waterGaugeText':
+        return row.waterGaugeText;
+      case 'oilGaugeText':
+        return row.oilGaugeText;
+      case 'gasCoolerInTemp':
+        return _showGasCoolerSection ? row.gasCoolerInTemp : '';
+      case 'gasCoolerOutTemp':
+        return _showGasCoolerSection ? row.gasCoolerOutTemp : '';
+      case 'gasCoolingDelta':
+        return _showGasCoolerSection
+            ? _coolingDeltaDisplay(row.gasCoolingDelta)
+            : '';
+      case 'waterCoolerInTemp':
+        return _showWaterCoolerSection ? row.waterCoolerInTemp : '';
+      case 'waterCoolerOutTemp':
+        return _showWaterCoolerSection ? row.waterCoolerOutTemp : '';
+      case 'waterCoolingDelta':
+        return _showWaterCoolerSection
+            ? _coolingDeltaDisplay(row.waterCoolingDelta)
+            : '';
       case 'prop':
         return _sandRateDisplay(row.sandRate);
+      case 'propRate':
+        return row.sandOptionalRate;
       case 'h2oSg':
         return row.waterSpecificGravity;
       case 'wht':
@@ -500,9 +595,11 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       case 'flarePilotTemp':
         return row.flarePilotTemp;
       case 'flareEcdGasRate':
+        if (!_showFlareSection) return '';
         if (!_flareEcdGasRateEnabled) return '';
         return _gasString(row.flareRate);
       case 'flareEcdTemp':
+        if (!_showFlareSection) return '';
         return row.flarePilotTemp;
       case 'biocide':
         return row.biocide;
@@ -513,18 +610,25 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       case 'scaleInhibitor':
         return row.scaleInhibitor;
       case 'vruGasRt':
+        if (!_showVruSection) return '';
         return _gasString(row.vruGasRate);
       case 'vruSuct':
+        if (!_showVruSection) return '';
         return row.vruSuction;
       case 'vruDisc':
+        if (!_showVruSection) return '';
         return row.vruDischarge;
       case 'compressorInj':
+        if (!_showCompressorSection) return '';
         return _gasString(row.compressorInjection);
       case 'vruSuction':
+        if (!_showVruSection) return '';
         return row.vruSuction;
       case 'vruDischarge':
+        if (!_showVruSection) return '';
         return row.vruDischarge;
       case 'notes':
+        if (!_showNotesSection) return '';
         return row.notes;
       default:
         return '';

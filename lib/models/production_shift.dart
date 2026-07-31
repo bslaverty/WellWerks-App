@@ -619,6 +619,10 @@ class ProductionWellCheckData {
     this.waterSpecificGravity = '',
     this.wellheadTemp = '',
     this.waterTemp = '',
+    this.gasCoolerInTemp = '',
+    this.gasCoolerOutTemp = '',
+    this.waterCoolerInTemp = '',
+    this.waterCoolerOutTemp = '',
     this.flareRate = '',
     this.flarePilotTemp = '',
     this.biocide = '',
@@ -644,6 +648,7 @@ class ProductionWellCheckData {
     this.waterPumped = '',
     this.oilPumped = '',
     this.sandRate = '',
+    this.sandOptionalRate = '',
     this.notes = '',
     this.beginningOilInventory = '',
     this.expectedOilInventory = '',
@@ -693,6 +698,10 @@ class ProductionWellCheckData {
       waterSpecificGravity: json['waterSpecificGravity'] as String? ?? '',
       wellheadTemp: json['wellheadTemp'] as String? ?? '',
       waterTemp: json['waterTemp'] as String? ?? '',
+      gasCoolerInTemp: json['gasCoolerInTemp'] as String? ?? '',
+      gasCoolerOutTemp: json['gasCoolerOutTemp'] as String? ?? '',
+      waterCoolerInTemp: json['waterCoolerInTemp'] as String? ?? '',
+      waterCoolerOutTemp: json['waterCoolerOutTemp'] as String? ?? '',
       flareRate: json['flareRate'] as String? ?? '',
       flarePilotTemp: json['flarePilotTemp'] as String? ?? '',
       biocide: json['biocide'] as String? ?? '',
@@ -722,6 +731,7 @@ class ProductionWellCheckData {
       waterPumped: json['waterPumped'] as String? ?? '',
       oilPumped: json['oilPumped'] as String? ?? '',
       sandRate: json['sandRate'] as String? ?? '',
+      sandOptionalRate: json['sandOptionalRate'] as String? ?? '',
       notes: json['notes'] as String? ?? '',
       beginningOilInventory: json['beginningOilInventory'] as String? ?? '',
       expectedOilInventory: json['expectedOilInventory'] as String? ?? '',
@@ -745,6 +755,10 @@ class ProductionWellCheckData {
       waterSpecificGravity: check.waterSpecificGravity,
       wellheadTemp: check.wellheadTemp,
       waterTemp: check.waterTemp,
+      gasCoolerInTemp: check.gasCoolerInTemp,
+      gasCoolerOutTemp: check.gasCoolerOutTemp,
+      waterCoolerInTemp: check.waterCoolerInTemp,
+      waterCoolerOutTemp: check.waterCoolerOutTemp,
       flareRate: check.flareRate,
       flarePilotTemp: check.flarePilotTemp,
       biocide: check.biocide,
@@ -772,6 +786,7 @@ class ProductionWellCheckData {
       waterPumped: check.waterPumped,
       oilPumped: check.oilPumped,
       sandRate: check.sandRate,
+      sandOptionalRate: check.sandOptionalRate,
       notes: check.notes,
       beginningOilInventory: '',
       expectedOilInventory: '',
@@ -793,6 +808,10 @@ class ProductionWellCheckData {
   final String waterSpecificGravity;
   final String wellheadTemp;
   final String waterTemp;
+  final String gasCoolerInTemp;
+  final String gasCoolerOutTemp;
+  final String waterCoolerInTemp;
+  final String waterCoolerOutTemp;
   final String flareRate;
   final String flarePilotTemp;
   final String biocide;
@@ -818,6 +837,7 @@ class ProductionWellCheckData {
   final String waterPumped;
   final String oilPumped;
   final String sandRate;
+  final String sandOptionalRate;
   final String notes;
   final String beginningOilInventory;
   final String expectedOilInventory;
@@ -839,6 +859,10 @@ class ProductionWellCheckData {
       'waterSpecificGravity': waterSpecificGravity,
       'wellheadTemp': wellheadTemp,
       'waterTemp': waterTemp,
+      'gasCoolerInTemp': gasCoolerInTemp,
+      'gasCoolerOutTemp': gasCoolerOutTemp,
+      'waterCoolerInTemp': waterCoolerInTemp,
+      'waterCoolerOutTemp': waterCoolerOutTemp,
       'flareRate': flareRate,
       'flarePilotTemp': flarePilotTemp,
       'biocide': biocide,
@@ -867,6 +891,7 @@ class ProductionWellCheckData {
       'waterPumped': waterPumped,
       'oilPumped': oilPumped,
       'sandRate': sandRate,
+      'sandOptionalRate': sandOptionalRate,
       'notes': notes,
       'beginningOilInventory': beginningOilInventory,
       'expectedOilInventory': expectedOilInventory,
@@ -899,6 +924,10 @@ class ProductionHourlyCheck {
     this.waterSpecificGravity = '',
     this.wellheadTemp = '',
     this.waterTemp = '',
+    this.gasCoolerInTemp = '',
+    this.gasCoolerOutTemp = '',
+    this.waterCoolerInTemp = '',
+    this.waterCoolerOutTemp = '',
     this.flareRate = '',
     this.flarePilotTemp = '',
     this.biocide = '',
@@ -924,6 +953,7 @@ class ProductionHourlyCheck {
     this.waterPumped = '',
     this.oilPumped = '',
     this.sandRate = '',
+    this.sandOptionalRate = '',
     this.notes = '',
   });
 
@@ -982,6 +1012,10 @@ class ProductionHourlyCheck {
       waterSpecificGravity: json['waterSpecificGravity'] as String? ?? '',
       wellheadTemp: json['wellheadTemp'] as String? ?? '',
       waterTemp: json['waterTemp'] as String? ?? '',
+      gasCoolerInTemp: json['gasCoolerInTemp'] as String? ?? '',
+      gasCoolerOutTemp: json['gasCoolerOutTemp'] as String? ?? '',
+      waterCoolerInTemp: json['waterCoolerInTemp'] as String? ?? '',
+      waterCoolerOutTemp: json['waterCoolerOutTemp'] as String? ?? '',
       flareRate: json['flareRate'] as String? ?? '',
       flarePilotTemp: json['flarePilotTemp'] as String? ?? '',
       biocide: json['biocide'] as String? ?? '',
@@ -1014,6 +1048,7 @@ class ProductionHourlyCheck {
       waterPumped: json['waterPumped'] as String? ?? '',
       oilPumped: json['oilPumped'] as String? ?? '',
       sandRate: json['sandRate'] as String? ?? '',
+      sandOptionalRate: json['sandOptionalRate'] as String? ?? '',
       notes: json['notes'] as String? ?? '',
     );
   }
@@ -1035,6 +1070,10 @@ class ProductionHourlyCheck {
   final String waterSpecificGravity;
   final String wellheadTemp;
   final String waterTemp;
+  final String gasCoolerInTemp;
+  final String gasCoolerOutTemp;
+  final String waterCoolerInTemp;
+  final String waterCoolerOutTemp;
   final String flareRate;
   final String flarePilotTemp;
   final String biocide;
@@ -1060,6 +1099,7 @@ class ProductionHourlyCheck {
   final String waterPumped;
   final String oilPumped;
   final String sandRate;
+  final String sandOptionalRate;
   final String notes;
 
   ProductionHourlyCheck copyWith({
@@ -1080,6 +1120,10 @@ class ProductionHourlyCheck {
     String? waterSpecificGravity,
     String? wellheadTemp,
     String? waterTemp,
+    String? gasCoolerInTemp,
+    String? gasCoolerOutTemp,
+    String? waterCoolerInTemp,
+    String? waterCoolerOutTemp,
     String? flareRate,
     String? flarePilotTemp,
     String? biocide,
@@ -1105,6 +1149,7 @@ class ProductionHourlyCheck {
     String? waterPumped,
     String? oilPumped,
     String? sandRate,
+    String? sandOptionalRate,
     String? notes,
   }) {
     return ProductionHourlyCheck(
@@ -1127,6 +1172,10 @@ class ProductionHourlyCheck {
       waterSpecificGravity: waterSpecificGravity ?? this.waterSpecificGravity,
       wellheadTemp: wellheadTemp ?? this.wellheadTemp,
       waterTemp: waterTemp ?? this.waterTemp,
+      gasCoolerInTemp: gasCoolerInTemp ?? this.gasCoolerInTemp,
+      gasCoolerOutTemp: gasCoolerOutTemp ?? this.gasCoolerOutTemp,
+      waterCoolerInTemp: waterCoolerInTemp ?? this.waterCoolerInTemp,
+      waterCoolerOutTemp: waterCoolerOutTemp ?? this.waterCoolerOutTemp,
       flareRate: flareRate ?? this.flareRate,
       flarePilotTemp: flarePilotTemp ?? this.flarePilotTemp,
       biocide: biocide ?? this.biocide,
@@ -1158,6 +1207,7 @@ class ProductionHourlyCheck {
       waterPumped: waterPumped ?? this.waterPumped,
       oilPumped: oilPumped ?? this.oilPumped,
       sandRate: sandRate ?? this.sandRate,
+      sandOptionalRate: sandOptionalRate ?? this.sandOptionalRate,
       notes: notes ?? this.notes,
     );
   }
@@ -1183,6 +1233,10 @@ class ProductionHourlyCheck {
       'waterSpecificGravity': waterSpecificGravity,
       'wellheadTemp': wellheadTemp,
       'waterTemp': waterTemp,
+      'gasCoolerInTemp': gasCoolerInTemp,
+      'gasCoolerOutTemp': gasCoolerOutTemp,
+      'waterCoolerInTemp': waterCoolerInTemp,
+      'waterCoolerOutTemp': waterCoolerOutTemp,
       'flareRate': flareRate,
       'flarePilotTemp': flarePilotTemp,
       'biocide': biocide,
@@ -1216,6 +1270,7 @@ class ProductionHourlyCheck {
       'waterPumped': waterPumped,
       'oilPumped': oilPumped,
       'sandRate': sandRate,
+      'sandOptionalRate': sandOptionalRate,
       'notes': notes,
     };
   }
@@ -1242,6 +1297,12 @@ class ProductionReportRow {
     this.waterSpecificGravity = '',
     this.wellheadTemp = '',
     this.waterTemp = '',
+    this.gasCoolerInTemp = '',
+    this.gasCoolerOutTemp = '',
+    this.gasCoolingDelta = 0,
+    this.waterCoolerInTemp = '',
+    this.waterCoolerOutTemp = '',
+    this.waterCoolingDelta = 0,
     this.flareRate = '',
     this.flarePilotTemp = '',
     this.biocide = '',
@@ -1253,6 +1314,7 @@ class ProductionReportRow {
     this.vruSuction = '',
     this.vruDischarge = '',
     required this.sandRate,
+    this.sandOptionalRate = '',
     required this.waterGaugeText,
     required this.oilGaugeText,
     required this.currentWaterBbl,
@@ -1307,6 +1369,12 @@ class ProductionReportRow {
       waterSpecificGravity: json['waterSpecificGravity'] as String? ?? '',
       wellheadTemp: json['wellheadTemp'] as String? ?? '',
       waterTemp: json['waterTemp'] as String? ?? '',
+      gasCoolerInTemp: json['gasCoolerInTemp'] as String? ?? '',
+      gasCoolerOutTemp: json['gasCoolerOutTemp'] as String? ?? '',
+      gasCoolingDelta: asDouble(json['gasCoolingDelta']),
+      waterCoolerInTemp: json['waterCoolerInTemp'] as String? ?? '',
+      waterCoolerOutTemp: json['waterCoolerOutTemp'] as String? ?? '',
+      waterCoolingDelta: asDouble(json['waterCoolingDelta']),
       flareRate: json['flareRate'] as String? ?? '',
       flarePilotTemp: json['flarePilotTemp'] as String? ?? '',
       biocide: json['biocide'] as String? ?? '',
@@ -1318,6 +1386,7 @@ class ProductionReportRow {
       vruSuction: json['vruSuction'] as String? ?? '',
       vruDischarge: json['vruDischarge'] as String? ?? '',
       sandRate: json['sandRate'] as String? ?? '',
+      sandOptionalRate: json['sandOptionalRate'] as String? ?? '',
       waterGaugeText: json['waterGaugeText'] as String? ?? '',
       oilGaugeText: json['oilGaugeText'] as String? ?? '',
       currentWaterBbl: asDouble(json['currentWaterBbl']),
@@ -1369,6 +1438,12 @@ class ProductionReportRow {
   final String waterSpecificGravity;
   final String wellheadTemp;
   final String waterTemp;
+  final String gasCoolerInTemp;
+  final String gasCoolerOutTemp;
+  final double gasCoolingDelta;
+  final String waterCoolerInTemp;
+  final String waterCoolerOutTemp;
+  final double waterCoolingDelta;
   final String flareRate;
   final String flarePilotTemp;
   final String biocide;
@@ -1380,6 +1455,7 @@ class ProductionReportRow {
   final String vruSuction;
   final String vruDischarge;
   final String sandRate;
+  final String sandOptionalRate;
   final String waterGaugeText;
   final String oilGaugeText;
   final double currentWaterBbl;
@@ -1436,6 +1512,12 @@ class ProductionReportRow {
       waterSpecificGravity: waterSpecificGravity,
       wellheadTemp: wellheadTemp,
       waterTemp: waterTemp,
+      gasCoolerInTemp: gasCoolerInTemp,
+      gasCoolerOutTemp: gasCoolerOutTemp,
+      gasCoolingDelta: gasCoolingDelta,
+      waterCoolerInTemp: waterCoolerInTemp,
+      waterCoolerOutTemp: waterCoolerOutTemp,
+      waterCoolingDelta: waterCoolingDelta,
       flareRate: flareRate,
       flarePilotTemp: flarePilotTemp,
       biocide: biocide,
@@ -1447,6 +1529,7 @@ class ProductionReportRow {
       vruSuction: vruSuction,
       vruDischarge: vruDischarge,
       sandRate: sandRate,
+      sandOptionalRate: sandOptionalRate,
       waterGaugeText: waterGaugeText,
       oilGaugeText: oilGaugeText,
       currentWaterBbl: currentWaterBbl,
@@ -1495,6 +1578,12 @@ class ProductionReportRow {
       'waterSpecificGravity': waterSpecificGravity,
       'wellheadTemp': wellheadTemp,
       'waterTemp': waterTemp,
+      'gasCoolerInTemp': gasCoolerInTemp,
+      'gasCoolerOutTemp': gasCoolerOutTemp,
+      'gasCoolingDelta': gasCoolingDelta,
+      'waterCoolerInTemp': waterCoolerInTemp,
+      'waterCoolerOutTemp': waterCoolerOutTemp,
+      'waterCoolingDelta': waterCoolingDelta,
       'flareRate': flareRate,
       'flarePilotTemp': flarePilotTemp,
       'biocide': biocide,
@@ -1506,6 +1595,7 @@ class ProductionReportRow {
       'vruSuction': vruSuction,
       'vruDischarge': vruDischarge,
       'sandRate': sandRate,
+      'sandOptionalRate': sandOptionalRate,
       'waterGaugeText': waterGaugeText,
       'oilGaugeText': oilGaugeText,
       'currentWaterBbl': currentWaterBbl,

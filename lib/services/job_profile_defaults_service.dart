@@ -96,6 +96,7 @@ class JobProfileDefaultsService {
     'Compressor',
     'Gas Cooler',
     'Water Cooler',
+    'Transfer Pump',
   ];
 
   static const Map<String, String> _continentalReportLabels = <String, String>{
@@ -179,6 +180,7 @@ class JobProfileDefaultsService {
     'Compressor': <String>['COMP INJ'],
     'Gas Cooler': <String>[],
     'Water Cooler': <String>[],
+    'Transfer Pump': <String>[],
   };
 
   static const Map<String, List<String>> _machEquipmentFields =
@@ -188,6 +190,7 @@ class JobProfileDefaultsService {
     'Compressor': <String>['COMP INJ'],
     'Gas Cooler': <String>[],
     'Water Cooler': <String>[],
+    'Transfer Pump': <String>[],
   };
 
   static const Map<String, List<String>> _flywheelEquipmentFields =
@@ -196,6 +199,7 @@ class JobProfileDefaultsService {
     'Compressor': <String>['COMP INJ'],
     'Gas Cooler': <String>[],
     'Water Cooler': <String>[],
+    'Transfer Pump': <String>[],
   };
 
   static const Map<String, List<String>> _customEquipmentFields =
@@ -204,6 +208,7 @@ class JobProfileDefaultsService {
     'Compressor': <String>['COMP INJ'],
     'Gas Cooler': <String>[],
     'Water Cooler': <String>[],
+    'Transfer Pump': <String>[],
   };
 
   String normalizeCompany(String company) {
@@ -243,13 +248,7 @@ class JobProfileDefaultsService {
         company: companyContinental,
         wellFieldKeys: _continentalWellFields,
         optionalSections: _defaultSections,
-        defaultActiveSections: <String>[
-          'FLARE / ECD',
-          'VRU',
-          'Compressor',
-          'Gas Cooler',
-          'Water Cooler',
-        ],
+        defaultActiveSections: <String>[],
         reportLabels: _continentalReportLabels,
         textLabels: _continentalTextLabels,
         equipmentSectionFields: _continentalEquipmentFields,
@@ -261,12 +260,7 @@ class JobProfileDefaultsService {
         company: companyMach,
         wellFieldKeys: _machWellFields,
         optionalSections: _defaultSections,
-        defaultActiveSections: <String>[
-          'VRU',
-          'Compressor',
-          'Gas Cooler',
-          'Water Cooler',
-        ],
+        defaultActiveSections: <String>[],
         reportLabels: _machReportLabels,
         textLabels: _machTextLabels,
         equipmentSectionFields: _machEquipmentFields,
@@ -278,11 +272,7 @@ class JobProfileDefaultsService {
         company: companyFlywheel,
         wellFieldKeys: _flywheelWellFields,
         optionalSections: _defaultSections,
-        defaultActiveSections: <String>[
-          'Compressor',
-          'Gas Cooler',
-          'Water Cooler',
-        ],
+        defaultActiveSections: <String>[],
         reportLabels: _flywheelReportLabels,
         textLabels: _flywheelTextLabels,
         equipmentSectionFields: _flywheelEquipmentFields,
@@ -300,11 +290,7 @@ class JobProfileDefaultsService {
         'prop',
       ],
       optionalSections: _defaultSections,
-      defaultActiveSections: <String>[
-        'Compressor',
-        'Gas Cooler',
-        'Water Cooler',
-      ],
+      defaultActiveSections: <String>[],
       reportLabels: <String, String>{
         'chk': 'CHK',
         'csg': 'CSG',

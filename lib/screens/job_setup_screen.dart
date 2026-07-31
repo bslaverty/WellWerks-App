@@ -89,10 +89,10 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   final chokeManifolds = TextEditingController(text: '1');
   final lineHeaters = TextEditingController(text: '1');
   final testUnits = TextEditingController(text: '1');
-  final ecds = TextEditingController(text: '1');
-  final vrus = TextEditingController(text: '1');
-  final flares = TextEditingController(text: '1');
-  final transferPumps = TextEditingController(text: '1');
+  final ecds = TextEditingController(text: '0');
+  final vrus = TextEditingController(text: '0');
+  final flares = TextEditingController(text: '0');
+  final transferPumps = TextEditingController(text: '0');
 
   final oilTanks = TextEditingController(text: '4');
   final oilTankCapacity = TextEditingController(text: '400');
@@ -826,7 +826,11 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
         ? List<String>.from(defaults.wellFieldKeys)
         : List<String>.from(job.wellFieldKeys);
     final legacySections = job.activeEquipmentSections.isEmpty
-        ? List<String>.from(defaults.defaultActiveSections)
+        ? <String>[
+            if (job.vrus > 0) 'VRU',
+            if (job.flares > 0 || job.ecds > 0) 'FLARE / ECD',
+            if (job.transferPumps > 0) 'Transfer Pump',
+          ]
         : List<String>.from(job.activeEquipmentSections);
     final normalizedSections = <String>[];
     final allowedSections = defaults.optionalSections.toSet();
@@ -980,10 +984,10 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     chokeManifolds.text = '1';
     lineHeaters.text = '1';
     testUnits.text = '1';
-    ecds.text = '1';
-    vrus.text = '1';
-    flares.text = '1';
-    transferPumps.text = '1';
+    ecds.text = '0';
+    vrus.text = '0';
+    flares.text = '0';
+    transferPumps.text = '0';
     oilTanks.text = '4';
     oilTankCapacity.text = '400';
     waterTanks.text = '6';
@@ -1098,6 +1102,13 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       nextFlares = 0;
     }
 
+    final nextVrus = activeEquipmentSections.contains('VRU')
+        ? (_i(vrus) <= 0 ? 1 : _i(vrus))
+        : 0;
+    final nextTransferPumps = activeEquipmentSections.contains('Transfer Pump')
+        ? (_i(transferPumps) <= 0 ? 1 : _i(transferPumps))
+        : 0;
+
     return JobSetup(
       company: company,
       workflow: _workflowStorageValue(),
@@ -1126,9 +1137,9 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       lineHeaters: _i(lineHeaters),
       testUnits: _i(testUnits),
       ecds: nextEcds,
-      vrus: _i(vrus),
+      vrus: nextVrus,
       flares: nextFlares,
-      transferPumps: _i(transferPumps),
+      transferPumps: nextTransferPumps,
       oilTanks: _i(oilTanks),
       oilTankCapacity: oilTankCapacity.text.trim(),
       waterTanks: _i(waterTanks),
@@ -1506,10 +1517,6 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     return names;
   }
 
-  List<String> _optionalSectionsForReview() {
-    return includeNotesSection ? const <String>['Notes'] : const <String>[];
-  }
-
   Widget _jobReviewSection(String title, List<Widget> children) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
@@ -1538,17 +1545,15 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       activeEquipmentSections,
       flowPath: productionFlowPath,
     );
-    final optionalSections = _optionalSectionsForReview();
     const productionDataFields = <String>[
       'Choke',
-      'Casing Pressure',
-      'BWPH',
-      'BOPH',
-      'Gas Rate',
-      'Static PSI',
-      'Differential PSI',
+      'TBG',
+      'CSG',
+      'ICP',
+      'Gas Static',
+      'Gas Differential',
       'Gas Temperature',
-      'Prop / Sand',
+      'Gas Rate',
     ];
 
     return Card(
@@ -1614,17 +1619,18 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
               else
                 for (final item in equipmentLabels) Text('• $item'),
             ]),
+            _jobReviewSection('PROP / SAND', const [
+              Text('• Amount'),
+              Text('• Optional Rate'),
+            ]),
+            _jobReviewSection('NOTES', [
+              Text(_displayValue(notes.text, fallback: 'Not entered')),
+            ]),
             _jobReviewSection('CHEMICALS', [
               if (selectedChemicals.isEmpty)
                 const Text('None')
               else
                 for (final chemical in selectedChemicals) Text('• $chemical'),
-            ]),
-            _jobReviewSection('OPTIONAL SECTIONS', [
-              if (optionalSections.isEmpty)
-                const Text('None')
-              else
-                for (final section in optionalSections) Text('• $section'),
             ]),
           ],
         ),
@@ -1877,29 +1883,10 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
             },
           ),
         ],
-        const SizedBox(height: 10),
-        _countField('VRUs', vrus),
-        _countField('Transfer Pumps', transferPumps),
         const SizedBox(height: 24),
         _navButtons(),
       ]),
-      _StepPage(title: '4. Optional Sections', children: [
-        CheckboxListTile(
-          value: includeNotesSection,
-          title: const Text('Notes'),
-          controlAffinity: ListTileControlAffinity.leading,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (enabled) {
-            setState(() {
-              includeNotesSection = enabled ?? true;
-            });
-            _scheduleAutoSave();
-          },
-        ),
-        const SizedBox(height: 24),
-        _navButtons(),
-      ]),
-      _StepPage(title: '5. Job Review', children: [
+      _StepPage(title: '4. Chemicals', children: [
         ...JobSetup.chemicalOptions.map(
           (chemical) => CheckboxListTile(
             value: selectedChemicals.contains(chemical),
@@ -1920,7 +1907,10 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
             },
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 24),
+        _navButtons(),
+      ]),
+      _StepPage(title: '5. Job Review', children: [
         _buildProductionJobReviewCard(),
         const SizedBox(height: 24),
         _navButtons(finish: true),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -437,6 +438,94 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  String _handoffPreviewText() {
+    final company = (_activeJob?.company ?? _shift.header.company).trim();
+    final pad = (_activeJob?.padName ?? _shift.header.pad).trim();
+    final lines = <String>[
+      'SHIFT HANDOFF',
+      if (company.isNotEmpty) company,
+      if (pad.isNotEmpty) pad,
+      '',
+    ];
+
+    for (final row in _rows) {
+      lines.add('${row.time} • ${row.well}');
+      lines.add(
+          'Choke: ${row.choke.isEmpty ? '-' : '${row.choke} ${row.chokeType}'}');
+      lines.add('TBG: ${row.tbg.isEmpty ? '-' : row.tbg} PSI');
+      lines.add('CSG: ${row.csg.isEmpty ? '-' : row.csg} PSI');
+      lines.add('ICP: ${row.icp.isEmpty ? '-' : row.icp} PSI');
+      lines.add(
+          'Gas Static: ${row.gasStatic.isEmpty ? '-' : row.gasStatic} PSI');
+      lines.add(
+          'Gas Differential: ${row.gasDifferential.isEmpty ? '-' : row.gasDifferential} PSI');
+      lines.add('Gas Temperature: ${row.gasTemp.isEmpty ? '-' : row.gasTemp}°');
+      lines.add('Gas Rate: ${row.hourlyGas.toStringAsFixed(1)}');
+      if (row.gasCoolerInTemp.trim().isNotEmpty ||
+          row.gasCoolerOutTemp.trim().isNotEmpty) {
+        lines.add(
+            'Gas Cooler In/Out: ${row.gasCoolerInTemp.isEmpty ? '-' : row.gasCoolerInTemp} / ${row.gasCoolerOutTemp.isEmpty ? '-' : row.gasCoolerOutTemp}');
+        lines.add(
+            'Gas Cooling Delta: ${row.gasCoolingDelta.isNaN ? '-' : row.gasCoolingDelta.toStringAsFixed(1)}');
+      }
+      if (row.waterCoolerInTemp.trim().isNotEmpty ||
+          row.waterCoolerOutTemp.trim().isNotEmpty) {
+        lines.add(
+            'Water Cooler In/Out: ${row.waterCoolerInTemp.isEmpty ? '-' : row.waterCoolerInTemp} / ${row.waterCoolerOutTemp.isEmpty ? '-' : row.waterCoolerOutTemp}');
+        lines.add(
+            'Water Cooling Delta: ${row.waterCoolingDelta.isNaN ? '-' : row.waterCoolingDelta.toStringAsFixed(1)}');
+      }
+      if (row.notes.trim().isNotEmpty) {
+        lines.add('Notes: ${row.notes}');
+      }
+      lines.add('');
+    }
+
+    return lines.join('\n').trim();
+  }
+
+  Future<void> _openProductionPreview() async {
+    if (_rows.isEmpty || _busy) return;
+    final text = _handoffPreviewText();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Shift Handoff Preview'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(text),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Close'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: text));
+              if (!mounted || !dialogContext.mounted) return;
+              Navigator.of(dialogContext).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Shift handoff text copied.')),
+              );
+            },
+            child: const Text('Copy'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await Share.share(text, subject: 'Shift Handoff');
+              if (!mounted || !dialogContext.mounted) return;
+              Navigator.of(dialogContext).pop();
+            },
+            child: const Text('Share'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<bool> _confirmMismatchedJob(String sourceJobId) async {
@@ -966,17 +1055,27 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
               onPressed: _busy
                   ? null
                   : (_isProductionWorkflow
-                      ? (_rows.isEmpty ? null : _exportHandoff)
+                      ? (_rows.isEmpty ? null : _openProductionPreview)
                       : (_activeJob == null ? null : _exportWorkflowHandoff)),
-              icon: const Icon(Icons.ios_share),
+              icon: const Icon(Icons.preview_outlined),
               label: Text(
                 _isProductionWorkflow
-                    ? 'Share Production Handoff'
+                    ? 'Preview Shift Handoff'
                     : 'Share Handoff',
               ),
             ),
           ),
           const SizedBox(height: 8),
+          if (_isProductionWorkflow)
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _busy || _rows.isEmpty ? null : _exportHandoff,
+                icon: const Icon(Icons.qr_code_2_outlined),
+                label: const Text('Share QR (Secondary)'),
+              ),
+            ),
+          if (_isProductionWorkflow) const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(

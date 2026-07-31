@@ -7,7 +7,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/job_setup.dart';
 import '../models/operations_log_entry.dart';
 import '../models/production_shift.dart';
-import '../services/app_settings_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/job_profile_defaults_service.dart';
 import '../services/operations_log_service.dart';
@@ -33,7 +32,6 @@ class TextUpdateScreen extends StatefulWidget {
 }
 
 class _TextUpdateScreenState extends State<TextUpdateScreen> {
-  final _settingsService = AppSettingsService();
   final _shiftService = ProductionShiftService();
   final _layoutService = ReportProfileService();
   final _jobStorage = JobStorageService();
@@ -43,14 +41,6 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
   final _operationsLogService = OperationsLogService();
   final _qrTransferService = const WellWerksQrTransferService();
 
-  AppSettingsData _settings = const AppSettingsData(
-    defaultGasUnit: AppSettingsDefaults.gasUnit,
-    defaultGaugeType: AppSettingsDefaults.gaugeType,
-    defaultBblPerInch: AppSettingsDefaults.bblPerInch,
-    defaultGasCalculationMethod: AppSettingsDefaults.gasCalculationMethod,
-    defaultChokeDisplay: AppSettingsDefaults.chokeDisplay,
-    defaultOptionalReportSections: AppSettingsDefaults.optionalReportSections,
-  );
   ProductionShift _shift = ProductionShift.empty();
   JobSetup? _activeJob;
   ReportLayoutProfile _layout = ReportProfileService().defaultProfile();
@@ -81,7 +71,6 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
 
   Future<void> _load() async {
     var shift = await _shiftService.loadActiveShift();
-    final settings = await _settingsService.load();
     final activeJob = await _jobStorage.ensureActiveJobLoaded();
     if (activeJob != null && shift.activeJobId != activeJob.id) {
       shift = shift.copyWith(activeJobId: activeJob.id);
@@ -96,7 +85,6 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         : const <ProductionReportRow>[];
     if (!mounted) return;
     setState(() {
-      _settings = settings;
       _shift = shift;
       _activeJob = activeJob;
       _layout = layout;
@@ -176,11 +164,20 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     return _fmt(_baseGasToDisplay(parsed));
   }
 
-  bool get _showVruSection => _settings.isOptionalSectionEnabled('vru');
+  bool _equipmentSectionSelected(String sectionName) {
+    final activeJob = _activeJob;
+    if (activeJob == null) return true;
+    final target = sectionName.trim().toLowerCase();
+    return activeJob.resolvedActiveEquipmentSections.any(
+      (section) => section.trim().toLowerCase() == target,
+    );
+  }
 
-  bool get _showFlareSection => _settings.isOptionalSectionEnabled('flare');
+  bool get _showVruSection => _equipmentSectionSelected('VRU');
 
-  bool get _showEcdSection => _settings.isOptionalSectionEnabled('ecd');
+  bool get _showFlareSection => _equipmentSectionSelected('FLARE / ECD');
+
+  bool get _showEcdSection => _equipmentSectionSelected('FLARE / ECD');
 
   bool get _showFlareEcdSection => _showFlareSection || _showEcdSection;
 

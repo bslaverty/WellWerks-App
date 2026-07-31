@@ -42,12 +42,6 @@ class AppSettingsDefaults {
   static const appTheme = 'wellwerks_default';
   static const activeCompany = JobProfileDefaultsService.companyNone;
   static const optionalReportSections = [
-    'vru',
-    'flare',
-    'ecd',
-    'compressor',
-    'gasCooler',
-    'waterCooler',
     'inventory',
     'notes',
   ];

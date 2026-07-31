@@ -62,7 +62,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       return true;
     }
     final target = sectionName.trim().toLowerCase();
-    return activeJob.activeEquipmentSections.any(
+    return activeJob.resolvedActiveEquipmentSections.any(
       (section) => section.trim().toLowerCase() == target,
     );
   }
@@ -79,9 +79,15 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   bool get _showCompressorSection =>
       _settings.isOptionalSectionEnabled('compressor') &&
       _equipmentSectionSelected('Compressor');
+  bool get _showGasCoolerSection => _equipmentSectionSelected('Gas Cooler');
+  bool get _showWaterCoolerSection => _equipmentSectionSelected('Water Cooler');
   bool get _showInventorySection =>
       _settings.isOptionalSectionEnabled('inventory');
-  bool get _showNotesSection => _settings.isOptionalSectionEnabled('notes');
+  bool get _showNotesSection {
+    final raw = _activeJob?.drilloutSetup['includeNotesSection'];
+    if (raw is bool) return raw;
+    return true;
+  }
 
   bool get _flareEcdGasRateEnabled {
     final setup = _activeJob?.drilloutSetup;
@@ -607,6 +613,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       data.gasStatic,
       data.gasDifferential,
       data.gasTemp,
+      if (_showGasCoolerSection) data.gasCoolerInTemp,
+      if (_showGasCoolerSection) data.gasCoolerOutTemp,
+      if (_showWaterCoolerSection) data.waterCoolerInTemp,
+      if (_showWaterCoolerSection) data.waterCoolerOutTemp,
       data.waterSpecificGravity,
       data.wellheadTemp,
       data.waterTemp,
@@ -622,6 +632,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (_showInventorySection) data.waterPumped,
       if (_showInventorySection) data.oilPumped,
       data.sandRate,
+      data.sandOptionalRate,
       if (_showNotesSection) data.notes,
       if (waterMethod == ProductionWellCheckData.measurementMeter)
         data.waterMeterReading,
@@ -960,6 +971,15 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         ],
       ),
     );
+  }
+
+  double _coolingDelta(String inTempRaw, String outTempRaw) {
+    final inTemp = double.tryParse(inTempRaw.trim());
+    final outTemp = double.tryParse(outTempRaw.trim());
+    if (inTemp == null || outTemp == null) {
+      return double.nan;
+    }
+    return inTemp - outTemp;
   }
 
   String _timeAtOffset(int offset) {
@@ -1673,6 +1693,12 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     final currentOilBbl = _currentOilBblForData(data);
     final currentWaterMeter = _currentWaterMeterForData(data);
     final currentOilMeter = _currentOilMeterForData(data);
+    final gasCoolingDelta = _showGasCoolerSection
+        ? _coolingDelta(data.gasCoolerInTemp, data.gasCoolerOutTemp)
+        : 0.0;
+    final waterCoolingDelta = _showWaterCoolerSection
+        ? _coolingDelta(data.waterCoolerInTemp, data.waterCoolerOutTemp)
+        : 0.0;
     final currentGasAccum = _useGasAccumulator
         ? (data.currentGasAccum.trim().isEmpty
             ? _missingCalcValue
@@ -1705,6 +1731,15 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       gasStatic: data.gasStatic.trim(),
       gasDifferential: data.gasDifferential.trim(),
       gasTemp: data.gasTemp.trim(),
+      gasCoolerInTemp: _showGasCoolerSection ? data.gasCoolerInTemp.trim() : '',
+      gasCoolerOutTemp:
+          _showGasCoolerSection ? data.gasCoolerOutTemp.trim() : '',
+      gasCoolingDelta: gasCoolingDelta.isNaN ? 0.0 : gasCoolingDelta,
+      waterCoolerInTemp:
+          _showWaterCoolerSection ? data.waterCoolerInTemp.trim() : '',
+      waterCoolerOutTemp:
+          _showWaterCoolerSection ? data.waterCoolerOutTemp.trim() : '',
+      waterCoolingDelta: waterCoolingDelta.isNaN ? 0.0 : waterCoolingDelta,
       waterSpecificGravity: data.waterSpecificGravity.trim(),
       wellheadTemp: data.wellheadTemp.trim(),
       waterTemp: data.waterTemp.trim(),
@@ -1724,6 +1759,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       vruSuction: _showVruSection ? data.vruSuction.trim() : '',
       vruDischarge: _showVruSection ? data.vruDischarge.trim() : '',
       sandRate: data.sandRate.trim(),
+      sandOptionalRate: data.sandOptionalRate.trim(),
       waterGaugeText: waterMethod == ProductionWellCheckData.measurementTank
           ? _gaugeText(_shift.inventory.waterTanks, data.waterTankGaugeEntries)
           : 'Meter: ${data.waterMeterReading.trim().isEmpty ? '-' : data.waterMeterReading.trim()}',
@@ -1801,6 +1837,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       current.salesGasRate,
       current.gasStatic,
       current.gasDifferential,
+      if (_showGasCoolerSection) current.gasCoolerInTemp,
+      if (_showGasCoolerSection) current.gasCoolerOutTemp,
+      if (_showWaterCoolerSection) current.waterCoolerInTemp,
+      if (_showWaterCoolerSection) current.waterCoolerOutTemp,
       current.waterSpecificGravity,
       if (_showFlareSection) current.flareRate,
       if (_chemicalEnabled('Biocide')) current.biocide,
@@ -1816,6 +1856,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (_showInventorySection) current.waterPumped,
       if (_showInventorySection) current.oilPumped,
       current.sandRate,
+      current.sandOptionalRate,
       current.beginningOilInventory,
       current.expectedOilInventory,
       current.maximumCushion,
@@ -2465,13 +2506,41 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       _field('TBG', controller.tbg, suffix: 'PSI'),
       _field('CSG', controller.csg, suffix: 'PSI'),
       _field('ICP', controller.icp, suffix: 'PSI'),
-      if (_useGasAccumulator)
-        _field('Current Gas Accum', controller.currentGasAccum),
-      if (!_useGasAccumulator)
-        _field('Gas Rate', controller.salesGasRate, suffix: _gasUnitLabel),
       _field('Gas Static', controller.gasStatic, suffix: 'PSI'),
       _field('Gas Differential', controller.gasDifferential, suffix: 'PSI'),
       _field('Gas Temperature', controller.gasTemp, suffix: '°'),
+      if (_useGasAccumulator)
+        _field('Current Gas Accum', controller.currentGasAccum,
+            suffix: _gasUnitLabel),
+      if (!_useGasAccumulator)
+        _field('Sales Gas Rate', controller.salesGasRate,
+            suffix: _gasUnitLabel),
+      if (_showGasCoolerSection) ...[
+        _field('Gas In Temperature', controller.gasCoolerInTemp, suffix: '°'),
+        _field('Gas Out Temperature', controller.gasCoolerOutTemp, suffix: '°'),
+        _calcLine(
+          'Gas Cooling Delta',
+          _coolingDelta(
+            controller.gasCoolerInTemp.text,
+            controller.gasCoolerOutTemp.text,
+          ),
+          suffix: '°',
+        ),
+      ],
+      if (_showWaterCoolerSection) ...[
+        _field('Water In Temperature', controller.waterCoolerInTemp,
+            suffix: '°'),
+        _field('Water Out Temperature', controller.waterCoolerOutTemp,
+            suffix: '°'),
+        _calcLine(
+          'Water Cooling Delta',
+          _coolingDelta(
+            controller.waterCoolerInTemp.text,
+            controller.waterCoolerOutTemp.text,
+          ),
+          suffix: '°',
+        ),
+      ],
       _field('Water Specific Gravity', controller.waterSpecificGravity),
       _field('Wellhead Temperature', controller.wellheadTemp, suffix: '°'),
       _field('Water Temperature', controller.waterTemp, suffix: '°'),
@@ -2499,6 +2568,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         ),
       if (_showVruSection) _field('VRU Suction', controller.vruSuction),
       if (_showVruSection) _field('VRU Discharge', controller.vruDischarge),
+      if (_showEcdSection) _oilCushionSection(index),
       DropdownButtonFormField<String>(
         initialValue: _normalizedMeasurementMethod(
           controller.waterMeasurementMethod.text,
@@ -2589,9 +2659,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
             suffix: 'BBL'),
       _field('Sand Rate (0 None, 1 Trace, 2 Light, 3 Medium, 4 Heavy)',
           controller.sandRate),
-      if (_showNotesSection)
-        _field('Notes', controller.notes,
-            keyboardType: TextInputType.text, lines: 3),
+      _field('Prop / Sand Optional Rate', controller.sandOptionalRate),
       _section('Calculated (Read Only)', [
         if (waterMeterMode)
           _calcLine(
@@ -2635,7 +2703,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         ),
         _sandClassificationLine(controller.sandRate.text),
       ]),
-      if (_showEcdSection) _oilCushionSection(index),
+      if (_showNotesSection)
+        _field('Notes', controller.notes,
+            keyboardType: TextInputType.text, lines: 3),
     ]);
   }
 
@@ -3087,6 +3157,10 @@ class _HourlyCheckControllers {
     required this.waterSpecificGravity,
     required this.wellheadTemp,
     required this.waterTemp,
+    required this.gasCoolerInTemp,
+    required this.gasCoolerOutTemp,
+    required this.waterCoolerInTemp,
+    required this.waterCoolerOutTemp,
     required this.flareRate,
     required this.flarePilotTemp,
     required this.biocide,
@@ -3110,6 +3184,7 @@ class _HourlyCheckControllers {
     required this.waterPumped,
     required this.oilPumped,
     required this.sandRate,
+    required this.sandOptionalRate,
     required this.notes,
     required this.beginningOilInventory,
     required this.expectedOilInventory,
@@ -3199,6 +3274,10 @@ class _HourlyCheckControllers {
         waterSpecificGravity: data.waterSpecificGravity,
         wellheadTemp: data.wellheadTemp,
         waterTemp: data.waterTemp,
+        gasCoolerInTemp: data.gasCoolerInTemp,
+        gasCoolerOutTemp: data.gasCoolerOutTemp,
+        waterCoolerInTemp: data.waterCoolerInTemp,
+        waterCoolerOutTemp: data.waterCoolerOutTemp,
         flareRate: data.flareRate,
         flarePilotTemp: data.flarePilotTemp,
         biocide: data.biocide,
@@ -3229,6 +3308,7 @@ class _HourlyCheckControllers {
         waterPumped: data.waterPumped,
         oilPumped: data.oilPumped,
         sandRate: data.sandRate,
+        sandOptionalRate: data.sandOptionalRate,
         notes: data.notes,
         beginningOilInventory: data.beginningOilInventory,
         expectedOilInventory: data.expectedOilInventory,
@@ -3286,6 +3366,14 @@ class _HourlyCheckControllers {
           TextEditingController(text: selectedData.waterSpecificGravity),
       wellheadTemp: TextEditingController(text: selectedData.wellheadTemp),
       waterTemp: TextEditingController(text: selectedData.waterTemp),
+      gasCoolerInTemp:
+          TextEditingController(text: selectedData.gasCoolerInTemp),
+      gasCoolerOutTemp:
+          TextEditingController(text: selectedData.gasCoolerOutTemp),
+      waterCoolerInTemp:
+          TextEditingController(text: selectedData.waterCoolerInTemp),
+      waterCoolerOutTemp:
+          TextEditingController(text: selectedData.waterCoolerOutTemp),
       flareRate: TextEditingController(text: selectedData.flareRate),
       flarePilotTemp: TextEditingController(text: selectedData.flarePilotTemp),
       biocide: TextEditingController(text: selectedData.biocide),
@@ -3326,6 +3414,8 @@ class _HourlyCheckControllers {
       waterPumped: TextEditingController(text: selectedData.waterPumped),
       oilPumped: TextEditingController(text: selectedData.oilPumped),
       sandRate: TextEditingController(text: selectedData.sandRate),
+      sandOptionalRate:
+          TextEditingController(text: selectedData.sandOptionalRate),
       notes: TextEditingController(text: selectedData.notes),
       beginningOilInventory:
           TextEditingController(text: selectedData.beginningOilInventory),
@@ -3353,6 +3443,10 @@ class _HourlyCheckControllers {
   final TextEditingController waterSpecificGravity;
   final TextEditingController wellheadTemp;
   final TextEditingController waterTemp;
+  final TextEditingController gasCoolerInTemp;
+  final TextEditingController gasCoolerOutTemp;
+  final TextEditingController waterCoolerInTemp;
+  final TextEditingController waterCoolerOutTemp;
   final TextEditingController flareRate;
   final TextEditingController flarePilotTemp;
   final TextEditingController biocide;
@@ -3376,6 +3470,7 @@ class _HourlyCheckControllers {
   final TextEditingController waterPumped;
   final TextEditingController oilPumped;
   final TextEditingController sandRate;
+  final TextEditingController sandOptionalRate;
   final TextEditingController notes;
   final TextEditingController beginningOilInventory;
   final TextEditingController expectedOilInventory;
@@ -3403,6 +3498,10 @@ class _HourlyCheckControllers {
       waterSpecificGravity: waterSpecificGravity.text.trim(),
       wellheadTemp: wellheadTemp.text.trim(),
       waterTemp: waterTemp.text.trim(),
+      gasCoolerInTemp: gasCoolerInTemp.text.trim(),
+      gasCoolerOutTemp: gasCoolerOutTemp.text.trim(),
+      waterCoolerInTemp: waterCoolerInTemp.text.trim(),
+      waterCoolerOutTemp: waterCoolerOutTemp.text.trim(),
       flareRate: flareRate.text.trim(),
       flarePilotTemp: flarePilotTemp.text.trim(),
       biocide: biocide.text.trim(),
@@ -3433,6 +3532,7 @@ class _HourlyCheckControllers {
       waterPumped: waterPumped.text.trim(),
       oilPumped: oilPumped.text.trim(),
       sandRate: sandRate.text.trim(),
+      sandOptionalRate: sandOptionalRate.text.trim(),
       notes: notes.text.trim(),
       beginningOilInventory: beginningOilInventory.text.trim(),
       expectedOilInventory: expectedOilInventory.text.trim(),
@@ -3458,6 +3558,10 @@ class _HourlyCheckControllers {
     waterSpecificGravity.text = data.waterSpecificGravity;
     wellheadTemp.text = data.wellheadTemp;
     waterTemp.text = data.waterTemp;
+    gasCoolerInTemp.text = data.gasCoolerInTemp;
+    gasCoolerOutTemp.text = data.gasCoolerOutTemp;
+    waterCoolerInTemp.text = data.waterCoolerInTemp;
+    waterCoolerOutTemp.text = data.waterCoolerOutTemp;
     flareRate.text = data.flareRate;
     flarePilotTemp.text = data.flarePilotTemp;
     biocide.text = data.biocide;
@@ -3485,6 +3589,7 @@ class _HourlyCheckControllers {
     startingWaterMeter.text = data.startingWaterMeter;
     startingOilMeter.text = data.startingOilMeter;
     sandRate.text = data.sandRate;
+    sandOptionalRate.text = data.sandOptionalRate;
     notes.text = data.notes;
     beginningOilInventory.text = data.beginningOilInventory;
     expectedOilInventory.text = data.expectedOilInventory;
@@ -3546,6 +3651,10 @@ class _HourlyCheckControllers {
       waterSpecificGravity: current.waterSpecificGravity,
       wellheadTemp: current.wellheadTemp,
       waterTemp: current.waterTemp,
+      gasCoolerInTemp: current.gasCoolerInTemp,
+      gasCoolerOutTemp: current.gasCoolerOutTemp,
+      waterCoolerInTemp: current.waterCoolerInTemp,
+      waterCoolerOutTemp: current.waterCoolerOutTemp,
       flareRate: current.flareRate,
       flarePilotTemp: current.flarePilotTemp,
       biocide: current.biocide,
@@ -3571,6 +3680,7 @@ class _HourlyCheckControllers {
       waterPumped: current.waterPumped,
       oilPumped: current.oilPumped,
       sandRate: current.sandRate,
+      sandOptionalRate: current.sandOptionalRate,
       notes: current.notes,
     );
   }
@@ -3590,6 +3700,10 @@ class _HourlyCheckControllers {
       waterSpecificGravity,
       wellheadTemp,
       waterTemp,
+      gasCoolerInTemp,
+      gasCoolerOutTemp,
+      waterCoolerInTemp,
+      waterCoolerOutTemp,
       flareRate,
       flarePilotTemp,
       biocide,
@@ -3611,6 +3725,7 @@ class _HourlyCheckControllers {
       startingWaterMeter,
       startingOilMeter,
       sandRate,
+      sandOptionalRate,
       notes,
       beginningOilInventory,
       expectedOilInventory,
