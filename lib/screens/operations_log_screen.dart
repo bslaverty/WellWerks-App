@@ -97,6 +97,13 @@ enum _ReportDataSource {
   entireShift,
 }
 
+enum _AddEntryAction {
+  sts,
+  manualReading,
+  pumpChange,
+  note,
+}
+
 class _OperationsLogScreenState extends State<OperationsLogScreen> {
   static const Color _wwGold = Color(0xFFD9A63C);
   static const Color _wwBlack = Color(0xFF0F0F0F);
@@ -243,6 +250,10 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
 
   String _entryTypeLabel(OperationsLogEntry entry) {
     switch (_entryTypeValue(entry)) {
+      case 'pumpChange':
+        return 'Pump Change';
+      case 'note':
+        return 'Note';
       case 'textUpdate':
         return 'Text Update';
       case 'shiftChange':
@@ -299,7 +310,9 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       case _OperationsSmartFilter.all:
         return true;
       case _OperationsSmartFilter.manual:
-        return type == 'manualReading';
+        return type == 'manualReading' ||
+            type == 'pumpChange' ||
+            type == 'note';
       case _OperationsSmartFilter.textUpdates:
         return type == 'textUpdate';
       case _OperationsSmartFilter.shiftChanges:
@@ -521,6 +534,213 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       actualSts: result.actualSts,
       notes: result.notes,
     );
+  }
+
+  Future<void> _openAddEntryMenu() async {
+    final choice = await showModalBottomSheet<_AddEntryAction>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(
+              title: Text(
+                'Add Entry',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              subtitle: Text('Save directly to the Operations Log timeline.'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.timer_outlined),
+              title: const Text('STS'),
+              subtitle: const Text('Record estimated and actual STS data.'),
+              onTap: () => Navigator.of(sheetContext).pop(_AddEntryAction.sts),
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit_note),
+              title: const Text('Manual Reading'),
+              subtitle: const Text('Open full reading form for shift values.'),
+              onTap: () =>
+                  Navigator.of(sheetContext).pop(_AddEntryAction.manualReading),
+            ),
+            ListTile(
+              leading: const Icon(Icons.speed_outlined),
+              title: const Text('Pump Change'),
+              subtitle: const Text('Log a pump-rate change quickly.'),
+              onTap: () =>
+                  Navigator.of(sheetContext).pop(_AddEntryAction.pumpChange),
+            ),
+            ListTile(
+              leading: const Icon(Icons.sticky_note_2_outlined),
+              title: const Text('Note'),
+              subtitle: const Text('Add an operational note to the timeline.'),
+              onTap: () => Navigator.of(sheetContext).pop(_AddEntryAction.note),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (choice == null) return;
+    switch (choice) {
+      case _AddEntryAction.sts:
+        await _addSts();
+        break;
+      case _AddEntryAction.manualReading:
+        await _addReading();
+        break;
+      case _AddEntryAction.pumpChange:
+        await _addPumpChangeEntry();
+        break;
+      case _AddEntryAction.note:
+        await _addNoteEntry();
+        break;
+    }
+  }
+
+  Future<void> _addPumpChangeEntry() async {
+    final job = _activeJob;
+    if (job == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Set an active job before logging a pump change.'),
+        ),
+      );
+      return;
+    }
+
+    final latest = _sortedEntries.isEmpty ? null : _sortedEntries.last;
+    final pumpController = TextEditingController(text: latest?.pumpRate ?? '');
+    final notesController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Pump Change'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: pumpController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(labelText: 'Pump Rate'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: notesController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Notes (optional)',
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    final pumpRate = pumpController.text.trim();
+    final notes = notesController.text.trim();
+    if (!confirmed || pumpRate.isEmpty) return;
+
+    await _logService.appendEventEntry(
+      workflow: _workflow,
+      jobId: job.id,
+      wellId: latest?.persistentWellId ??
+          (_resolvedWells.isNotEmpty ? _resolvedWells.first.id : ''),
+      wellName: latest?.wellName ?? _currentWellName,
+      entryType: 'pumpChange',
+      timestamp: DateTime.now(),
+      generatedText: 'Pump Change\nPump Rate: $pumpRate',
+      operationStage: latest?.operationStage ?? _currentStage,
+      pumpRate: pumpRate,
+      notes: notes,
+      structuredData: const <String, dynamic>{
+        'source': 'operationsLogAddEntry',
+      },
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Pump change saved to Operations Log.')),
+    );
+    await _load();
+  }
+
+  Future<void> _addNoteEntry() async {
+    final job = _activeJob;
+    if (job == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Set an active job before adding a note.'),
+        ),
+      );
+      return;
+    }
+
+    final latest = _sortedEntries.isEmpty ? null : _sortedEntries.last;
+    final noteController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Add Note'),
+            content: TextField(
+              controller: noteController,
+              maxLines: 5,
+              decoration: const InputDecoration(labelText: 'Note'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    final note = noteController.text.trim();
+    if (!confirmed || note.isEmpty) return;
+
+    await _logService.appendEventEntry(
+      workflow: _workflow,
+      jobId: job.id,
+      wellId: latest?.persistentWellId ??
+          (_resolvedWells.isNotEmpty ? _resolvedWells.first.id : ''),
+      wellName: latest?.wellName ?? _currentWellName,
+      entryType: 'note',
+      timestamp: DateTime.now(),
+      generatedText: 'Operations Note\n$note',
+      operationStage: latest?.operationStage ?? _currentStage,
+      notes: note,
+      structuredData: const <String, dynamic>{
+        'source': 'operationsLogAddEntry',
+      },
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Note saved to Operations Log.')),
+    );
+    await _load();
   }
 
   Future<void> _showEntryDetails(OperationsLogEntry entry) async {
@@ -857,18 +1077,32 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     }
   }
 
-  Future<void> _previewAndFinalizeReport({
-    required String reportType,
-    required List<OperationsLogEntry> entries,
-    required _ReportDataSource source,
-  }) async {
-    final reportText =
-        _buildReportPreview(reportType: reportType, entries: entries);
+  Future<void> _generateShiftUpdateAction() async {
+    if (_entries.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add at least one entry first.')),
+      );
+      return;
+    }
+    final source = await _chooseReportDataSource();
+    if (source == null) return;
+    final sourceEntries = _entriesForReportSource(source);
+    final reportText = _buildReportPreview(
+      reportType: 'Shift Update',
+      entries: sourceEntries,
+    );
+    await _finalizeReportAction(
+      reportType: 'Shift Update',
+      shareMethod: 'generated',
+      reportText: reportText,
+      source: source,
+    );
     if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('$reportType Preview'),
+        title: const Text('Shift Update Generated'),
         content: SizedBox(
           width: 520,
           child: SingleChildScrollView(
@@ -880,97 +1114,108 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('Close'),
           ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.of(dialogContext).pop();
-              await Clipboard.setData(ClipboardData(text: reportText));
-              await _finalizeReportAction(
-                reportType: reportType,
-                shareMethod: 'copyText',
-                reportText: reportText,
-                source: source,
-              );
-            },
-            child: const Text('Copy Text'),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _previewTextAction() async {
+    if (_entries.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add at least one entry first.')),
+      );
+      return;
+    }
+    final source = await _chooseReportDataSource();
+    if (source == null) return;
+    final sourceEntries = _entriesForReportSource(source);
+    final reportText = _buildReportPreview(
+      reportType: 'Text Update',
+      entries: sourceEntries,
+    );
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Preview Text'),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: SelectableText(reportText),
           ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.of(dialogContext).pop();
-              await Share.share(reportText, subject: '$reportType - WellWerks');
-              await _finalizeReportAction(
-                reportType: reportType,
-                shareMethod: 'message',
-                reportText: reportText,
-                source: source,
-              );
-            },
-            child: const Text('Message'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.of(dialogContext).pop();
-              await _finalizeReportAction(
-                reportType: reportType,
-                shareMethod: 'qr',
-                reportText: reportText,
-                source: source,
-              );
-            },
-            child: const Text('Share QR'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Close'),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _openCreateReportMenu() async {
-    if (!mounted) return;
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            const ListTile(
-              title: Text(
-                'Create Report',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-              subtitle: Text('Choose output from current operations readings.'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.picture_as_pdf_outlined),
-              title: const Text('Shift Change Report'),
-              onTap: () => Navigator.of(sheetContext).pop('shift'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.text_fields),
-              title: const Text('Text Update'),
-              onTap: () => Navigator.of(sheetContext).pop('text'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.description_outlined),
-              title: const Text('Operations Report'),
-              onTap: () => Navigator.of(sheetContext).pop('operations'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.qr_code_2),
-              title: const Text('QR Handoff'),
-              onTap: () => Navigator.of(sheetContext).pop('handoff'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (choice == null) return;
-
+  Future<void> _copyUpdateAction() async {
     if (_entries.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('At least one reading is required to create a report.'),
-        ),
+        const SnackBar(content: Text('Add at least one entry first.')),
+      );
+      return;
+    }
+    final source = await _chooseReportDataSource();
+    if (source == null) return;
+    final sourceEntries = _entriesForReportSource(source);
+    final reportText = _buildReportPreview(
+      reportType: 'Text Update',
+      entries: sourceEntries,
+    );
+    await Clipboard.setData(ClipboardData(text: reportText));
+    await _finalizeReportAction(
+      reportType: 'Text Update',
+      shareMethod: 'copyText',
+      reportText: reportText,
+      source: source,
+    );
+  }
+
+  Future<void> _shareUpdateAction() async {
+    if (_entries.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add at least one entry first.')),
+      );
+      return;
+    }
+    final source = await _chooseReportDataSource();
+    if (source == null) return;
+    final sourceEntries = _entriesForReportSource(source);
+    final reportText = _buildReportPreview(
+      reportType: 'Text Update',
+      entries: sourceEntries,
+    );
+    await Share.share(reportText, subject: 'Text Update - WellWerks');
+    await _finalizeReportAction(
+      reportType: 'Text Update',
+      shareMethod: 'message',
+      reportText: reportText,
+      source: source,
+    );
+  }
+
+  Future<void> _exportTimelineAction() async {
+    final job = _activeJob;
+    if (job == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Set an active job before exporting.')),
+      );
+      return;
+    }
+    if (_entries.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add at least one entry first.')),
       );
       return;
     }
@@ -978,37 +1223,31 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     final source = await _chooseReportDataSource();
     if (source == null) return;
     final sourceEntries = _entriesForReportSource(source);
+    final reportText = _buildReportPreview(
+      reportType: 'Shift Update',
+      entries: sourceEntries,
+    );
 
-    switch (choice) {
-      case 'shift':
-        await _previewAndFinalizeReport(
-          reportType: 'Shift Change Report',
-          entries: sourceEntries,
-          source: source,
-        );
-        break;
-      case 'text':
-        await _previewAndFinalizeReport(
-          reportType: 'Text Update',
-          entries: sourceEntries,
-          source: source,
-        );
-        break;
-      case 'operations':
-        await _previewAndFinalizeReport(
-          reportType: 'Operations Report',
-          entries: sourceEntries,
-          source: source,
-        );
-        break;
-      case 'handoff':
-        await _previewAndFinalizeReport(
-          reportType: 'QR Handoff',
-          entries: sourceEntries,
-          source: source,
-        );
-        break;
-    }
+    final exported = await _logService.exportShiftReportPdf(
+      workflow: _workflow,
+      jobName: job.padName,
+      wellName: _currentWellName,
+      stage: _currentStage,
+      entries: sourceEntries,
+      enabledFieldIds: _enabledFieldIds,
+      baseFileName: 'operations_log_shift_update',
+    );
+    await Share.shareXFiles(
+      [XFile(exported.filePath, mimeType: 'application/pdf')],
+      subject: 'Operations Log Shift Update',
+      text: 'Exported from WellWerks Operations Log.',
+    );
+    await _finalizeReportAction(
+      reportType: 'Shift Update',
+      shareMethod: 'exportPdf',
+      reportText: reportText,
+      source: source,
+    );
   }
 
   void _toggleSelectedEntry(String entryId, bool selected) {
@@ -1664,16 +1903,6 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     return allowed.first;
   }
 
-  String _latestKnownValue(String Function(OperationsLogEntry entry) selector) {
-    for (final item in _sortedEntries.reversed) {
-      final value = selector(item).trim();
-      if (value.isNotEmpty) {
-        return value;
-      }
-    }
-    return '';
-  }
-
   String _carryForwardValueForEntry(
     OperationsLogEntry target,
     String Function(OperationsLogEntry entry) selector,
@@ -1727,6 +1956,10 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       return 'STS';
     }
     switch (type) {
+      case 'pumpChange':
+        return 'Pump Change';
+      case 'note':
+        return 'Note';
       case 'manualReading':
         return 'Manual Reading';
       case 'textUpdate':
@@ -1759,6 +1992,10 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       return Icons.timer_outlined;
     }
     switch (type) {
+      case 'pumpChange':
+        return Icons.speed_outlined;
+      case 'note':
+        return Icons.sticky_note_2_outlined;
       case 'manualReading':
         return Icons.edit_note;
       case 'textUpdate':
@@ -1782,6 +2019,10 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     final type = _entryTypeValue(entry);
     if (entry.sts != null) return _stsStatusColor(entry);
     switch (type) {
+      case 'pumpChange':
+        return Colors.cyanAccent;
+      case 'note':
+        return Colors.white70;
       case 'manualReading':
         return _wwGold;
       case 'textUpdate':
@@ -2339,112 +2580,6 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     );
   }
 
-  Widget _foundationCards() {
-    final latest = _sortedEntries.isEmpty ? null : _sortedEntries.last;
-    final latestKnownManifold =
-        _latestKnownValue((entry) => _manifoldPsiValue(entry));
-    final latestKnownChoke = _latestKnownValue((entry) => entry.choke);
-    final latestKnownReturns = _latestKnownValue((entry) => entry.returnsRate);
-    final latestTextUpdate = _sortedEntries.reversed
-        .where((entry) => _entryTypeValue(entry) == 'textUpdate')
-        .toList(growable: false);
-    final cards = <({String title, String value})>[
-      (
-        title: 'Current Pump',
-        value:
-            latest?.pumpRate.trim().isNotEmpty == true ? latest!.pumpRate : '--'
-      ),
-      (
-        title: 'Current Manifold',
-        value: latestKnownManifold.isEmpty ? '--' : latestKnownManifold
-      ),
-      (
-        title: 'Current Returns',
-        value: latestKnownReturns.isEmpty
-            ? '--'
-            : _returnsDisplay(latestKnownReturns)
-      ),
-      (
-        title: 'Current Stage',
-        value: latest?.operationStage.trim().isNotEmpty == true
-            ? latest!.operationStage
-            : '--'
-      ),
-      (
-        title: 'Current Choke',
-        value: latestKnownChoke.isEmpty ? '--' : latestKnownChoke
-      ),
-      (
-        title: 'Current STS Status',
-        value: latest == null ? '--' : _liveStsLabel(latest)
-      ),
-      (
-        title: 'Current Tank Status',
-        value: latest?.tankLevel.trim().isNotEmpty == true
-            ? latest!.tankLevel
-            : '--'
-      ),
-      (
-        title: 'Latest Reading',
-        value: latest == null
-            ? '--'
-            : '${TimeOfDay.fromDateTime(latest.entryTime).format(context)} ${latest.wellName}'
-      ),
-      (
-        title: 'Latest Text Update',
-        value: latestTextUpdate.isEmpty
-            ? '--'
-            : (latestTextUpdate.first.generatedText.trim().isEmpty
-                ? '--'
-                : latestTextUpdate.first.generatedText.trim().split('\n').first)
-      ),
-    ];
-
-    return SizedBox(
-      height: 132,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemBuilder: (context, index) {
-          final card = cards[index];
-          return Container(
-            width: 220,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: _wwPanel,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white10),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  card.title,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: Text(
-                    card.value,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
-        itemCount: cards.length,
-      ),
-    );
-  }
-
   Widget _buildTimelineItem(OperationsLogEntry entry) {
     final expanded = _expandedEntryIds.contains(entry.entryId);
     final isStsEntry = _isStsEntry(entry);
@@ -2964,8 +3099,6 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
               children: [
                 _activeJobHeader(job),
                 const SizedBox(height: 12),
-                _foundationCards(),
-                const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -2988,10 +3121,6 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                         onPressed: _shareSelectedReadings,
                         icon: const Icon(Icons.qr_code_2),
                         label: const Text('Share Selected'),
-                      ),
-                      FilledButton(
-                        onPressed: _openCreateReportMenu,
-                        child: const Text('Create Report'),
                       ),
                       OutlinedButton.icon(
                         onPressed: _importReading,
@@ -3175,42 +3304,64 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 52,
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _wwGold,
-                          foregroundColor: Colors.black,
-                          textStyle: const TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w900),
-                        ),
-                        onPressed: _addReading,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add Reading'),
-                      ),
-                    ),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton.icon(
+                  key: const Key('operations-log-add-entry-button'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _wwGold,
+                    foregroundColor: Colors.black,
+                    textStyle: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w900),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: SizedBox(
-                      height: 52,
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _wwGold,
-                          foregroundColor: Colors.black,
-                          textStyle: const TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w900),
-                        ),
-                        onPressed: _addSts,
-                        icon: const Icon(Icons.timer_outlined),
-                        label: const Text('Add STS'),
-                      ),
+                  onPressed: _openAddEntryMenu,
+                  icon: const Icon(Icons.add),
+                  label: const Text('+ Add Entry'),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    FilledButton.tonalIcon(
+                      key: const Key(
+                          'operations-log-action-generate-shift-update'),
+                      onPressed: _generateShiftUpdateAction,
+                      icon: const Icon(Icons.text_snippet_outlined),
+                      label: const Text('Generate Shift Update'),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    FilledButton.tonalIcon(
+                      key: const Key('operations-log-action-preview-text'),
+                      onPressed: _previewTextAction,
+                      icon: const Icon(Icons.preview_outlined),
+                      label: const Text('Preview Text'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.tonalIcon(
+                      key: const Key('operations-log-action-copy-update'),
+                      onPressed: _copyUpdateAction,
+                      icon: const Icon(Icons.copy_outlined),
+                      label: const Text('Copy Update'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.tonalIcon(
+                      key: const Key('operations-log-action-share'),
+                      onPressed: _shareUpdateAction,
+                      icon: const Icon(Icons.share_outlined),
+                      label: const Text('Share'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.tonalIcon(
+                      key: const Key('operations-log-action-export'),
+                      onPressed: _exportTimelineAction,
+                      icon: const Icon(Icons.ios_share),
+                      label: const Text('Export'),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

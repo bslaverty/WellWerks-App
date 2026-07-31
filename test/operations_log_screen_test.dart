@@ -37,6 +37,13 @@ void main() {
     return id;
   }
 
+  Future<void> openManualReadingFromAddEntry(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('operations-log-add-entry-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Manual Reading'));
+    await tester.pumpAndSettle();
+  }
+
   setUp(() async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -59,7 +66,7 @@ void main() {
         .setMockMethodCallHandler(packageInfoChannel, null);
   });
 
-  testWidgets('drillout Add Reading button has a non-null callback',
+  testWidgets('drillout Add Entry button has a non-null callback',
       (tester) async {
     await seedActiveJob(includeStage: true);
 
@@ -74,7 +81,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final button = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Add Reading').first,
+      find.byKey(const Key('operations-log-add-entry-button')),
     );
     expect(button.onPressed, isNotNull);
   });
@@ -93,8 +100,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
-    await tester.pumpAndSettle();
+    await openManualReadingFromAddEntry(tester);
 
     expect(find.text('Add Drillout Reading'), findsOneWidget);
   });
@@ -113,8 +119,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
-    await tester.pumpAndSettle();
+    await openManualReadingFromAddEntry(tester);
 
     final stageField = tester.widget<DropdownButtonFormField<String>>(
       find.byKey(const Key('operations-log-form-stage-field')),
@@ -136,8 +141,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
-    await tester.pumpAndSettle();
+    await openManualReadingFromAddEntry(tester);
 
     expect(find.text('Current Job'), findsOneWidget);
     expect(find.text('Horse Pad'), findsOneWidget);
@@ -162,8 +166,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
-    await tester.pumpAndSettle();
+    await openManualReadingFromAddEntry(tester);
 
     expect(find.text('Add Drillout Reading'), findsOneWidget);
 
@@ -218,8 +221,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
-    await tester.pumpAndSettle();
+    await openManualReadingFromAddEntry(tester);
 
     expect(find.text('Add Drillout Reading'), findsOneWidget);
 
@@ -242,8 +244,7 @@ void main() {
     expect(persisted, isEmpty);
   });
 
-  testWidgets('cleanout Add Reading opens cleanout reading form',
-      (tester) async {
+  testWidgets('cleanout Add Entry opens cleanout reading form', (tester) async {
     await seedActiveJob(includeStage: true);
 
     await tester.pumpWidget(
@@ -256,8 +257,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
-    await tester.pumpAndSettle();
+    await openManualReadingFromAddEntry(tester);
 
     expect(find.text('Add Cleanout Reading'), findsOneWidget);
   });
@@ -276,40 +276,20 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
-      find.text('Create Report'),
+      find.text('Generate Shift Update'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
 
-    final shareButton = tester.widget<OutlinedButton>(
-      find.ancestor(
-        of: find.text('Share Selected'),
-        matching: find.byType(OutlinedButton),
-      ),
-    );
-    final reportButton = tester.widget<FilledButton>(
-      find.ancestor(
-        of: find.text('Create Report'),
-        matching: find.byType(FilledButton),
-      ),
+    expect(
+      find.byKey(const Key('operations-log-action-generate-shift-update')),
+      findsOneWidget,
     );
 
-    expect(shareButton.onPressed, isNotNull);
-    expect(reportButton.onPressed, isNotNull);
-
-    await tester.tap(find.text('Share Selected'));
+    await tester.tap(
+        find.byKey(const Key('operations-log-action-generate-shift-update')));
     await tester.pumpAndSettle();
-    expect(find.text('Select at least one reading to share.'), findsOneWidget);
-
-    await tester.tap(find.text('Create Report'));
-    await tester.pumpAndSettle();
-    expect(find.text('Shift Change Report'), findsOneWidget);
-    expect(find.text('Text Update'), findsOneWidget);
-    expect(find.text('Operations Report'), findsOneWidget);
-    expect(find.text('QR Handoff'), findsOneWidget);
-    await tester.tap(find.text('Shift Change Report'));
-    await tester.pumpAndSettle();
-    expect(find.text('Create Report'), findsOneWidget);
+    expect(find.text('Add at least one entry first.'), findsOneWidget);
   });
 
   testWidgets('operations log gas and sand use text-update dropdown options',
@@ -326,8 +306,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
-    await tester.pumpAndSettle();
+    await openManualReadingFromAddEntry(tester);
 
     await tester.scrollUntilVisible(
       find.byKey(const Key('operations-log-form-gas-dropdown')),
@@ -370,8 +349,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
-    await tester.pumpAndSettle();
+    await openManualReadingFromAddEntry(tester);
 
     await tester.tap(find.byKey(const Key('operations-log-form-stage-field')));
     await tester.pumpAndSettle();
@@ -434,8 +412,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
-    await tester.pumpAndSettle();
+    await openManualReadingFromAddEntry(tester);
 
     await tester.scrollUntilVisible(
       find.byKey(const Key('operations-log-form-returns-rate-field')),
@@ -468,8 +445,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
-    await tester.pumpAndSettle();
+    await openManualReadingFromAddEntry(tester);
 
     await tester.scrollUntilVisible(
       find.byKey(const Key('operations-log-form-estimated-sts-pick')),
@@ -527,8 +503,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
-    await tester.pumpAndSettle();
+    await openManualReadingFromAddEntry(tester);
     expect(find.byKey(const Key('operations-log-form-gas-dropdown')),
         findsNothing);
     await tester.pageBack();
@@ -544,8 +519,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Add Reading'));
-    await tester.pumpAndSettle();
+    await openManualReadingFromAddEntry(tester);
     expect(find.byKey(const Key('operations-log-form-gas-dropdown')),
         findsNothing);
   });
