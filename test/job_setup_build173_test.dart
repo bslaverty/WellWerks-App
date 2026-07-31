@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wellwerks/models/job_setup.dart';
 import 'package:wellwerks/screens/job_setup_screen.dart';
+import 'package:wellwerks/screens/production_dashboard_screen.dart';
 import 'package:wellwerks/services/active_company_service.dart';
 import 'package:wellwerks/services/active_workflow_mode_service.dart';
 import 'package:wellwerks/services/job_storage_service.dart';
@@ -107,5 +109,43 @@ void main() {
     expect(find.text('Workflow'), findsOneWidget);
     expect(find.text('Single Well'), findsNothing);
     expect(find.text('Multi-Well / Pad'), findsNothing);
+  });
+
+  testWidgets(
+      'Build 215.1 production dashboard shows concrete flow-path equipment label',
+      (WidgetTester tester) async {
+    await ActiveWorkflowModeService.instance
+        .setMode(ActiveWorkflowMode.production);
+
+    await JobStorageService().saveActiveJob(
+      JobSetup(
+        company: 'Mach Energy',
+        workflow: 'production',
+        padName: 'Horse Pad',
+        shift: 'Day',
+        wells: const ['Horse 16-2H', 'Horse 16-3H'],
+        leaseNames: const ['Horse 16-2H', 'Horse 16-3H'],
+        wellEntries: const [
+          JobSetupWell(id: 'well_1', name: 'Horse 16-2H'),
+          JobSetupWell(id: 'well_2', name: 'Horse 16-3H'),
+        ],
+        activeEquipmentSections: const ['FLARE / ECD', 'VRU'],
+        drilloutSetup: const {
+          'productionFlowPath': 'ecd',
+          'gasRateSource': 'instantSpotRate',
+        },
+      ),
+    );
+
+    await tester
+        .pumpWidget(const MaterialApp(home: ProductionDashboardScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Active Job'), findsWidgets);
+    expect(find.textContaining('Workflow: Production'), findsOneWidget);
+    expect(find.textContaining('Equipment: ECD, VRU'), findsOneWidget);
+    expect(find.textContaining('Equipment: FLARE / ECD'), findsNothing);
+    expect(find.textContaining('Gas Rate Source: Instant Spot Rate'),
+        findsOneWidget);
   });
 }
