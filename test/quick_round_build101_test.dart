@@ -9,11 +9,21 @@ import 'package:wellwerks/screens/shift_report_screen.dart';
 import 'package:wellwerks/services/active_company_service.dart';
 import 'package:wellwerks/services/job_storage_service.dart';
 import 'package:wellwerks/services/production_shift_service.dart';
+import 'package:wellwerks/services/round_storage_service.dart';
 
 Finder _labeledTextField(String label) {
   return find.byWidgetPredicate(
     (widget) => widget is TextField && widget.decoration?.labelText == label,
     description: 'TextField with label $label',
+  );
+}
+
+Finder _labeledDropdownField(String label) {
+  return find.byWidgetPredicate(
+    (widget) =>
+        widget is DropdownButtonFormField<String> &&
+        widget.decoration.labelText == label,
+    description: 'DropdownButtonFormField with label $label',
   );
 }
 
@@ -118,6 +128,13 @@ Future<void> _saveCurrentHour(WidgetTester tester, String hourLabel,
       find.widgetWithText(FilledButton, 'Save $hourLabel Round').first);
   await tester
       .tap(find.widgetWithText(FilledButton, 'Save $hourLabel Round').first);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _selectWell(WidgetTester tester, String wellName) async {
+  await tester.tap(_labeledDropdownField('Well').first);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(wellName).last);
   await tester.pumpAndSettle();
 }
 
@@ -420,6 +437,63 @@ void main() {
     expect(shift.savedRows.length, 2);
     expect(shift.savedRows[0].choke, '32');
     expect(shift.savedRows[1].choke, '32');
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('Multi-well quick round save requires all wells for the hour',
+      (WidgetTester tester) async {
+    final service = ProductionShiftService();
+    final roundStorage = RoundStorageService();
+    await _seedJobAndShift(wells: const ['Horse 16-2H', 'Horse 16-3H']);
+    await _openQuickRound(tester);
+
+    await tester.enterText(_labeledTextField('TBG').first, '1200');
+    await tester.enterText(_labeledTextField('CSG').first, '900');
+    await tester.enterText(
+      _labeledTextField('Current Gas Accum').first,
+      '8003',
+    );
+    await tester.enterText(_labeledTextField('Current Gauge (in)').at(0), '70');
+    await tester.enterText(_labeledTextField('Current Gauge (in)').at(1), '40');
+    await tester
+        .tap(find.widgetWithText(FilledButton, 'Save 6 AM Round').first);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('before saving this round.'),
+      findsWidgets,
+    );
+    var shift = await service.loadActiveShift();
+    expect(shift.savedRows, isEmpty);
+
+    await _selectWell(tester, 'Horse 16-3H');
+    await tester.enterText(_labeledTextField('TBG').first, '1210');
+    await tester.enterText(_labeledTextField('CSG').first, '910');
+    await tester.enterText(
+      _labeledTextField('Current Gas Accum').first,
+      '8010',
+    );
+    await tester.enterText(_labeledTextField('Current Gauge (in)').at(0), '69');
+    await tester.enterText(_labeledTextField('Current Gauge (in)').at(1), '39');
+
+    await _selectWell(tester, 'Horse 16-2H');
+    await tester
+        .tap(find.widgetWithText(FilledButton, 'Save 6 AM Round').first);
+    await tester.pumpAndSettle();
+
+    shift = await service.loadActiveShift();
+    final hourRows =
+        shift.savedRows.where((row) => row.hourIndex == 0).toList();
+    expect(hourRows.length, 2);
+    expect(hourRows.map((row) => row.well).toSet(),
+        {'Horse 16-2H', 'Horse 16-3H'});
+
+    final savedReadings = await roundStorage.loadReadings();
+    final roundReadings =
+        savedReadings.where((reading) => reading.roundLabel == '6 AM').toList();
+    expect(roundReadings.length, 2);
+    expect(roundReadings[0].timestamp, roundReadings[1].timestamp);
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });

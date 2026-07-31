@@ -1727,8 +1727,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   Future<void> _saveActiveHour() async {
     final hourIndex = _activeHourIndex;
     final current = _controllers[hourIndex];
+    final saveWells = List<String>.from(_activeWells);
     final enteredWells =
-        _activeWells.where((well) => _isWellEntered(hourIndex, well)).toList();
+        saveWells.where((well) => _isWellEntered(hourIndex, well)).toList();
 
     final invalidControllers = <TextEditingController>{};
     void disallowNegative(TextEditingController controller) {
@@ -1799,6 +1800,22 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       return;
     }
 
+    final missingWells =
+        saveWells.where((well) => !enteredWells.contains(well)).toList();
+    if (missingWells.isNotEmpty) {
+      final message = missingWells.length == 1
+          ? 'Enter values for ${missingWells.first} before saving this round.'
+          : 'Enter values for all wells before saving this round. Missing: ${missingWells.join(', ')}.';
+      setState(() {
+        _hourValidationMessage = message;
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+      return;
+    }
+
     if (invalidControllers.isNotEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1807,7 +1824,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       return;
     }
 
-    final meterErrors = _meterValidationErrorsForHour(hourIndex, enteredWells);
+    final meterErrors = _meterValidationErrorsForHour(hourIndex, saveWells);
     if (meterErrors.isNotEmpty) {
       final message = meterErrors.first;
       setState(() {
@@ -1822,7 +1839,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
     await _persistShift();
     final rows = <ProductionReportRow>[
-      for (final well in enteredWells)
+      for (final well in saveWells)
         _buildRowForWell(hourIndex, well, _wellDataForHour(hourIndex, well)),
     ];
 
@@ -1948,8 +1965,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
     final updatedRows = List<ProductionReportRow>.from(_storedRows)
       ..removeWhere(
-        (item) =>
-            item.hourIndex == hourIndex && enteredWells.contains(item.well),
+        (item) => item.hourIndex == hourIndex && saveWells.contains(item.well),
       )
       ..addAll(rows)
       ..sort((a, b) {
@@ -1998,11 +2014,12 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     );
     await _service.saveActiveShift(_shift);
 
+    final saveTimestamp = DateTime.now();
     for (final row in rows) {
       await _roundStorage.saveReading(
         RoundReading(
-          id: DateTime.now().microsecondsSinceEpoch.toString(),
-          timestamp: DateTime.now(),
+          id: '${saveTimestamp.microsecondsSinceEpoch}-${row.well}',
+          timestamp: saveTimestamp,
           roundLabel: row.time,
           oilRate: _fmt(row.oilProduction),
           waterRate: _fmt(row.waterProduction),
