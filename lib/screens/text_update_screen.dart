@@ -223,24 +223,6 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     return _shift.header.pad.trim();
   }
 
-  List<String> get _headerWellList {
-    final activeJob = _activeJob;
-    final wells = <String>[];
-    final source = activeJob?.resolvedWellNames.isNotEmpty == true
-        ? activeJob!.resolvedWellNames
-        : _shift.header.wells;
-    for (final well in source) {
-      final trimmed = well.trim();
-      if (trimmed.isNotEmpty && !wells.contains(trimmed)) {
-        wells.add(trimmed);
-      }
-    }
-    return wells;
-  }
-
-  String get _headerWellListText =>
-      _headerWellList.isEmpty ? '-' : _headerWellList.join(' / ');
-
   String get _headerUpdateTime {
     final entryTime = _entryTimeMode == _EntryTimeMode.currentTime
         ? DateTime.now()
@@ -258,9 +240,6 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     }
     if (pad.isNotEmpty) {
       lines.add(pad);
-    }
-    if (_headerWellListText != '-') {
-      lines.add(_headerWellListText);
     }
     lines.add(_headerUpdateTime);
     return lines;
@@ -539,9 +518,7 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
 
     for (var i = 0; i < rows.length; i++) {
       final row = rows[i];
-      if (activeJob.isMultiWellJob) {
-        lines.add(row.well.trim().isEmpty ? 'Well' : row.well.trim());
-      }
+      lines.add(row.well.trim().isEmpty ? 'Well' : row.well.trim());
       for (final key in defaults.wellFieldKeys) {
         final label = defaults.textLabels[key] ?? key.toUpperCase();
         lines.add('$label: ${_valueForProfileField(row, key)}');
