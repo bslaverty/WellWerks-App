@@ -68,7 +68,6 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   String productionFlowPath = _flowPathFlare;
   final selectedChemicals = <String>[];
   String shift = 'Day';
-  final _company = TextEditingController(text: 'Mach Energy');
   final padName = TextEditingController();
   final notes = TextEditingController();
   final leaseName = TextEditingController();
@@ -120,6 +119,33 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   final _waterTank2Gauge = TextEditingController();
   final _sweepTankGauge = TextEditingController();
 
+  List<String> _companyOptions() {
+    final options = List<String>.from(_profileDefaults.companyOptions);
+    final current = company.trim();
+    if (current.isNotEmpty && !options.contains(current)) {
+      options.add(current);
+    }
+    options.sort();
+    return options;
+  }
+
+  void _setCompany(String value) {
+    final normalized = _profileDefaults.normalizeCompany(value);
+    setState(() {
+      company = normalized;
+      final defaults = _profileDefaults.profileForCompany(company);
+      wellFieldKeys = List<String>.from(defaults.wellFieldKeys);
+      activeEquipmentSections = activeEquipmentSections
+          .where(defaults.optionalSections.contains)
+          .toList(growable: false);
+      if (activeEquipmentSections.isEmpty) {
+        activeEquipmentSections =
+            List<String>.from(defaults.defaultActiveSections);
+      }
+    });
+    _scheduleAutoSave();
+  }
+
   int _i(TextEditingController controller) {
     return int.tryParse(controller.text.trim()) ?? 0;
   }
@@ -132,7 +158,6 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   List<TextEditingController> get _autoSaveControllers => [
-        _company,
         padName,
         notes,
         leaseName,
@@ -332,6 +357,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   Future<void> _load() async {
+    await _profileDefaults.ensureCustomProfilesLoaded();
     await _activeCompanyService.ensureLoaded();
     final workflowMode = await _workflowModeService.ensureLoaded();
     final active = await _storage.ensureActiveJobLoaded();
@@ -822,7 +848,6 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
 
   void _applyJobToForm(JobSetup job) {
     company = _profileDefaults.normalizeCompany(job.company);
-    _company.text = company;
     jobType = _profileDefaults.normalizeJobType(job.jobType);
     final defaults = _profileDefaults.profileForCompany(company);
     wellFieldKeys = job.wellFieldKeys.isEmpty
@@ -959,7 +984,6 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   void _resetFormForNewJob() {
     final globalCompany = _activeCompanyService.activeCompany.value.trim();
     company = globalCompany.isEmpty ? 'Mach Energy' : globalCompany;
-    _company.text = company;
     jobType = JobProfileDefaultsService.jobTypeSingleWell;
     final defaults = _profileDefaults.profileForCompany(company);
     wellFieldKeys = List<String>.from(defaults.wellFieldKeys);
@@ -1705,13 +1729,22 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   List<Widget> _buildProductionSetupPages() {
     return [
       _StepPage(title: '1. Job Information', children: [
-        TextField(
+        DropdownButtonFormField<String>(
           key: const Key('job-info-company-field'),
-          controller: _company,
+          initialValue:
+              _companyOptions().contains(company) ? company.trim() : null,
           decoration: const InputDecoration(labelText: 'Company'),
+          items: _companyOptions()
+              .map(
+                (option) => DropdownMenuItem<String>(
+                  value: option,
+                  child: Text(option),
+                ),
+              )
+              .toList(growable: false),
           onChanged: (value) {
-            company = value;
-            _scheduleAutoSave();
+            if (value == null) return;
+            _setCompany(value);
           },
         ),
         const SizedBox(height: 12),
@@ -2377,13 +2410,22 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        TextField(
+        DropdownButtonFormField<String>(
           key: const Key('job-info-company-field'),
-          controller: _company,
+          initialValue:
+              _companyOptions().contains(company) ? company.trim() : null,
           decoration: const InputDecoration(labelText: 'Company'),
+          items: _companyOptions()
+              .map(
+                (option) => DropdownMenuItem<String>(
+                  value: option,
+                  child: Text(option),
+                ),
+              )
+              .toList(growable: false),
           onChanged: (value) {
-            company = value;
-            _scheduleAutoSave();
+            if (value == null) return;
+            _setCompany(value);
           },
         ),
         const SizedBox(height: 12),

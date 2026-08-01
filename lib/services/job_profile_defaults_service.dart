@@ -1,3 +1,8 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 class JobProfileDefaults {
   const JobProfileDefaults({
     required this.company,
@@ -18,7 +23,55 @@ class JobProfileDefaults {
   final Map<String, List<String>> equipmentSectionFields;
 }
 
+class CompanyProfileSettings {
+  const CompanyProfileSettings({
+    required this.name,
+    required this.templateCompany,
+    required this.defaultActiveSections,
+  });
+
+  final String name;
+  final String templateCompany;
+  final List<String> defaultActiveSections;
+
+  CompanyProfileSettings copyWith({
+    String? name,
+    String? templateCompany,
+    List<String>? defaultActiveSections,
+  }) {
+    return CompanyProfileSettings(
+      name: name ?? this.name,
+      templateCompany: templateCompany ?? this.templateCompany,
+      defaultActiveSections:
+          defaultActiveSections ?? this.defaultActiveSections,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'templateCompany': templateCompany,
+        'defaultActiveSections': defaultActiveSections,
+      };
+
+  factory CompanyProfileSettings.fromJson(Map<String, dynamic> json) {
+    final rawName = (json['name'] as String? ?? '').trim();
+    final rawTemplate = (json['templateCompany'] as String? ?? '').trim();
+    final rawSections = (json['defaultActiveSections'] as List? ?? const [])
+        .map((item) => item.toString().trim())
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .toList();
+
+    return CompanyProfileSettings(
+      name: rawName,
+      templateCompany: rawTemplate,
+      defaultActiveSections: rawSections,
+    );
+  }
+}
+
 class JobProfileDefaultsService {
+  static const String _customProfilesKey = 'wellwerks_company_profiles_v1';
   static const String companyNone = 'None';
   static const String companyContinental = 'Continental Resources';
   static const String companyMach = 'Mach Energy';
@@ -49,6 +102,14 @@ class JobProfileDefaultsService {
     companyMach,
     companyXto,
   ];
+
+  static final ValueNotifier<List<CompanyProfileSettings>>
+      customProfilesNotifier = ValueNotifier<List<CompanyProfileSettings>>(
+          const <CompanyProfileSettings>[]);
+
+  static bool _customProfilesLoaded = false;
+  static final Map<String, CompanyProfileSettings> _customProfilesByLower =
+      <String, CompanyProfileSettings>{};
 
   static const String jobTypeSingleWell = 'singleWell';
   static const String jobTypeMultiWellPad = 'multiWellPad';
@@ -98,6 +159,8 @@ class JobProfileDefaultsService {
     'Water Cooler',
     'Transfer Pump',
   ];
+
+  static const List<String> optionalEquipmentSections = _defaultSections;
 
   static const Map<String, String> _continentalReportLabels = <String, String>{
     'csg': 'CSG',
@@ -211,6 +274,98 @@ class JobProfileDefaultsService {
     'Transfer Pump': <String>[],
   };
 
+  Future<void> ensureCustomProfilesLoaded() async {
+    if (_customProfilesLoaded) return;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_customProfilesKey);
+    if (raw == null || raw.trim().isEmpty) {
+      _setCustomProfiles(const <CompanyProfileSettings>[]);
+      _customProfilesLoaded = true;
+      return;
+    }
+
+    try {
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      final profiles = decoded
+          .map((item) => CompanyProfileSettings.fromJson(
+              Map<String, dynamic>.from(item as Map)))
+          .map(_normalizeCustomProfile)
+          .where((item) => item != null)
+          .cast<CompanyProfileSettings>()
+          .toList(growable: false);
+      _setCustomProfiles(profiles);
+    } catch (_) {
+      _setCustomProfiles(const <CompanyProfileSettings>[]);
+    }
+    _customProfilesLoaded = true;
+  }
+
+  Future<void> saveCustomProfiles(List<CompanyProfileSettings> profiles) async {
+    final normalized = profiles
+        .map(_normalizeCustomProfile)
+        .where((item) => item != null)
+        .cast<CompanyProfileSettings>()
+        .toList(growable: false);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _customProfilesKey,
+      jsonEncode(normalized.map((item) => item.toJson()).toList()),
+    );
+    _setCustomProfiles(normalized);
+    _customProfilesLoaded = true;
+  }
+
+  List<CompanyProfileSettings> get customProfiles =>
+      List<CompanyProfileSettings>.from(customProfilesNotifier.value);
+
+  List<String> get companyOptions {
+    final options = <String>{...sharedCompanyOptionsAlphabetized};
+    for (final profile in customProfilesNotifier.value) {
+      final name = profile.name.trim();
+      if (name.isNotEmpty) {
+        options.add(name);
+      }
+    }
+    final result = options.toList(growable: false);
+    result.sort();
+    return result;
+  }
+
+  static void _setCustomProfiles(List<CompanyProfileSettings> profiles) {
+    _customProfilesByLower
+      ..clear()
+      ..addEntries(
+        profiles.map(
+          (profile) => MapEntry(profile.name.trim().toLowerCase(), profile),
+        ),
+      );
+    customProfilesNotifier.value =
+        List<CompanyProfileSettings>.from(_customProfilesByLower.values);
+  }
+
+  CompanyProfileSettings? _normalizeCustomProfile(
+      CompanyProfileSettings input) {
+    final name = input.name.trim();
+    if (name.isEmpty) return null;
+    final lower = name.toLowerCase();
+    if (lower == companyNone.toLowerCase() || lower == 'custom') return null;
+
+    final template = normalizeCompany(input.templateCompany);
+    final baseTemplate = template == companyNone ? companyMach : template;
+    final allowed = _defaultSections.toSet();
+    final normalizedSections = input.defaultActiveSections
+        .map((item) => item.trim())
+        .where((item) => allowed.contains(item))
+        .toSet()
+        .toList(growable: false);
+
+    return CompanyProfileSettings(
+      name: name,
+      templateCompany: baseTemplate,
+      defaultActiveSections: normalizedSections,
+    );
+  }
+
   String normalizeCompany(String company) {
     final lower = company.trim().toLowerCase();
     if (lower.isEmpty || lower == 'none' || lower == 'custom') {
@@ -224,6 +379,10 @@ class JobProfileDefaultsService {
     }
     if (lower == 'flywheel energy' || lower == 'flywheel') {
       return companyFlywheel;
+    }
+    final custom = _customProfilesByLower[lower];
+    if (custom != null) {
+      return custom.name;
     }
     return company;
   }
@@ -243,6 +402,25 @@ class JobProfileDefaultsService {
   JobProfileDefaults profileForCompany(String company) {
     final normalized = normalizeCompany(company);
 
+    final custom = _customProfilesByLower[normalized.toLowerCase()];
+    if (custom != null) {
+      final base = _builtInProfileForCompany(custom.templateCompany);
+      return JobProfileDefaults(
+        company: custom.name,
+        wellFieldKeys: List<String>.from(base.wellFieldKeys),
+        optionalSections: List<String>.from(_defaultSections),
+        defaultActiveSections: List<String>.from(custom.defaultActiveSections),
+        reportLabels: Map<String, String>.from(base.reportLabels),
+        textLabels: Map<String, String>.from(base.textLabels),
+        equipmentSectionFields:
+            Map<String, List<String>>.from(base.equipmentSectionFields),
+      );
+    }
+
+    return _builtInProfileForCompany(normalized);
+  }
+
+  JobProfileDefaults _builtInProfileForCompany(String normalized) {
     if (normalized == companyContinental) {
       return const JobProfileDefaults(
         company: companyContinental,
@@ -309,5 +487,12 @@ class JobProfileDefaultsService {
       },
       equipmentSectionFields: _customEquipmentFields,
     );
+  }
+
+  @visibleForTesting
+  static void resetCustomProfilesForTest() {
+    _customProfilesLoaded = false;
+    _customProfilesByLower.clear();
+    customProfilesNotifier.value = const <CompanyProfileSettings>[];
   }
 }

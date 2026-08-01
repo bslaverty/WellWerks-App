@@ -504,10 +504,10 @@ class AppSettingsData {
   static String _normalizeActiveCompany(String? value) {
     final normalized =
         JobProfileDefaultsService().normalizeCompany((value ?? '').trim());
-    if (JobProfileDefaultsService.sharedCompanyOptions.contains(normalized)) {
-      return normalized;
+    if (normalized.trim().isEmpty) {
+      return JobProfileDefaultsService.companyNone;
     }
-    return JobProfileDefaultsService.companyNone;
+    return normalized;
   }
 
   static List<String> _normalizeOptionalSections(List<String> value) {

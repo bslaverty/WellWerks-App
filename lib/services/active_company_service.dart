@@ -29,8 +29,7 @@ class ActiveCompanyService {
 
   bool _loaded = false;
 
-  List<String> get companyOptions =>
-      JobProfileDefaultsService.sharedCompanyOptionsAlphabetized;
+  List<String> get companyOptions => _defaults.companyOptions;
 
   String normalize(String value) {
     final normalized = _defaults.normalizeCompany(value.trim());
@@ -47,6 +46,8 @@ class ActiveCompanyService {
 
   Future<String> ensureLoaded() async {
     if (_loaded) return activeCompany.value;
+
+    await _defaults.ensureCustomProfilesLoaded();
 
     final settings = await _settingsService.load();
     final saved = normalize(settings.activeCompany);

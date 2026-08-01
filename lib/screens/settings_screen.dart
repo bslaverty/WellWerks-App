@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/app_settings_service.dart';
 import '../services/app_theme_controller.dart';
+import '../services/rate_timer_notification_service.dart';
+import '../services/job_profile_defaults_service.dart';
 import '../services/operations_sts_reminder_service.dart';
+import '../utils/quick_round_reminder_utils.dart';
 import '../widgets/app_header.dart';
 import '../widgets/lead_time_wheel_picker_sheet.dart';
 import 'about_support_screen.dart';
@@ -26,9 +30,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   final _service = AppSettingsService();
   final _stsReminderService = OperationsStsReminderService();
+  final _notificationService = RateTimerNotificationService.instance;
+  final _profileDefaults = JobProfileDefaultsService();
   AppSettingsData? _settings;
+  List<CompanyProfileSettings> _companyProfiles =
+      const <CompanyProfileSettings>[];
   String _appVersion = '--';
   String _appBuild = '--';
+  bool _quickRoundReminderEnabled = false;
+  int _quickRoundReminderMinute = 0;
   bool _loading = true;
 
   @override
@@ -39,14 +49,121 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _load() async {
     final packageInfo = await PackageInfo.fromPlatform();
+    await _profileDefaults.ensureCustomProfilesLoaded();
     final settings = await _service.load();
+    final prefs = await SharedPreferences.getInstance();
+    final quickRoundEnabled = prefs.getBool(
+            RateTimerNotificationService.quickRoundReminderEnabledKey) ??
+        false;
+    final quickRoundMinute = normalizeQuickRoundReminderMinute(
+      prefs.getInt(RateTimerNotificationService.quickRoundReminderMinuteKey) ??
+          0,
+    );
     if (!mounted) return;
     setState(() {
       _appVersion = packageInfo.version;
       _appBuild = packageInfo.buildNumber;
       _settings = settings;
+      _companyProfiles = _profileDefaults.customProfiles;
+      _quickRoundReminderEnabled = quickRoundEnabled;
+      _quickRoundReminderMinute = quickRoundMinute;
       _loading = false;
     });
+  }
+
+  Future<void> _saveQuickRoundReminderPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(
+      RateTimerNotificationService.quickRoundReminderEnabledKey,
+      _quickRoundReminderEnabled,
+    );
+    await prefs.setInt(
+      RateTimerNotificationService.quickRoundReminderMinuteKey,
+      _quickRoundReminderMinute,
+    );
+  }
+
+  Future<void> _setQuickRoundReminderEnabled(bool enabled) async {
+    if (enabled == _quickRoundReminderEnabled) return;
+
+    if (!enabled) {
+      await _notificationService.cancelQuickRoundReminder();
+      if (!mounted) return;
+      setState(() => _quickRoundReminderEnabled = false);
+      await _saveQuickRoundReminderPrefs();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Quick Round reminder turned off.')),
+      );
+      return;
+    }
+
+    final granted = await _notificationService.requestNotificationPermission();
+    if (!granted) {
+      if (!mounted) return;
+      setState(() => _quickRoundReminderEnabled = false);
+      await _saveQuickRoundReminderPrefs();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Notifications must be enabled for the Quick Round reminder.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    await _notificationService.scheduleQuickRoundReminder(
+      minute: _quickRoundReminderMinute,
+    );
+    if (!mounted) return;
+    setState(() => _quickRoundReminderEnabled = true);
+    await _saveQuickRoundReminderPrefs();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Quick Round reminder set for :${formatQuickRoundReminderMinute(_quickRoundReminderMinute)} every hour.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _setQuickRoundReminderMinute(int minute) async {
+    final normalized = normalizeQuickRoundReminderMinute(minute);
+    if (normalized == _quickRoundReminderMinute) return;
+
+    final previous = _quickRoundReminderMinute;
+    if (!mounted) return;
+    setState(() => _quickRoundReminderMinute = normalized);
+    await _saveQuickRoundReminderPrefs();
+
+    if (!_quickRoundReminderEnabled) return;
+
+    try {
+      await _notificationService.scheduleQuickRoundReminder(
+        minute: normalized,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Quick Round reminder set for :${formatQuickRoundReminderMinute(normalized)} every hour.',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _quickRoundReminderMinute = previous);
+      await _saveQuickRoundReminderPrefs();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to update Quick Round reminder minute.'),
+        ),
+      );
+    }
   }
 
   String get _appVersionLabel =>
@@ -57,6 +174,241 @@ class _SettingsScreenState extends State<SettingsScreen> {
     AppThemeController.instance.setTheme(next.appTheme);
     if (!mounted) return;
     setState(() => _settings = next);
+  }
+
+  Future<void> _saveCompanyProfiles(
+    List<CompanyProfileSettings> nextProfiles,
+  ) async {
+    await _profileDefaults.saveCustomProfiles(nextProfiles);
+    if (!mounted) return;
+
+    final options = _profileDefaults.companyOptions;
+    var nextSettings = _settings;
+    if (nextSettings != null) {
+      final validJsa = options.where(
+        (item) => item != JobProfileDefaultsService.companyNone,
+      );
+      final jsaFallback = validJsa.isEmpty
+          ? JobProfileDefaultsService.companyMach
+          : validJsa.first;
+      if (!options.contains(nextSettings.jsaCompanyDefault)) {
+        nextSettings = nextSettings.copyWith(jsaCompanyDefault: jsaFallback);
+      }
+      if (!options.contains(nextSettings.activeCompany)) {
+        nextSettings = nextSettings.copyWith(
+          activeCompany: JobProfileDefaultsService.companyNone,
+        );
+      }
+    }
+
+    setState(() {
+      _companyProfiles = _profileDefaults.customProfiles;
+      if (nextSettings != null) {
+        _settings = nextSettings;
+      }
+    });
+
+    if (nextSettings != null) {
+      await _service.save(nextSettings);
+    }
+  }
+
+  Future<void> _deleteCompanyProfile(CompanyProfileSettings profile) async {
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Delete Company Profile?'),
+            content: Text(
+              'Remove ${profile.name} and its custom defaults?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed) return;
+
+    final next = _companyProfiles
+        .where((item) => item.name.toLowerCase() != profile.name.toLowerCase())
+        .toList(growable: false);
+    await _saveCompanyProfiles(next);
+  }
+
+  Future<void> _openCompanyProfileEditor({
+    CompanyProfileSettings? existing,
+  }) async {
+    final nameController = TextEditingController(text: existing?.name ?? '');
+    var selectedTemplate = existing?.templateCompany.isNotEmpty == true
+        ? existing!.templateCompany
+        : JobProfileDefaultsService.companyMach;
+    final selectedSections = <String>{
+      ...?existing?.defaultActiveSections,
+    };
+
+    final saved = await showDialog<CompanyProfileSettings>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          return AlertDialog(
+            title: Text(
+              existing == null ? 'Add Company Profile' : 'Edit Company Profile',
+            ),
+            content: SizedBox(
+              width: 460,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Company Name',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedTemplate,
+                      decoration: const InputDecoration(
+                        labelText: 'Field Template',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: JobProfileDefaultsService.companyMach,
+                          child: Text('Mach Energy'),
+                        ),
+                        DropdownMenuItem(
+                          value: JobProfileDefaultsService.companyContinental,
+                          child: Text('Continental Resources'),
+                        ),
+                        DropdownMenuItem(
+                          value: JobProfileDefaultsService.companyFlywheel,
+                          child: Text('Flywheel Energy'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setDialogState(() {
+                          selectedTemplate = value;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Default Active Equipment',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 6),
+                    for (final section
+                        in JobProfileDefaultsService.optionalEquipmentSections)
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        value: selectedSections.contains(section),
+                        title: Text(section),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        onChanged: (enabled) {
+                          setDialogState(() {
+                            if (enabled ?? false) {
+                              selectedSections.add(section);
+                            } else {
+                              selectedSections.remove(section);
+                            }
+                          });
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final trimmed = nameController.text.trim();
+                  if (trimmed.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text('Company name is required.')),
+                    );
+                    return;
+                  }
+
+                  final lower = trimmed.toLowerCase();
+                  final builtIn = JobProfileDefaultsService
+                      .sharedCompanyOptionsAlphabetized
+                      .map((item) => item.toLowerCase())
+                      .toSet();
+                  final takenByOtherCustom = _companyProfiles.any((profile) {
+                    final same = profile.name.toLowerCase() == lower;
+                    final sameExisting = existing != null &&
+                        profile.name.toLowerCase() ==
+                            existing.name.toLowerCase();
+                    return same && !sameExisting;
+                  });
+
+                  if (builtIn.contains(lower) &&
+                      (existing == null ||
+                          existing.name.toLowerCase() != lower)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'That name is already a built-in profile.',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+
+                  if (takenByOtherCustom) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('That company profile already exists.'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  Navigator.of(dialogContext).pop(
+                    CompanyProfileSettings(
+                      name: trimmed,
+                      templateCompany: selectedTemplate,
+                      defaultActiveSections: selectedSections.toList(),
+                    ),
+                  );
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    nameController.dispose();
+
+    if (saved == null) return;
+    final next = <CompanyProfileSettings>[
+      for (final profile in _companyProfiles)
+        if (existing == null ||
+            profile.name.toLowerCase() != existing.name.toLowerCase())
+          profile,
+      saved,
+    ]..sort(
+        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      );
+    await _saveCompanyProfiles(next);
   }
 
   Future<void> _openSystemNotificationSettings() async {
@@ -287,6 +639,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     }
 
+    final jsaCompanyOptions = _profileDefaults.companyOptions
+        .where((item) => item != JobProfileDefaultsService.companyNone)
+        .toList(growable: false);
+    final jsaCompanyValue = jsaCompanyOptions.contains(s.jsaCompanyDefault)
+        ? s.jsaCompanyDefault
+        : (jsaCompanyOptions.isEmpty
+            ? JobProfileDefaultsService.companyMach
+            : jsaCompanyOptions.first);
+
     return Scaffold(
       backgroundColor: _bg,
       appBar: const AppHeader(title: 'WellWerks Settings', showBack: true),
@@ -461,6 +822,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
           _sectionCard(
+            title: 'Company Profiles',
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  'Built-in Profiles',
+                  style: TextStyle(color: _text, fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text(
+                  JobProfileDefaultsService.sharedCompanyOptionsAlphabetized
+                      .where((item) =>
+                          item != JobProfileDefaultsService.companyNone)
+                      .join(', '),
+                  style: TextStyle(color: _subtle),
+                ),
+              ),
+              if (_companyProfiles.isEmpty)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    'No custom company profiles yet.',
+                    style: TextStyle(color: _subtle),
+                  ),
+                )
+              else
+                for (final profile in _companyProfiles)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(profile.name, style: TextStyle(color: _text)),
+                    subtitle: Text(
+                      'Template: ${profile.templateCompany} • Default equipment: ${profile.defaultActiveSections.isEmpty ? 'None' : profile.defaultActiveSections.join(', ')}',
+                      style: TextStyle(color: _subtle),
+                    ),
+                    trailing: Wrap(
+                      spacing: 4,
+                      children: [
+                        IconButton(
+                          tooltip: 'Edit Profile',
+                          icon: const Icon(Icons.edit_outlined),
+                          onPressed: () =>
+                              _openCompanyProfileEditor(existing: profile),
+                        ),
+                        IconButton(
+                          tooltip: 'Delete Profile',
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () => _deleteCompanyProfile(profile),
+                        ),
+                      ],
+                    ),
+                  ),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _openCompanyProfileEditor(),
+                  icon: const Icon(Icons.add_circle_outline),
+                  label: const Text('Add Company Profile'),
+                ),
+              ),
+            ],
+          ),
+          _sectionCard(
             title: 'JSA',
             children: [
               _switchTile(
@@ -490,15 +912,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _dropdownTile(
                 title: 'Company Defaults',
                 subtitle: 'Default company for new JSA forms.',
-                value: s.jsaCompanyDefault,
-                items: const [
-                  DropdownMenuItem(
-                      value: 'Mach Energy', child: Text('Mach Energy')),
-                  DropdownMenuItem(
-                      value: 'Continental', child: Text('Continental')),
-                  DropdownMenuItem(value: 'Devon', child: Text('Devon')),
-                  DropdownMenuItem(value: 'XTO', child: Text('XTO')),
-                ],
+                value: jsaCompanyValue,
+                items: jsaCompanyOptions
+                    .map(
+                      (company) => DropdownMenuItem(
+                        value: company,
+                        child: Text(company),
+                      ),
+                    )
+                    .toList(growable: false),
                 onChanged: (value) {
                   if (value == null) return;
                   _save(s.copyWith(jsaCompanyDefault: value));
@@ -611,6 +1033,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: s.appNotifications,
                 onChanged: (value) =>
                     _save(s.copyWith(appNotifications: value)),
+              ),
+              _switchTile(
+                title: 'Hourly Quick Round Reminder',
+                subtitle:
+                    'Send a reminder every hour at a selected minute during production work.',
+                value: _quickRoundReminderEnabled,
+                onChanged: _setQuickRoundReminderEnabled,
+              ),
+              _dropdownTile(
+                title: 'Quick Round Reminder Minute',
+                subtitle:
+                    'Select the minute past each hour for the Quick Round reminder.',
+                value: _quickRoundReminderMinute.toString(),
+                items: List<DropdownMenuItem<String>>.generate(
+                  60,
+                  (minute) => DropdownMenuItem<String>(
+                    value: minute.toString(),
+                    child: Text(':${formatQuickRoundReminderMinute(minute)}'),
+                  ),
+                ),
+                onChanged: (value) {
+                  final parsed = int.tryParse(value ?? '');
+                  if (parsed == null) return;
+                  _setQuickRoundReminderMinute(parsed);
+                },
               ),
               _switchTile(
                 title: 'Enable Rate Timer Notifications',
