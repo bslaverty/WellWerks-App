@@ -216,10 +216,11 @@ class DrilloutCleanoutFieldDefinitions {
     ),
     DrilloutCleanoutFieldDefinition(
       id: sweepInformationId,
-      label: 'Legacy Sweep Information',
+      label: 'Coil Depth',
+      unitLabel: 'ft',
       inputType: DrilloutCleanoutInputType.singleLineText,
       displayOrder: 160,
-      includeToggleLabel: 'Include Legacy Sweep Information',
+      includeToggleLabel: 'Include Coil Depth',
       reportVisible: true,
     ),
     DrilloutCleanoutFieldDefinition(
@@ -267,6 +268,7 @@ class DrilloutCleanoutFieldDefinitions {
         estimatedStsId,
         stsId,
         sandOrSolidsId,
+        sweepInformationId,
         notesId,
       };
 }

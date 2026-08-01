@@ -44,10 +44,6 @@ class OperationsLogFieldConfigService {
 
   static List<OperationsLogFieldOption> get configurableFields {
     return DrilloutCleanoutFieldDefinitions.readingFields
-        .where(
-          (field) =>
-              field.id != DrilloutCleanoutFieldDefinitions.sweepInformationId,
-        )
         .map(
           (field) => OperationsLogFieldOption(id: field.id, label: field.label),
         )

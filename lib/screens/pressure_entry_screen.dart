@@ -76,6 +76,16 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   bool get _showEcdSection =>
       _settings.isOptionalSectionEnabled('ecd') &&
       _equipmentSectionSelected('FLARE / ECD');
+  bool get _showFlareEcdSection => _equipmentSectionSelected('FLARE / ECD');
+  bool get _isEcdFlowPath {
+    final raw =
+        (_activeJob?.drilloutSetup['productionFlowPath'] as String? ?? '')
+            .trim()
+            .toLowerCase();
+    return raw == 'ecd';
+  }
+
+  String get _flareEcdLabel => _isEcdFlowPath ? 'ECD' : 'Flare';
   bool get _showCompressorSection =>
       _settings.isOptionalSectionEnabled('compressor') &&
       _equipmentSectionSelected('Compressor');
@@ -695,8 +705,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (_showWaterCoolerSection) data.waterCoolerOutTemp,
       data.waterSpecificGravity,
       data.wellheadTemp,
-      if (_showFlareSection) data.flareRate,
-      if (_showFlareSection) data.flarePilotTemp,
+      if (_showFlareEcdSection) data.flareRate,
+      if (_showFlareEcdSection) data.flarePilotTemp,
       ..._chemicalValues(data),
       if (_showVruSection) data.vruGasRate,
       if (_showCompressorSection) data.compressorInjection,
@@ -1475,15 +1485,29 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     List<ProductionTank> tanks,
     List<ProductionGaugeEntry> gauges,
   ) {
+    String feetInchesLabel(double inches) {
+      if (inches.isNaN || inches < 0) return '--';
+      final rounded = inches.round();
+      final feet = rounded ~/ 12;
+      final remainder = rounded % 12;
+      return '$feet\' $remainder"';
+    }
+
+    double bblFor(ProductionTank tank, double inches) {
+      final factor = double.tryParse(tank.bblPerInch.trim());
+      if (factor == null || factor <= 0 || inches.isNaN || inches < 0) {
+        return double.nan;
+      }
+      return inches * factor;
+    }
+
     final parts = <String>[];
     for (var i = 0; i < tanks.length; i++) {
       final entry = gauges[i];
       final converted = entry.asInches();
-      final convertedText = converted % 1 == 0
-          ? converted.toStringAsFixed(0)
-          : converted.toStringAsFixed(2);
+      final bbl = bblFor(tanks[i], converted);
       parts.add(
-        '${tanks[i].name}: ${entry.entryText()} ($convertedText in)',
+        '${tanks[i].name}: ${feetInchesLabel(converted)} (${_fmt(bbl)} bbl)',
       );
     }
     return parts.join(', ');
@@ -1851,10 +1875,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       waterSpecificGravity: data.waterSpecificGravity.trim(),
       wellheadTemp: data.wellheadTemp.trim(),
       waterTemp: data.waterTemp.trim(),
-      flareRate: (_showFlareSection && _flareEcdGasRateEnabled)
+      flareRate: (_showFlareEcdSection && _flareEcdGasRateEnabled)
           ? _storeGasField(data.flareRate)
           : '',
-      flarePilotTemp: _showFlareSection ? data.flarePilotTemp.trim() : '',
+      flarePilotTemp: _showFlareEcdSection ? data.flarePilotTemp.trim() : '',
       biocide: _chemicalEnabled('Biocide') ? data.biocide.trim() : '',
       scavenger: _chemicalEnabled('Scavenger') ? data.scavenger.trim() : '',
       defoamer: _chemicalEnabled('Defoamer') ? data.defoamer.trim() : '',
@@ -1950,7 +1974,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (_showWaterCoolerSection) current.waterCoolerInTemp,
       if (_showWaterCoolerSection) current.waterCoolerOutTemp,
       current.waterSpecificGravity,
-      if (_showFlareSection) current.flareRate,
+      if (_showFlareEcdSection) current.flareRate,
       if (_chemicalEnabled('Biocide')) current.biocide,
       if (_chemicalEnabled('Scavenger')) current.scavenger,
       if (_chemicalEnabled('Defoamer')) current.defoamer,
@@ -2257,7 +2281,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       return;
     }
     final nextIndex = _activeHourIndex + 1;
-    _applySavedChokeDefaultsToHour(nextIndex);
+    _applySavedDefaultsToHour(nextIndex);
     setState(() => _activeHourIndex = nextIndex);
   }
 
@@ -2266,8 +2290,13 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       return;
     }
     final previousIndex = _activeHourIndex - 1;
-    _applySavedChokeDefaultsToHour(previousIndex);
+    _applySavedDefaultsToHour(previousIndex);
     setState(() => _activeHourIndex = previousIndex);
+  }
+
+  void _applySavedDefaultsToHour(int hourIndex) {
+    _applySavedChokeDefaultsToHour(hourIndex);
+    _applySavedTankGaugeDefaultsToHour(hourIndex);
   }
 
   void _applySavedChokeDefaultsToHour(int hourIndex) {
@@ -2281,6 +2310,20 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         well,
         chokeValue: savedChoke,
         chokeTypeValue: savedType,
+      );
+    }
+  }
+
+  void _applySavedTankGaugeDefaultsToHour(int hourIndex) {
+    if (hourIndex < 0 || hourIndex >= _controllers.length) return;
+    final controller = _controllers[hourIndex];
+    for (final well in _activeWells) {
+      final latest = _latestSavedWellData(hourIndex, well);
+      if (latest == null) continue;
+      controller.applyTankGaugeDefaultsForWell(
+        well,
+        waterDefaults: latest.waterTankGaugeEntries,
+        oilDefaults: latest.oilTankGaugeEntries,
       );
     }
   }
@@ -2667,11 +2710,11 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       ],
       _field('Water Specific Gravity', controller.waterSpecificGravity),
       _field('Wellhead Temperature', controller.wellheadTemp, suffix: '°'),
-      if (_showFlareSection && _flareEcdGasRateEnabled)
-        _field('Flare / ECD Gas Rate', controller.flareRate,
+      if (_showFlareEcdSection && _flareEcdGasRateEnabled)
+        _field('$_flareEcdLabel Gas Rate', controller.flareRate,
             suffix: _gasUnitLabel),
-      if (_showFlareSection)
-        _field('Flare / ECD Temperature', controller.flarePilotTemp,
+      if (_showFlareEcdSection)
+        _field('$_flareEcdLabel Temperature', controller.flarePilotTemp,
             suffix: '°'),
       if (_chemicalEnabled('Biocide'))
         _field('Biocide', controller.biocide, suffix: 'GPD'),
@@ -3769,6 +3812,107 @@ class _HourlyCheckControllers {
     if (targetWell == well) {
       _loadWellData(updated,
           chokeTypeValue.trim().isEmpty ? 'ADJ' : chokeTypeValue.trim());
+    }
+  }
+
+  bool _entryHasValue(ProductionGaugeEntry entry) {
+    return entry.inches.trim().isNotEmpty ||
+        entry.feet.trim().isNotEmpty ||
+        entry.inchesPart.trim().isNotEmpty ||
+        entry.decimalFeet.trim().isNotEmpty;
+  }
+
+  List<ProductionGaugeEntry> _normalizedGaugeEntries(
+    List<ProductionGaugeEntry> source,
+    int count,
+  ) {
+    return List<ProductionGaugeEntry>.generate(
+      count,
+      (index) =>
+          index < source.length ? source[index] : const ProductionGaugeEntry(),
+    );
+  }
+
+  bool _sameGaugeEntries(
+    List<ProductionGaugeEntry> left,
+    List<ProductionGaugeEntry> right,
+  ) {
+    if (left.length != right.length) return false;
+    for (var i = 0; i < left.length; i++) {
+      final a = left[i];
+      final b = right[i];
+      if (a.mode != b.mode ||
+          a.inches != b.inches ||
+          a.feet != b.feet ||
+          a.inchesPart != b.inchesPart ||
+          a.decimalFeet != b.decimalFeet) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void applyTankGaugeDefaultsForWell(
+    String targetWell, {
+    required List<ProductionGaugeEntry> waterDefaults,
+    required List<ProductionGaugeEntry> oilDefaults,
+  }) {
+    _wellDataByName[well] = _snapshotCurrentWellData();
+
+    final existing =
+        _wellDataByName[targetWell] ?? const ProductionWellCheckData();
+
+    final existingWater = _normalizedGaugeEntries(
+        existing.waterTankGaugeEntries, waterTankGaugeEntries.length);
+    final existingOil = _normalizedGaugeEntries(
+        existing.oilTankGaugeEntries, oilTankGaugeEntries.length);
+    final defaultWater =
+        _normalizedGaugeEntries(waterDefaults, waterTankGaugeEntries.length);
+    final defaultOil =
+        _normalizedGaugeEntries(oilDefaults, oilTankGaugeEntries.length);
+
+    final mergedWater = <ProductionGaugeEntry>[];
+    for (var i = 0; i < existingWater.length; i++) {
+      final current = existingWater[i];
+      final fallback = defaultWater[i];
+      if (!_entryHasValue(current) && _entryHasValue(fallback)) {
+        mergedWater.add(fallback);
+      } else {
+        mergedWater.add(current);
+      }
+    }
+
+    final mergedOil = <ProductionGaugeEntry>[];
+    for (var i = 0; i < existingOil.length; i++) {
+      final current = existingOil[i];
+      final fallback = defaultOil[i];
+      if (!_entryHasValue(current) && _entryHasValue(fallback)) {
+        mergedOil.add(fallback);
+      } else {
+        mergedOil.add(current);
+      }
+    }
+
+    if (_sameGaugeEntries(existingWater, mergedWater) &&
+        _sameGaugeEntries(existingOil, mergedOil)) {
+      return;
+    }
+
+    final updated = ProductionWellCheckData.fromJson({
+      ...existing.toJson(),
+      'waterTankGaugeEntries':
+          mergedWater.map((item) => item.toJson()).toList(growable: false),
+      'oilTankGaugeEntries':
+          mergedOil.map((item) => item.toJson()).toList(growable: false),
+      'waterTankGauges':
+          mergedWater.map((item) => item.inchesText()).toList(growable: false),
+      'oilTankGauges':
+          mergedOil.map((item) => item.inchesText()).toList(growable: false),
+    });
+    _wellDataByName[targetWell] = updated;
+
+    if (targetWell == well) {
+      _loadWellData(updated, chokeType.trim().isEmpty ? 'ADJ' : chokeType);
     }
   }
 

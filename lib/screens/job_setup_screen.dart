@@ -798,7 +798,14 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     final missing = <String>[];
     if (company.trim().isEmpty) missing.add('Company');
     if (padName.text.trim().isEmpty) missing.add('Location / Pad');
-    if (_drilloutWellName.text.trim().isEmpty) missing.add('Well Name');
+    if (jobType == JobProfileDefaultsService.jobTypeMultiWellPad) {
+      final namedWells = wells.where((well) => well.trim().isNotEmpty).toList();
+      if (namedWells.isEmpty) {
+        missing.add('At least one Well Name');
+      }
+    } else {
+      if (_drilloutWellName.text.trim().isEmpty) missing.add('Well Name');
+    }
     if (shift.trim().isEmpty) missing.add('Shift');
     if (missing.isEmpty) return true;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -808,27 +815,113 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   JobSetup _buildDrilloutJobFromForm() {
-    final well = _drilloutWellName.text.trim();
-    final existingId = (_activeJob?.wellEntries.isNotEmpty ?? false)
-        ? _activeJob!.wellEntries.first.id
-        : JobSetup.generateWellId();
+    if (jobType == JobProfileDefaultsService.jobTypeSingleWell) {
+      _ensurePerWellCapacity(1);
+      final singleWell = _drilloutWellName.text.trim();
+      wells[0] = singleWell;
+      leaseNames[0] = singleWell;
+    }
+
+    final normalizedPairs = <MapEntry<String, String>>[];
+    final normalizedLeaseNames = <String>[];
+    for (int i = 0; i < wells.length; i++) {
+      final lease = i < leaseNames.length ? leaseNames[i].trim() : '';
+      final preferredName = wells[i].trim();
+      final name = JobSetup.resolveDisplayWellName(
+        preferredWellName: preferredName,
+        leaseName: lease,
+        legacyWellName: preferredName,
+      );
+      if (name.isEmpty) continue;
+      final id = i < wellIds.length && wellIds[i].trim().isNotEmpty
+          ? wellIds[i].trim()
+          : JobSetup.generateWellId();
+      normalizedPairs.add(MapEntry(id, name));
+      normalizedLeaseNames.add(lease);
+    }
+
+    final safePairs = jobType == JobProfileDefaultsService.jobTypeSingleWell
+        ? (normalizedPairs.isEmpty
+            ? const <MapEntry<String, String>>[]
+            : <MapEntry<String, String>>[normalizedPairs.first])
+        : normalizedPairs;
+    final safeLeaseNames =
+        jobType == JobProfileDefaultsService.jobTypeSingleWell
+            ? (normalizedLeaseNames.isEmpty
+                ? const <String>[]
+                : <String>[normalizedLeaseNames.first])
+            : normalizedLeaseNames;
+    final safeWells = [for (final item in safePairs) item.value];
+    final safeWellEntries = [
+      for (final item in safePairs)
+        JobSetupWell(
+          id: item.key,
+          name: item.value,
+        ),
+    ];
+
+    final resolvedPrimaryWell =
+        safeWells.isNotEmpty ? safeWells.first : _drilloutWellName.text.trim();
+    _drilloutWellName.text = resolvedPrimaryWell;
+
+    final existingActiveWellId =
+        (_activeJob?.drilloutSetup['activeWellId'] as String? ?? '').trim();
+    final resolvedActiveWellId = safeWellEntries.any(
+      (entry) => entry.id == existingActiveWellId,
+    )
+        ? existingActiveWellId
+        : (safeWellEntries.isEmpty ? '' : safeWellEntries.first.id);
+    final existingStatuses = _wellStatusesFromSetup(
+      _activeJob?.drilloutSetup ?? const <String, dynamic>{},
+    );
+    final normalizedStatuses = _normalizedWellStatuses(
+      entries: safeWellEntries,
+      activeWellId: resolvedActiveWellId,
+      source: existingStatuses,
+    );
+
     final mergedSetup =
         Map<String, dynamic>.from(_activeJob?.drilloutSetup ?? const {});
     mergedSetup['flareEcdGasRateEnabled'] = flareEcdGasRateEnabled;
     mergedSetup['includeNotesSection'] = includeNotesSection;
     mergedSetup['gasRateSource'] = gasRateSource;
     mergedSetup['productionFlowPath'] = productionFlowPath;
+    mergedSetup['activeWellId'] = resolvedActiveWellId;
+    mergedSetup['activeWellName'] = safeWellEntries
+        .firstWhere(
+          (entry) => entry.id == resolvedActiveWellId,
+          orElse: () => const JobSetupWell(id: '', name: ''),
+        )
+        .name
+        .trim();
+    mergedSetup['wellStatuses'] = normalizedStatuses;
+    if (jobType == JobProfileDefaultsService.jobTypeMultiWellPad) {
+      final draftRows = <Map<String, String>>[];
+      for (int i = 0; i < wells.length; i++) {
+        final id = i < wellIds.length && wellIds[i].trim().isNotEmpty
+            ? wellIds[i].trim()
+            : JobSetup.generateWellId();
+        draftRows.add(<String, String>{
+          'id': id,
+          'name': i < wells.length ? wells[i] : '',
+          'lease': i < leaseNames.length ? leaseNames[i] : '',
+        });
+      }
+      mergedSetup['draftMultiWellsV1'] = draftRows;
+    } else {
+      mergedSetup.remove('draftMultiWellsV1');
+    }
     mergedSetup.addAll(_buildDrilloutSetupPayload());
 
     return JobSetup(
       company: company.trim(),
       workflow: _workflowStorageValue(),
-      jobType: JobProfileDefaultsService.jobTypeSingleWell,
-      customer: well,
+      jobType: jobType,
+      customer: safeWells.isEmpty ? '' : safeWells.first,
       padName: padName.text.trim(),
       notes: notes.text.trim(),
-      leaseName: well,
-      leaseNames: <String>[well],
+      leaseName: safeLeaseNames.isNotEmpty ? safeLeaseNames.first : '',
+      leaseNames: safeLeaseNames,
       county: county.text.trim(),
       state: state.text.trim(),
       shift: shift,
@@ -837,8 +930,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       id: _activeJob?.id ?? '',
       startedAt: _activeJob?.startedAt,
       endedAt: _activeJob?.endedAt,
-      wells: <String>[well],
-      wellEntries: <JobSetupWell>[JobSetupWell(id: existingId, name: well)],
+      wells: safeWells,
+      wellEntries: safeWellEntries,
       wellFieldKeys: const <String>[],
       activeEquipmentSections: const <String>[],
       selectedChemicals: const <String>[],
@@ -2434,10 +2527,106 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           decoration: const InputDecoration(labelText: 'Location / Pad'),
         ),
         const SizedBox(height: 12),
-        TextField(
-          controller: _drilloutWellName,
-          decoration: const InputDecoration(labelText: 'Well Name'),
+        CheckboxListTile(
+          value: _isMultiWellPad,
+          title: const Text('Multi-Well Pad'),
+          subtitle: const Text(
+            'Enable when this drillout/cleanout job includes multiple wells.',
+          ),
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+          onChanged: (enabled) {
+            final next = enabled ?? false;
+            setState(() {
+              if (next) {
+                jobType = JobProfileDefaultsService.jobTypeMultiWellPad;
+                if (wells.isEmpty) {
+                  _ensurePerWellCapacity(1);
+                }
+                if (_drilloutWellName.text.trim().isNotEmpty &&
+                    wells[0].trim().isEmpty) {
+                  wells[0] = _drilloutWellName.text.trim();
+                  leaseNames[0] = _drilloutWellName.text.trim();
+                }
+              } else {
+                jobType = JobProfileDefaultsService.jobTypeSingleWell;
+                final firstWell = wells.isNotEmpty ? wells.first.trim() : '';
+                if (firstWell.isNotEmpty) {
+                  _drilloutWellName.text = firstWell;
+                }
+                _ensurePerWellCapacity(1);
+              }
+            });
+            _scheduleAutoSave();
+          },
         ),
+        const SizedBox(height: 10),
+        if (!_isMultiWellPad)
+          TextField(
+            controller: _drilloutWellName,
+            decoration: const InputDecoration(labelText: 'Well Name'),
+            onChanged: (value) {
+              if (wells.isEmpty) {
+                _ensurePerWellCapacity(1);
+              }
+              _setWellNameAt(0, value);
+              _setLeaseNameAt(0, value);
+              _scheduleAutoSave();
+            },
+          )
+        else ...[
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Wells',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (int i = 0; i < wells.length; i++) ...[
+            Row(
+              key: _wellRowKeys[wellIds[i]],
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    key: ValueKey('job-drillout-well-${wellIds[i]}'),
+                    controller: _wellNameControllerAt(i),
+                    focusNode: _wellNameFocusNodeAt(i),
+                    decoration:
+                        InputDecoration(labelText: 'Well ${i + 1} Name'),
+                    onChanged: (value) {
+                      _setWellNameAt(i, value);
+                      _setLeaseNameAt(i, value);
+                      if (i == 0 && value.trim().isNotEmpty) {
+                        _drilloutWellName.text = value.trim();
+                      }
+                      _scheduleAutoSave();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed:
+                      wells.length > 1 ? () => _removeMultiWellRow(i) : null,
+                  tooltip: 'Remove Well',
+                  icon: const Icon(Icons.remove_circle_outline),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+          ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: _addMultiWellRow,
+              icon: const Icon(Icons.add),
+              label: const Text('Add Well'),
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
           initialValue: shift,

@@ -241,6 +241,34 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
+  testWidgets('Tank gauges carry forward to next hour until changed',
+      (WidgetTester tester) async {
+    await _seedJobAndShift(wells: const ['Horse 16-2H']);
+    await _openQuickRound(tester);
+
+    await _saveCurrentHour(
+      tester,
+      '6 AM',
+      gasAccum: '8003',
+      waterGauge: '70',
+      oilGauge: '40',
+    );
+
+    await tester
+        .tap(find.widgetWithText(FilledButton, 'Next Hour (7 AM)').first);
+    await tester.pumpAndSettle();
+
+    final waterField =
+        tester.widget<TextField>(_labeledTextField('Current Gauge (in)').at(0));
+    final oilField =
+        tester.widget<TextField>(_labeledTextField('Current Gauge (in)').at(1));
+
+    expect(waterField.controller?.text, '70');
+    expect(oilField.controller?.text, '40');
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
   testWidgets('Choke persists after leaving and reopening Quick Round',
       (WidgetTester tester) async {
     await _seedJobAndShift(

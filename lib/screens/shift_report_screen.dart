@@ -421,8 +421,8 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     'temp',
     'gasSpotRt',
     'waterGaugeText',
-    'oilGaugeText',
     'bwph',
+    'oilGaugeText',
     'boph',
     'gasCoolerInTemp',
     'gasCoolerOutTemp',
@@ -510,9 +510,9 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       case 'propRate':
         return 'PROP / SAND RATE';
       case 'waterGaugeText':
-        return 'WATER TANK READINGS';
+        return 'WATER TANKS';
       case 'oilGaugeText':
-        return 'OIL TANK READINGS';
+        return 'OIL TANKS';
       case 'gasCoolerInTemp':
         return 'GAS IN TEMP';
       case 'gasCoolerOutTemp':

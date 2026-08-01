@@ -58,6 +58,7 @@ class _OperationsLogEntryFormScreenState
   late final TextEditingController _tankLevelController;
   late final TextEditingController _waterHauledController;
   late final TextEditingController _oilHauledController;
+  late final TextEditingController _sweepInformationController;
   late final TextEditingController _equipmentStatusController;
   late final TextEditingController _downtimeController;
   late final TextEditingController _notesController;
@@ -89,6 +90,7 @@ class _OperationsLogEntryFormScreenState
     _tankLevelController = TextEditingController();
     _waterHauledController = TextEditingController();
     _oilHauledController = TextEditingController();
+    _sweepInformationController = TextEditingController();
     _equipmentStatusController = TextEditingController();
     _downtimeController = TextEditingController();
     _notesController = TextEditingController();
@@ -137,6 +139,7 @@ class _OperationsLogEntryFormScreenState
     _tankLevelController.dispose();
     _waterHauledController.dispose();
     _oilHauledController.dispose();
+    _sweepInformationController.dispose();
     _equipmentStatusController.dispose();
     _downtimeController.dispose();
     _notesController.dispose();
@@ -201,6 +204,7 @@ class _OperationsLogEntryFormScreenState
     _pumpPressureController.text = entry.pumpPressure;
     _waterHauledController.text = entry.waterHauled;
     _oilHauledController.text = entry.oilHauled;
+    _sweepInformationController.text = entry.sweepInformation;
     _tankLevelController.text = entry.tankLevel;
     _equipmentStatusController.text = entry.equipmentStatus;
     _downtimeController.text = entry.downtime;
@@ -456,6 +460,10 @@ class _OperationsLogEntryFormScreenState
     if (_oilHauledController.text.trim().isEmpty) {
       _oilHauledController.text = latest((entry) => entry.oilHauled);
     }
+    if (_sweepInformationController.text.trim().isEmpty) {
+      _sweepInformationController.text =
+          latest((entry) => entry.sweepInformation);
+    }
     if (_tankLevelController.text.trim().isEmpty) {
       _tankLevelController.text = latest((entry) => entry.tankLevel);
     }
@@ -552,6 +560,9 @@ class _OperationsLogEntryFormScreenState
               oilHauled: _isEnabled('oilHauled')
                   ? _oilHauledController.text.trim()
                   : '',
+              sweepInformation: _isEnabled('sweepInformation')
+                  ? _sweepInformationController.text.trim()
+                  : '',
               sandOrSolids:
                   _isEnabled('sandOrSolids') ? _selectedSand.trim() : '',
               equipmentStatus: _isEnabled('equipmentStatus')
@@ -592,6 +603,9 @@ class _OperationsLogEntryFormScreenState
                   : '',
               oilHauled: _isEnabled('oilHauled')
                   ? _oilHauledController.text.trim()
+                  : '',
+              sweepInformation: _isEnabled('sweepInformation')
+                  ? _sweepInformationController.text.trim()
                   : '',
               sandOrSolids:
                   _isEnabled('sandOrSolids') ? _selectedSand.trim() : '',
@@ -752,6 +766,10 @@ class _OperationsLogEntryFormScreenState
     if (_isEnabled('oilHauled') &&
         _oilHauledController.text.trim().isNotEmpty) {
       lines.add('Oil Hauled: ${_oilHauledController.text.trim()}');
+    }
+    if (_isEnabled('sweepInformation') &&
+        _sweepInformationController.text.trim().isNotEmpty) {
+      lines.add('Coil Depth: ${_sweepInformationController.text.trim()}');
     }
     if (_isEnabled('estimatedSts') && _estimatedSts != null) {
       lines.add('Estimated STS: ${_formatOptionalDateTime(_estimatedSts)}');
@@ -1053,6 +1071,17 @@ class _OperationsLogEntryFormScreenState
                   const TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(
                 labelText: _labelFor('oilHauled', fallback: 'Oil Hauled'),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (_isEnabled('sweepInformation')) ...[
+            TextFormField(
+              key: const Key('operations-log-form-coil-depth-field'),
+              controller: _sweepInformationController,
+              decoration: InputDecoration(
+                labelText:
+                    _labelFor('sweepInformation', fallback: 'Coil Depth'),
               ),
             ),
             const SizedBox(height: 12),

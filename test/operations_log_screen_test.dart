@@ -292,6 +292,106 @@ void main() {
     expect(find.text('Add at least one entry first.'), findsOneWidget);
   });
 
+  testWidgets('drillout text update preview uses completions-style format',
+      (tester) async {
+    final jobId = await seedActiveJob(includeStage: true);
+    final log = OperationsLogService();
+    final seeded = await log.createLocalEntry(
+      workflow: OperationsLogWorkflow.drillout,
+      jobId: jobId,
+      wellId: 'well-alpha',
+      wellName: 'Well Alpha',
+      readingTimestamp: DateTime(2026, 7, 31, 8, 15),
+      operationStage: 'Drilling Plugs',
+      pumpRate: '12.5',
+      returnsRate: '11.0',
+      choke: '24/64" Positive',
+      sweepInformation: '12450',
+      notes: 'Stable conditions',
+    );
+    await log.upsertEntry(
+      workflow: OperationsLogWorkflow.drillout,
+      jobId: jobId,
+      entry: seeded,
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: OperationsLogScreen(
+          workflow: OperationsLogWorkflow.drillout,
+          title: 'Drillout Log',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('operations-log-action-preview-text')),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester
+        .tap(find.byKey(const Key('operations-log-action-preview-text')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Latest Reading'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Drillout Update'), findsOneWidget);
+    expect(find.textContaining('Status: Drilling Plugs'), findsOneWidget);
+    expect(find.textContaining('Coil Depth: 12450 ft'), findsOneWidget);
+    expect(find.textContaining('Choke: 24/64" Positive'), findsOneWidget);
+    expect(find.textContaining('Rate: 12.5 BBL/min'), findsOneWidget);
+    expect(find.textContaining('Notes: Stable conditions'), findsOneWidget);
+  });
+
+  testWidgets('cleanout text update preview uses completions-style format',
+      (tester) async {
+    final jobId = await seedActiveJob(includeStage: true);
+    final log = OperationsLogService();
+    final seeded = await log.createLocalEntry(
+      workflow: OperationsLogWorkflow.cleanout,
+      jobId: jobId,
+      wellId: 'well-alpha',
+      wellName: 'Well Alpha',
+      readingTimestamp: DateTime(2026, 7, 31, 9, 5),
+      operationStage: 'Circulating',
+      pumpRate: '9.0',
+      notes: 'Cleanout stable',
+    );
+    await log.upsertEntry(
+      workflow: OperationsLogWorkflow.cleanout,
+      jobId: jobId,
+      entry: seeded,
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: OperationsLogScreen(
+          workflow: OperationsLogWorkflow.cleanout,
+          title: 'Cleanout Log',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('operations-log-action-preview-text')),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester
+        .tap(find.byKey(const Key('operations-log-action-preview-text')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Latest Reading'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Cleanout Update'), findsOneWidget);
+    expect(find.textContaining('Status: Circulating'), findsOneWidget);
+    expect(find.textContaining('Rate: 9.0 BBL/min'), findsOneWidget);
+  });
+
   testWidgets('operations log gas and sand use text-update dropdown options',
       (tester) async {
     await seedActiveJob(includeStage: true);
@@ -386,9 +486,7 @@ void main() {
         .tap(find.byKey(const Key('operations-log-customize-fields-button')));
     await tester.pumpAndSettle();
 
-    for (final field in DrilloutCleanoutFieldDefinitions.readingFields.where(
-      (f) => f.id != DrilloutCleanoutFieldDefinitions.sweepInformationId,
-    )) {
+    for (final field in DrilloutCleanoutFieldDefinitions.readingFields) {
       await tester.scrollUntilVisible(
         find.text(field.label).last,
         180,
@@ -396,6 +494,32 @@ void main() {
       );
       expect(find.text(field.label), findsWidgets);
     }
+  });
+
+  testWidgets('add reading shows coil depth field when enabled by default',
+      (tester) async {
+    await seedActiveJob(includeStage: true);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: OperationsLogScreen(
+          workflow: OperationsLogWorkflow.drillout,
+          title: 'Drillout Log',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await openManualReadingFromAddEntry(tester);
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('operations-log-form-coil-depth-field')),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.byKey(const Key('operations-log-form-coil-depth-field')),
+        findsOneWidget);
   });
 
   testWidgets('build 191 add reading shows pump and returns rate only',

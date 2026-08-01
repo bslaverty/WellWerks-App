@@ -19,12 +19,8 @@ void main() {
     final configurableIds = OperationsLogFieldConfigService.configurableFields
         .map((item) => item.id)
         .toSet();
-    final sharedIds = DrilloutCleanoutFieldDefinitions.readingFields
-        .where(
-          (f) => f.id != DrilloutCleanoutFieldDefinitions.sweepInformationId,
-        )
-        .map((f) => f.id)
-        .toSet();
+    final sharedIds =
+        DrilloutCleanoutFieldDefinitions.readingFields.map((f) => f.id).toSet();
 
     expect(configurableIds, equals(sharedIds));
     expect(configurableIds, contains(DrilloutCleanoutFieldDefinitions.gasId));
@@ -43,7 +39,7 @@ void main() {
     );
     expect(
       configurableIds,
-      isNot(contains(DrilloutCleanoutFieldDefinitions.sweepInformationId)),
+      contains(DrilloutCleanoutFieldDefinitions.sweepInformationId),
     );
     expect(configurableIds, isNot(contains('waterRate')));
     expect(configurableIds, isNot(contains('flowRate')));
@@ -76,6 +72,7 @@ void main() {
         DrilloutCleanoutFieldDefinitions.estimatedStsId,
         DrilloutCleanoutFieldDefinitions.stsId,
         DrilloutCleanoutFieldDefinitions.sandOrSolidsId,
+        DrilloutCleanoutFieldDefinitions.sweepInformationId,
         DrilloutCleanoutFieldDefinitions.notesId,
       }),
     );

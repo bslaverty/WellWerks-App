@@ -125,8 +125,15 @@ void main() {
     await tester.tap(find.text('Start Job').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('Cleanout Job Setup'), findsOneWidget);
-    expect(find.text('Workflow'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Workflow'),
+      220,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(
+        find.text('Cleanout Job Setup', skipOffstage: false), findsOneWidget);
+    expect(find.text('Workflow', skipOffstage: false), findsOneWidget);
     expect(find.text('Single Well'), findsNothing);
     expect(find.text('Multi-Well / Pad'), findsNothing);
   });

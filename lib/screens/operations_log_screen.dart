@@ -838,7 +838,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
           'STS: ${_formatFieldTime(entry.sts!, readingTimestamp: entry.entryTime)}',
         ),
       if (!isStsEntry && entry.sweepInformation.isNotEmpty)
-        Text('Legacy Sweep Information: ${entry.sweepInformation}'),
+        Text('Coil Depth: ${entry.sweepInformation}'),
       if (!isStsEntry &&
           _enabledFieldIds.contains('tankLevel') &&
           entry.tankLevel.isNotEmpty)
@@ -1014,6 +1014,15 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     required List<OperationsLogEntry> entries,
   }) {
     if (entries.isEmpty) return 'No readings are available for this report.';
+
+    if (_workflow == OperationsLogWorkflow.drillout ||
+        _workflow == OperationsLogWorkflow.cleanout) {
+      return _buildCompletionsStyleReportPreview(
+        reportType: reportType,
+        entries: entries,
+      );
+    }
+
     final lines = <String>[
       reportType,
       'Well: $_currentWellName',
@@ -1035,6 +1044,116 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       lines.add('');
     }
     return lines.join('\n').trim();
+  }
+
+  String _buildCompletionsStyleReportPreview({
+    required String reportType,
+    required List<OperationsLogEntry> entries,
+  }) {
+    final anchor = entries.last;
+    final modeLabel = reportType == 'Text Update' ? 'Update' : 'Shift Change';
+    final workflowLabel =
+        _workflow == OperationsLogWorkflow.cleanout ? 'Cleanout' : 'Drillout';
+    final timeLabel = TimeOfDay.fromDateTime(anchor.entryTime).format(context);
+
+    final header = <String>[
+      '$timeLabel $workflowLabel $modeLabel',
+      if (_activeJob?.company.trim().isNotEmpty ?? false)
+        _activeJob!.company.trim(),
+      if (_activeJob?.padName.trim().isNotEmpty ?? false)
+        _activeJob!.padName.trim(),
+      if (anchor.wellName.trim().isNotEmpty) anchor.wellName.trim(),
+    ];
+
+    String carry(String Function(OperationsLogEntry entry) selector) {
+      return _carryForwardValueForEntry(anchor, selector).trim();
+    }
+
+    String withFeet(String value) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return trimmed;
+      final lower = trimmed.toLowerCase();
+      if (lower.endsWith('ft') || lower.endsWith('feet')) {
+        return trimmed;
+      }
+      return '$trimmed ft';
+    }
+
+    final details = <String>[];
+    final stage = carry((entry) => entry.operationStage);
+    if (stage.isNotEmpty) details.add('Status: $stage');
+
+    final plug = carry((entry) => entry.plugNumber);
+    if (plug.isNotEmpty) details.add('Plug #: $plug');
+
+    final coilDepth = carry((entry) => entry.sweepInformation);
+    if (coilDepth.isNotEmpty) details.add('Coil Depth: ${withFeet(coilDepth)}');
+
+    final gas = carry((entry) => entry.gas);
+    if (gas.isNotEmpty) details.add('Gas: $gas');
+
+    final sand = carry((entry) => entry.sandOrSolids);
+    if (sand.isNotEmpty) details.add('Sand: $sand');
+
+    final choke = carry((entry) => entry.choke);
+    if (choke.isNotEmpty) details.add('Choke: $choke');
+
+    final rate = carry((entry) => entry.pumpRate);
+    if (rate.isNotEmpty) details.add('Rate: $rate BBL/min');
+
+    final returns = carry((entry) => entry.returnsRate);
+    if (returns.isNotEmpty) {
+      details.add('Returns: ${_returnsDisplay(returns)}');
+    }
+
+    final manifold = carry((entry) => _manifoldPsiValue(entry));
+    if (manifold.isNotEmpty) details.add('Manifold PSI: $manifold');
+
+    final casing = carry((entry) => entry.casingPressure);
+    if (casing.isNotEmpty) details.add('Casing PSI: $casing');
+
+    final pumpPsi = carry((entry) => entry.pumpPressure);
+    if (pumpPsi.isNotEmpty) details.add('Pump PSI: $pumpPsi');
+
+    final surfaceTotalFluid = carry((entry) => entry.surfaceTotalFluid);
+    if (surfaceTotalFluid.isNotEmpty) {
+      details.add('Surface Total Fluid: $surfaceTotalFluid bbl');
+    }
+
+    final waterHauled = carry((entry) => entry.waterHauled);
+    if (waterHauled.isNotEmpty) details.add('Water Hauled: $waterHauled bbl');
+
+    final oilHauled = carry((entry) => entry.oilHauled);
+    if (oilHauled.isNotEmpty) details.add('Oil Hauled: $oilHauled bbl');
+
+    final tankInformation = carry((entry) => entry.tankLevel);
+    if (tankInformation.isNotEmpty) {
+      details.add('Tank Information: $tankInformation');
+    }
+
+    final estimatedSts = anchor.estimatedSts;
+    if (estimatedSts != null) {
+      details.add(
+        'Estimated STS: ${_formatFieldTime(estimatedSts, readingTimestamp: anchor.entryTime)}',
+      );
+    }
+
+    final actualSts = anchor.sts;
+    if (actualSts != null) {
+      details.add(
+        'STS: ${_formatFieldTime(actualSts, readingTimestamp: anchor.entryTime)}',
+      );
+    }
+
+    final notes = anchor.notes.trim();
+    if (notes.isNotEmpty) details.add('Notes: $notes');
+
+    final blocks = <String>[
+      header.where((line) => line.trim().isNotEmpty).join('\n'),
+      if (details.isNotEmpty) details.join('\n'),
+    ];
+
+    return blocks.where((block) => block.trim().isNotEmpty).join('\n\n');
   }
 
   Future<void> _finalizeReportAction({
@@ -1853,7 +1972,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       );
     }
     if (entry.sweepInformation.isNotEmpty) {
-      parts.add('Legacy Sweep ${entry.sweepInformation}');
+      parts.add('Coil Depth ${entry.sweepInformation}');
     }
     return parts.join(' • ');
   }
@@ -1900,6 +2019,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     addIfEnabled('oilHauled', 'Oil', 'oil');
     addIfEnabled('gas', 'Gas', 'gas');
     addIfEnabled('sandOrSolids', 'Sand', 'sand');
+    addIfEnabled('sweepInformation', 'Coil Depth', 'sweep');
     addIfEnabled('estimatedSts', 'Estimated STS', 'estimatedSts');
     addIfEnabled('sts', 'Actual STS', 'actualSts');
     addIfEnabled('notes', 'Notes', 'notes');
