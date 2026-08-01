@@ -17,6 +17,7 @@ import '../services/operations_log_service.dart';
 import '../services/rate_timer_notification_service.dart';
 import '../services/wellwerks_qr_transfer_service.dart';
 import '../widgets/app_header.dart';
+import '../widgets/sts_date_time_selector_sheet.dart';
 import 'operations_log_entry_form_screen.dart';
 import 'operations_log_sts_entry_screen.dart';
 import 'wellwerks_qr_scanner_screen.dart';
@@ -137,6 +138,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   Set<String> _expandedEntryIds = <String>{};
   String _lastFinalizedReportKey = '';
   DateTime _clockNow = DateTime.now();
+  DateTime? _reportTimeOverride;
   Timer? _clockTicker;
   bool _didAutoOpenSts = false;
 
@@ -1020,6 +1022,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       return _buildCompletionsStyleReportPreview(
         reportType: reportType,
         entries: entries,
+        reportTime: _reportTimeOverride,
       );
     }
 
@@ -1049,12 +1052,14 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   String _buildCompletionsStyleReportPreview({
     required String reportType,
     required List<OperationsLogEntry> entries,
+    DateTime? reportTime,
   }) {
     final anchor = entries.last;
     final modeLabel = reportType == 'Text Update' ? 'Update' : 'Shift Change';
     final workflowLabel =
         _workflow == OperationsLogWorkflow.cleanout ? 'Cleanout' : 'Drillout';
-    final timeLabel = TimeOfDay.fromDateTime(anchor.entryTime).format(context);
+    final resolvedTime = reportTime ?? anchor.entryTime;
+    final timeLabel = TimeOfDay.fromDateTime(resolvedTime).format(context);
 
     final header = <String>[
       '$timeLabel $workflowLabel $modeLabel',
@@ -1154,6 +1159,31 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     ];
 
     return blocks.where((block) => block.trim().isNotEmpty).join('\n\n');
+  }
+
+  String _reportTimeLabel() {
+    final value = _reportTimeOverride;
+    if (value == null) return 'Current Time';
+    final dateLabel =
+        MaterialLocalizations.of(context).formatCompactDate(value);
+    final timeLabel = TimeOfDay.fromDateTime(value).format(context);
+    return '$dateLabel $timeLabel';
+  }
+
+  Future<void> _editReportTime() async {
+    final base = _reportTimeOverride ?? DateTime.now();
+    final selection = await showStsDateTimeSelectorSheet(
+      context,
+      title: 'Text Timestamp',
+      helperText:
+          'Set the time shown in Shift Change Text and Text Update outputs.',
+      readingTimestamp: base,
+      initialValue: base,
+    );
+    if (!mounted || selection == null) return;
+    setState(() {
+      _reportTimeOverride = selection.cleared ? null : selection.value;
+    });
   }
 
   Future<void> _finalizeReportAction({
@@ -3453,6 +3483,31 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                   icon: const Icon(Icons.add),
                   label: const Text('+ Add Entry'),
                 ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    'Text Time: ${_reportTimeLabel()}',
+                    style: const TextStyle(fontSize: 12, color: Colors.white70),
+                  ),
+                  OutlinedButton.icon(
+                    key: const Key('operations-log-action-edit-text-time'),
+                    onPressed: _editReportTime,
+                    icon: const Icon(Icons.schedule),
+                    label: const Text('Edit Time'),
+                  ),
+                  if (_reportTimeOverride != null)
+                    OutlinedButton(
+                      key: const Key('operations-log-action-clear-text-time'),
+                      onPressed: () =>
+                          setState(() => _reportTimeOverride = null),
+                      child: const Text('Use Current'),
+                    ),
+                ],
               ),
               const SizedBox(height: 10),
               Wrap(

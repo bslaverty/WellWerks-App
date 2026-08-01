@@ -207,40 +207,6 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     return row.biocide.isEmpty ? '-' : row.biocide;
   }
 
-  DateTime? _parseShiftTime(String value) {
-    final upper = value.trim().toUpperCase();
-    if (upper.isEmpty) return null;
-
-    final twelve = RegExp(r'^(\d{1,2})(?::(\d{2}))?\s*([AP]M)$');
-    final twelveMatch = twelve.firstMatch(upper);
-    if (twelveMatch != null) {
-      final hourRaw = int.tryParse(twelveMatch.group(1) ?? '');
-      final minuteRaw = int.tryParse(twelveMatch.group(2) ?? '00') ?? 0;
-      final marker = twelveMatch.group(3) ?? 'AM';
-      if (hourRaw == null || hourRaw < 1 || hourRaw > 12 || minuteRaw > 59) {
-        return null;
-      }
-      var hour = hourRaw % 12;
-      if (marker == 'PM') {
-        hour += 12;
-      }
-      return DateTime(2000, 1, 1, hour, minuteRaw);
-    }
-
-    final twentyFour = RegExp(r'^(\d{1,2}):(\d{2})$');
-    final twentyFourMatch = twentyFour.firstMatch(upper);
-    if (twentyFourMatch != null) {
-      final hour = int.tryParse(twentyFourMatch.group(1) ?? '');
-      final minute = int.tryParse(twentyFourMatch.group(2) ?? '');
-      if (hour == null || minute == null || hour > 23 || minute > 59) {
-        return null;
-      }
-      return DateTime(2000, 1, 1, hour, minute);
-    }
-
-    return null;
-  }
-
   String get _headerCompanyName {
     final activeJob = _activeJob;
     if (activeJob != null && activeJob.company.trim().isNotEmpty) {
@@ -508,15 +474,11 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     return lines.join('\n');
   }
 
-  String _flywheelUpdateLine(String sourceTime) {
-    final parsed = _parseShiftTime(sourceTime.trim());
-    if (parsed == null) {
-      return '${sourceTime.trim()} update';
-    }
-
-    final hour12 = parsed.hour % 12 == 0 ? 12 : parsed.hour % 12;
-    final minute = parsed.minute.toString().padLeft(2, '0');
-    final marker = parsed.hour >= 12 ? 'pm' : 'am';
+  String _flywheelUpdateLine(DateTime value) {
+    final local = value.toLocal();
+    final hour12 = local.hour % 12 == 0 ? 12 : local.hour % 12;
+    final minute = local.minute.toString().padLeft(2, '0');
+    final marker = local.hour >= 12 ? 'pm' : 'am';
     return '$hour12:$minute$marker update';
   }
 
@@ -531,9 +493,11 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
     return raw.isEmpty ? '-' : raw;
   }
 
-  String _flywheelTextPreview(List<ProductionReportRow> rows) {
-    final updateRow = rows.isNotEmpty ? rows.first : _selectedRow;
-    final updateLine = _flywheelUpdateLine(updateRow?.time ?? '');
+  String _flywheelTextPreview(
+    List<ProductionReportRow> rows, {
+    required DateTime entryTime,
+  }) {
+    final updateLine = _flywheelUpdateLine(entryTime);
     final locationLine = _headerPadName;
 
     final wellBlocks = rows
@@ -636,12 +600,18 @@ class _TextUpdateScreenState extends State<TextUpdateScreen> {
         return _continentalTextPreview(activeJob, previewRows);
       }
       if (company == JobProfileDefaultsService.companyFlywheel) {
-        return _flywheelTextPreview(previewRows);
+        return _flywheelTextPreview(
+          previewRows,
+          entryTime: _selectedEntryTime(),
+        );
       }
     }
 
     if (selectedCompany == JobProfileDefaultsService.companyFlywheel) {
-      return _flywheelTextPreview(_orderedSelectedRows);
+      return _flywheelTextPreview(
+        _orderedSelectedRows,
+        entryTime: _selectedEntryTime(),
+      );
     }
 
     final previewRows = _orderedSelectedRows;
