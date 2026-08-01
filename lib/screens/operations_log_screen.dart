@@ -1182,6 +1182,9 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   }
 
   String _resolveTankInventoryBlock(OperationsLogEntry anchor) {
+    final structuredBlock = _carryForwardTankInventoryBlockForEntry(anchor);
+    if (structuredBlock.isNotEmpty) return structuredBlock;
+
     final generated = anchor.generatedText;
     if (generated.trim().isNotEmpty) {
       final match = RegExp(
@@ -1200,6 +1203,47 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     ).trim();
     if (tankInformation.isEmpty) return '';
     return 'Tank Inventory\n\nTank Information: $tankInformation';
+  }
+
+  String _carryForwardTankInventoryBlockForEntry(OperationsLogEntry target) {
+    String latest = '';
+    for (final entry in _sortedEntries) {
+      final block = _tankInventoryBlockFromStructuredData(entry);
+      if (block.isNotEmpty) {
+        latest = block;
+      }
+      if (entry.entryId == target.entryId) {
+        break;
+      }
+    }
+    return latest;
+  }
+
+  String _tankInventoryBlockFromStructuredData(OperationsLogEntry entry) {
+    final raw = entry.structuredData['tankInventoryV1'];
+    if (raw is! List || raw.isEmpty) return '';
+
+    final lines = <String>['Tank Inventory', ''];
+    var total = 0;
+    var hasRow = false;
+    for (final item in raw) {
+      if (item is! Map) continue;
+      final label = (item['label'] as String? ?? '').trim();
+      final gauge = (item['gauge'] as String? ?? '').trim();
+      final barrelsValue = item['barrels'];
+      final barrels = barrelsValue is num ? barrelsValue.toInt() : null;
+      final gaugeText = gauge.isEmpty ? '-' : '${gauge}"';
+      final bblText = barrels == null ? '-' : '$barrels bbl';
+      lines.add('${label.isEmpty ? 'Tank' : label}: $gaugeText - $bblText');
+      if (barrels != null) {
+        total += barrels;
+      }
+      hasRow = true;
+    }
+    if (!hasRow) return '';
+    lines.add('');
+    lines.add('Total On Location: $total bbl');
+    return lines.join('\n').trim();
   }
 
   String _reportTimeLabel() {

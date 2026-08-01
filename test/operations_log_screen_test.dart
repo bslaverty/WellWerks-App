@@ -451,6 +451,76 @@ void main() {
     );
   });
 
+  testWidgets(
+      'drillout text update preview uses structured tank inventory rows',
+      (tester) async {
+    final jobId = await seedActiveJob(includeStage: true);
+    final log = OperationsLogService();
+    final seeded = await log.createLocalEntry(
+      workflow: OperationsLogWorkflow.drillout,
+      jobId: jobId,
+      wellId: 'well-alpha',
+      wellName: 'Well Alpha',
+      readingTimestamp: DateTime(2026, 7, 31, 8, 15),
+      operationStage: 'Drilling Plugs',
+      pumpRate: '12.5',
+      structuredData: const <String, dynamic>{
+        'tankInventoryV1': [
+          {
+            'roleId': 'sand_tank',
+            'typeId': 'sandx',
+            'label': 'Sand Tank',
+            'gauge': '30',
+            'barrels': 300,
+          },
+          {
+            'roleId': 'flowback_tank_1',
+            'typeId': 'flowback_round_bottom',
+            'label': 'Flowback Tank 1',
+            'gauge': '28',
+            'barrels': 280,
+          },
+        ],
+      },
+    );
+    await log.upsertEntry(
+      workflow: OperationsLogWorkflow.drillout,
+      jobId: jobId,
+      entry: seeded,
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: OperationsLogScreen(
+          workflow: OperationsLogWorkflow.drillout,
+          title: 'Drillout Log',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('operations-log-action-preview-text')),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester
+        .tap(find.byKey(const Key('operations-log-action-preview-text')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Latest Reading'));
+    await tester.pumpAndSettle();
+
+    final previewDialog = find.byType(AlertDialog);
+    expect(previewDialog, findsOneWidget);
+    Finder previewContains(String text) =>
+        find.descendant(of: previewDialog, matching: find.textContaining(text));
+
+    expect(previewContains('Tank Inventory'), findsOneWidget);
+    expect(previewContains('Sand Tank: 30" - 300 bbl'), findsOneWidget);
+    expect(previewContains('Flowback Tank 1: 28" - 280 bbl'), findsOneWidget);
+    expect(previewContains('Total On Location: 580 bbl'), findsOneWidget);
+  });
+
   testWidgets('cleanout text update preview uses completions-style format',
       (tester) async {
     final jobId = await seedActiveJob(includeStage: true);

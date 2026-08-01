@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../data/tank_charts.dart';
+import '../models/drillout_tank_configuration.dart';
 import '../models/job_setup.dart';
 import '../models/operations_log_entry.dart';
 import '../services/app_settings_service.dart';
@@ -62,6 +64,9 @@ class _OperationsLogEntryFormScreenState
   late final TextEditingController _equipmentStatusController;
   late final TextEditingController _downtimeController;
   late final TextEditingController _notesController;
+  final Map<String, TextEditingController> _tankGaugeControllers =
+      <String, TextEditingController>{};
+  late DrilloutTankConfiguration _tankConfig;
 
   late DateTime _readingTimestamp;
   DateTime? _estimatedSts;
@@ -94,6 +99,10 @@ class _OperationsLogEntryFormScreenState
     _equipmentStatusController = TextEditingController();
     _downtimeController = TextEditingController();
     _notesController = TextEditingController();
+    _tankConfig = DrilloutTankConfiguration.fromDrilloutSetup(
+      Map<String, dynamic>.from(widget.activeJob.drilloutSetup),
+    );
+    _initializeTankGaugeControllers();
     _readingTimestamp = widget.initialReadingTimestamp;
     final trimmedInitialStage = widget.initialStage.trim();
     _selectedStage = widget.stageOptions.contains(trimmedInitialStage)
@@ -143,6 +152,9 @@ class _OperationsLogEntryFormScreenState
     _equipmentStatusController.dispose();
     _downtimeController.dispose();
     _notesController.dispose();
+    for (final controller in _tankGaugeControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -211,6 +223,7 @@ class _OperationsLogEntryFormScreenState
     _notesController.text = entry.notes;
     _estimatedSts = entry.estimatedSts;
     _sts = entry.sts;
+    _seedTankInventoryFromEntry(entry);
 
     final wellId = entry.persistentWellId.trim();
     if (wellId.isNotEmpty &&
@@ -467,6 +480,7 @@ class _OperationsLogEntryFormScreenState
     if (_tankLevelController.text.trim().isEmpty) {
       _tankLevelController.text = latest((entry) => entry.tankLevel);
     }
+    _applyCarryForwardTankInventoryForWell();
     if (_choke.isNone) {
       final carryChoke = latest((entry) => entry.choke);
       if (carryChoke.isNotEmpty) {
@@ -488,6 +502,264 @@ class _OperationsLogEntryFormScreenState
         _selectedSand = carrySand;
       }
     }
+  }
+
+  void _initializeTankGaugeControllers() {
+    for (final selection in _tankConfig.activeSelections) {
+      final roleId = selection.roleId.trim();
+      if (roleId.isEmpty) continue;
+      _tankGaugeControllers.putIfAbsent(
+        roleId,
+        () => TextEditingController(text: selection.gauge.trim()),
+      );
+    }
+  }
+
+  List<DrilloutTankSelection> _activeTankSelections() {
+    final seeded = <String, String>{
+      ..._tankConfig.gaugesByRole,
+      for (final entry in _tankGaugeControllers.entries)
+        entry.key: entry.value.text.trim(),
+    };
+    return _tankConfig.copyWith(gaugesByRole: seeded).activeSelections;
+  }
+
+  TankChart _chartForType(String typeId) {
+    final normalized = DrilloutTankCatalog.normalizeLegacyType(typeId);
+    switch (normalized) {
+      case DrilloutTankCatalog.typeFs3:
+        return fs3Chart;
+      case DrilloutTankCatalog.typeFlowbackVBottom:
+        return flowback500Chart;
+      case DrilloutTankCatalog.typeFlowbackRoundBottom:
+        return flowbackRoundBottomChart;
+      case DrilloutTankCatalog.typeSandX:
+      default:
+        return sandXChart;
+    }
+  }
+
+  String _fmtTrim(double value) {
+    if (value.isNaN || value.isInfinite) return '0';
+    final fixed = value.toStringAsFixed(2);
+    return fixed
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  double? _parseGaugeOrNull(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    final parsed = double.tryParse(trimmed);
+    if (parsed == null || parsed.isNaN || parsed.isInfinite) return null;
+    return parsed;
+  }
+
+  List<Map<String, dynamic>> _tankInventoryRows() {
+    final rows = <Map<String, dynamic>>[];
+    for (final selection in _activeTankSelections()) {
+      final role = DrilloutTankCatalog.roleById(selection.roleId);
+      final chart = _chartForType(selection.typeId);
+      final gauge = _parseGaugeOrNull(selection.gauge);
+      final barrels = gauge == null || !chart.supportsGauge(gauge)
+          ? null
+          : chart.barrelsAt(gauge).round();
+      rows.add(<String, dynamic>{
+        'roleId': selection.roleId,
+        'typeId': selection.typeId,
+        'label': role.label,
+        'gauge': selection.gauge.trim(),
+        'barrels': barrels,
+      });
+    }
+    return rows;
+  }
+
+  String _tankInventoryBlockTextFromRows(List<Map<String, dynamic>> rows) {
+    if (rows.isEmpty) return '';
+    final lines = <String>['Tank Inventory', ''];
+    var total = 0;
+    for (final row in rows) {
+      final label = (row['label'] as String? ?? '').trim();
+      final gauge = (row['gauge'] as String? ?? '').trim();
+      final barrels = row['barrels'] as int?;
+      final gaugeText = gauge.isEmpty ? '-' : '${gauge}"';
+      final bblText = barrels == null ? '-' : '$barrels bbl';
+      lines.add('${label.isEmpty ? 'Tank' : label}: $gaugeText - $bblText');
+      if (barrels != null) {
+        total += barrels;
+      }
+    }
+    lines.add('');
+    lines.add('Total On Location: $total bbl');
+    return lines.join('\n').trim();
+  }
+
+  String _tankLevelSummaryFromRows(List<Map<String, dynamic>> rows) {
+    final parts = <String>[];
+    for (final row in rows) {
+      final label = (row['label'] as String? ?? '').trim();
+      final gauge = (row['gauge'] as String? ?? '').trim();
+      if (label.isEmpty || gauge.isEmpty) continue;
+      parts.add('$label $gauge"');
+    }
+    return parts.join(' | ');
+  }
+
+  Map<String, dynamic> _applyTankInventoryStructuredData(
+    Map<String, dynamic> existing,
+    List<Map<String, dynamic>> rows,
+  ) {
+    final next = Map<String, dynamic>.from(existing);
+    next['tankInventoryV1'] = rows;
+    next['tankInventoryBlock'] = _tankInventoryBlockTextFromRows(rows);
+    return next;
+  }
+
+  void _seedTankInventoryFromEntry(OperationsLogEntry entry) {
+    final rawRows = entry.structuredData['tankInventoryV1'];
+    if (rawRows is! List) return;
+    for (final item in rawRows) {
+      if (item is! Map) continue;
+      final roleId = (item['roleId'] as String? ?? '').trim();
+      if (roleId.isEmpty) continue;
+      final gauge = (item['gauge'] as String? ?? '').trim();
+      _tankGaugeControllers.putIfAbsent(roleId, () => TextEditingController());
+      _tankGaugeControllers[roleId]!.text = gauge;
+    }
+  }
+
+  void _applyCarryForwardTankInventoryForWell() {
+    final selectedWell = _selectedWellName.trim();
+    final ordered = List<OperationsLogEntry>.from(widget.existingEntries)
+      ..sort((a, b) => b.entryTime.compareTo(a.entryTime));
+    for (final entry in ordered) {
+      if (entry.wellName.trim() != selectedWell) continue;
+      final rows = entry.structuredData['tankInventoryV1'];
+      if (rows is! List) continue;
+      for (final item in rows) {
+        if (item is! Map) continue;
+        final roleId = (item['roleId'] as String? ?? '').trim();
+        if (roleId.isEmpty) continue;
+        final gauge = (item['gauge'] as String? ?? '').trim();
+        _tankGaugeControllers.putIfAbsent(
+          roleId,
+          () => TextEditingController(),
+        );
+        if (_tankGaugeControllers[roleId]!.text.trim().isEmpty) {
+          _tankGaugeControllers[roleId]!.text = gauge;
+        }
+      }
+      break;
+    }
+  }
+
+  Widget _drilloutTankInventorySection() {
+    final selections = _activeTankSelections();
+    if (selections.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final rows = _tankInventoryRows();
+    final block = _tankInventoryBlockTextFromRows(rows);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Tank Inventory',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Enter tank gauges in inches to calculate barrels for text updates.',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            for (final selection in selections) ...[
+              _tankGaugeInputTile(selection),
+              const SizedBox(height: 10),
+            ],
+            if (block.trim().isNotEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white24),
+                  color: Colors.black.withValues(alpha: 0.18),
+                ),
+                child: Text(
+                  block,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tankGaugeInputTile(DrilloutTankSelection selection) {
+    final role = DrilloutTankCatalog.roleById(selection.roleId);
+    final type = DrilloutTankCatalog.typeById(selection.typeId);
+    final chart = _chartForType(selection.typeId);
+    final controller = _tankGaugeControllers.putIfAbsent(
+      selection.roleId,
+      () => TextEditingController(text: selection.gauge.trim()),
+    );
+    final gauge = _parseGaugeOrNull(controller.text);
+    final barrels = gauge == null || !chart.supportsGauge(gauge)
+        ? null
+        : chart.barrelsAt(gauge).round();
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            role.label,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            type.label,
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          TextFormField(
+            key: Key('operations-log-form-tank-gauge-${selection.roleId}'),
+            controller: controller,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Gauge (in)',
+              hintText: '30.25',
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            barrels == null
+                ? 'Barrels: -'
+                : 'Barrels: ${barrels.toString()} bbl',
+            style: const TextStyle(color: Colors.white70),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<bool> _ensureEstimatedStsPermission() async {
@@ -529,11 +801,23 @@ class _OperationsLogEntryFormScreenState
     try {
       final job = widget.activeJob;
       final existing = widget.existingEntry;
+      final isDrillout = widget.workflow == OperationsLogWorkflow.drillout;
+      final tankRows = _tankInventoryRows();
+      final tankLevelValue = _isEnabled('tankLevel')
+          ? (isDrillout
+              ? _tankLevelSummaryFromRows(tankRows)
+              : _tankLevelController.text.trim())
+          : '';
+      final structuredData = _applyTankInventoryStructuredData(
+        existing?.structuredData ?? const <String, dynamic>{},
+        tankRows,
+      );
       var entry = existing != null
           ? existing.copyWith(
               persistentWellId: _selectedWellId,
               wellName: _selectedWellName,
               readingTimestamp: _readingTimestamp,
+              structuredData: structuredData,
               operationStage:
                   _isEnabled('operationStage') ? _selectedStage.trim() : '',
               choke: _isEnabled('choke') ? formatChokeDisplay(_choke) : '',
@@ -551,9 +835,7 @@ class _OperationsLogEntryFormScreenState
                   : '',
               estimatedSts: _isEnabled('estimatedSts') ? _estimatedSts : null,
               sts: _isEnabled('sts') ? _sts : null,
-              tankLevel: _isEnabled('tankLevel')
-                  ? _tankLevelController.text.trim()
-                  : '',
+              tankLevel: tankLevelValue,
               waterHauled: _isEnabled('waterHauled')
                   ? _waterHauledController.text.trim()
                   : '',
@@ -578,6 +860,7 @@ class _OperationsLogEntryFormScreenState
               wellId: _selectedWellId,
               wellName: _selectedWellName,
               readingTimestamp: _readingTimestamp,
+              structuredData: structuredData,
               operationStage:
                   _isEnabled('operationStage') ? _selectedStage.trim() : '',
               choke: _isEnabled('choke') ? formatChokeDisplay(_choke) : '',
@@ -595,9 +878,7 @@ class _OperationsLogEntryFormScreenState
                   : '',
               estimatedSts: _isEnabled('estimatedSts') ? _estimatedSts : null,
               sts: _isEnabled('sts') ? _sts : null,
-              tankLevel: _isEnabled('tankLevel')
-                  ? _tankLevelController.text.trim()
-                  : '',
+              tankLevel: tankLevelValue,
               waterHauled: _isEnabled('waterHauled')
                   ? _waterHauledController.text.trim()
                   : '',
@@ -778,6 +1059,12 @@ class _OperationsLogEntryFormScreenState
       lines.add('STS: ${_formatOptionalDateTime(_sts)}');
     }
     if (_isEnabled('tankLevel') &&
+        widget.workflow == OperationsLogWorkflow.drillout) {
+      final block = _tankInventoryBlockTextFromRows(_tankInventoryRows());
+      if (block.trim().isNotEmpty) {
+        lines.addAll(['', ...block.split('\n')]);
+      }
+    } else if (_isEnabled('tankLevel') &&
         _tankLevelController.text.trim().isNotEmpty) {
       lines.add('Tank Readings: ${_tankLevelController.text.trim()}');
     }
@@ -1044,11 +1331,14 @@ class _OperationsLogEntryFormScreenState
               ],
             ),
           if (_isEnabled('tankLevel')) ...[
-            TextFormField(
-              key: const Key('operations-log-form-tank-level-field'),
-              controller: _tankLevelController,
-              decoration: const InputDecoration(labelText: 'Tank Level'),
-            ),
+            if (widget.workflow == OperationsLogWorkflow.drillout)
+              _drilloutTankInventorySection()
+            else
+              TextFormField(
+                key: const Key('operations-log-form-tank-level-field'),
+                controller: _tankLevelController,
+                decoration: const InputDecoration(labelText: 'Tank Level'),
+              ),
             const SizedBox(height: 12),
           ],
           if (_isEnabled('waterHauled')) ...[
