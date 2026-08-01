@@ -110,6 +110,7 @@ class OperationsLogFieldConfigService {
     if (filtered.isEmpty) {
       return OperationsLogFieldConfig(enabledFieldIds: _defaultEnabled);
     }
+    filtered.add(DrilloutCleanoutFieldDefinitions.tankLevelId);
     return OperationsLogFieldConfig(enabledFieldIds: filtered);
   }
 

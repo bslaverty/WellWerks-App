@@ -105,6 +105,34 @@ void main() {
     expect(find.text('Add Drillout Reading'), findsOneWidget);
   });
 
+  testWidgets('cleanout Add Reading shows tank inventory gauge inputs',
+      (tester) async {
+    await seedActiveJob(includeStage: true);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: OperationsLogScreen(
+          workflow: OperationsLogWorkflow.cleanout,
+          title: 'Cleanout Log',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await openManualReadingFromAddEntry(tester);
+
+    expect(find.text('Add Cleanout Reading'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('operations-log-form-tank-gauge-sand_tank')),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.byKey(const Key('operations-log-form-tank-gauge-sand_tank')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('drillout Add Reading opens form when current stage is blank',
       (tester) async {
     await seedActiveJob(includeStage: false);

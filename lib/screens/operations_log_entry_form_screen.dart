@@ -801,10 +801,12 @@ class _OperationsLogEntryFormScreenState
     try {
       final job = widget.activeJob;
       final existing = widget.existingEntry;
-      final isDrillout = widget.workflow == OperationsLogWorkflow.drillout;
+      final usesGaugeTankInventory =
+          widget.workflow == OperationsLogWorkflow.drillout ||
+              widget.workflow == OperationsLogWorkflow.cleanout;
       final tankRows = _tankInventoryRows();
       final tankLevelValue = _isEnabled('tankLevel')
-          ? (isDrillout
+          ? (usesGaugeTankInventory
               ? _tankLevelSummaryFromRows(tankRows)
               : _tankLevelController.text.trim())
           : '';
@@ -1059,7 +1061,8 @@ class _OperationsLogEntryFormScreenState
       lines.add('STS: ${_formatOptionalDateTime(_sts)}');
     }
     if (_isEnabled('tankLevel') &&
-        widget.workflow == OperationsLogWorkflow.drillout) {
+        (widget.workflow == OperationsLogWorkflow.drillout ||
+            widget.workflow == OperationsLogWorkflow.cleanout)) {
       final block = _tankInventoryBlockTextFromRows(_tankInventoryRows());
       if (block.trim().isNotEmpty) {
         lines.addAll(['', ...block.split('\n')]);
@@ -1331,7 +1334,8 @@ class _OperationsLogEntryFormScreenState
               ],
             ),
           if (_isEnabled('tankLevel')) ...[
-            if (widget.workflow == OperationsLogWorkflow.drillout)
+            if (widget.workflow == OperationsLogWorkflow.drillout ||
+                widget.workflow == OperationsLogWorkflow.cleanout)
               _drilloutTankInventorySection()
             else
               TextFormField(

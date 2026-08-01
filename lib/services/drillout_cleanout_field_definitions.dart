@@ -269,6 +269,7 @@ class DrilloutCleanoutFieldDefinitions {
         stsId,
         sandOrSolidsId,
         sweepInformationId,
+        tankLevelId,
         notesId,
       };
 }
