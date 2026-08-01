@@ -234,6 +234,22 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
         .trim();
   }
 
+  String get _activeStatusForCard {
+    final activeWellId = _activeWellId.trim();
+    for (final entry in _sortedEntries.reversed) {
+      if (_entryTypeValue(entry) != 'manualReading') continue;
+      if (activeWellId.isNotEmpty) {
+        final entryWellId = entry.persistentWellId.trim();
+        if (entryWellId.isNotEmpty && entryWellId != activeWellId) {
+          continue;
+        }
+      }
+      final stage = entry.operationStage.trim();
+      if (stage.isNotEmpty) return stage;
+    }
+    return _currentStage;
+  }
+
   List<OperationsLogEntry> get _sortedEntries {
     final items = List<OperationsLogEntry>.from(_entries);
     items.sort((a, b) => a.entryTime.compareTo(b.entryTime));
@@ -2701,7 +2717,8 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
 
     final customer = (job?.company ?? '').trim().isEmpty ? '--' : job!.company;
     final well = _currentWellName.trim().isEmpty ? '--' : _currentWellName;
-    final stage = _currentStage.trim().isEmpty ? '--' : _currentStage;
+    final activeStatus = _activeStatusForCard;
+    final stage = activeStatus.trim().isEmpty ? '--' : activeStatus;
     final status =
         (job?.drilloutSetup['jobStatus'] as String? ?? job?.shift ?? '--')
             .toString();
@@ -2735,7 +2752,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
             children: [
               field('Customer', customer),
               field('Well', well),
-              field('Stage', stage),
+              field('Status', stage),
               field('Job Status', status.trim().isEmpty ? '--' : status.trim()),
             ],
           ),

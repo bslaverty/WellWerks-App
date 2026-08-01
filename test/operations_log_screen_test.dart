@@ -152,6 +152,39 @@ void main() {
     expect(wellDropdown.initialValue, 'well-alpha');
   });
 
+  testWidgets('active job card shows latest manual reading status',
+      (tester) async {
+    final jobId = await seedActiveJob(includeStage: false);
+    final log = OperationsLogService();
+    final seeded = await log.createLocalEntry(
+      workflow: OperationsLogWorkflow.drillout,
+      jobId: jobId,
+      wellId: 'well-alpha',
+      wellName: 'Well Alpha',
+      readingTimestamp: DateTime(2026, 7, 31, 8, 15),
+      operationStage: 'Drilling Plugs',
+      pumpRate: '12.5',
+    );
+    await log.upsertEntry(
+      workflow: OperationsLogWorkflow.drillout,
+      jobId: jobId,
+      entry: seeded,
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: OperationsLogScreen(
+          workflow: OperationsLogWorkflow.drillout,
+          title: 'Drillout Log',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Status'), findsOneWidget);
+    expect(find.text('Drilling Plugs'), findsOneWidget);
+  });
+
   testWidgets('saving a reading returns to log and adds the entry',
       (tester) async {
     final jobId = await seedActiveJob(includeStage: true);

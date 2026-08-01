@@ -147,6 +147,8 @@ ProductionReportRow _row({
   double gas = 100,
   String sand = '.2',
   String choke = '28',
+  String waterGaugeText = 'Water Tank 1: 50 in',
+  String oilGaugeText = 'Oil Tank 1: 30 in',
 }) {
   return ProductionReportRow(
     hourIndex: hourIndex,
@@ -164,8 +166,8 @@ ProductionReportRow _row({
     gasDifferential: '20',
     gasTemp: '85',
     sandRate: sand,
-    waterGaugeText: 'Water Tank 1: 50 in',
-    oilGaugeText: 'Oil Tank 1: 30 in',
+    waterGaugeText: waterGaugeText,
+    oilGaugeText: oilGaugeText,
     currentWaterBbl: 100,
     currentOilBbl: 50,
     currentGasAccum: 8000,
@@ -247,6 +249,35 @@ void main() {
     await _openChartTab(tester);
     expect(
         find.byKey(const Key('production-report-tab-chart')), findsOneWidget);
+  });
+
+  testWidgets('Report table shows per-tank WT/OT headers with gauge values',
+      (WidgetTester tester) async {
+    final job = await _seedActiveJob();
+    await _seedShiftRows(
+      activeJob: job,
+      rows: [
+        _row(
+          hourIndex: 0,
+          time: '5 PM',
+          waterGaugeText:
+              'Water Tank 1: 0\' 10" (16.70 bbl), Water Tank 2: 3\' 0" (60.12 bbl)',
+          oilGaugeText: 'Oil Tank 1: 1\' 2" (22.10 bbl)',
+        ),
+      ],
+    );
+
+    await _pump(tester);
+
+    expect(find.text('WT1'), findsOneWidget);
+    expect(find.text('WT2'), findsOneWidget);
+    expect(find.text('OT1'), findsOneWidget);
+    expect(find.text('WATER TANKS'), findsNothing);
+    expect(find.text('OIL TANKS'), findsNothing);
+
+    expect(find.textContaining('0\' 10" (16.70 bbl)'), findsWidgets);
+    expect(find.textContaining('3\' 0" (60.12 bbl)'), findsWidgets);
+    expect(find.textContaining('1\' 2" (22.10 bbl)'), findsWidgets);
   });
 
   testWidgets('Chart reads from existing Production Report entries',

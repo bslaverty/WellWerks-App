@@ -497,6 +497,10 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     }
 
     switch (key) {
+      case 'wellName':
+        return 'Well Name';
+      case 'tbg':
+        return 'Tbg';
       case 'gasSpotRt':
         return 'GAS RATE';
       case 'diff':
@@ -736,6 +740,132 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
 
   DataCell _cell(String value) => DataCell(Text(value.isEmpty ? '-' : value));
 
+  List<({String id, String label, String sourceKey, String? tankId})>
+      _dayTableColumns(List<ProductionReportRow> rows) {
+    final columns =
+        <({String id, String label, String sourceKey, String? tankId})>[];
+
+    for (final key in _visibleFieldKeys) {
+      if (key == 'waterGaugeText') {
+        final waterTankIds = _tankColumnIdsForRows(rows, key, 'WT');
+        if (waterTankIds.isEmpty) {
+          columns.add((
+            id: key,
+            label: _headerLabel(key),
+            sourceKey: key,
+            tankId: null,
+          ));
+        } else {
+          for (final tankId in waterTankIds) {
+            columns.add((
+              id: 'water-$tankId',
+              label: tankId,
+              sourceKey: key,
+              tankId: tankId,
+            ));
+          }
+        }
+        continue;
+      }
+
+      if (key == 'oilGaugeText') {
+        final oilTankIds = _tankColumnIdsForRows(rows, key, 'OT');
+        if (oilTankIds.isEmpty) {
+          columns.add((
+            id: key,
+            label: _headerLabel(key),
+            sourceKey: key,
+            tankId: null,
+          ));
+        } else {
+          for (final tankId in oilTankIds) {
+            columns.add((
+              id: 'oil-$tankId',
+              label: tankId,
+              sourceKey: key,
+              tankId: tankId,
+            ));
+          }
+        }
+        continue;
+      }
+
+      columns.add((
+        id: key,
+        label: _headerLabel(key),
+        sourceKey: key,
+        tankId: null,
+      ));
+    }
+
+    return columns;
+  }
+
+  List<String> _tankColumnIdsForRows(
+    List<ProductionReportRow> rows,
+    String sourceKey,
+    String prefix,
+  ) {
+    final found = <String>{};
+    for (final row in rows) {
+      final parsed = _parseTankGaugeColumns(
+        _valueFor(row, sourceKey),
+        prefix: prefix,
+      );
+      found.addAll(parsed.keys);
+    }
+    final ids = found.toList(growable: false);
+    ids.sort((a, b) {
+      final ai = int.tryParse(a.replaceFirst(prefix, '')) ?? 0;
+      final bi = int.tryParse(b.replaceFirst(prefix, '')) ?? 0;
+      return ai.compareTo(bi);
+    });
+    return ids;
+  }
+
+  Map<String, String> _parseTankGaugeColumns(
+    String raw, {
+    required String prefix,
+  }) {
+    final values = <String, String>{};
+    final text = raw.trim();
+    if (text.isEmpty) return values;
+
+    for (final segment in text.split(',')) {
+      final trimmed = segment.trim();
+      if (trimmed.isEmpty) continue;
+      final separator = trimmed.indexOf(':');
+      if (separator <= 0) continue;
+
+      final name = trimmed.substring(0, separator).trim();
+      var value = trimmed.substring(separator + 1).trim();
+      if (value.isEmpty) continue;
+
+      final numberMatch = RegExp(r'(\d+)').firstMatch(name);
+      if (numberMatch == null) continue;
+      final tankId = '$prefix${numberMatch.group(1)!}';
+      values[tankId] = value;
+    }
+
+    return values;
+  }
+
+  String _dayTableValueForColumn(
+    ProductionReportRow row,
+    ({String id, String label, String sourceKey, String? tankId}) column,
+  ) {
+    if (column.tankId == null) {
+      return _valueFor(row, column.sourceKey);
+    }
+
+    final prefix = column.sourceKey == 'waterGaugeText' ? 'WT' : 'OT';
+    final parsed = _parseTankGaugeColumns(
+      _valueFor(row, column.sourceKey),
+      prefix: prefix,
+    );
+    return parsed[column.tankId] ?? '';
+  }
+
   Widget _buildDayTable(List<ProductionReportRow> rows) {
     if (rows.isEmpty) {
       return const Padding(
@@ -757,17 +887,29 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       );
     }
 
+    final columns = _dayTableColumns(rows);
+    if (columns.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text(
+          'Active layout has no report columns enabled.',
+          style: TextStyle(color: Colors.white70),
+        ),
+      );
+    }
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: DataTable(
         columns: [
-          for (final key in _visibleFieldKeys) _column(_headerLabel(key)),
+          for (final column in columns) _column(column.label),
         ],
         rows: [
           for (final row in rows)
             DataRow(
               cells: [
-                for (final key in _visibleFieldKeys) _cell(_valueFor(row, key)),
+                for (final column in columns)
+                  _cell(_dayTableValueForColumn(row, column)),
               ],
             ),
         ],

@@ -181,7 +181,7 @@ class JobProfileDefaultsService {
     'chk': 'Choke',
     'csg': 'Csg',
     'bwph': 'Wtr/hr',
-    'boph': 'Oil',
+    'boph': 'Oil/hr',
     'gasSpotRt': 'Gas Rate',
     'prop': 'Sand',
   };

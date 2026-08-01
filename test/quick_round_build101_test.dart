@@ -269,6 +269,64 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
+  testWidgets(
+      'Quick Round carries ICP, wellhead temp, water specific gravity, and sand info to next hour',
+      (WidgetTester tester) async {
+    await _seedJobAndShift(wells: const ['Horse 16-2H']);
+    await _openQuickRound(tester);
+
+    await tester.enterText(_labeledTextField('ICP').first, '1150');
+    await tester.enterText(
+      _labeledTextField('Water Specific Gravity').first,
+      '1.08',
+    );
+    await tester.enterText(
+      _labeledTextField('Wellhead Temperature').first,
+      '92',
+    );
+
+    await tester.tap(_labeledDropdownField('Sand Amount').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Heavy').last);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      _labeledTextField('Prop / Sand Optional Rate').first,
+      '2.5',
+    );
+
+    await _saveCurrentHour(
+      tester,
+      '6 AM',
+      gasAccum: '8003',
+      waterGauge: '70',
+      oilGauge: '40',
+    );
+
+    await tester
+        .tap(find.widgetWithText(FilledButton, 'Next Hour (7 AM)').first);
+    await tester.pumpAndSettle();
+
+    final icpField = tester.widget<TextField>(_labeledTextField('ICP').first);
+    final sgField = tester
+        .widget<TextField>(_labeledTextField('Water Specific Gravity').first);
+    final whtField = tester
+        .widget<TextField>(_labeledTextField('Wellhead Temperature').first);
+    final sandOptionalField = tester.widget<TextField>(
+        _labeledTextField('Prop / Sand Optional Rate').first);
+    final sandDropdown = tester.widget<DropdownButtonFormField<String>>(
+      _labeledDropdownField('Sand Amount').first,
+    );
+
+    expect(icpField.controller?.text, '1150');
+    expect(sgField.controller?.text, '1.08');
+    expect(whtField.controller?.text, '92');
+    expect(sandOptionalField.controller?.text, '2.5');
+    expect(sandDropdown.initialValue, '4');
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
   testWidgets('Choke persists after leaving and reopening Quick Round',
       (WidgetTester tester) async {
     await _seedJobAndShift(

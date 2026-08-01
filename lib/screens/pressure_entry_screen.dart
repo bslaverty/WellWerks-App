@@ -2296,7 +2296,25 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   void _applySavedDefaultsToHour(int hourIndex) {
     _applySavedChokeDefaultsToHour(hourIndex);
+    _applySavedScalarDefaultsToHour(hourIndex);
     _applySavedTankGaugeDefaultsToHour(hourIndex);
+  }
+
+  void _applySavedScalarDefaultsToHour(int hourIndex) {
+    if (hourIndex < 0 || hourIndex >= _controllers.length) return;
+    final controller = _controllers[hourIndex];
+    for (final well in _activeWells) {
+      final latest = _latestSavedWellData(hourIndex, well);
+      if (latest == null) continue;
+      controller.applyScalarDefaultsForWell(
+        well,
+        icpDefault: latest.icp,
+        wellheadTempDefault: latest.wellheadTemp,
+        waterSpecificGravityDefault: latest.waterSpecificGravity,
+        sandRateDefault: latest.sandRate,
+        sandOptionalRateDefault: latest.sandOptionalRate,
+      );
+    }
   }
 
   void _applySavedChokeDefaultsToHour(int hourIndex) {
@@ -3908,6 +3926,55 @@ class _HourlyCheckControllers {
           mergedWater.map((item) => item.inchesText()).toList(growable: false),
       'oilTankGauges':
           mergedOil.map((item) => item.inchesText()).toList(growable: false),
+    });
+    _wellDataByName[targetWell] = updated;
+
+    if (targetWell == well) {
+      _loadWellData(updated, chokeType.trim().isEmpty ? 'ADJ' : chokeType);
+    }
+  }
+
+  void applyScalarDefaultsForWell(
+    String targetWell, {
+    required String icpDefault,
+    required String wellheadTempDefault,
+    required String waterSpecificGravityDefault,
+    required String sandRateDefault,
+    required String sandOptionalRateDefault,
+  }) {
+    _wellDataByName[well] = _snapshotCurrentWellData();
+
+    final existing =
+        _wellDataByName[targetWell] ?? const ProductionWellCheckData();
+
+    String merged(String current, String fallback) {
+      if (current.trim().isNotEmpty) return current;
+      return fallback.trim();
+    }
+
+    final nextIcp = merged(existing.icp, icpDefault);
+    final nextWellheadTemp = merged(existing.wellheadTemp, wellheadTempDefault);
+    final nextWaterSpecificGravity =
+        merged(existing.waterSpecificGravity, waterSpecificGravityDefault);
+    final nextSandRate = merged(existing.sandRate, sandRateDefault);
+    final nextSandOptionalRate =
+        merged(existing.sandOptionalRate, sandOptionalRateDefault);
+
+    if (nextIcp == existing.icp &&
+        nextWellheadTemp == existing.wellheadTemp &&
+        nextWaterSpecificGravity == existing.waterSpecificGravity &&
+        nextSandRate == existing.sandRate &&
+        nextSandOptionalRate == existing.sandOptionalRate) {
+      return;
+    }
+
+    final updated = ProductionWellCheckData.fromJson({
+      ...existing.toJson(),
+      'icp': nextIcp,
+      'wellheadTemp': nextWellheadTemp,
+      'waterSpecificGravity': nextWaterSpecificGravity,
+      'sandRate': nextSandRate,
+      'sandOptionalRate': nextSandOptionalRate,
     });
     _wellDataByName[targetWell] = updated;
 
