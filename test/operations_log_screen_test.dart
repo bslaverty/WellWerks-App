@@ -340,6 +340,15 @@ void main() {
       returnsRate: '11.0',
       choke: '24/64" Positive',
       sweepInformation: '12450',
+      generatedText: '8:15 AM Drillout Update\n'
+          'Mach Energy\n'
+          'Horse Pad\n'
+          'Well Alpha\n\n'
+          'Tank Inventory\n\n'
+          'Sand Tank: 30\" - 300 bbl\n'
+          'Water Tank 1: 28\" - 280 bbl\n\n'
+          'Total On Location: 580 bbl\n\n'
+          'Notes: Stable conditions',
       notes: 'Stable conditions',
     );
     await log.upsertEntry(
@@ -370,12 +379,76 @@ void main() {
     await tester.tap(find.text('Latest Reading'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Drillout Update'), findsOneWidget);
-    expect(find.textContaining('Status: Drilling Plugs'), findsOneWidget);
-    expect(find.textContaining('Coil Depth: 12450 ft'), findsOneWidget);
-    expect(find.textContaining('Choke: 24/64" Positive'), findsOneWidget);
-    expect(find.textContaining('Rate: 12.5 BBL/min'), findsOneWidget);
-    expect(find.textContaining('Notes: Stable conditions'), findsOneWidget);
+    final previewDialog = find.byType(AlertDialog);
+    expect(previewDialog, findsOneWidget);
+    Finder previewContains(String text) =>
+        find.descendant(of: previewDialog, matching: find.textContaining(text));
+
+    expect(previewContains('Drillout Update'), findsOneWidget);
+    expect(previewContains('Status: Drilling Plugs'), findsOneWidget);
+    expect(previewContains('Coil Depth: 12450 ft'), findsOneWidget);
+    expect(previewContains('Choke: 24/64" Positive'), findsOneWidget);
+    expect(previewContains('Rate: 12.5 BBL/min'), findsOneWidget);
+    expect(previewContains('Tank Inventory'), findsOneWidget);
+    expect(previewContains('Total On Location: 580 bbl'), findsOneWidget);
+    expect(previewContains('Notes: Stable conditions'), findsOneWidget);
+    expect(previewContains('Horse Pad'), findsNothing);
+  });
+
+  testWidgets(
+      'drillout text update preview falls back to tank information when inventory block is not present',
+      (tester) async {
+    final jobId = await seedActiveJob(includeStage: true);
+    final log = OperationsLogService();
+    final seeded = await log.createLocalEntry(
+      workflow: OperationsLogWorkflow.drillout,
+      jobId: jobId,
+      wellId: 'well-alpha',
+      wellName: 'Well Alpha',
+      readingTimestamp: DateTime(2026, 7, 31, 8, 15),
+      operationStage: 'Drilling Plugs',
+      pumpRate: '12.5',
+      tankLevel: 'Sand 30in / Water 20in',
+      generatedText: 'Drillout Update\nStatus: Drilling Plugs',
+    );
+    await log.upsertEntry(
+      workflow: OperationsLogWorkflow.drillout,
+      jobId: jobId,
+      entry: seeded,
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: OperationsLogScreen(
+          workflow: OperationsLogWorkflow.drillout,
+          title: 'Drillout Log',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('operations-log-action-preview-text')),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester
+        .tap(find.byKey(const Key('operations-log-action-preview-text')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Latest Reading'));
+    await tester.pumpAndSettle();
+
+    final previewDialog = find.byType(AlertDialog);
+    expect(previewDialog, findsOneWidget);
+    Finder previewContains(String text) =>
+        find.descendant(of: previewDialog, matching: find.textContaining(text));
+
+    expect(previewContains('Tank Inventory'), findsOneWidget);
+    expect(
+      previewContains('Tank Information: Sand 30in / Water 20in'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('cleanout text update preview uses completions-style format',
@@ -420,9 +493,78 @@ void main() {
     await tester.tap(find.text('Latest Reading'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Cleanout Update'), findsOneWidget);
-    expect(find.textContaining('Status: Circulating'), findsOneWidget);
-    expect(find.textContaining('Rate: 9.0 BBL/min'), findsOneWidget);
+    final previewDialog = find.byType(AlertDialog);
+    expect(previewDialog, findsOneWidget);
+    Finder previewContains(String text) =>
+        find.descendant(of: previewDialog, matching: find.textContaining(text));
+
+    expect(previewContains('Cleanout Update'), findsOneWidget);
+    expect(previewContains('Status: Circulating'), findsOneWidget);
+    expect(previewContains('Rate: 9.0 BBL/min'), findsOneWidget);
+    expect(previewContains('Horse Pad'), findsNothing);
+  });
+
+  testWidgets('drillout text update can hide tank inventory', (tester) async {
+    final jobId = await seedActiveJob(includeStage: true);
+    final log = OperationsLogService();
+    final seeded = await log.createLocalEntry(
+      workflow: OperationsLogWorkflow.drillout,
+      jobId: jobId,
+      wellId: 'well-alpha',
+      wellName: 'Well Alpha',
+      readingTimestamp: DateTime(2026, 7, 31, 8, 15),
+      operationStage: 'Drilling Plugs',
+      pumpRate: '12.5',
+      generatedText: '8:15 AM Drillout Update\n'
+          'Mach Energy\n'
+          'Horse Pad\n'
+          'Well Alpha\n\n'
+          'Tank Inventory\n\n'
+          'Sand Tank: 30\" - 300 bbl\n'
+          'Water Tank 1: 28\" - 280 bbl\n\n'
+          'Total On Location: 580 bbl\n\n'
+          'Notes: Stable conditions',
+      notes: 'Stable conditions',
+    );
+    await log.upsertEntry(
+      workflow: OperationsLogWorkflow.drillout,
+      jobId: jobId,
+      entry: seeded,
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: OperationsLogScreen(
+          workflow: OperationsLogWorkflow.drillout,
+          title: 'Drillout Log',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('operations-log-toggle-drillout-tank-inventory')),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(
+      find.byKey(const Key('operations-log-toggle-drillout-tank-inventory')),
+    );
+    await tester.pumpAndSettle();
+
+    await tester
+        .tap(find.byKey(const Key('operations-log-action-preview-text')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Latest Reading'));
+    await tester.pumpAndSettle();
+
+    final previewDialog = find.byType(AlertDialog);
+    expect(previewDialog, findsOneWidget);
+    Finder previewContains(String text) =>
+        find.descendant(of: previewDialog, matching: find.textContaining(text));
+
+    expect(previewContains('Drillout Update'), findsOneWidget);
+    expect(previewContains('Tank Inventory'), findsNothing);
   });
 
   testWidgets('operations log gas and sand use text-update dropdown options',

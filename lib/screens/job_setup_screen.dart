@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../models/drillout_tank_configuration.dart';
 import '../models/job_setup.dart';
 import '../models/operations_log_entry.dart';
+import 'home_screen.dart';
 import '../services/active_company_service.dart';
 import '../services/active_workflow_mode_service.dart';
 import '../services/job_history_service.dart';
@@ -1637,8 +1638,11 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       _editing = false;
       _step = 0;
     });
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Active job ended')));
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(builder: (_) => const HomeScreen()),
+      (route) => false,
+    );
   }
 
   Widget _navButtons({bool finish = false}) {

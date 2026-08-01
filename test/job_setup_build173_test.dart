@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wellwerks/models/job_setup.dart';
+import 'package:wellwerks/screens/home_screen.dart';
 import 'package:wellwerks/screens/job_setup_screen.dart';
 import 'package:wellwerks/screens/production_dashboard_screen.dart';
 import 'package:wellwerks/services/active_company_service.dart';
@@ -171,5 +172,41 @@ void main() {
     expect(find.textContaining('Production ready'), findsOneWidget);
     expect(find.text('Open Job Management >'), findsOneWidget);
     expect(find.textContaining('Workflow: Production'), findsNothing);
+  });
+
+  testWidgets('Ending active job navigates back to Home screen',
+      (WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 2000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await ActiveWorkflowModeService.instance
+        .setMode(ActiveWorkflowMode.production);
+
+    await JobStorageService().saveActiveJob(
+      JobSetup(
+        id: 'active-job-1',
+        company: 'Mach Energy',
+        workflow: 'production',
+        padName: 'Horse Pad',
+        shift: 'Day',
+        wells: const ['Horse 16-2H'],
+        leaseNames: const ['Horse 16-2H'],
+        wellEntries: const [
+          JobSetupWell(id: 'well_1', name: 'Horse 16-2H'),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: JobSetupScreen()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'End Job').first);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'End Job'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(find.text('No active job selected'), findsOneWidget);
   });
 }

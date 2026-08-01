@@ -139,6 +139,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
   String _lastFinalizedReportKey = '';
   DateTime _clockNow = DateTime.now();
   DateTime? _reportTimeOverride;
+  bool _includeTankInventoryInDrilloutTextUpdate = true;
   Timer? _clockTicker;
   bool _didAutoOpenSts = false;
 
@@ -1081,7 +1082,8 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       '$timeLabel $workflowLabel $modeLabel',
       if (_activeJob?.company.trim().isNotEmpty ?? false)
         _activeJob!.company.trim(),
-      if (_activeJob?.padName.trim().isNotEmpty ?? false)
+      if (reportType != 'Text Update' &&
+          (_activeJob?.padName.trim().isNotEmpty ?? false))
         _activeJob!.padName.trim(),
       if (anchor.wellName.trim().isNotEmpty) anchor.wellName.trim(),
     ];
@@ -1147,10 +1149,11 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     final oilHauled = carry((entry) => entry.oilHauled);
     if (oilHauled.isNotEmpty) details.add('Oil Hauled: $oilHauled bbl');
 
-    final tankInformation = carry((entry) => entry.tankLevel);
-    if (tankInformation.isNotEmpty) {
-      details.add('Tank Information: $tankInformation');
-    }
+    final includeTankInventory = reportType != 'Text Update' ||
+        _workflow != OperationsLogWorkflow.drillout ||
+        _includeTankInventoryInDrilloutTextUpdate;
+    final tankInventoryBlock =
+        includeTankInventory ? _resolveTankInventoryBlock(anchor) : '';
 
     final estimatedSts = anchor.estimatedSts;
     if (estimatedSts != null) {
@@ -1172,9 +1175,31 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
     final blocks = <String>[
       header.where((line) => line.trim().isNotEmpty).join('\n'),
       if (details.isNotEmpty) details.join('\n'),
+      if (tankInventoryBlock.isNotEmpty) tankInventoryBlock,
     ];
 
     return blocks.where((block) => block.trim().isNotEmpty).join('\n\n');
+  }
+
+  String _resolveTankInventoryBlock(OperationsLogEntry anchor) {
+    final generated = anchor.generatedText;
+    if (generated.trim().isNotEmpty) {
+      final match = RegExp(
+        r'Tank Inventory[\s\S]*?(?=\n\nNotes:|\z)',
+        caseSensitive: false,
+      ).firstMatch(generated);
+      if (match != null) {
+        final block = (match.group(0) ?? '').trim();
+        if (block.isNotEmpty) return block;
+      }
+    }
+
+    final tankInformation = _carryForwardValueForEntry(
+      anchor,
+      (entry) => entry.tankLevel,
+    ).trim();
+    if (tankInformation.isEmpty) return '';
+    return 'Tank Inventory\n\nTank Information: $tankInformation';
   }
 
   String _reportTimeLabel() {
@@ -3527,6 +3552,29 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                 ],
               ),
               const SizedBox(height: 10),
+              if (_workflow == OperationsLogWorkflow.drillout)
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Include Tank Inventory in Text Update',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                    ),
+                    Switch.adaptive(
+                      key: const Key(
+                          'operations-log-toggle-drillout-tank-inventory'),
+                      value: _includeTankInventoryInDrilloutTextUpdate,
+                      onChanged: (value) {
+                        setState(() {
+                          _includeTankInventoryInDrilloutTextUpdate = value;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              if (_workflow == OperationsLogWorkflow.drillout)
+                const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
