@@ -119,8 +119,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted || action == null) return;
     final calculatorId =
         (action.payload['calculatorId'] as String? ?? '').trim();
-    final instanceId =
-        (action.payload['instanceId'] as String? ?? '').trim();
+    final instanceId = (action.payload['instanceId'] as String? ?? '').trim();
     final config = RateCalculatorConfig.fromStorageId(calculatorId);
 
     if (action.type == RateTimerPendingActionType.stopTimer) {
@@ -309,14 +308,51 @@ class _HomeScreenState extends State<HomeScreen> {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: Text(
-              'Choose a module for production, completions, charts, layouts, and safety.',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontSize: 15,
-              ),
+          Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF12161B),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF2A313A)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: Icon(
+                    Icons.dashboard_customize_outlined,
+                    color: Color(0xFFCDA56A),
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Quick Access',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Production, completions, rig-up, calculators, safety, charts, and history in one place.',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 14,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
           ToolCard(
@@ -324,13 +360,6 @@ class _HomeScreenState extends State<HomeScreen> {
             title: 'Production',
             subtitle: 'Quick Round, reports, text updates, and setup',
             onTap: () => open(context, const ProductionDashboardScreen()),
-          ),
-          ToolCard(
-            icon: Icons.speed,
-            title: 'Rate Calculator',
-            subtitle:
-                'Open tank rate calculators and run more than one at a time',
-            onTap: () => open(context, const RateCalculatorMenuScreen()),
           ),
           _moduleCard(
             context: context,
@@ -353,6 +382,46 @@ class _HomeScreenState extends State<HomeScreen> {
                 screen: CompletionsCalculatorsScreen(),
               ),
             ],
+          ),
+          _moduleCard(
+            context: context,
+            icon: Icons.account_tree,
+            title: 'Rig-Up',
+            subtitle: 'Layout Designer, Rig-Up Inventory, and Rig-Up History',
+            tools: const [
+              ModuleTool(
+                icon: Icons.account_tree,
+                title: 'Layout Designer',
+                subtitle: 'Design rig-up layouts and iron flow paths',
+                screen: EquipmentLayoutScreen(),
+              ),
+              ModuleTool(
+                icon: Icons.inventory_2_outlined,
+                title: 'Rig-Up Inventory',
+                subtitle: 'Track equipment, assign by well, and share summary',
+                screen: RigUpInventoryScreen(),
+              ),
+              ModuleTool(
+                icon: Icons.history,
+                title: 'Rig-Up History',
+                subtitle: 'Open, share, or delete saved rig-up records',
+                screen: RigUpHistoryScreen(),
+              ),
+            ],
+          ),
+          ToolCard(
+            icon: Icons.speed,
+            title: 'Rate Calculator',
+            subtitle:
+                'Open tank rate calculators and run more than one at a time',
+            onTap: () => open(
+                context, const RateCalculatorMenuScreen(homeMultiMode: true)),
+          ),
+          ToolCard(
+            icon: Icons.assignment,
+            title: 'JSA',
+            subtitle: 'Safety worksheet, crew rows, and signatures',
+            onTap: () => open(context, const JsaScreen()),
           ),
           _moduleCard(
             context: context,
@@ -679,44 +748,13 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          _moduleCard(
-            context: context,
-            icon: Icons.account_tree,
-            title: 'Rig-Up',
-            subtitle: 'Layout Designer, Rig-Up Inventory, and Rig-Up History',
-            tools: const [
-              ModuleTool(
-                icon: Icons.account_tree,
-                title: 'Layout Designer',
-                subtitle: 'Design rig-up layouts and iron flow paths',
-                screen: EquipmentLayoutScreen(),
-              ),
-              ModuleTool(
-                icon: Icons.inventory_2_outlined,
-                title: 'Rig-Up Inventory',
-                subtitle: 'Track equipment, assign by well, and share summary',
-                screen: RigUpInventoryScreen(),
-              ),
-              ModuleTool(
-                icon: Icons.history,
-                title: 'Rig-Up History',
-                subtitle: 'Open, share, or delete saved rig-up records',
-                screen: RigUpHistoryScreen(),
-              ),
-            ],
-          ),
-          ToolCard(
-            icon: Icons.assignment,
-            title: 'JSA',
-            subtitle: 'Safety worksheet, crew rows, and signatures',
-            onTap: () => open(context, const JsaScreen()),
-          ),
           ToolCard(
             icon: Icons.history,
             title: 'History',
             subtitle: 'Search archived jobs and past shift records',
             onTap: () => open(context, const ProductionHistoryScreen()),
           ),
+          const SizedBox(height: 6),
         ],
       ),
     );

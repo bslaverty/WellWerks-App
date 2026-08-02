@@ -132,8 +132,14 @@ class RateCalculatorConfig {
 class RateCalculatorScreen extends StatefulWidget {
   final RateCalculatorConfig config;
   final String? instanceId;
+  final bool homeMultiMode;
+  final List<RateCalculatorConfig>? availableConfigs;
   const RateCalculatorScreen(
-      {super.key, required this.config, this.instanceId});
+      {super.key,
+      required this.config,
+      this.instanceId,
+      this.homeMultiMode = false,
+      this.availableConfigs});
 
   // Backward compatibility for old routes still passing a tank name.
   factory RateCalculatorScreen.legacy({Key? key, required String tankName}) {
@@ -236,8 +242,12 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   String _buildInstanceStorageId() {
     final provided = widget.instanceId?.trim() ?? '';
     if (provided.isNotEmpty) return provided;
+    if (!widget.homeMultiMode) return _calculatorStorageId;
     return '${_calculatorStorageId}_${DateTime.now().microsecondsSinceEpoch}';
   }
+
+  String get _storageScopeKey =>
+      widget.homeMultiMode ? _instanceStorageId : _calculatorStorageId;
 
   Future<void> _initializeSession() async {
     await _sessionService.ensureInitialized();
@@ -308,13 +318,13 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   }
 
   String get _rateLogEnabledPrefKey =>
-      'wellwerks_rate_log_enabled_$_instanceStorageId';
+      'wellwerks_rate_log_enabled_$_storageScopeKey';
 
   String get _rateLogEntriesPrefKey =>
-      'wellwerks_rate_log_entries_$_instanceStorageId';
+      'wellwerks_rate_log_entries_$_storageScopeKey';
 
   String get _displayUnitPrefKey {
-    return 'wellwerks_rate_display_unit_$_instanceStorageId';
+    return 'wellwerks_rate_display_unit_$_storageScopeKey';
   }
 
   Future<void> _loadRateLogState() async {
@@ -2127,6 +2137,50 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     );
   }
 
+  Future<void> _openAddAnotherTankPicker() async {
+    final configs = widget.availableConfigs ?? const <RateCalculatorConfig>[];
+    if (configs.isEmpty || !widget.homeMultiMode) return;
+
+    final selected = await showModalBottomSheet<RateCalculatorConfig>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: configs.length,
+            itemBuilder: (context, index) {
+              final config = configs[index];
+              final isCurrent = config.title == widget.config.title &&
+                  config.chartId == widget.config.chartId;
+              return ListTile(
+                leading: const Icon(Icons.speed),
+                title: Text(config.title),
+                subtitle: isCurrent
+                    ? const Text('Current tank')
+                    : const Text('Start separate timer'),
+                onTap: isCurrent
+                    ? null
+                    : () => Navigator.of(sheetContext).pop(config),
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    if (!mounted || selected == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => RateCalculatorScreen(
+          config: selected,
+          homeMultiMode: true,
+          availableConfigs: configs,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_initializing) {
@@ -2150,6 +2204,18 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
               child: ListView(
                 padding: const EdgeInsets.all(18),
                 children: [
+                  if (widget.homeMultiMode &&
+                      (widget.availableConfigs?.isNotEmpty ?? false)) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _openAddAnotherTankPicker,
+                        icon: const Icon(Icons.add_circle_outline),
+                        label: const Text('Add Another Tank'),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
                   if (!widget.config.usesChart)
                     WwNumberField(
                       label: 'Tank Factor (BBL/In)',
