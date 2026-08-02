@@ -201,6 +201,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   static const _timerMinutesPrefKey = 'wellwerks_rate_timer_minutes';
   static const _rateLogQrFileType = 'wellwerks_rate_log';
   static const _rateLogQrSchemaVersion = '1.0.0';
+  static const _homeTabsPrefKey = 'wellwerks_home_rate_tabs_v1';
   final _settingsService = AppSettingsService();
   final _jobStorage = JobStorageService();
   final _operationsLogService = OperationsLogService();
@@ -240,6 +241,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   double? bblPerDay;
   String? error;
   bool _initializing = true;
+  List<HomeRateTabSpec> _homeTabs = <HomeRateTabSpec>[];
 
   @override
   void initState() {
@@ -267,6 +269,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
   Future<void> _initializeSession() async {
     await _sessionService.ensureInitialized();
+    await _loadHomeTabsState();
 
     final redirected = await _redirectToActiveCalculatorIfNeeded();
     if (redirected) {
@@ -342,12 +345,93 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         .replaceAll(RegExp(r'[^a-z0-9]+'), '_');
   }
 
+  Future<void> _loadHomeTabsState() async {
+    if (!widget.homeMultiMode) return;
+
+    final tabs = <HomeRateTabSpec>[];
+
+    void addUnique(HomeRateTabSpec tab) {
+      final exists = tabs.any((item) => item.instanceId == tab.instanceId);
+      if (!exists) {
+        tabs.add(tab);
+      }
+    }
+
+    if (widget.homeTabs != null && widget.homeTabs!.isNotEmpty) {
+      for (final tab in widget.homeTabs!) {
+        addUnique(tab);
+      }
+    } else {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_homeTabsPrefKey) ?? '';
+      if (raw.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is List) {
+            for (final item in decoded) {
+              if (item is! Map) continue;
+              final map = Map<String, dynamic>.from(item);
+              final calculatorId =
+                  (map['calculatorId'] as String? ?? '').trim();
+              final instanceId = (map['instanceId'] as String? ?? '').trim();
+              if (calculatorId.isEmpty || instanceId.isEmpty) continue;
+
+              RateCalculatorConfig? config =
+                  RateCalculatorConfig.fromStorageId(calculatorId);
+              if (config == null) {
+                final available =
+                    widget.availableConfigs ?? const <RateCalculatorConfig>[];
+                for (final candidate in available) {
+                  if (_calculatorIdForConfig(candidate) == calculatorId) {
+                    config = candidate;
+                    break;
+                  }
+                }
+              }
+              if (config == null) continue;
+              addUnique(
+                HomeRateTabSpec(config: config, instanceId: instanceId),
+              );
+            }
+          }
+        } catch (_) {
+          // Ignore malformed saved tabs.
+        }
+      }
+    }
+
+    if (!tabs.any((tab) => tab.instanceId == _instanceStorageId)) {
+      tabs.insert(
+        0,
+        HomeRateTabSpec(
+          config: widget.config,
+          instanceId: _instanceStorageId,
+        ),
+      );
+    }
+
+    _homeTabs = tabs;
+    await _persistHomeTabsState();
+  }
+
+  Future<void> _persistHomeTabsState() async {
+    if (!widget.homeMultiMode) return;
+    final prefs = await SharedPreferences.getInstance();
+    final payload = _homeTabs
+        .map(
+          (tab) => <String, String>{
+            'calculatorId': _calculatorIdForConfig(tab.config),
+            'instanceId': tab.instanceId,
+          },
+        )
+        .toList(growable: false);
+    await prefs.setString(_homeTabsPrefKey, jsonEncode(payload));
+  }
+
   List<HomeRateTabSpec> _resolvedHomeTabs() {
     if (!widget.homeMultiMode) return const <HomeRateTabSpec>[];
 
-    final tabs = widget.homeTabs == null
-        ? <HomeRateTabSpec>[]
-        : List<HomeRateTabSpec>.from(widget.homeTabs!);
+    final tabs = List<HomeRateTabSpec>.from(_homeTabs);
 
     if (tabs.isEmpty) {
       tabs.add(
@@ -368,6 +452,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
           instanceId: _instanceStorageId,
         ),
       );
+      _homeTabs = tabs;
+      _persistHomeTabsState();
     }
     return tabs;
   }
@@ -389,6 +475,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     if (index < 0 || index >= tabs.length) return;
     final selected = tabs[index];
     if (selected.instanceId == _instanceStorageId) return;
+    _homeTabs = tabs;
+    _persistHomeTabsState();
 
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
@@ -1357,13 +1445,14 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     _startLiveClockTicker();
   }
 
-  Future<void> _stopLiveClockAndAutoCalculate() async {
+  void _stopLiveClock() {
     if (!_liveClockRunning) return;
     final elapsedSeconds = _currentLiveClockElapsedSeconds();
     _stopLiveClockTicker();
     setState(() {
       _liveClockStartedAt = null;
       _liveClockElapsedSeconds = elapsedSeconds;
+      error = null;
     });
 
     if (elapsedSeconds <= 0) {
@@ -1372,9 +1461,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       });
       return;
     }
-
-    final elapsedMinutes = elapsedSeconds / 60.0;
-    await _calculateFromElapsedMinutes(elapsedMinutes);
+    _persistCalculatorSession();
   }
 
   Future<void> _startTimedRateWithConflictHandling(
@@ -1585,7 +1672,16 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   bool get _hasGaugeInputs =>
       startGauge.text.trim().isNotEmpty && endGauge.text.trim().isNotEmpty;
 
-  bool get _canCalculate => _hasGaugeInputs && _hasValidMinutes;
+  bool get _canCalculate {
+    if (!_hasGaugeInputs) return false;
+    if (_useLiveClock) {
+      final elapsedSeconds = _liveClockElapsedSeconds > 0
+          ? _liveClockElapsedSeconds
+          : _currentLiveClockElapsedSeconds();
+      return !_liveClockRunning && elapsedSeconds > 0;
+    }
+    return _hasValidMinutes;
+  }
 
   bool get _canResetTimer =>
       _timerRunning ||
@@ -1628,6 +1724,74 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     if (_timerRunning) return 'Timer running...';
     if (_timerFinished) return 'Ready to calculate.';
     return 'Enter gauges and start timer.';
+  }
+
+  void _setTimerMode(bool useLiveClock) {
+    if (!_liveClockAvailable) return;
+    if (_useLiveClock == useLiveClock) return;
+
+    if (useLiveClock && (_timerRunning || _isCurrentCalculatorTimerActive)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Stop countdown timer before switching to live clock.'),
+        ),
+      );
+      return;
+    }
+
+    if (!useLiveClock && _liveClockRunning) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Stop live clock before switching timer mode.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _useLiveClock = useLiveClock;
+      error = null;
+    });
+    _persistCalculatorSession();
+  }
+
+  Widget _timerModeSelector() {
+    if (!_liveClockAvailable) return const SizedBox.shrink();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Timer Mode',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                ChoiceChip(
+                  selected: !_useLiveClock,
+                  onSelected: (_) => _setTimerMode(false),
+                  label: const Text('Timed Rate'),
+                ),
+                ChoiceChip(
+                  selected: _useLiveClock,
+                  onSelected: (_) => _setTimerMode(true),
+                  label: const Text('Live Clock'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _timedRateSection() {
@@ -1751,102 +1915,92 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              value: _useLiveClock,
-              onChanged: (value) {
-                if (!value && _liveClockRunning) {
-                  _stopLiveClockTicker();
-                  setState(() {
-                    _liveClockStartedAt = null;
-                  });
-                }
-                setState(() {
-                  _useLiveClock = value;
-                  error = null;
-                });
-              },
-              title: const Text('Use Live Clock (Optional)'),
-              subtitle: const Text(
-                'Runs until you stop it, then auto-calculates rate from elapsed time.',
+            const Text(
+              'Live Clock',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
               ),
             ),
-            if (_useLiveClock) ...[
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF111418),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFF3A3A3A)),
-                ),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+            const SizedBox(height: 8),
+            const Text(
+              'Start timer, stop at stick pull, enter ending gauge, then tap CALCULATE.',
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF111418),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF3A3A3A)),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.av_timer,
+                          color: Color(0xFFCDA56A), size: 28),
+                      const SizedBox(width: 8),
+                      Text(
+                        _liveClockText(),
+                        style: const TextStyle(
+                          fontSize: 44,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.2,
+                          color: Color(0xFFCDA56A),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _liveClockRunning
+                        ? 'Live clock running... stop when you pull the stick.'
+                        : 'Stopped. Enter ending gauge, then tap CALCULATE.',
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Started: ${_liveClockStartedText()}',
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: Column(
                       children: [
-                        const Icon(Icons.av_timer,
-                            color: Color(0xFFCDA56A), size: 28),
-                        const SizedBox(width: 8),
-                        Text(
-                          _liveClockText(),
-                          style: const TextStyle(
-                            fontSize: 44,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.2,
-                            color: Color(0xFFCDA56A),
+                        SizedBox(
+                          width: double.infinity,
+                          child: _liveClockRunning
+                              ? OutlinedButton(
+                                  onPressed: _stopLiveClock,
+                                  child: const Text('Stop Live Clock'),
+                                )
+                              : FilledButton(
+                                  onPressed: _startLiveClock,
+                                  child: const Text('Start Live Clock'),
+                                ),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton(
+                            onPressed: (_liveClockRunning ||
+                                    _liveClockElapsedSeconds > 0)
+                                ? _resetLiveClockOnly
+                                : null,
+                            child: const Text('Reset Live Clock'),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _liveClockRunning
-                          ? 'Live clock running... stop to auto-calculate.'
-                          : 'Start live clock, then stop to auto-calculate.',
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Started: ${_liveClockStartedText()}',
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: Column(
-                        children: [
-                          SizedBox(
-                            width: double.infinity,
-                            child: _liveClockRunning
-                                ? OutlinedButton(
-                                    onPressed: _stopLiveClockAndAutoCalculate,
-                                    child: const Text('Stop & Auto-Calculate'),
-                                  )
-                                : FilledButton(
-                                    onPressed: _startLiveClock,
-                                    child: const Text('Start Live Clock'),
-                                  ),
-                          ),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton(
-                              onPressed: (_liveClockRunning ||
-                                      _liveClockElapsedSeconds > 0)
-                                  ? _resetLiveClockOnly
-                                  : null,
-                              child: const Text('Reset Live Clock'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ],
         ),
       ),
@@ -2198,7 +2352,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
     final startText = startGauge.text.trim();
     final endText = endGauge.text.trim();
-    final minutesText = minutes.text.trim();
 
     if (startText.isEmpty) {
       setState(() => error = 'Enter a starting gauge.');
@@ -2208,6 +2361,27 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       setState(() => error = 'Enter an ending gauge.');
       return;
     }
+
+    if (_useLiveClock) {
+      if (_liveClockRunning) {
+        setState(() => error = 'Stop live clock before calculating.');
+        return;
+      }
+
+      final elapsedSeconds = _liveClockElapsedSeconds > 0
+          ? _liveClockElapsedSeconds
+          : _currentLiveClockElapsedSeconds();
+      if (elapsedSeconds <= 0) {
+        setState(
+            () => error = 'Start and stop live clock to capture elapsed time.');
+        return;
+      }
+
+      await _calculateFromElapsedMinutes(elapsedSeconds / 60.0);
+      return;
+    }
+
+    final minutesText = minutes.text.trim();
     if (minutesText.isEmpty) {
       setState(() => error = 'Select the number of minutes.');
       return;
@@ -2326,6 +2500,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     _persistTimerState();
     _persistCalculatorSession();
     _saveRateLogState();
+    _persistHomeTabsState();
     WidgetsBinding.instance.removeObserver(this);
     _countdownTimer?.cancel();
     _liveClockTicker?.cancel();
@@ -2625,6 +2800,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         HomeRateTabSpec(config: selected, instanceId: nextInstanceId),
       );
     }
+    _homeTabs = nextTabs;
+    await _persistHomeTabsState();
 
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -2654,6 +2831,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         _persistTimerState();
         _persistCalculatorSession();
         _saveRateLogState();
+        _persistHomeTabsState();
       },
       child: Scaffold(
         appBar: AppHeader(title: widget.config.title, showBack: true),
@@ -2734,9 +2912,12 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                       ),
                     ),
                   ),
-                  _timedRateSection(),
+                  _timerModeSelector(),
                   const SizedBox(height: 10),
-                  _liveClockSection(),
+                  if (_useLiveClock)
+                    _liveClockSection()
+                  else
+                    _timedRateSection(),
                   const SizedBox(height: 10),
                   FilledButton(
                     style: _calculateButtonStyle(),

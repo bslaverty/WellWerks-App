@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import '../services/rate_calculator_session_service.dart';
+import '../services/rate_timer_service.dart';
 import '../widgets/app_header.dart';
 import '../widgets/tool_card.dart';
 import 'rate_calculator_screen.dart';
 
 class RateCalculatorMenuScreen extends StatelessWidget {
   final bool homeMultiMode;
+  static final _sessionService = RateCalculatorSessionService.instance;
+  static final _timerService = RateTimerService();
   const RateCalculatorMenuScreen({super.key, this.homeMultiMode = false});
 
   static const List<RateCalculatorConfig> _menuConfigs = [
@@ -20,11 +24,30 @@ class RateCalculatorMenuScreen extends StatelessWidget {
     RateCalculatorConfig.linear('Production Tank', defaultFactor: 1.67),
   ];
 
-  void _open(BuildContext context, RateCalculatorConfig config) {
+  String _calculatorIdForConfig(RateCalculatorConfig config) {
+    return (config.storageId ?? config.chartId ?? config.title)
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+  }
+
+  Future<void> _open(BuildContext context, RateCalculatorConfig config) async {
+    String? instanceId;
+    if (homeMultiMode) {
+      final calculatorId = _calculatorIdForConfig(config);
+      await _sessionService.ensureInitialized();
+      final activeTimer =
+          await _timerService.loadActiveTimerForCalculator(calculatorId);
+      instanceId = activeTimer?.instanceId.isNotEmpty == true
+          ? activeTimer!.instanceId
+          : _sessionService.sessionKeyForCalculator(calculatorId);
+    }
+
+    if (!context.mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => RateCalculatorScreen(
           config: config,
+          instanceId: instanceId,
           homeMultiMode: homeMultiMode,
           availableConfigs: homeMultiMode ? _menuConfigs : null,
         ),
