@@ -205,9 +205,13 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   late final TextEditingController factor;
   _KeypadTarget? _activeKeypadTarget;
   Timer? _countdownTimer;
+  Timer? _liveClockTicker;
   int _remainingSeconds = 0;
+  int _liveClockElapsedSeconds = 0;
   bool _thirtySecondAlertShown = false;
   bool _timerFinished = false;
+  bool _useLiveClock = false;
+  DateTime? _liveClockStartedAt;
   _RateDisplayUnit _rateDisplayUnit = _RateDisplayUnit.bblPerMin;
   bool _rateLogEnabled = false;
   bool _rateLogExpanded = false;
@@ -306,6 +310,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       _applyPendingNotificationAction();
       _restoreTimerState();
       _loadRateLogState();
+      if (_liveClockRunning) {
+        _startLiveClockTicker();
+      }
     }
   }
 
@@ -1017,6 +1024,47 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   bool get _timerRunning =>
       _timerEndsAt != null && _remainingSeconds > 0 && !_timerFinished;
 
+  bool get _liveClockAvailable => widget.homeMultiMode;
+
+  bool get _liveClockRunning => _liveClockStartedAt != null;
+
+  int _currentLiveClockElapsedSeconds() {
+    final startedAt = _liveClockStartedAt;
+    if (startedAt == null) {
+      return _liveClockElapsedSeconds;
+    }
+    final elapsed = DateTime.now().difference(startedAt).inSeconds;
+    return elapsed < 0 ? 0 : elapsed;
+  }
+
+  String _liveClockText() {
+    final seconds = _currentLiveClockElapsedSeconds();
+    final mm = (seconds ~/ 60).toString().padLeft(2, '0');
+    final ss = (seconds % 60).toString().padLeft(2, '0');
+    return '$mm:$ss';
+  }
+
+  String _liveClockStartedText() {
+    final startedAt = _liveClockStartedAt;
+    if (startedAt == null) return '--';
+    return TimeOfDay.fromDateTime(startedAt).format(context);
+  }
+
+  void _startLiveClockTicker() {
+    _liveClockTicker?.cancel();
+    _liveClockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || !_liveClockRunning) return;
+      setState(() {
+        _liveClockElapsedSeconds = _currentLiveClockElapsedSeconds();
+      });
+    });
+  }
+
+  void _stopLiveClockTicker() {
+    _liveClockTicker?.cancel();
+    _liveClockTicker = null;
+  }
+
   int _minutesToDurationSeconds() {
     final parsedMinutes = int.tryParse(minutes.text.trim());
     if (parsedMinutes == null) return 0;
@@ -1121,6 +1169,15 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   }
 
   void _startTimedRate() {
+    if (_liveClockRunning) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Stop live clock before starting countdown timer.'),
+        ),
+      );
+      return;
+    }
+
     final configuredSeconds = _minutesToDurationSeconds();
     if (configuredSeconds <= 0) {
       setState(() {
@@ -1132,6 +1189,45 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     }
 
     _startTimedRateWithConflictHandling(configuredSeconds);
+  }
+
+  void _startLiveClock() {
+    if (_timerRunning || _isCurrentCalculatorTimerActive) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Stop the countdown timer before starting live clock.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _liveClockStartedAt = DateTime.now();
+      _liveClockElapsedSeconds = 0;
+      _timerFinished = false;
+      error = null;
+    });
+    _startLiveClockTicker();
+  }
+
+  Future<void> _stopLiveClockAndAutoCalculate() async {
+    if (!_liveClockRunning) return;
+    final elapsedSeconds = _currentLiveClockElapsedSeconds();
+    _stopLiveClockTicker();
+    setState(() {
+      _liveClockStartedAt = null;
+      _liveClockElapsedSeconds = elapsedSeconds;
+    });
+
+    if (elapsedSeconds <= 0) {
+      setState(() {
+        error = 'Live clock needs at least 1 second before stopping.';
+      });
+      return;
+    }
+
+    final elapsedMinutes = elapsedSeconds / 60.0;
+    await _calculateFromElapsedMinutes(elapsedMinutes);
   }
 
   Future<void> _startTimedRateWithConflictHandling(
@@ -1285,11 +1381,14 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   void _cancelTimedRate({required bool discardSession}) {
     _countdownTimer?.cancel();
     _countdownTimer = null;
+    _stopLiveClockTicker();
     _clearTimerStatePersistence();
     final configuredSeconds = _minutesToDurationSeconds();
     setState(() {
       _activeTimerState = null;
       _timerEndsAt = null;
+      _liveClockStartedAt = null;
+      _liveClockElapsedSeconds = 0;
       _remainingSeconds = configuredSeconds;
       _thirtySecondAlertShown = false;
       _timerFinished = false;
@@ -1442,6 +1541,99 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                 ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _liveClockSection() {
+    if (!_liveClockAvailable) return const SizedBox.shrink();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              value: _useLiveClock,
+              onChanged: (value) {
+                if (!value && _liveClockRunning) {
+                  _stopLiveClockTicker();
+                  setState(() {
+                    _liveClockStartedAt = null;
+                  });
+                }
+                setState(() {
+                  _useLiveClock = value;
+                  error = null;
+                });
+              },
+              title: const Text('Use Live Clock (Optional)'),
+              subtitle: const Text(
+                'Runs until you stop it, then auto-calculates rate from elapsed time.',
+              ),
+            ),
+            if (_useLiveClock) ...[
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF111418),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF3A3A3A)),
+                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.av_timer,
+                            color: Color(0xFFCDA56A), size: 28),
+                        const SizedBox(width: 8),
+                        Text(
+                          _liveClockText(),
+                          style: const TextStyle(
+                            fontSize: 44,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.2,
+                            color: Color(0xFFCDA56A),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _liveClockRunning
+                          ? 'Live clock running... stop to auto-calculate.'
+                          : 'Start live clock, then stop to auto-calculate.',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Started: ${_liveClockStartedText()}',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: _liveClockRunning
+                          ? OutlinedButton(
+                              onPressed: _stopLiveClockAndAutoCalculate,
+                              child: const Text('Stop & Auto-Calculate'),
+                            )
+                          : FilledButton(
+                              onPressed: _startLiveClock,
+                              child: const Text('Start Live Clock'),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -1811,6 +2003,27 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       return;
     }
 
+    await _calculateFromElapsedMinutes(m);
+  }
+
+  Future<void> _calculateFromElapsedMinutes(double elapsedMinutes) async {
+    final startText = startGauge.text.trim();
+    final endText = endGauge.text.trim();
+
+    if (startText.isEmpty) {
+      setState(() => error = 'Enter a starting gauge.');
+      return;
+    }
+    if (endText.isEmpty) {
+      setState(() => error = 'Enter an ending gauge.');
+      return;
+    }
+
+    if (elapsedMinutes <= 0) {
+      setState(() => error = 'Elapsed time must be greater than zero.');
+      return;
+    }
+
     if (!widget.config.usesChart &&
         (double.tryParse(factor.text.trim()) ?? 0) <= 0) {
       setState(() => error = 'Tank factor must be greater than zero.');
@@ -1835,11 +2048,12 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     final startBbl = barrelsAt(startInches);
     final endBbl = barrelsAt(endInches);
     final change = (endBbl - startBbl).abs();
-    final perMin = change / m;
+    final perMin = change / elapsedMinutes;
     final perHour = perMin * 60;
 
     _countdownTimer?.cancel();
     _countdownTimer = null;
+    _stopLiveClockTicker();
     _clearTimerStatePersistence();
 
     final now = DateTime.now();
@@ -1847,6 +2061,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       bblPerMin = perMin;
       bblPerHr = perHour;
       bblPerDay = perMin * 1440;
+      _liveClockStartedAt = null;
       _timerFinished = false;
       _thirtySecondAlertShown = false;
       _remainingSeconds = _minutesToDurationSeconds();
@@ -1872,7 +2087,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         readingTimestamp: now,
         startGaugeValue: startText,
         endGaugeValue: endText,
-        elapsedMinutes: m,
+        elapsedMinutes: elapsedMinutes,
         startInches: startInches,
         endInches: endInches,
         startBarrels: startBbl,
@@ -1897,6 +2112,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     _saveRateLogState();
     WidgetsBinding.instance.removeObserver(this);
     _countdownTimer?.cancel();
+    _liveClockTicker?.cancel();
     startGauge.removeListener(_handleSessionFieldChanged);
     endGauge.removeListener(_handleSessionFieldChanged);
     factor.removeListener(_handleSessionFieldChanged);
@@ -2287,6 +2503,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                     ),
                   ),
                   _timedRateSection(),
+                  const SizedBox(height: 10),
+                  _liveClockSection(),
                   const SizedBox(height: 10),
                   FilledButton(
                     style: _calculateButtonStyle(),
