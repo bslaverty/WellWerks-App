@@ -42,6 +42,74 @@ class _ProductionRateCalculatorMenuScreenState
     );
   }
 
+  Widget _hero(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1A232F), Color(0xFF121821)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(color: const Color(0xFF2D3C4D)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0x1FCDA56A),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(Icons.speed, color: Color(0xFFCDA56A), size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Production Rate Calculator',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Production-only rate tools and logs that stay separate from Quick Round and reports.',
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontSize: 13,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 2, 2, 10),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFFCDA56A),
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 1.0,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -50,11 +118,8 @@ class _ProductionRateCalculatorMenuScreenState
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          const Text(
-            'Standalone production calculator. Uses production-only logs and does not send data to Quick Round or production reports.',
-            style: TextStyle(color: Colors.white70),
-          ),
-          const SizedBox(height: 14),
+          _hero(context),
+          _sectionLabel('TANK OPTIONS'),
           ToolCard(
             icon: Icons.speed,
             title: 'V-Bottom',
@@ -70,6 +135,7 @@ class _ProductionRateCalculatorMenuScreenState
               ),
             ),
           ),
+          const SizedBox(height: 8),
           ToolCard(
             icon: Icons.speed,
             title: 'Round Bottom',
@@ -85,6 +151,7 @@ class _ProductionRateCalculatorMenuScreenState
               ),
             ),
           ),
+          const SizedBox(height: 8),
           ToolCard(
             icon: Icons.speed,
             title: 'Flowback Tank (MR 810039)',
@@ -99,7 +166,8 @@ class _ProductionRateCalculatorMenuScreenState
               ),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
+          _sectionLabel('CUSTOM FACTOR'),
           WwNumberField(
             label: 'Production Tank Factor (BBL/In)',
             controller: _productionTankFactorController,

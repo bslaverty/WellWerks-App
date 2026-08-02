@@ -263,6 +263,82 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _homeHero(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.fromLTRB(16, 15, 16, 15),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1A232F), Color(0xFF121821)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(color: const Color(0xFF2D3C4D)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: const Color(0x1FCDA56A),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.grid_view_rounded,
+              color: Color(0xFFCDA56A),
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'WellWerks Field Hub',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Production, completions, rig-up, charts, and history organized for faster field access.',
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontSize: 13,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 6, 2, 10),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFFCDA56A),
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 1.0,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -308,59 +384,15 @@ class _HomeScreenState extends State<HomeScreen> {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF12161B),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF2A313A)),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.only(top: 2),
-                  child: Icon(
-                    Icons.dashboard_customize_outlined,
-                    color: Color(0xFFCDA56A),
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Quick Access',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Production, completions, rig-up, calculators, safety, charts, and history in one place.',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontSize: 14,
-                          height: 1.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+          _homeHero(context),
+          _sectionLabel('OPERATIONS'),
           ToolCard(
             icon: Icons.oil_barrel,
             title: 'Production',
             subtitle: 'Quick Round, reports, text updates, and setup',
             onTap: () => open(context, const ProductionDashboardScreen()),
           ),
+          const SizedBox(height: 8),
           _moduleCard(
             context: context,
             icon: Icons.build,
@@ -383,6 +415,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 8),
           _moduleCard(
             context: context,
             icon: Icons.account_tree,
@@ -409,6 +442,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          _sectionLabel('TOOLS'),
           ToolCard(
             icon: Icons.speed,
             title: 'Rate Calculator',
@@ -417,12 +452,15 @@ class _HomeScreenState extends State<HomeScreen> {
             onTap: () => open(
                 context, const RateCalculatorMenuScreen(homeMultiMode: true)),
           ),
+          const SizedBox(height: 8),
           ToolCard(
             icon: Icons.assignment,
             title: 'JSA',
             subtitle: 'Safety worksheet, crew rows, and signatures',
             onTap: () => open(context, const JsaScreen()),
           ),
+          const SizedBox(height: 8),
+          _sectionLabel('REFERENCES'),
           _moduleCard(
             context: context,
             icon: Icons.bar_chart,
@@ -748,6 +786,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          _sectionLabel('RECORDS'),
           ToolCard(
             icon: Icons.history,
             title: 'History',

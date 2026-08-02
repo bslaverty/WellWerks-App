@@ -183,6 +183,78 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
     );
   }
 
+  Widget _hero(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1A232F), Color(0xFF121821)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(color: const Color(0xFF2D3C4D)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0x1FCDA56A),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.oil_barrel,
+              color: Color(0xFFCDA56A),
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Production Hub',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Run rounds, reports, inventory, and production rate tracking from one workflow.',
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontSize: 13,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 2, 2, 10),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFFCDA56A),
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 1.0,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -197,6 +269,7 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
+          _hero(context),
           if (_workflowMode == ActiveWorkflowMode.production)
             _activeJobCard(context),
           Card(
@@ -236,15 +309,7 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
               ),
             ),
           ),
-          const Text(
-            'Primary Workflow',
-            style: TextStyle(
-              color: Color(0xFFCDA56A),
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 14),
+          _sectionLabel('PRIMARY WORKFLOW'),
           ToolCard(
             icon: Icons.add_circle,
             title: 'Quick Round',
@@ -273,16 +338,8 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
             onTap: () =>
                 _open(context, const ProductionRateCalculatorMenuScreen()),
           ),
-          const SizedBox(height: 12),
-          const Text(
-            'Secondary',
-            style: TextStyle(
-              color: Color(0xFFCDA56A),
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
+          _sectionLabel('SECONDARY'),
           ToolCard(
             icon: Icons.inventory,
             title: 'Production Setup',
