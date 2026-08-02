@@ -48,6 +48,7 @@ class RateCalculatorSession {
     required this.rateDisplayUnit,
     required this.rateLogEnabled,
     required this.rateLogExpanded,
+    required this.useLiveClock,
     required this.bblPerMin,
     required this.bblPerHr,
     required this.bblPerDay,
@@ -73,6 +74,7 @@ class RateCalculatorSession {
   final String rateDisplayUnit;
   final bool rateLogEnabled;
   final bool rateLogExpanded;
+  final bool useLiveClock;
   final double? bblPerMin;
   final double? bblPerHr;
   final double? bblPerDay;
@@ -95,6 +97,7 @@ class RateCalculatorSession {
         rateLogEntries.isNotEmpty ||
         rateLogEnabled ||
         rateLogExpanded ||
+        useLiveClock ||
         (error?.trim().isNotEmpty ?? false) ||
         timerFinished ||
         timerStartedAtMs != null ||
@@ -115,6 +118,7 @@ class RateCalculatorSession {
       'rateDisplayUnit': rateDisplayUnit,
       'rateLogEnabled': rateLogEnabled,
       'rateLogExpanded': rateLogExpanded,
+      'useLiveClock': useLiveClock,
       'bblPerMin': bblPerMin,
       'bblPerHr': bblPerHr,
       'bblPerDay': bblPerDay,
@@ -167,6 +171,7 @@ class RateCalculatorSession {
       rateDisplayUnit: (map['rateDisplayUnit'] as String? ?? 'bbl_min').trim(),
       rateLogEnabled: map['rateLogEnabled'] as bool? ?? false,
       rateLogExpanded: map['rateLogExpanded'] as bool? ?? false,
+      useLiveClock: map['useLiveClock'] as bool? ?? false,
       bblPerMin: asDouble(map['bblPerMin']),
       bblPerHr: asDouble(map['bblPerHr']),
       bblPerDay: asDouble(map['bblPerDay']),

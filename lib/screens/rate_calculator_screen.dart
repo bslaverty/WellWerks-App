@@ -624,6 +624,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         _timerRunning ||
         _liveClockRunning ||
         _liveClockElapsedSeconds > 0 ||
+        _useLiveClock ||
         hasCurrentTimer ||
         _timerFinished ||
         _rateLogEnabled ||
@@ -682,6 +683,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
           _rateDisplayUnit == _RateDisplayUnit.bblPerHr ? 'bbl_hr' : 'bbl_min',
       rateLogEnabled: _rateLogEnabled,
       rateLogExpanded: _rateLogExpanded,
+      useLiveClock: _useLiveClock,
       bblPerMin: bblPerMin,
       bblPerHr: bblPerHr,
       bblPerDay: bblPerDay,
@@ -740,6 +742,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       _thirtySecondAlertShown = session.thirtySecondAlertShown;
       _rateLogEnabled = session.rateLogEnabled;
       _rateLogExpanded = session.rateLogExpanded;
+      _useLiveClock = session.useLiveClock;
       _rateLogEntries
         ..clear()
         ..addAll(_rateLogEntriesFromSession(session.rateLogEntries));
@@ -755,6 +758,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
           session.timerDurationSeconds != null;
       if (!hasCountdownPersisted &&
           widget.homeMultiMode &&
+          _useLiveClock &&
           session.timerStartedAtMs != null) {
         final restoredStart =
             DateTime.fromMillisecondsSinceEpoch(session.timerStartedAtMs!);
@@ -763,7 +767,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
             .difference(restoredStart)
             .inSeconds
             .clamp(0, 1 << 30);
-        _useLiveClock = true;
       } else {
         _liveClockStartedAt = null;
         _liveClockElapsedSeconds = 0;
