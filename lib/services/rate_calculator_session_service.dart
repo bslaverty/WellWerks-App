@@ -239,6 +239,24 @@ class RateCalculatorSessionService {
     return matches.first;
   }
 
+  String? sessionKeyForCalculator(String calculatorId) {
+    final key = calculatorId.trim();
+    if (key.isEmpty) return null;
+    if (_sessionsByInstanceKey.containsKey(key)) {
+      return key;
+    }
+
+    final matches = _sessionsByInstanceKey.entries
+        .where((entry) => entry.value.calculatorId == key)
+        .toList();
+    if (matches.isEmpty) return null;
+
+    matches.sort(
+      (a, b) => b.value.updatedAtMs.compareTo(a.value.updatedAtMs),
+    );
+    return matches.first.key;
+  }
+
   RateCalculatorSession? sessionForInstance(String instanceKey) {
     final key = instanceKey.trim();
     if (key.isEmpty) return null;

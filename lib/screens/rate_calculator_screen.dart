@@ -129,17 +129,29 @@ class RateCalculatorConfig {
   }
 }
 
+class HomeRateTabSpec {
+  const HomeRateTabSpec({
+    required this.config,
+    required this.instanceId,
+  });
+
+  final RateCalculatorConfig config;
+  final String instanceId;
+}
+
 class RateCalculatorScreen extends StatefulWidget {
   final RateCalculatorConfig config;
   final String? instanceId;
   final bool homeMultiMode;
   final List<RateCalculatorConfig>? availableConfigs;
+  final List<HomeRateTabSpec>? homeTabs;
   const RateCalculatorScreen(
       {super.key,
       required this.config,
       this.instanceId,
       this.homeMultiMode = false,
-      this.availableConfigs});
+      this.availableConfigs,
+      this.homeTabs});
 
   // Backward compatibility for old routes still passing a tank name.
   factory RateCalculatorScreen.legacy({Key? key, required String tankName}) {
@@ -324,6 +336,113 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         .replaceAll(RegExp(r'[^a-z0-9]+'), '_');
   }
 
+  String _calculatorIdForConfig(RateCalculatorConfig config) {
+    return (config.storageId ?? config.chartId ?? config.title)
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+  }
+
+  List<HomeRateTabSpec> _resolvedHomeTabs() {
+    if (!widget.homeMultiMode) return const <HomeRateTabSpec>[];
+
+    final tabs = widget.homeTabs == null
+        ? <HomeRateTabSpec>[]
+        : List<HomeRateTabSpec>.from(widget.homeTabs!);
+
+    if (tabs.isEmpty) {
+      tabs.add(
+        HomeRateTabSpec(
+          config: widget.config,
+          instanceId: _instanceStorageId,
+        ),
+      );
+      return tabs;
+    }
+
+    final hasCurrent = tabs.any((tab) => tab.instanceId == _instanceStorageId);
+    if (!hasCurrent) {
+      tabs.insert(
+        0,
+        HomeRateTabSpec(
+          config: widget.config,
+          instanceId: _instanceStorageId,
+        ),
+      );
+    }
+    return tabs;
+  }
+
+  int _currentHomeTabIndex(List<HomeRateTabSpec> tabs) {
+    final byInstance = tabs.indexWhere(
+      (tab) => tab.instanceId == _instanceStorageId,
+    );
+    if (byInstance >= 0) return byInstance;
+
+    final byConfig = tabs.indexWhere(
+      (tab) => _calculatorIdForConfig(tab.config) == _calculatorStorageId,
+    );
+    return byConfig >= 0 ? byConfig : 0;
+  }
+
+  void _openHomeTab(int index) {
+    final tabs = _resolvedHomeTabs();
+    if (index < 0 || index >= tabs.length) return;
+    final selected = tabs[index];
+    if (selected.instanceId == _instanceStorageId) return;
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => RateCalculatorScreen(
+          config: selected.config,
+          instanceId: selected.instanceId,
+          homeMultiMode: true,
+          availableConfigs: widget.availableConfigs,
+          homeTabs: tabs,
+        ),
+      ),
+    );
+  }
+
+  Widget _homeTabsSection() {
+    if (!widget.homeMultiMode) return const SizedBox.shrink();
+    final tabs = _resolvedHomeTabs();
+    final currentIndex = _currentHomeTabIndex(tabs);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: List<Widget>.generate(tabs.length, (index) {
+              final tab = tabs[index];
+              return Padding(
+                padding:
+                    EdgeInsets.only(right: index == tabs.length - 1 ? 0 : 8),
+                child: ChoiceChip(
+                  selected: index == currentIndex,
+                  onSelected: (_) => _openHomeTab(index),
+                  label: Text(tab.config.title),
+                ),
+              );
+            }),
+          ),
+        ),
+        const SizedBox(height: 8),
+        if ((widget.availableConfigs?.isNotEmpty ?? false))
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _openAddAnotherTankPicker,
+              icon: const Icon(Icons.add_circle_outline),
+              label: const Text('Add Another Tank'),
+            ),
+          ),
+        const SizedBox(height: 10),
+      ],
+    );
+  }
+
   String get _rateLogEnabledPrefKey =>
       'wellwerks_rate_log_enabled_$_storageScopeKey';
 
@@ -415,6 +534,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         bblPerHr != null ||
         bblPerDay != null ||
         _timerRunning ||
+        _liveClockRunning ||
+        _liveClockElapsedSeconds > 0 ||
         hasCurrentTimer ||
         _timerFinished ||
         _rateLogEnabled ||
@@ -459,6 +580,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     final activeState = _activeTimerState?.instanceId == _instanceStorageId
         ? _activeTimerState
         : null;
+    final liveClockStartedAtMs = _liveClockStartedAt?.millisecondsSinceEpoch;
     return RateCalculatorSession(
       calculatorId: _calculatorStorageId,
       calculatorTitle: widget.config.title,
@@ -477,9 +599,11 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       bblPerDay: bblPerDay,
       error: error,
       timerFinished: _timerFinished,
-      remainingSeconds: _remainingSeconds,
+      remainingSeconds: _liveClockRunning
+          ? _currentLiveClockElapsedSeconds()
+          : _remainingSeconds,
       thirtySecondAlertShown: _thirtySecondAlertShown,
-      timerStartedAtMs: activeState?.startedAtMs,
+      timerStartedAtMs: activeState?.startedAtMs ?? liveClockStartedAtMs,
       timerEndsAtMs: activeState?.endsAtMs,
       timerDurationSeconds: activeState?.durationSeconds,
       rateLogEntries: _sessionLogEntries(),
@@ -537,7 +661,30 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       } else {
         _rateDisplayUnit = _RateDisplayUnit.bblPerMin;
       }
+
+      final hasCountdownPersisted = session.timerStartedAtMs != null &&
+          session.timerEndsAtMs != null &&
+          session.timerDurationSeconds != null;
+      if (!hasCountdownPersisted &&
+          widget.homeMultiMode &&
+          session.timerStartedAtMs != null) {
+        final restoredStart =
+            DateTime.fromMillisecondsSinceEpoch(session.timerStartedAtMs!);
+        _liveClockStartedAt = restoredStart;
+        _liveClockElapsedSeconds = DateTime.now()
+            .difference(restoredStart)
+            .inSeconds
+            .clamp(0, 1 << 30);
+        _useLiveClock = true;
+      } else {
+        _liveClockStartedAt = null;
+        _liveClockElapsedSeconds = 0;
+      }
     });
+
+    if (_liveClockRunning) {
+      _startLiveClockTicker();
+    }
     return true;
   }
 
@@ -1408,6 +1555,31 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     _persistCalculatorSession();
   }
 
+  void _resetTimerOnly() {
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+    _clearTimerStatePersistence();
+    setState(() {
+      _activeTimerState = null;
+      _timerEndsAt = null;
+      _remainingSeconds = _minutesToDurationSeconds();
+      _thirtySecondAlertShown = false;
+      _timerFinished = false;
+      error = null;
+    });
+    _persistCalculatorSession();
+  }
+
+  void _resetLiveClockOnly() {
+    _stopLiveClockTicker();
+    setState(() {
+      _liveClockStartedAt = null;
+      _liveClockElapsedSeconds = 0;
+      error = null;
+    });
+    _persistCalculatorSession();
+  }
+
   bool get _hasValidMinutes => _minutesToDurationSeconds() > 0;
 
   bool get _hasGaugeInputs =>
@@ -1415,8 +1587,23 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
   bool get _canCalculate => _hasGaugeInputs && _hasValidMinutes;
 
-  bool get _showResetButton =>
-      bblPerMin != null || bblPerHr != null || bblPerDay != null;
+  bool get _canResetTimer =>
+      _timerRunning ||
+      _isCurrentCalculatorTimerActive ||
+      _timerFinished ||
+      _remainingSeconds != _minutesToDurationSeconds();
+
+  bool get _canResetCalculator =>
+      startGauge.text.trim().isNotEmpty ||
+      endGauge.text.trim().isNotEmpty ||
+      bblPerMin != null ||
+      bblPerHr != null ||
+      bblPerDay != null ||
+      _timerRunning ||
+      _liveClockRunning ||
+      _liveClockElapsedSeconds > 0 ||
+      _timerFinished ||
+      (error?.trim().isNotEmpty ?? false);
 
   bool get _isCurrentCalculatorTimerActive =>
       _activeTimerState?.instanceId == _instanceStorageId;
@@ -1538,6 +1725,14 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                         child: const Text('Start'),
                       ),
                     ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: _canResetTimer ? _resetTimerOnly : null,
+                      child: const Text('Reset Timer'),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1620,15 +1815,33 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                     const SizedBox(height: 10),
                     SizedBox(
                       width: double.infinity,
-                      child: _liveClockRunning
-                          ? OutlinedButton(
-                              onPressed: _stopLiveClockAndAutoCalculate,
-                              child: const Text('Stop & Auto-Calculate'),
-                            )
-                          : FilledButton(
-                              onPressed: _startLiveClock,
-                              child: const Text('Start Live Clock'),
+                      child: Column(
+                        children: [
+                          SizedBox(
+                            width: double.infinity,
+                            child: _liveClockRunning
+                                ? OutlinedButton(
+                                    onPressed: _stopLiveClockAndAutoCalculate,
+                                    child: const Text('Stop & Auto-Calculate'),
+                                  )
+                                : FilledButton(
+                                    onPressed: _startLiveClock,
+                                    child: const Text('Start Live Clock'),
+                                  ),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton(
+                              onPressed: (_liveClockRunning ||
+                                      _liveClockElapsedSeconds > 0)
+                                  ? _resetLiveClockOnly
+                                  : null,
+                              child: const Text('Reset Live Clock'),
                             ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -1868,10 +2081,13 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   void _resetTimedRateWorkflow() {
     _countdownTimer?.cancel();
     _countdownTimer = null;
+    _stopLiveClockTicker();
     _clearTimerStatePersistence();
     setState(() {
       _activeTimerState = null;
       _timerEndsAt = null;
+      _liveClockStartedAt = null;
+      _liveClockElapsedSeconds = 0;
       startGauge.clear();
       endGauge.clear();
       bblPerMin = null;
@@ -2386,12 +2602,39 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     );
 
     if (!mounted || selected == null) return;
-    await Navigator.of(context).push(
+    await _sessionService.ensureInitialized();
+    final selectedCalculatorId = _calculatorIdForConfig(selected);
+
+    final activeTimer = await _rateTimerService.loadActiveTimerForCalculator(
+      selectedCalculatorId,
+    );
+    final restoredInstanceId = activeTimer?.instanceId.isNotEmpty == true
+        ? activeTimer!.instanceId
+        : _sessionService.sessionKeyForCalculator(selectedCalculatorId);
+    final nextInstanceId = (restoredInstanceId ??
+            '${selectedCalculatorId}_${DateTime.now().microsecondsSinceEpoch}')
+        .trim();
+
+    final existingTabs = _resolvedHomeTabs();
+    final alreadyOpenIndex = existingTabs.indexWhere(
+      (tab) => tab.instanceId == nextInstanceId,
+    );
+    final nextTabs = List<HomeRateTabSpec>.from(existingTabs);
+    if (alreadyOpenIndex < 0) {
+      nextTabs.add(
+        HomeRateTabSpec(config: selected, instanceId: nextInstanceId),
+      );
+    }
+
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => RateCalculatorScreen(
           config: selected,
+          instanceId: nextInstanceId,
           homeMultiMode: true,
           availableConfigs: configs,
+          homeTabs: nextTabs,
         ),
       ),
     );
@@ -2420,18 +2663,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
               child: ListView(
                 padding: const EdgeInsets.all(18),
                 children: [
-                  if (widget.homeMultiMode &&
-                      (widget.availableConfigs?.isNotEmpty ?? false)) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _openAddAnotherTankPicker,
-                        icon: const Icon(Icons.add_circle_outline),
-                        label: const Text('Add Another Tank'),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
+                  _homeTabsSection(),
                   if (!widget.config.usesChart)
                     WwNumberField(
                       label: 'Tank Factor (BBL/In)',
@@ -2508,10 +2740,17 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                   const SizedBox(height: 10),
                   FilledButton(
                     style: _calculateButtonStyle(),
-                    onPressed: _showResetButton
-                        ? _resetTimedRateWorkflow
-                        : (_canCalculate ? calculate : null),
-                    child: Text(_showResetButton ? 'RESET' : 'CALCULATE'),
+                    onPressed: _canCalculate ? calculate : null,
+                    child: const Text('CALCULATE'),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed:
+                          _canResetCalculator ? _resetTimedRateWorkflow : null,
+                      child: const Text('Reset Calculator'),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   SwitchListTile.adaptive(
