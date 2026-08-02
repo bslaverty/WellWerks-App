@@ -165,7 +165,7 @@ class _ConversionCalculatorScreenState
     if (asDecimal != null) return asDecimal;
 
     final apostrophePattern = RegExp(
-      r"^(-?\d+)\s*['-]\s*(\d+(?:\.\d+)?)\s*(?:\"|in)?$",
+      r'''^(-?\d+)\s*['-]\s*(\d+(?:\.\d+)?)\s*(?:"|in)?$''',
     );
     final ftInPattern = RegExp(
       r'^(-?\d+)\s*ft\s*(\d+(?:\.\d+)?)?\s*(?:in)?$',
@@ -193,9 +193,11 @@ class _ConversionCalculatorScreenState
     return '$sign$feetWhole\' ${inches.toStringAsFixed(2)}"';
   }
 
-  bool _isCookingVolumeUnit(String unit) => _cookingVolumeToMl.containsKey(unit);
+  bool _isCookingVolumeUnit(String unit) =>
+      _cookingVolumeToMl.containsKey(unit);
 
-  bool _isCookingWeightUnit(String unit) => _cookingWeightToGrams.containsKey(unit);
+  bool _isCookingWeightUnit(String unit) =>
+      _cookingWeightToGrams.containsKey(unit);
 
   bool _isCookingTemperatureUnit(String unit) =>
       unit == 'Fahrenheit' || unit == 'Celsius';
@@ -362,9 +364,8 @@ class _ConversionCalculatorScreenState
                 : const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
               labelText: 'Value',
-              hintText: _usesFractionalFeetInput
-                  ? 'Examples: 10.5 or 10\' 6"'
-                  : null,
+              hintText:
+                  _usesFractionalFeetInput ? 'Examples: 10.5 or 10\' 6"' : null,
             ),
           ),
           if (_category == 'Oilfield Units') ...[
