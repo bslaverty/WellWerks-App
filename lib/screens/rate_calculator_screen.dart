@@ -2279,6 +2279,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         return flowback500Chart;
       case 'flowback_round_bottom':
         return flowbackRoundBottomChart;
+      case 'mr_810039':
+        return mr810039FlowbackChart;
     }
     return null;
   }

@@ -58,6 +58,8 @@ Future<void> _seedActiveFs3SessionWithTimer() async {
         selected: true,
       ),
     ],
+    useLiveClock: false,
+    liveClockElapsedSeconds: 0,
     updatedAtMs: now.millisecondsSinceEpoch,
   );
   await sessionService.saveSession(session, setActive: true);

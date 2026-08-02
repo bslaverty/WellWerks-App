@@ -30,6 +30,8 @@ RateCalculatorSession _session({
     timerEndsAtMs: null,
     timerDurationSeconds: null,
     rateLogEntries: const <RateCalculatorSessionLogEntry>[],
+    useLiveClock: false,
+    liveClockElapsedSeconds: 0,
     updatedAtMs: updatedAtMs,
   );
 }
