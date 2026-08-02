@@ -124,41 +124,86 @@ class RateTimerPendingAction {
 }
 
 class RateTimerService {
-  static const _activeTimerKey = 'wellwerks_rate_timer_active_v1';
+  static const _activeTimersKey = 'wellwerks_rate_timer_active_v2';
+  static const _legacyActiveTimerKey = 'wellwerks_rate_timer_active_v1';
   static const _pendingActionKey = 'wellwerks_rate_timer_pending_action_v1';
 
   Future<RateTimerState?> loadActiveTimer() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_activeTimerKey);
-    if (raw == null || raw.isEmpty) {
-      return null;
-    }
-    try {
-      final state =
-          RateTimerState.fromJson(Map<String, dynamic>.from(jsonDecode(raw)));
-      if (state.instanceId.isEmpty ||
-          state.calculatorId.isEmpty ||
-          state.durationSeconds <= 0 ||
-          state.startsAtInvalid ||
-          state.endsAtMs <= state.startedAtMs) {
-        await prefs.remove(_activeTimerKey);
-        return null;
-      }
-      return state;
-    } catch (_) {
-      await prefs.remove(_activeTimerKey);
-      return null;
-    }
+    final timers = await _loadActiveTimers();
+    if (timers.isEmpty) return null;
+    final sorted = timers.values.toList()
+      ..sort((a, b) => b.startedAtMs.compareTo(a.startedAtMs));
+    return sorted.first;
+  }
+
+  Future<RateTimerState?> loadActiveTimerForCalculator(
+    String calculatorId,
+  ) async {
+    final key = calculatorId.trim();
+    if (key.isEmpty) return null;
+    final timers = await _loadActiveTimers();
+    final direct = timers[key];
+    if (direct != null) return direct;
+    final matches = timers.values
+        .where((timer) => timer.calculatorId == key)
+        .toList()
+      ..sort((a, b) => b.startedAtMs.compareTo(a.startedAtMs));
+    return matches.isEmpty ? null : matches.first;
+  }
+
+  Future<RateTimerState?> loadActiveTimerForInstance(String instanceId) async {
+    final key = instanceId.trim();
+    if (key.isEmpty) return null;
+    final timers = await _loadActiveTimers();
+    return timers[key];
   }
 
   Future<void> saveActiveTimer(RateTimerState state) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_activeTimerKey, jsonEncode(state.toJson()));
+    final timers = await _loadActiveTimers();
+    final key = state.instanceId.trim().isNotEmpty
+        ? state.instanceId.trim()
+        : state.calculatorId.trim();
+    timers[key] = state;
+    await prefs.setString(_activeTimersKey, jsonEncode(_encodeTimers(timers)));
+    await prefs.remove(_legacyActiveTimerKey);
   }
 
-  Future<void> clearActiveTimer() async {
+  Future<void> clearActiveTimer(
+      {String? calculatorId, String? instanceId}) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_activeTimerKey);
+    final instanceKey = instanceId?.trim() ?? '';
+    if (instanceKey.isNotEmpty) {
+      final timers = await _loadActiveTimers();
+      timers.remove(instanceKey);
+      if (timers.isEmpty) {
+        await prefs.remove(_activeTimersKey);
+        await prefs.remove(_legacyActiveTimerKey);
+        return;
+      }
+      await prefs.setString(
+          _activeTimersKey, jsonEncode(_encodeTimers(timers)));
+      await prefs.remove(_legacyActiveTimerKey);
+      return;
+    }
+
+    if (calculatorId == null || calculatorId.trim().isEmpty) {
+      await prefs.remove(_activeTimersKey);
+      await prefs.remove(_legacyActiveTimerKey);
+      return;
+    }
+
+    final timers = await _loadActiveTimers();
+    final key = calculatorId.trim();
+    timers.removeWhere((instanceKey, timer) =>
+        instanceKey == key || timer.calculatorId == key);
+    if (timers.isEmpty) {
+      await prefs.remove(_activeTimersKey);
+      await prefs.remove(_legacyActiveTimerKey);
+      return;
+    }
+    await prefs.setString(_activeTimersKey, jsonEncode(_encodeTimers(timers)));
+    await prefs.remove(_legacyActiveTimerKey);
   }
 
   Future<RateTimerPendingAction?> consumePendingAction() async {
@@ -204,6 +249,69 @@ class RateTimerService {
       warningNotificationId: warningId,
       completeNotificationId: completeId,
     );
+  }
+
+  Future<Map<String, RateTimerState>> _loadActiveTimers() async {
+    final prefs = await SharedPreferences.getInstance();
+    final timers = <String, RateTimerState>{};
+
+    final rawTimers = prefs.getString(_activeTimersKey);
+    if (rawTimers != null && rawTimers.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawTimers);
+        if (decoded is Map<String, dynamic>) {
+          decoded.forEach((key, value) {
+            if (value is Map) {
+              final state = RateTimerState.fromJson(
+                Map<String, dynamic>.from(value),
+              );
+              if (_isValidState(state)) {
+                final instanceKey = key.trim().isNotEmpty
+                    ? key.trim()
+                    : (state.instanceId.trim().isNotEmpty
+                        ? state.instanceId.trim()
+                        : state.calculatorId);
+                timers[instanceKey] = state;
+              }
+            }
+          });
+        }
+      } catch (_) {
+        // Ignore malformed persisted timer data.
+      }
+    }
+
+    if (timers.isEmpty) {
+      final legacyRaw = prefs.getString(_legacyActiveTimerKey);
+      if (legacyRaw != null && legacyRaw.trim().isNotEmpty) {
+        try {
+          final state = RateTimerState.fromJson(
+            Map<String, dynamic>.from(jsonDecode(legacyRaw)),
+          );
+          if (_isValidState(state)) {
+            timers[state.instanceId.trim().isNotEmpty
+                ? state.instanceId.trim()
+                : state.calculatorId] = state;
+          }
+        } catch (_) {
+          await prefs.remove(_legacyActiveTimerKey);
+        }
+      }
+    }
+
+    return timers;
+  }
+
+  Map<String, dynamic> _encodeTimers(Map<String, RateTimerState> timers) {
+    return timers.map((key, value) => MapEntry(key, value.toJson()));
+  }
+
+  bool _isValidState(RateTimerState state) {
+    return state.instanceId.isNotEmpty &&
+        state.calculatorId.isNotEmpty &&
+        state.durationSeconds > 0 &&
+        !state.startsAtInvalid &&
+        state.endsAtMs > state.startedAtMs;
   }
 }
 

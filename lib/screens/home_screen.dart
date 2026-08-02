@@ -17,6 +17,7 @@ import 'rig_up_inventory_screen.dart';
 import 'rig_up_history_screen.dart';
 import 'jsa_screen.dart';
 import 'production_dashboard_screen.dart';
+import 'rate_calculator_menu_screen.dart';
 import 'production_history_screen.dart';
 import 'chart_reference_screen.dart';
 import 'tank_charts_menu_screen.dart';
@@ -118,20 +119,29 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted || action == null) return;
     final calculatorId =
         (action.payload['calculatorId'] as String? ?? '').trim();
+    final instanceId =
+        (action.payload['instanceId'] as String? ?? '').trim();
     final config = RateCalculatorConfig.fromStorageId(calculatorId);
 
     if (action.type == RateTimerPendingActionType.stopTimer) {
-      final active = await _rateTimerService.loadActiveTimer();
+      final active = instanceId.isNotEmpty
+          ? await _rateTimerService.loadActiveTimerForInstance(instanceId)
+          : await _rateTimerService.loadActiveTimerForCalculator(calculatorId);
       if (active != null) {
         await _rateTimerNotifications.cancelNotifications(active);
       }
-      await _rateTimerService.clearActiveTimer();
+      await _rateTimerService.clearActiveTimer(
+        instanceId: instanceId.isNotEmpty ? instanceId : null,
+        calculatorId: instanceId.isEmpty ? calculatorId : null,
+      );
       return;
     }
 
     if (action.type == RateTimerPendingActionType.restartTimer) {
       if (config == null) return;
-      final active = await _rateTimerService.loadActiveTimer();
+      final active = instanceId.isNotEmpty
+          ? await _rateTimerService.loadActiveTimerForInstance(instanceId)
+          : await _rateTimerService.loadActiveTimerForCalculator(calculatorId);
       if (active != null) {
         await _rateTimerNotifications.cancelNotifications(active);
       }
@@ -144,15 +154,23 @@ class _HomeScreenState extends State<HomeScreen> {
         wellOrJob: (action.payload['wellOrJob'] as String? ?? '').trim(),
         durationSeconds: durationSeconds,
       );
-      await _rateTimerService.saveActiveTimer(fresh);
+      final timerState = instanceId.isNotEmpty
+          ? fresh.copyWith(instanceId: instanceId)
+          : fresh;
+      await _rateTimerService.saveActiveTimer(timerState);
       final settings = await _settingsService.load();
       await _rateTimerNotifications.scheduleNotifications(
-        timer: fresh,
+        timer: timerState,
         settings: settings,
       );
       if (!mounted) return;
       await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => RateCalculatorScreen(config: config)),
+        MaterialPageRoute(
+          builder: (_) => RateCalculatorScreen(
+            config: config,
+            instanceId: instanceId.isNotEmpty ? instanceId : null,
+          ),
+        ),
       );
       if (!mounted) return;
       await _loadRecovery();
@@ -162,7 +180,12 @@ class _HomeScreenState extends State<HomeScreen> {
     if (action.type == RateTimerPendingActionType.openCalculator &&
         config != null) {
       await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => RateCalculatorScreen(config: config)),
+        MaterialPageRoute(
+          builder: (_) => RateCalculatorScreen(
+            config: config,
+            instanceId: instanceId.isNotEmpty ? instanceId : null,
+          ),
+        ),
       );
       if (!mounted) return;
       await _loadRecovery();
@@ -301,6 +324,13 @@ class _HomeScreenState extends State<HomeScreen> {
             title: 'Production',
             subtitle: 'Quick Round, reports, text updates, and setup',
             onTap: () => open(context, const ProductionDashboardScreen()),
+          ),
+          ToolCard(
+            icon: Icons.speed,
+            title: 'Rate Calculator',
+            subtitle:
+                'Open tank rate calculators and run more than one at a time',
+            onTap: () => open(context, const RateCalculatorMenuScreen()),
           ),
           _moduleCard(
             context: context,

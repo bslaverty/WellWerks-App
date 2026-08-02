@@ -189,12 +189,12 @@ class RateCalculatorSessionService {
   static final RateCalculatorSessionService instance =
       RateCalculatorSessionService._();
 
-  static const _sessionsKey = 'wellwerks_rate_calculator_sessions_v1';
-  static const _activeSessionKey = 'wellwerks_rate_calculator_active_v1';
+  static const _sessionsKey = 'wellwerks_rate_calculator_sessions_v2';
+  static const _activeSessionKey = 'wellwerks_rate_calculator_active_v2';
 
   bool _initialized = false;
-  String _activeCalculatorId = '';
-  final Map<String, RateCalculatorSession> _sessionsByCalculatorId =
+  String _activeSessionKeyValue = '';
+  final Map<String, RateCalculatorSession> _sessionsByInstanceKey =
       <String, RateCalculatorSession>{};
 
   Future<void> ensureInitialized() async {
@@ -211,7 +211,7 @@ class RateCalculatorSessionService {
               final session = RateCalculatorSession.fromJson(
                   Map<String, dynamic>.from(value));
               if (session.calculatorId.isNotEmpty) {
-                _sessionsByCalculatorId[key] = session;
+                _sessionsByInstanceKey[key] = session;
               }
             }
           });
@@ -221,41 +221,56 @@ class RateCalculatorSessionService {
       }
     }
 
-    _activeCalculatorId = (prefs.getString(_activeSessionKey) ?? '').trim();
+    _activeSessionKeyValue = (prefs.getString(_activeSessionKey) ?? '').trim();
     _initialized = true;
   }
 
   RateCalculatorSession? sessionForCalculator(String calculatorId) {
     final key = calculatorId.trim();
     if (key.isEmpty) return null;
-    return _sessionsByCalculatorId[key];
+    final direct = _sessionsByInstanceKey[key];
+    if (direct != null) return direct;
+
+    final matches = _sessionsByInstanceKey.values
+        .where((session) => session.calculatorId == key)
+        .toList();
+    if (matches.isEmpty) return null;
+    matches.sort((a, b) => b.updatedAtMs.compareTo(a.updatedAtMs));
+    return matches.first;
   }
 
-  String get activeCalculatorId => _activeCalculatorId;
+  RateCalculatorSession? sessionForInstance(String instanceKey) {
+    final key = instanceKey.trim();
+    if (key.isEmpty) return null;
+    return _sessionsByInstanceKey[key];
+  }
+
+  String get activeCalculatorId => _activeSessionKeyValue;
 
   Future<void> saveSession(
     RateCalculatorSession session, {
+    String? sessionKey,
     bool setActive = false,
   }) async {
     await ensureInitialized();
-    final key = session.calculatorId.trim();
+    final key = (sessionKey ?? session.calculatorId).trim();
     if (key.isEmpty) return;
-    _sessionsByCalculatorId[key] = session;
+    _sessionsByInstanceKey[key] = session;
     if (setActive) {
-      _activeCalculatorId = key;
+      _activeSessionKeyValue = key;
     }
     await _flush();
   }
 
   Future<void> setActiveCalculator(String calculatorId) async {
     await ensureInitialized();
-    _activeCalculatorId = calculatorId.trim();
+    _activeSessionKeyValue = calculatorId.trim();
     await _flush();
   }
 
   Future<void> clearActiveCalculator() async {
     await ensureInitialized();
-    _activeCalculatorId = '';
+    _activeSessionKeyValue = '';
     await _flush();
   }
 
@@ -263,9 +278,22 @@ class RateCalculatorSessionService {
     await ensureInitialized();
     final key = calculatorId.trim();
     if (key.isEmpty) return;
-    _sessionsByCalculatorId.remove(key);
-    if (_activeCalculatorId == key) {
-      _activeCalculatorId = '';
+    _sessionsByInstanceKey.remove(key);
+    if (_activeSessionKeyValue == key) {
+      _activeSessionKeyValue = '';
+    }
+    await _flush();
+  }
+
+  Future<void> clearSessionForCalculator(String calculatorId) async {
+    await ensureInitialized();
+    final key = calculatorId.trim();
+    if (key.isEmpty) return;
+    _sessionsByInstanceKey.removeWhere(
+      (sessionKey, session) => sessionKey == key || session.calculatorId == key,
+    );
+    if (_activeSessionKeyValue == key) {
+      _activeSessionKeyValue = '';
     }
     await _flush();
   }
@@ -273,17 +301,17 @@ class RateCalculatorSessionService {
   Future<void> _flush() async {
     final prefs = await SharedPreferences.getInstance();
     final payload = <String, dynamic>{};
-    _sessionsByCalculatorId.forEach((key, session) {
+    _sessionsByInstanceKey.forEach((key, session) {
       payload[key] = session.toJson();
     });
     await prefs.setString(_sessionsKey, jsonEncode(payload));
-    await prefs.setString(_activeSessionKey, _activeCalculatorId);
+    await prefs.setString(_activeSessionKey, _activeSessionKeyValue);
   }
 
   @visibleForTesting
   void resetForTesting() {
     _initialized = false;
-    _activeCalculatorId = '';
-    _sessionsByCalculatorId.clear();
+    _activeSessionKeyValue = '';
+    _sessionsByInstanceKey.clear();
   }
 }
