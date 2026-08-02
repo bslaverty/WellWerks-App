@@ -132,7 +132,8 @@ class RateCalculatorConfig {
 class RateCalculatorScreen extends StatefulWidget {
   final RateCalculatorConfig config;
   final String? instanceId;
-  const RateCalculatorScreen({super.key, required this.config, this.instanceId});
+  const RateCalculatorScreen(
+      {super.key, required this.config, this.instanceId});
 
   // Backward compatibility for old routes still passing a tank name.
   factory RateCalculatorScreen.legacy({Key? key, required String tankName}) {
@@ -389,8 +390,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     final defaultFactor = (widget.config.defaultFactor ?? 1.67).toString();
     final customFactorEntered =
         !widget.config.usesChart && factor.text.trim() != defaultFactor;
-    final hasCurrentTimer =
-      _activeTimerState?.instanceId == _instanceStorageId;
+    final hasCurrentTimer = _activeTimerState?.instanceId == _instanceStorageId;
     return startGauge.text.trim().isNotEmpty ||
         endGauge.text.trim().isNotEmpty ||
         customFactorEntered ||
@@ -917,7 +917,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     }
   }
 
-  Future<void> _clearTimerStatePersistence({bool forceAll = false}) async {
+  Future<void> _clearTimerStatePersistence() async {
     final active = await _rateTimerService.loadActiveTimerForInstance(
       _instanceStorageId,
     );
@@ -965,123 +965,76 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       _thirtySecondAlertShown = remaining <= 30;
     });
     _persistCalculatorSession();
-
-      final existing = await _rateTimerService.loadActiveTimerForInstance(
-        _instanceStorageId,
-      );
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       _syncTimerFromClock(timer);
     });
-        await _restoreTimerState();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('A timer is already running for this calculator.'),
-            ),
-          );
-        }
-        return;
-      }
-      await _startFreshTimer(configuredSeconds);
+  }
+
+  void _syncTimerFromClock(Timer timer) {
+    final end = _timerEndsAt;
+    if (!mounted || end == null) {
+      timer.cancel();
+      _countdownTimer = null;
+      return;
     }
 
-    Future<void> _startFreshTimer(int configuredSeconds) async {
-      final activeJob = await _jobStorage.loadActiveJob();
-      final wellOrJob = (activeJob?.primaryWell.trim().isNotEmpty ?? false)
-          ? activeJob!.primaryWell.trim()
-          : (activeJob?.padName.trim().isNotEmpty ?? false)
-              ? activeJob!.padName.trim()
-              : widget.config.title;
-
-      final state = await _rateTimerService.createState(
-        calculatorId: _calculatorStorageId,
-        calculatorTitle: widget.config.title,
-        wellOrJob: wellOrJob,
-        durationSeconds: configuredSeconds,
-      );
-      final settings = await _settingsService.load();
-      final permissionResult =
-          await _rateTimerNotifications.ensurePermissionIfNeeded();
-      if (settings.rateTimerNotificationsEnabled &&
-          !permissionResult &&
-          mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Timer started. Notifications are disabled. Open Settings > Notifications to enable alerts.',
-            ),
-          ),
-        );
-      }
-
-      await _rateTimerService.saveActiveTimer(state);
-      await _rateTimerNotifications.scheduleNotifications(
-          timer: state, settings: settings);
-
-      _countdownTimer?.cancel();
+    final nextSeconds = end.difference(DateTime.now()).inSeconds;
+    if (nextSeconds <= 0) {
+      timer.cancel();
+      _countdownTimer = null;
       setState(() {
-        _activeTimerState = state;
-        _timerEndsAt = state.endsAt;
-        _remainingSeconds = configuredSeconds;
-        _thirtySecondAlertShown = false;
-        _timerFinished = false;
+        _remainingSeconds = 0;
+        _timerFinished = true;
+        _thirtySecondAlertShown = true;
       });
       _persistCalculatorSession();
-
-      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        _syncTimerFromClock(timer);
-      });
+      return;
     }
 
-    Future<bool?> _showTimerAlreadyRunningDialog(RateTimerState existing) async {
-      return showDialog<bool>(
-        context: context,
-        builder: (context) {
-          final remaining = existing.remainingSecondsAt(DateTime.now());
-          final mm = (remaining ~/ 60).toString().padLeft(2, '0');
-          final ss = (remaining % 60).toString().padLeft(2, '0');
-          return AlertDialog(
-            title: const Text('Rate Timer Already Running'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('A timer is currently active for:'),
-                const SizedBox(height: 8),
-                Text(
-                  existing.wellOrJob.isEmpty
-                      ? existing.calculatorTitle
-                      : existing.wellOrJob,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 12),
-                const Text('Remaining Time:'),
-                const SizedBox(height: 6),
-                Text(
-                  '$mm:$ss',
-                  style:
-                      const TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop(false);
-                  _openActiveRateCalculator(existing);
-                },
-                child: const Text('Continue Current'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Restart Timer'),
-              ),
-            ],
-          );
-        },
-      );
+    final shouldAlert = nextSeconds <= 30;
+    if (shouldAlert && !_thirtySecondAlertShown) {
+      _vibrateOnce();
     }
+
+    setState(() {
+      _remainingSeconds = nextSeconds;
+      if (shouldAlert) {
+        _thirtySecondAlertShown = true;
+      }
+    });
+  }
+
+  bool get _timerRunning =>
+      _timerEndsAt != null && _remainingSeconds > 0 && !_timerFinished;
+
+  int _minutesToDurationSeconds() {
+    final parsedMinutes = int.tryParse(minutes.text.trim());
+    if (parsedMinutes == null) return 0;
     if (parsedMinutes < _minMinutes || parsedMinutes > _maxMinutes) return 0;
     return (parsedMinutes * 60).round();
+  }
+
+  Future<void> _loadSavedTimerMinutes() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_timerMinutesPrefKey) ?? _minMinutes.toString();
+    final parsed = int.tryParse(raw);
+    final resolved =
+        (parsed != null && parsed >= _minMinutes && parsed <= _maxMinutes)
+            ? parsed
+            : _minMinutes;
+
+    minutes.text = resolved.toString();
+    if (!mounted) return;
+    if (!_timerRunning) {
+      setState(() {
+        _remainingSeconds = resolved * 60;
+      });
+    }
+  }
+
+  Future<void> _saveTimerMinutes(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_timerMinutesPrefKey, value);
   }
 
   void _handleMinutesChanged() {
@@ -1104,6 +1057,47 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     _persistCalculatorSession();
   }
 
+  Future<void> _clearRateLogWithConfirmation() async {
+    if (_rateLogEntries.isEmpty) return;
+    final shouldClear = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Clear Rate Log?'),
+        content: const Text('This will remove all saved rate log entries.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldClear != true || !mounted) return;
+    setState(() {
+      _rateLogEntries.clear();
+      _rateLogExpanded = false;
+    });
+    await _saveRateLogState();
+    await _persistCalculatorSession();
+  }
+
+  void _toggleRateLogEntrySelection(int index) {
+    if (index < 0 || index >= _rateLogEntries.length) return;
+    if (index == 0) return;
+
+    setState(() {
+      final current = _rateLogEntries[index];
+      _rateLogEntries[index] = current.copyWith(selected: !current.selected);
+    });
+    _saveRateLogState();
+    _persistCalculatorSession();
+  }
+
   String _timerText() {
     final minutesPart = (_remainingSeconds ~/ 60).toString().padLeft(2, '0');
     final secondsPart = (_remainingSeconds % 60).toString().padLeft(2, '0');
@@ -1114,17 +1108,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     final hasVibrator = await Vibration.hasVibrator();
     if (!hasVibrator) return;
     await Vibration.vibrate(duration: 120);
-  }
-
-  Future<void> _vibrateThreeQuickTimes() async {
-    final hasVibrator = await Vibration.hasVibrator();
-    if (!hasVibrator) return;
-    for (int i = 0; i < 3; i++) {
-      await Vibration.vibrate(duration: 100);
-      if (i < 2) {
-        await Future<void>.delayed(const Duration(milliseconds: 120));
-      }
-    }
   }
 
   void _startTimedRate() {
@@ -1209,19 +1192,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     });
   }
 
-  void _openActiveRateCalculator(RateTimerState state) {
-    final config = RateCalculatorConfig.fromStorageId(state.calculatorId);
-    if (config == null || !mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => RateCalculatorScreen(
-          config: config,
-          instanceId: state.instanceId,
-        ),
-      ),
-    );
-  }
-
   Future<void> _applyPendingNotificationAction() async {
     final action = await _rateTimerService.consumePendingAction();
     if (action == null) return;
@@ -1240,9 +1210,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
             MaterialPageRoute(
               builder: (_) => RateCalculatorScreen(
                 config: config,
-                instanceId: targetInstanceId.isNotEmpty
-                    ? targetInstanceId
-                    : null,
+                instanceId:
+                    targetInstanceId.isNotEmpty ? targetInstanceId : null,
               ),
             ),
           );
@@ -1410,6 +1379,38 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                               : const Color(0xFFCDA56A),
                         ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _timerStatusText,
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Started: ${_timerStartedText()}',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          'Elapsed: ${_timerElapsedText()}',
+                          textAlign: TextAlign.end,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (_timerRunning)
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: _confirmStopTimerDiscard,
+                        child: const Text('Stop Timer'),
                       ),
                     )
                   else if (_timerFinished)
