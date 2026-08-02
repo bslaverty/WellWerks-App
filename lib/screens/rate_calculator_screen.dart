@@ -491,6 +491,62 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     );
   }
 
+  Future<void> _deleteHomeTab(int index) async {
+    final tabs = _resolvedHomeTabs();
+    if (index < 0 || index >= tabs.length) return;
+    if (tabs.length == 1) {
+      final shouldDelete = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Delete Tank?'),
+          content: const Text(
+            'This will remove the last saved tank setup and clear its session.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (shouldDelete != true) return;
+    }
+
+    final removed = tabs[index];
+    final nextTabs = List<HomeRateTabSpec>.from(tabs)..removeAt(index);
+    if (nextTabs.isEmpty) {
+      _homeTabs = nextTabs;
+      await _persistHomeTabsState();
+      await _sessionService.clearSession(removed.instanceId);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      return;
+    }
+
+    _homeTabs = nextTabs;
+    await _persistHomeTabsState();
+    await _sessionService.clearSession(removed.instanceId);
+
+    if (!mounted) return;
+    final nextIndex = index.clamp(0, nextTabs.length - 1);
+    await Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => RateCalculatorScreen(
+          config: nextTabs[nextIndex].config,
+          instanceId: nextTabs[nextIndex].instanceId,
+          homeMultiMode: true,
+          availableConfigs: widget.availableConfigs,
+          homeTabs: nextTabs,
+        ),
+      ),
+    );
+  }
+
   Widget _homeTabsSection() {
     if (!widget.homeMultiMode) return const SizedBox.shrink();
     final tabs = _resolvedHomeTabs();
@@ -507,9 +563,11 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
               return Padding(
                 padding:
                     EdgeInsets.only(right: index == tabs.length - 1 ? 0 : 8),
-                child: ChoiceChip(
+                child: InputChip(
                   selected: index == currentIndex,
                   onSelected: (_) => _openHomeTab(index),
+                  onDeleted: () => _deleteHomeTab(index),
+                  deleteIcon: const Icon(Icons.close, size: 18),
                   label: Text(tab.config.title),
                 ),
               );
@@ -519,7 +577,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         const SizedBox(height: 8),
         if ((widget.availableConfigs?.isNotEmpty ?? false))
           SizedBox(
-            width: double.infinity,
+                  if (!widget.config.usesChart && !_useLiveClock)
             child: OutlinedButton.icon(
               onPressed: _openAddAnotherTankPicker,
               icon: const Icon(Icons.add_circle_outline),
@@ -527,68 +585,69 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
             ),
           ),
         const SizedBox(height: 10),
-      ],
-    );
-  }
-
-  String get _rateLogEnabledPrefKey =>
-      'wellwerks_rate_log_enabled_$_storageScopeKey';
-
-  String get _rateLogEntriesPrefKey =>
-      'wellwerks_rate_log_entries_$_storageScopeKey';
-
-  String get _displayUnitPrefKey {
-    return 'wellwerks_rate_display_unit_$_storageScopeKey';
-  }
-
-  Future<void> _loadRateLogState() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedEnabled = prefs.getBool(_rateLogEnabledPrefKey) ??
-        widget.config.rateLogEnabledByDefault;
-    final rawEntries = prefs.getString(_rateLogEntriesPrefKey);
-
-    final loadedEntries = <_RateLogEntry>[];
-    if (rawEntries != null && rawEntries.trim().isNotEmpty) {
-      try {
-        final decoded = jsonDecode(rawEntries);
-        if (decoded is List) {
-          for (final item in decoded) {
-            if (item is! Map) continue;
-            final timestampMs = item['timestampMs'];
-            final rateValue = item['rateValue'];
-            final rateUnit = item['rateUnit'];
-            final selected = item['selected'];
-            if (timestampMs is! int) continue;
-            if (rateValue is! num) continue;
-            if (rateUnit is! String || rateUnit.isEmpty) continue;
-            loadedEntries.add(
-              _RateLogEntry(
-                timestamp: DateTime.fromMillisecondsSinceEpoch(timestampMs),
-                rateValue: rateValue.toDouble(),
-                rateUnit: rateUnit,
-                selected: selected is bool ? selected : true,
-              ),
-            );
-          }
-        }
-      } catch (_) {
-        // Ignore malformed persisted data and start with an empty log.
-      }
-    }
-
-    if (loadedEntries.isNotEmpty) {
-      loadedEntries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-      loadedEntries[0] = loadedEntries[0].copyWith(selected: true);
-    }
-
-    if (!mounted) return;
-    setState(() {
-      _rateLogEnabled = savedEnabled;
-      _rateLogEntries
-        ..clear()
-        ..addAll(loadedEntries);
-    });
-  }
+                  const SizedBox(height: 8),
+                  WwGaugeField(
+                    label: 'Starting Gauge',
+                    controller: startGauge,
+                    autofocus: true,
+                    active: _activeKeypadTarget == _KeypadTarget.start,
+                    onTap: () => _setActiveKeypad(_KeypadTarget.start),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  WwGaugeField(
+                    label: 'Ending Gauge',
+                    controller: endGauge,
+                    active: _activeKeypadTarget == _KeypadTarget.end,
+                    onTap: () => _setActiveKeypad(_KeypadTarget.end),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  if (!_useLiveClock)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: _openMinutesSelector,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: const Color(0xFF4A4A4A),
+                                width: 1.2,
+                              ),
+                              color: const Color(0xFF121418),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 14,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Minutes',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _minutesDisplayText,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFFCDA56A),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
 
   Future<void> _saveRateLogState() async {
     final prefs = await SharedPreferences.getInstance();
@@ -684,6 +743,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       rateLogEnabled: _rateLogEnabled,
       rateLogExpanded: _rateLogExpanded,
       useLiveClock: _useLiveClock,
+        liveClockElapsedSeconds:
+          _liveClockRunning ? _currentLiveClockElapsedSeconds() : _liveClockElapsedSeconds,
       bblPerMin: bblPerMin,
       bblPerHr: bblPerHr,
       bblPerDay: bblPerDay,
@@ -743,6 +804,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       _rateLogEnabled = session.rateLogEnabled;
       _rateLogExpanded = session.rateLogExpanded;
       _useLiveClock = session.useLiveClock;
+      _liveClockElapsedSeconds = session.liveClockElapsedSeconds;
       _rateLogEntries
         ..clear()
         ..addAll(_rateLogEntriesFromSession(session.rateLogEntries));
@@ -767,6 +829,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
             .difference(restoredStart)
             .inSeconds
             .clamp(0, 1 << 30);
+      } else if (_useLiveClock && _liveClockElapsedSeconds > 0) {
+        _liveClockStartedAt = null;
       } else {
         _liveClockStartedAt = null;
         _liveClockElapsedSeconds = 0;
@@ -2869,52 +2933,53 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                     onTap: () => _setActiveKeypad(_KeypadTarget.end),
                     onChanged: (_) => setState(() {}),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 14),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: _openMinutesSelector,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: const Color(0xFF4A4A4A),
-                              width: 1.2,
+                  if (!_useLiveClock)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: _openMinutesSelector,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: const Color(0xFF4A4A4A),
+                                width: 1.2,
+                              ),
+                              color: const Color(0xFF121418),
                             ),
-                            color: const Color(0xFF121418),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 14,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Minutes',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 14,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Minutes',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _minutesDisplayText,
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFFCDA56A),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _minutesDisplayText,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFFCDA56A),
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
                   _timerModeSelector(),
                   const SizedBox(height: 10),
                   if (_useLiveClock)
