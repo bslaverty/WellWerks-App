@@ -58,11 +58,24 @@ class RateCalculatorConfig {
   final String title;
   final String? chartId;
   final double? defaultFactor;
+  final String? storageId;
+  final bool allowOperationsLogAutoSave;
+  final bool rateLogEnabledByDefault;
 
-  const RateCalculatorConfig.chart(this.title, this.chartId)
-      : defaultFactor = null;
-  const RateCalculatorConfig.linear(this.title, {required this.defaultFactor})
-      : chartId = null;
+  const RateCalculatorConfig.chart(
+    this.title,
+    this.chartId, {
+    this.storageId,
+    this.allowOperationsLogAutoSave = true,
+    this.rateLogEnabledByDefault = false,
+  }) : defaultFactor = null;
+  const RateCalculatorConfig.linear(
+    this.title, {
+    required this.defaultFactor,
+    this.storageId,
+    this.allowOperationsLogAutoSave = true,
+    this.rateLogEnabledByDefault = false,
+  }) : chartId = null;
 
   bool get usesChart => chartId != null;
 
@@ -80,6 +93,30 @@ class RateCalculatorConfig {
       case 'production_tank':
         return const RateCalculatorConfig.linear('Production Tank',
             defaultFactor: 1.67);
+      case 'production_flowback500':
+        return const RateCalculatorConfig.chart(
+          'Production V-Bottom',
+          'flowback500',
+          storageId: 'production_flowback500',
+          allowOperationsLogAutoSave: false,
+          rateLogEnabledByDefault: true,
+        );
+      case 'production_flowback_round_bottom':
+        return const RateCalculatorConfig.chart(
+          'Production Round Bottom',
+          'flowback_round_bottom',
+          storageId: 'production_flowback_round_bottom',
+          allowOperationsLogAutoSave: false,
+          rateLogEnabledByDefault: true,
+        );
+      case 'production_tank_linear':
+        return const RateCalculatorConfig.linear(
+          'Production Tank',
+          defaultFactor: 1.67,
+          storageId: 'production_tank_linear',
+          allowOperationsLogAutoSave: false,
+          rateLogEnabledByDefault: true,
+        );
       default:
         return null;
     }
@@ -271,7 +308,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   }
 
   String get _calculatorStorageId {
-    return (widget.config.chartId ?? widget.config.title)
+    return (widget.config.storageId ??
+            widget.config.chartId ??
+            widget.config.title)
         .toLowerCase()
         .replaceAll(RegExp(r'[^a-z0-9]+'), '_');
   }
@@ -288,7 +327,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
   Future<void> _loadRateLogState() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedEnabled = prefs.getBool(_rateLogEnabledPrefKey) ?? false;
+    final savedEnabled = prefs.getBool(_rateLogEnabledPrefKey) ??
+        widget.config.rateLogEnabledByDefault;
     final rawEntries = prefs.getString(_rateLogEntriesPrefKey);
 
     final loadedEntries = <_RateLogEntry>[];
@@ -1770,6 +1810,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     required double bblPerMinute,
     required double bblPerHour,
   }) async {
+    if (!widget.config.allowOperationsLogAutoSave) return;
     final settings = await _settingsService.load();
     if (!settings.autoSaveRateCalculationsToOperationsLog) return;
 

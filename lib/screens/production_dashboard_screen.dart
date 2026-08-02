@@ -11,6 +11,7 @@ import 'job_management_screen.dart';
 import 'pressure_entry_screen.dart';
 import 'production_inventory_screen.dart';
 import 'production_history_screen.dart';
+import 'production_rate_calculator_menu_screen.dart';
 import 'report_template_screen.dart';
 import 'shift_report_screen.dart';
 
@@ -263,6 +264,14 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
             title: 'Tank Inventory',
             subtitle: 'Tank levels, running totals, and production inventory',
             onTap: () => _open(context, const ProductionInventoryScreen()),
+          ),
+          ToolCard(
+            icon: Icons.speed,
+            title: 'Rate Calculator',
+            subtitle:
+                'Production-only tank rates and logs (excludes SandX / FS3)',
+            onTap: () =>
+                _open(context, const ProductionRateCalculatorMenuScreen()),
           ),
           const SizedBox(height: 12),
           const Text(

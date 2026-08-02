@@ -12,19 +12,62 @@ class ConversionCalculatorScreen extends StatefulWidget {
 
 class _ConversionCalculatorScreenState
     extends State<ConversionCalculatorScreen> {
+  static const Map<String, double> _cookingVolumeToMl = {
+    'teaspoons (tsp)': 4.92892159375,
+    'tablespoons (tbsp)': 14.78676478125,
+    'fluid ounces (fl oz)': 29.5735295625,
+    'cups': 236.5882365,
+    'pints': 473.176473,
+    'quarts': 946.352946,
+    'gallons': 3785.411784,
+    'milliliters (mL)': 1.0,
+    'liters (L)': 1000.0,
+  };
+
+  static const Map<String, double> _cookingWeightToGrams = {
+    'ounces (oz)': 28.349523125,
+    'pounds (lb)': 453.59237,
+    'grams (g)': 1.0,
+    'kilograms (kg)': 1000.0,
+  };
+
   static const Map<String, List<String>> _unitsByCategory = {
     'Length': ['inches', 'feet', 'yards', 'miles', 'meters'],
-    'Volume': ['gallons', 'barrels', 'liters', 'cubic feet'],
+    'Volume': ['gallons', 'barrels', 'liters'],
     'Pressure': ['psi', 'kPa', 'MPa', 'bar'],
     'Temperature': ['Fahrenheit', 'Celsius'],
-    'Flow Rate': ['bbl/hr', 'bbl/day', 'gal/min', 'gal/hr'],
+    'Fluid Rate': [
+      'bbl/min',
+      'bbl/hr',
+      'bbl/day',
+      'gal/min',
+      'gal/hr',
+      'gal/day',
+    ],
     'Gas Rate': ['mcf/d', 'mmcf/d', 'scf/d'],
+    'Cooking Conversions': [
+      'teaspoons (tsp)',
+      'tablespoons (tbsp)',
+      'fluid ounces (fl oz)',
+      'cups',
+      'pints',
+      'quarts',
+      'gallons',
+      'milliliters (mL)',
+      'liters (L)',
+      'ounces (oz)',
+      'pounds (lb)',
+      'grams (g)',
+      'kilograms (kg)',
+      'Fahrenheit',
+      'Celsius',
+    ],
     'Oilfield Units': [
       'barrels',
       'gallons',
-      'feet',
       'inches',
       'decimal feet',
+      'fractional feet',
       'barrels (inches × bbl/in)',
     ],
   };
@@ -75,7 +118,6 @@ class _ConversionCalculatorScreenState
           'gallons': 3.785411784,
           'barrels': 158.987294928,
           'liters': 1.0,
-          'cubic feet': 28.316846592,
         }[unit];
       case 'Pressure':
         return {
@@ -84,12 +126,14 @@ class _ConversionCalculatorScreenState
           'MPa': 1000000.0,
           'bar': 100000.0,
         }[unit];
-      case 'Flow Rate':
+      case 'Fluid Rate':
         return {
+          'bbl/min': 158.987294928 * 60,
           'bbl/hr': 158.987294928,
           'bbl/day': 158.987294928 / 24,
           'gal/min': 3.785411784 * 60,
           'gal/hr': 3.785411784,
+          'gal/day': 3.785411784 / 24,
         }[unit];
       case 'Gas Rate':
         return {
@@ -101,13 +145,81 @@ class _ConversionCalculatorScreenState
         return {
           'barrels': 42.0,
           'gallons': 1.0,
-          'feet': 12.0,
           'inches': 1.0,
           'decimal feet': 12.0,
+          'fractional feet': 12.0,
         }[unit];
       default:
         return null;
     }
+  }
+
+  bool get _usesFractionalFeetInput =>
+      _category == 'Oilfield Units' && _from == 'fractional feet';
+
+  double? _parseFractionalFeet(String raw) {
+    final trimmed = raw.trim().toLowerCase();
+    if (trimmed.isEmpty) return null;
+
+    final asDecimal = double.tryParse(trimmed);
+    if (asDecimal != null) return asDecimal;
+
+    final apostrophePattern = RegExp(
+      r"^(-?\d+)\s*['-]\s*(\d+(?:\.\d+)?)\s*(?:\"|in)?$",
+    );
+    final ftInPattern = RegExp(
+      r'^(-?\d+)\s*ft\s*(\d+(?:\.\d+)?)?\s*(?:in)?$',
+    );
+    final spacePattern = RegExp(r'^(-?\d+)\s+(\d+(?:\.\d+)?)$');
+
+    RegExpMatch? match = apostrophePattern.firstMatch(trimmed);
+    match ??= ftInPattern.firstMatch(trimmed);
+    match ??= spacePattern.firstMatch(trimmed);
+    if (match == null) return null;
+
+    final feetPart = int.tryParse(match.group(1) ?? '');
+    final inchesPart = double.tryParse(match.group(2) ?? '0') ?? 0;
+    if (feetPart == null) return null;
+
+    final sign = feetPart < 0 ? -1.0 : 1.0;
+    return feetPart.toDouble() + (sign * (inchesPart / 12.0));
+  }
+
+  String _formatFeetAndInches(double decimalFeet) {
+    final sign = decimalFeet < 0 ? '-' : '';
+    final absFeet = decimalFeet.abs();
+    final feetWhole = absFeet.floor();
+    final inches = (absFeet - feetWhole) * 12.0;
+    return '$sign$feetWhole\' ${inches.toStringAsFixed(2)}"';
+  }
+
+  bool _isCookingVolumeUnit(String unit) => _cookingVolumeToMl.containsKey(unit);
+
+  bool _isCookingWeightUnit(String unit) => _cookingWeightToGrams.containsKey(unit);
+
+  bool _isCookingTemperatureUnit(String unit) =>
+      unit == 'Fahrenheit' || unit == 'Celsius';
+
+  double? _convertCooking(double value, String from, String to) {
+    if (from == to) return value;
+
+    if (_isCookingTemperatureUnit(from) && _isCookingTemperatureUnit(to)) {
+      return _convertTemperature(value, from, to);
+    }
+
+    if (_isCookingVolumeUnit(from) && _isCookingVolumeUnit(to)) {
+      final fromMl = _cookingVolumeToMl[from]!;
+      final toMl = _cookingVolumeToMl[to]!;
+      return (value * fromMl) / toMl;
+    }
+
+    if (_isCookingWeightUnit(from) && _isCookingWeightUnit(to)) {
+      final fromG = _cookingWeightToGrams[from]!;
+      final toG = _cookingWeightToGrams[to]!;
+      return (value * fromG) / toG;
+    }
+
+    return null;
   }
 
   bool get _requiresOilfieldFactor =>
@@ -116,10 +228,15 @@ class _ConversionCalculatorScreenState
       _to == 'barrels (inches × bbl/in)';
 
   void _convert() {
-    final input = double.tryParse(_value.text.trim());
+    final rawInput = _value.text.trim();
+    final input = _usesFractionalFeetInput
+        ? _parseFractionalFeet(rawInput)
+        : double.tryParse(rawInput);
     if (input == null) {
       setState(() {
-        _error = 'Enter a numeric value.';
+        _error = _usesFractionalFeetInput
+            ? 'Enter decimal feet or fractional feet (example: 10\' 6").'
+            : 'Enter a numeric value.';
         _result = '--';
       });
       return;
@@ -137,6 +254,25 @@ class _ConversionCalculatorScreenState
       setState(() {
         _error = null;
         _result = converted.toStringAsFixed(2);
+      });
+      return;
+    }
+
+    if (_category == 'Cooking Conversions') {
+      final converted = _convertCooking(input, _from, _to);
+      if (converted == null) {
+        setState(() {
+          _error =
+              'Use volume-to-volume, weight-to-weight, or Fahrenheit to Celsius.';
+          _result = '--';
+        });
+        return;
+      }
+      setState(() {
+        _error = null;
+        _result = _isCookingTemperatureUnit(_to)
+            ? converted.toStringAsFixed(2)
+            : converted.toStringAsFixed(4);
       });
       return;
     }
@@ -170,7 +306,9 @@ class _ConversionCalculatorScreenState
     final converted = (input * fromFactor) / toFactor;
     setState(() {
       _error = null;
-      _result = converted.toStringAsFixed(4);
+      _result = _category == 'Oilfield Units' && _to == 'fractional feet'
+          ? _formatFeetAndInches(converted)
+          : converted.toStringAsFixed(4);
     });
   }
 
@@ -219,9 +357,30 @@ class _ConversionCalculatorScreenState
           const SizedBox(height: 12),
           TextField(
             controller: _value,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Value'),
+            keyboardType: _usesFractionalFeetInput
+                ? TextInputType.text
+                : const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: 'Value',
+              hintText: _usesFractionalFeetInput
+                  ? 'Examples: 10.5 or 10\' 6"'
+                  : null,
+            ),
           ),
+          if (_category == 'Oilfield Units') ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Oilfield Units converts between barrels, gallons, inches, decimal feet, and fractional feet.',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ],
+          if (_category == 'Cooking Conversions') ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Cooking Conversions supports kitchen volume, kitchen weight, and oven temperature conversions.',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ],
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             initialValue: _from,

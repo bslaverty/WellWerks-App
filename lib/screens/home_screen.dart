@@ -10,6 +10,7 @@ import '../services/rate_timer_service.dart';
 import '../services/recovery_state_service.dart';
 import 'module_menu_screen.dart';
 import 'completions_calculators_screen.dart';
+import 'conversion_calculator_screen.dart';
 import 'rate_calculator_screen.dart';
 import 'equipment_layout_screen.dart';
 import 'rig_up_inventory_screen.dart';
@@ -335,6 +336,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 subtitle:
                     'FS3, SandX, V Bottom, Round Bottom, Gas Tank, and Production Tank',
                 screen: TankChartsMenuScreen(),
+              ),
+              const ModuleTool(
+                icon: Icons.straighten,
+                title: 'Conversion Calculator',
+                subtitle: 'Field and cooking unit conversions',
+                screen: ConversionCalculatorScreen(),
               ),
               const ModuleTool(
                 icon: Icons.local_gas_station,
