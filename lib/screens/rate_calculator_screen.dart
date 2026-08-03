@@ -1922,7 +1922,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                   const SizedBox(height: 6),
                   Text(
                     _timerStatusText,
-                    style: const TextStyle(color: Colors.white70),
+                    style: TextStyle(color: scheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 8),
                   Row(
@@ -1930,14 +1930,14 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                       Expanded(
                         child: Text(
                           'Started: ${_timerStartedText()}',
-                          style: const TextStyle(color: Colors.white70),
+                          style: TextStyle(color: scheme.onSurfaceVariant),
                         ),
                       ),
                       Expanded(
                         child: Text(
                           'Elapsed: ${_timerElapsedText()}',
                           textAlign: TextAlign.end,
-                          style: const TextStyle(color: Colors.white70),
+                          style: TextStyle(color: scheme.onSurfaceVariant),
                         ),
                       ),
                     ],
@@ -2003,9 +2003,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Start timer, stop at stick pull, enter ending gauge, then tap CALCULATE.',
-              style: TextStyle(color: Colors.white70),
+              style: TextStyle(color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 8),
             Container(
@@ -2038,12 +2038,12 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                     _liveClockRunning
                         ? 'Live clock running... stop when you pull the stick.'
                         : 'Stopped. Enter ending gauge, then tap CALCULATE.',
-                    style: const TextStyle(color: Colors.white70),
+                    style: TextStyle(color: scheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Started: ${_liveClockStartedText()}',
-                    style: const TextStyle(color: Colors.white70),
+                    style: TextStyle(color: scheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 10),
                   SizedBox(
@@ -2660,10 +2660,10 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
               ),
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'Rate Display',
               style: TextStyle(
-                color: Colors.white70,
+                color: scheme.onSurfaceVariant,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -2717,8 +2717,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
             const SizedBox(height: 4),
             Text(
               _selectedRateUnitLabel,
-              style: const TextStyle(
-                color: Colors.white70,
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -2748,13 +2748,13 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
           ),
           if (_rateLogExpanded) ...[
             if (_rateLogEntries.isEmpty)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.fromLTRB(16, 0, 16, 14),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
                     'No log entries yet.',
-                    style: TextStyle(color: Colors.white70),
+                    style: TextStyle(color: scheme.onSurfaceVariant),
                   ),
                 ),
               )
@@ -3052,10 +3052,12 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
+                                Text(
                                   'Minutes',
                                   style: TextStyle(
-                                    color: Colors.white70,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
                                   ),

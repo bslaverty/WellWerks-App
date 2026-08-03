@@ -7015,7 +7015,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).colorScheme.surface,
+        backgroundColor: Theme.of(context).cardColor,
         titleTextStyle: TextStyle(
           color: Theme.of(context).colorScheme.primary,
           fontSize: 20,
@@ -7042,7 +7042,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                     width: double.infinity,
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
+                      color: Theme.of(context).cardColor,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: const Color(0xFF3A3A3A)),
                     ),
@@ -9483,7 +9483,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                     ? Theme.of(context).colorScheme.primary
                     : Theme.of(context).colorScheme.outlineVariant,
               ),
-              backgroundColor: Theme.of(context).colorScheme.surface,
+              backgroundColor: Theme.of(context)
+                  .colorScheme
+                  .surfaceContainerHigh
+                  .withValues(alpha: 0.5),
               selected: _mobileDrawerSection == tab.value,
               label: Text(tab.key),
               onSelected: (_) {

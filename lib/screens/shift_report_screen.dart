@@ -2061,19 +2061,22 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   }
 
   Widget _jobChip(String label, String value) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.18),
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.32),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFFCDA56A).withValues(alpha: 0.35),
+          color: scheme.primary.withValues(alpha: 0.35),
         ),
       ),
       child: Text(
         '$label: ${value.trim().isEmpty ? 'Not entered' : value.trim()}',
-        style:
-            const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+        style: TextStyle(
+          color: scheme.onSurfaceVariant,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -2100,7 +2103,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         body: Column(
           children: [
             Material(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              color: Theme.of(context).cardColor,
               child: const TabBar(
                 key: Key('production-report-tabs'),
                 tabs: [

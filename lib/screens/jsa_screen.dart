@@ -1579,7 +1579,7 @@ out center tags;
       body: Column(
         children: [
           Material(
-            color: Theme.of(context).colorScheme.surface,
+            color: Theme.of(context).cardColor,
             child: TabBar(
               key: const Key('jsa-tab-bar'),
               controller: _tabController,

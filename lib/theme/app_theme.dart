@@ -174,6 +174,12 @@ ThemeData buildAppTheme(String themeId) {
   const ouCream = Color(0xFFFDF9D8);
   final isOu = option.id == 'ou';
   final isOsu = option.id == 'osu';
+  final cardFill = Color.lerp(
+        option.surface,
+        option.accent,
+        option.brightness == Brightness.dark ? 0.12 : 0.06,
+      ) ??
+      option.surface;
   final onAccent =
       option.accent.computeLuminance() > 0.5 ? Colors.black : Colors.white;
   final appBarForeground =
@@ -213,6 +219,7 @@ ThemeData buildAppTheme(String themeId) {
     ),
     scaffoldBackgroundColor: option.background,
     canvasColor: option.background,
+    cardColor: cardFill,
     dividerColor: option.accent.withValues(alpha: 0.28),
     iconTheme: IconThemeData(color: option.accent),
     fontFamily: 'Arial',
@@ -234,18 +241,22 @@ ThemeData buildAppTheme(String themeId) {
       ),
     ),
     cardTheme: CardThemeData(
-      color: option.surface,
-      elevation: 0,
+      color: cardFill,
+      elevation: 1,
+      shadowColor: Colors.black.withValues(alpha: 0.22),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: option.accent.withValues(alpha: 0.22)),
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(
+          color: option.accent.withValues(alpha: 0.38),
+          width: 1.2,
+        ),
       ),
     ),
     listTileTheme: ListTileThemeData(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       iconColor: option.accent,
-      tileColor: option.surface.withValues(alpha: 0.45),
+      tileColor: Colors.transparent,
       textColor: option.text,
     ),
     textTheme: base.textTheme.apply(

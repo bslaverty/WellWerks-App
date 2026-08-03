@@ -1,13 +1,8 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 
 import '../models/job_setup.dart';
 import '../widgets/app_header.dart';
-import '../widgets/tool_card.dart';
 import '../services/app_settings_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/operations_log_service.dart';
@@ -33,30 +28,6 @@ import 'drillout_cleanout_module_screen.dart';
 import 'flywheel_diesel_tank_screen.dart';
 import 'operations_log_screen.dart';
 
-class _HomeRecentItem {
-  const _HomeRecentItem({
-    required this.toolId,
-    required this.lastUsedMs,
-  });
-
-  final String toolId;
-  final int lastUsedMs;
-
-  Map<String, dynamic> toJson() {
-    return <String, dynamic>{
-      'toolId': toolId,
-      'lastUsedMs': lastUsedMs,
-    };
-  }
-
-  factory _HomeRecentItem.fromJson(Map<String, dynamic> map) {
-    return _HomeRecentItem(
-      toolId: (map['toolId'] as String? ?? '').trim(),
-      lastUsedMs: (map['lastUsedMs'] as num?)?.toInt() ?? 0,
-    );
-  }
-}
-
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -65,20 +36,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static const _recentToolsPrefKey = 'wellwerks_home_recent_tools_v1';
-  static const _favoriteToolsPrefKey = 'wellwerks_home_favorite_tools_v1';
-  static const _maxRecentTools = 6;
-  static const _maxFavorites = 3;
-  static const List<String> _favoriteToolChoices = <String>[
-    'production',
-    'completions',
-    'rigup',
-    'rate',
-    'jsa',
-    'charts',
-    'history',
-  ];
-
   final _jobStorage = JobStorageService();
   final _recoveryState = RecoveryStateService();
   final _rateTimerService = RateTimerService();
@@ -86,13 +43,6 @@ class _HomeScreenState extends State<HomeScreen> {
   final _rateTimerNotifications = RateTimerNotificationService.instance;
 
   bool _loading = true;
-  bool _weatherLoading = false;
-  String _weatherSummary = '--';
-  String _windSummary = '--';
-  String _gpsSummary = '--';
-  String _locationSummary = '--';
-  List<_HomeRecentItem> _recentTools = const <_HomeRecentItem>[];
-  List<String> _favoriteToolIds = const <String>[];
 
   @override
   void initState() {
@@ -124,242 +74,9 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     _handlePendingRateTimerAction();
     _handlePendingEstimatedStsAction();
-    _loadFavoriteTools();
-    _loadRecentTools();
-    _refreshWeatherAndGps();
   }
 
   JobSetup? get _activeJob => _jobStorage.activeJobListenable.value;
-
-  Future<void> _loadRecentTools() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_recentToolsPrefKey) ?? '';
-    if (raw.trim().isEmpty) return;
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return;
-      final loaded = <_HomeRecentItem>[];
-      for (final item in decoded) {
-        if (item is! Map) continue;
-        final mapped = Map<String, dynamic>.from(item);
-        final recent = _HomeRecentItem.fromJson(mapped);
-        if (recent.toolId.isEmpty || recent.lastUsedMs <= 0) continue;
-        loaded.add(recent);
-      }
-      loaded.sort((a, b) => b.lastUsedMs.compareTo(a.lastUsedMs));
-      if (!mounted) return;
-      setState(() {
-        _recentTools = loaded.take(_maxRecentTools).toList(growable: false);
-      });
-    } catch (_) {
-      // Ignore malformed saved recents.
-    }
-  }
-
-  Future<void> _saveRecentTools() async {
-    final prefs = await SharedPreferences.getInstance();
-    final payload =
-        _recentTools.map((item) => item.toJson()).toList(growable: false);
-    await prefs.setString(_recentToolsPrefKey, jsonEncode(payload));
-  }
-
-  Future<void> _loadFavoriteTools() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_favoriteToolsPrefKey) ?? '';
-    if (raw.trim().isEmpty) return;
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return;
-      final loaded = <String>[];
-      for (final item in decoded) {
-        final id = (item?.toString() ?? '').trim().toLowerCase();
-        if (id.isEmpty || !_favoriteToolChoices.contains(id)) continue;
-        if (loaded.contains(id)) continue;
-        loaded.add(id);
-        if (loaded.length >= _maxFavorites) break;
-      }
-      if (!mounted) return;
-      setState(() {
-        _favoriteToolIds = loaded;
-      });
-    } catch (_) {
-      // Ignore malformed saved favorites.
-    }
-  }
-
-  Future<void> _saveFavoriteTools() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_favoriteToolsPrefKey, jsonEncode(_favoriteToolIds));
-  }
-
-  Future<void> _recordRecentTool(String toolId) async {
-    final normalized = toolId.trim().toLowerCase();
-    if (normalized.isEmpty) return;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final updated = <_HomeRecentItem>[
-      _HomeRecentItem(toolId: normalized, lastUsedMs: now),
-      for (final item in _recentTools)
-        if (item.toolId != normalized) item,
-    ].take(_maxRecentTools).toList(growable: false);
-    if (!mounted) return;
-    setState(() {
-      _recentTools = updated;
-    });
-    await _saveRecentTools();
-  }
-
-  String _weatherConditionFromCode(int code) {
-    switch (code) {
-      case 0:
-        return 'Clear';
-      case 1:
-      case 2:
-      case 3:
-        return 'Partly Cloudy';
-      case 45:
-      case 48:
-        return 'Fog';
-      case 51:
-      case 53:
-      case 55:
-      case 56:
-      case 57:
-        return 'Drizzle';
-      case 61:
-      case 63:
-      case 65:
-      case 66:
-      case 67:
-        return 'Rain';
-      case 71:
-      case 73:
-      case 75:
-      case 77:
-        return 'Snow';
-      case 80:
-      case 81:
-      case 82:
-        return 'Rain Showers';
-      case 95:
-      case 96:
-      case 99:
-        return 'Thunderstorm';
-      default:
-        return 'Unknown';
-    }
-  }
-
-  Future<Position> _ensurePosition() async {
-    final locationEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!locationEnabled) {
-      throw StateError('Location services are disabled.');
-    }
-
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
-      throw StateError('Location permission denied.');
-    }
-
-    return Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-    );
-  }
-
-  String _cityStateFromAddress(Map<String, dynamic> address) {
-    final city = (address['city'] ??
-            address['town'] ??
-            address['village'] ??
-            address['hamlet'] ??
-            '')
-        .toString()
-        .trim();
-    final state = (address['state'] ?? '').toString().trim();
-    if (city.isEmpty) return state;
-    if (state.isEmpty) return city;
-    return '$city, $state';
-  }
-
-  Future<void> _refreshWeatherAndGps() async {
-    if (_weatherLoading) return;
-    if (!mounted) return;
-    setState(() => _weatherLoading = true);
-    try {
-      final position = await _ensurePosition();
-      final gps =
-          '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
-
-      var locationText = '--';
-      final reverseUri = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${position.latitude}&lon=${position.longitude}&addressdetails=1',
-      );
-      final reverseResponse = await http.get(
-        reverseUri,
-        headers: const {'User-Agent': 'WellWerks/1.0'},
-      );
-      if (reverseResponse.statusCode == 200) {
-        final reverseMap =
-            jsonDecode(reverseResponse.body) as Map<String, dynamic>;
-        final address = reverseMap['address'] as Map<String, dynamic>?;
-        if (address != null) {
-          final county = (address['county'] ?? '').toString().trim();
-          final cityState = _cityStateFromAddress(address);
-          final composed = [county, cityState]
-              .where((item) => item.trim().isNotEmpty)
-              .join(' • ')
-              .trim();
-          if (composed.isNotEmpty) {
-            locationText = composed;
-          }
-        }
-      }
-
-      final weatherUri = Uri.parse(
-        'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&current=temperature_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph',
-      );
-      final weatherResponse = await http.get(weatherUri);
-      if (weatherResponse.statusCode != 200) {
-        throw StateError('Unable to fetch weather.');
-      }
-
-      final weatherMap =
-          jsonDecode(weatherResponse.body) as Map<String, dynamic>;
-      final current =
-          weatherMap['current'] as Map<String, dynamic>? ?? <String, dynamic>{};
-      final temperature = (current['temperature_2m'] as num?)?.toDouble();
-      final weatherCode = (current['weather_code'] as num?)?.toInt();
-      final windSpeed = (current['wind_speed_10m'] as num?)?.toDouble();
-
-      final weather =
-          temperature == null ? '--' : '${temperature.toStringAsFixed(0)} F';
-      final condition = weatherCode == null
-          ? 'Weather unavailable'
-          : _weatherConditionFromCode(weatherCode);
-      final wind =
-          windSpeed == null ? '--' : '${windSpeed.toStringAsFixed(1)} mph';
-
-      if (!mounted) return;
-      setState(() {
-        _gpsSummary = gps;
-        _locationSummary = locationText;
-        _weatherSummary = '$weather • $condition';
-        _windSummary = wind;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _weatherSummary = 'Weather unavailable';
-        _windSummary = '--';
-      });
-    } finally {
-      if (!mounted) return;
-      setState(() => _weatherLoading = false);
-    }
-  }
 
   Future<void> _handlePendingEstimatedStsAction() async {
     final payload =
@@ -483,7 +200,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openHomeTool(String toolId) async {
-    await _recordRecentTool(toolId);
     if (!mounted) return;
     switch (toolId) {
       case 'production':
@@ -592,65 +308,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  ({String title, String subtitle, IconData icon})? _recentMeta(String toolId) {
-    switch (toolId) {
-      case 'production':
-        return (
-          title: 'Production',
-          subtitle: 'Quick Round',
-          icon: Icons.oil_barrel
-        );
-      case 'completions':
-        return (
-          title: 'Completions',
-          subtitle: 'Drillout Workflow',
-          icon: Icons.build
-        );
-      case 'rigup':
-        return (
-          title: 'Rig-Up',
-          subtitle: 'Layout & Inventory',
-          icon: Icons.account_tree
-        );
-      case 'rate':
-        return (
-          title: 'Rate Calculator',
-          subtitle: 'Tank Rates',
-          icon: Icons.speed
-        );
-      case 'jsa':
-        return (
-          title: 'JSA',
-          subtitle: 'Safety Worksheet',
-          icon: Icons.assignment
-        );
-      case 'charts':
-        return (
-          title: 'Charts',
-          subtitle: 'Tank & Field',
-          icon: Icons.bar_chart
-        );
-      case 'history':
-        return (
-          title: 'History',
-          subtitle: 'Archived Jobs',
-          icon: Icons.history
-        );
-      default:
-        return null;
-    }
-  }
-
-  String _timeAgoLabel(int timestampMs) {
-    final diff = DateTime.now().difference(
-      DateTime.fromMillisecondsSinceEpoch(timestampMs),
-    );
-    if (diff.inMinutes < 1) return 'Now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${diff.inDays}d ago';
-  }
-
   Widget _chloridesCalculatorScreen() {
     return const ChartReferenceScreen(
       title: 'Chlorides Chart',
@@ -693,35 +350,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ],
-    );
-  }
-
-  Widget _moduleCard({
-    required BuildContext context,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required List<ModuleTool> tools,
-    String? recentToolId,
-  }) {
-    return ToolCard(
-      icon: icon,
-      title: title,
-      subtitle: subtitle,
-      onTap: () async {
-        if (recentToolId != null && recentToolId.trim().isNotEmpty) {
-          await _recordRecentTool(recentToolId);
-        }
-        if (!context.mounted) return;
-        await open(
-          context,
-          ModuleMenuScreen(
-            title: title,
-            tools: tools,
-            showHomeButton: true,
-          ),
-        );
-      },
     );
   }
 
@@ -840,86 +468,30 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _recentlyUsedSection() {
-    final recents = _recentTools
-        .where((item) => _recentMeta(item.toolId) != null)
-        .toList(growable: false);
-
-    if (recents.isEmpty) return const SizedBox.shrink();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(2, 0, 2, 10),
-          child: Text(
-            'RECENTLY USED',
-            style: TextStyle(
-              color: Color(0xFFCDA56A),
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.0,
-            ),
-          ),
-        ),
-        SizedBox(
-          height: 130,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemBuilder: (context, index) {
-              final entry = recents[index];
-              final meta = _recentMeta(entry.toolId)!;
-              return SizedBox(
-                width: 188,
-                child: Card(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => _openHomeTool(entry.toolId),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(meta.icon, color: const Color(0xFFCDA56A)),
-                          const SizedBox(height: 8),
-                          Text(meta.title,
-                              style: const TextStyle(
-                                  fontSize: 16, fontWeight: FontWeight.w800)),
-                          const SizedBox(height: 2),
-                          Text(meta.subtitle,
-                              style: const TextStyle(color: Colors.white70)),
-                          const Spacer(),
-                          Text(
-                            _timeAgoLabel(entry.lastUsedMs),
-                            style: const TextStyle(
-                              color: Color(0xFFCDA56A),
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
-            itemCount: recents.length,
-          ),
-        ),
-        const SizedBox(height: 12),
-      ],
-    );
-  }
-
   Widget _weatherGpsCard() {
+    final scheme = Theme.of(context).colorScheme;
+    final activeJob = _activeJob;
+    final setup = activeJob?.drilloutSetup ?? const <String, dynamic>{};
+    final latitude = (setup['locationLatitude'] ?? '').toString().trim().isEmpty
+        ? (setup['gpsLatitude'] ?? setup['latitude'] ?? '').toString().trim()
+        : (setup['locationLatitude'] ?? '').toString().trim();
+    final longitude = (setup['locationLongitude'] ?? '')
+            .toString()
+            .trim()
+            .isEmpty
+        ? (setup['gpsLongitude'] ?? setup['longitude'] ?? '').toString().trim()
+        : (setup['locationLongitude'] ?? '').toString().trim();
+    final coordinatesText =
+        latitude.isEmpty || longitude.isEmpty ? '' : '$latitude, $longitude';
+    final canCopy = coordinatesText.isNotEmpty;
+
     return Container(
       margin: const EdgeInsets.only(top: 6, bottom: 8),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
-        color: const Color(0xFF14181D),
-        border: Border.all(color: const Color(0xFF3A3122)),
+        color: Theme.of(context).cardColor,
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Row(
         children: [
@@ -929,303 +501,65 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.wb_sunny_outlined,
-                        color: Color(0xFFCDA56A), size: 22),
+                    Icon(Icons.place_outlined, color: scheme.primary, size: 22),
                     const SizedBox(width: 8),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Job Weather & GPS',
+                        'Job Coordinates',
                         style: TextStyle(
-                          color: Color(0xFFCDA56A),
+                          color: scheme.primary,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                     ),
                     IconButton(
-                      tooltip: 'Refresh Weather & GPS',
-                      onPressed: _weatherLoading ? null : _refreshWeatherAndGps,
-                      icon: _weatherLoading
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.refresh),
+                      tooltip:
+                          canCopy ? 'Copy Coordinates' : 'No coordinates saved',
+                      onPressed: !canCopy
+                          ? null
+                          : () async {
+                              await Clipboard.setData(
+                                ClipboardData(text: coordinatesText),
+                              );
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Coordinates copied.'),
+                                ),
+                              );
+                            },
+                      icon: const Icon(Icons.copy_outlined),
                     ),
                   ],
                 ),
-                Text(_weatherSummary,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w800)),
+                Text(
+                  activeJob == null
+                      ? 'No active job'
+                      : activeJob.padName.trim().isEmpty
+                          ? activeJob.primaryWell.trim()
+                          : activeJob.padName.trim(),
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w800),
+                ),
                 const SizedBox(height: 2),
-                Text('Wind $_windSummary',
-                    style: const TextStyle(color: Colors.white70)),
+                Text(
+                  coordinatesText.isEmpty
+                      ? 'Set Latitude and Longitude in Job Setup to pin them here.'
+                      : coordinatesText,
+                  style: TextStyle(color: scheme.onSurfaceVariant),
+                ),
                 const SizedBox(height: 2),
-                Text(_locationSummary,
-                    style: const TextStyle(color: Colors.white70)),
-                const SizedBox(height: 2),
-                Text('GPS $_gpsSummary',
-                    style: const TextStyle(color: Colors.white70)),
+                Text(
+                  canCopy
+                      ? 'Tap copy to share by text.'
+                      : 'Coordinates not saved yet.',
+                  style: TextStyle(color: scheme.onSurfaceVariant),
+                ),
               ],
             ),
           ),
         ],
       ),
-    );
-  }
-
-  _HomeRecentItem? _recentForTool(String toolId) {
-    final normalized = toolId.trim().toLowerCase();
-    for (final item in _recentTools) {
-      if (item.toolId == normalized) return item;
-    }
-    return null;
-  }
-
-  List<String> _suggestedFavoriteIds() {
-    final defaults = <String>['production', 'rate', 'charts'];
-    final candidateIds = <String>[];
-
-    for (final item in _recentTools) {
-      if (_recentMeta(item.toolId) == null) continue;
-      if (!_favoriteToolChoices.contains(item.toolId)) continue;
-      if (!candidateIds.contains(item.toolId)) {
-        candidateIds.add(item.toolId);
-      }
-      if (candidateIds.length == _maxFavorites) break;
-    }
-
-    for (final fallback in defaults) {
-      if (candidateIds.length == _maxFavorites) break;
-      if (!candidateIds.contains(fallback)) {
-        candidateIds.add(fallback);
-      }
-    }
-    return candidateIds;
-  }
-
-  List<String> _resolvedFavoriteIds() {
-    if (_favoriteToolIds.isNotEmpty) {
-      return _favoriteToolIds
-          .where(_favoriteToolChoices.contains)
-          .take(_maxFavorites)
-          .toList(growable: false);
-    }
-    return _suggestedFavoriteIds();
-  }
-
-  Future<void> _openFavoritesEditor() async {
-    final selected = List<String>.from(_resolvedFavoriteIds());
-
-    final updated = await showModalBottomSheet<List<String>>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            final available = _favoriteToolChoices
-                .where((id) => !selected.contains(id))
-                .toList(growable: false);
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Edit Favorites',
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Choose up to $_maxFavorites and drag to reorder.',
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 220,
-                      child: ReorderableListView.builder(
-                        itemCount: selected.length,
-                        onReorder: (oldIndex, newIndex) {
-                          setSheetState(() {
-                            if (newIndex > oldIndex) newIndex -= 1;
-                            final item = selected.removeAt(oldIndex);
-                            selected.insert(newIndex, item);
-                          });
-                        },
-                        itemBuilder: (context, index) {
-                          final id = selected[index];
-                          final meta = _recentMeta(id)!;
-                          return ListTile(
-                            key: ValueKey('fav-$id'),
-                            leading:
-                                Icon(meta.icon, color: const Color(0xFFCDA56A)),
-                            title: Text(meta.title),
-                            subtitle: Text(meta.subtitle),
-                            trailing: IconButton(
-                              tooltip: 'Remove',
-                              icon: const Icon(Icons.remove_circle_outline),
-                              onPressed: () {
-                                setSheetState(() {
-                                  selected.removeAt(index);
-                                });
-                              },
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Add Tool',
-                      style: TextStyle(
-                        color: Color(0xFFCDA56A),
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final id in available)
-                          ActionChip(
-                            label: Text(_recentMeta(id)?.title ?? id),
-                            onPressed: selected.length >= _maxFavorites
-                                ? null
-                                : () {
-                                    setSheetState(() {
-                                      selected.add(id);
-                                    });
-                                  },
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(sheetContext).pop(),
-                            child: const Text('Cancel'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: FilledButton(
-                            onPressed: () {
-                              Navigator.of(sheetContext)
-                                  .pop(selected.take(_maxFavorites).toList());
-                            },
-                            child: const Text('Save'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-
-    if (!mounted || updated == null) return;
-    setState(() {
-      _favoriteToolIds = updated;
-    });
-    await _saveFavoriteTools();
-  }
-
-  Widget _favoritesRow() {
-    final candidateIds = _resolvedFavoriteIds();
-
-    return SizedBox(
-      height: 160,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: candidateIds.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final toolId = candidateIds[index];
-          final meta = _recentMeta(toolId)!;
-          final recent = _recentForTool(toolId);
-          return SizedBox(
-            width: 174,
-            child: Card(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () => _openHomeTool(toolId),
-                child: Padding(
-                  padding: const EdgeInsets.all(11),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(meta.icon, color: const Color(0xFFCDA56A), size: 29),
-                      const SizedBox(height: 10),
-                      Text(
-                        meta.title,
-                        style: const TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.w900),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(meta.subtitle,
-                          style: const TextStyle(color: Colors.white70)),
-                      const Spacer(),
-                      Text(
-                        recent == null
-                            ? 'Favorite'
-                            : _timeAgoLabel(recent.lastUsedMs),
-                        style: const TextStyle(
-                          color: Color(0xFFCDA56A),
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _favoritesHeaderRow() {
-    return Row(
-      children: [
-        const Expanded(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(2, 4, 2, 9),
-            child: Text(
-              'FAVORITES',
-              style: TextStyle(
-                color: Color(0xFFCDA56A),
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.2,
-              ),
-            ),
-          ),
-        ),
-        TextButton(
-          onPressed: _openFavoritesEditor,
-          child: const Text(
-            'Edit',
-            style: TextStyle(
-              color: Color(0xFFCDA56A),
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -1307,7 +641,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       itemBuilder: (context, index) {
         final tile = tiles[index];
-        final recent = _recentForTool(tile.id);
         return Card(
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
@@ -1349,7 +682,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const Spacer(),
                   Text(
-                    recent == null ? 'Open' : _timeAgoLabel(recent.lastUsedMs),
+                    'Open',
                     style: const TextStyle(
                       color: Color(0xFFCDA56A),
                       fontWeight: FontWeight.w700,
@@ -1479,9 +812,6 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           children: [
             _activeJobCard(),
-            _recentlyUsedSection(),
-            _favoritesHeaderRow(),
-            _favoritesRow(),
             const SizedBox(height: 8),
             _sectionLabel('MODULES'),
             _moduleGrid(),

@@ -74,6 +74,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   final leaseName = TextEditingController();
   final county = TextEditingController();
   final state = TextEditingController(text: 'Oklahoma');
+  final jobLatitude = TextEditingController();
+  final jobLongitude = TextEditingController();
   final dateStarted = TextEditingController(
     text: DateFormat('MM/dd/yyyy').format(DateTime.now()),
   );
@@ -164,6 +166,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
         leaseName,
         county,
         state,
+        jobLatitude,
+        jobLongitude,
         dateStarted,
         sandSeparators,
         plugCatchers,
@@ -474,6 +478,20 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
 
   void _applyDrilloutSetupToForm(JobSetup job) {
     final setup = job.drilloutSetup;
+    jobLatitude.text = _legacyString(
+      setup['locationLatitude'],
+      fallback: _legacyString(
+        setup['gpsLatitude'],
+        fallback: _legacyString(setup['latitude']),
+      ),
+    );
+    jobLongitude.text = _legacyString(
+      setup['locationLongitude'],
+      fallback: _legacyString(
+        setup['gpsLongitude'],
+        fallback: _legacyString(setup['longitude']),
+      ),
+    );
     _drilloutWellName.text = _legacyString(
       setup['wellName'],
       fallback: job.primaryWell,
@@ -612,6 +630,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   void _resetDrilloutSetupForNewJob() {
     final active = _activeJob;
     _drilloutWellName.text = active?.primaryWell ?? '';
+    jobLatitude.clear();
+    jobLongitude.clear();
     _drilloutManifoldPsi.clear();
     _drilloutCasingPsi.clear();
     _drilloutPumpPsi.clear();
@@ -636,6 +656,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     final payload = <String, dynamic>{
       'wellName': _drilloutWellName.text.trim(),
       'locationPad': padName.text.trim(),
+      'locationLatitude': jobLatitude.text.trim(),
+      'locationLongitude': jobLongitude.text.trim(),
       'manifoldPsi': _drilloutManifoldPsi.text.trim(),
       'casingPsi': _drilloutCasingPsi.text.trim(),
       'pumpPsi': _drilloutPumpPsi.text.trim(),
@@ -1095,6 +1117,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     leaseName.clear();
     county.clear();
     state.text = 'Oklahoma';
+    jobLatitude.clear();
+    jobLongitude.clear();
     dateStarted.text = DateFormat('MM/dd/yyyy').format(DateTime.now());
     wells.clear();
     wellIds.clear();
@@ -1180,6 +1204,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     );
     final mergedSetup =
         Map<String, dynamic>.from(_activeJob?.drilloutSetup ?? const {});
+    mergedSetup['locationLatitude'] = jobLatitude.text.trim();
+    mergedSetup['locationLongitude'] = jobLongitude.text.trim();
     mergedSetup['flareEcdGasRateEnabled'] = flareEcdGasRateEnabled;
     mergedSetup['includeNotesSection'] = includeNotesSection;
     mergedSetup['gasRateSource'] = gasRateSource;
@@ -1956,6 +1982,28 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           decoration: const InputDecoration(labelText: 'County'),
         ),
         const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: jobLatitude,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Latitude'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                controller: jobLongitude,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Longitude'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
         TextField(
           controller: state,
           decoration: const InputDecoration(labelText: 'State'),
@@ -2529,6 +2577,28 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
         TextField(
           controller: padName,
           decoration: const InputDecoration(labelText: 'Location / Pad'),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: jobLatitude,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Latitude'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                controller: jobLongitude,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Longitude'),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         CheckboxListTile(

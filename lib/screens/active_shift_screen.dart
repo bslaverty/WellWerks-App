@@ -157,7 +157,7 @@ class _ActiveShiftScreenState extends State<ActiveShiftScreen> {
         padding: const EdgeInsets.all(18),
         children: [
           Card(
-            color: Theme.of(context).colorScheme.surface,
+            color: Theme.of(context).cardColor,
             child: Padding(
               padding: const EdgeInsets.all(18),
               child: Column(
@@ -266,7 +266,7 @@ class _ActiveShiftScreenState extends State<ActiveShiftScreen> {
                     child: Text(
                         'No rounds saved yet. Tap Quick Round to enter your first set of readings.'))),
           ..._readings.take(10).map((r) => Card(
-                color: Theme.of(context).colorScheme.surface,
+                color: Theme.of(context).cardColor,
                 child: ListTile(
                   title: Text(r.roundLabel.isEmpty
                       ? DateFormat('h:mm a').format(r.timestamp)
