@@ -451,43 +451,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       for (final tab in widget.homeTabs!) {
         addUnique(tab);
       }
-    } else {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_homeTabsPrefKey) ?? '';
-      if (raw.trim().isNotEmpty) {
-        try {
-          final decoded = jsonDecode(raw);
-          if (decoded is List) {
-            for (final item in decoded) {
-              if (item is! Map) continue;
-              final map = Map<String, dynamic>.from(item);
-              final calculatorId =
-                  (map['calculatorId'] as String? ?? '').trim();
-              final instanceId = (map['instanceId'] as String? ?? '').trim();
-              if (calculatorId.isEmpty || instanceId.isEmpty) continue;
-
-              RateCalculatorConfig? config =
-                  RateCalculatorConfig.fromStorageId(calculatorId);
-              if (config == null) {
-                final available =
-                    widget.availableConfigs ?? const <RateCalculatorConfig>[];
-                for (final candidate in available) {
-                  if (_calculatorIdForConfig(candidate) == calculatorId) {
-                    config = candidate;
-                    break;
-                  }
-                }
-              }
-              if (config == null) continue;
-              addUnique(
-                HomeRateTabSpec(config: config, instanceId: instanceId),
-              );
-            }
-          }
-        } catch (_) {
-          // Ignore malformed saved tabs.
-        }
-      }
     }
 
     if (!tabs.any((tab) => tab.instanceId == _instanceStorageId)) {
@@ -548,80 +511,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     return tabs;
   }
 
-  int _currentHomeTabIndex(List<HomeRateTabSpec> tabs) {
-    final byInstance = tabs.indexWhere(
-      (tab) => tab.instanceId == _instanceStorageId,
-    );
-    if (byInstance >= 0) return byInstance;
-
-    final byConfig = tabs.indexWhere(
-      (tab) => _calculatorIdForConfig(tab.config) == _calculatorStorageId,
-    );
-    return byConfig >= 0 ? byConfig : 0;
-  }
-
-  List<RateCalculatorConfig> get _selectorConfigs {
-    final configs = <RateCalculatorConfig>[];
-
-    void addUnique(RateCalculatorConfig config) {
-      final calculatorId = _calculatorIdForConfig(config);
-      final exists = configs.any(
-        (existing) => _calculatorIdForConfig(existing) == calculatorId,
-      );
-      if (!exists) {
-        configs.add(config);
-      }
-    }
-
-    addUnique(widget.config);
-    for (final config
-        in widget.availableConfigs ?? const <RateCalculatorConfig>[]) {
-      addUnique(config);
-    }
-
-    if (configs.length == 1 && widget.homeMultiMode) {
-      for (final tab in _resolvedHomeTabs()) {
-        addUnique(tab.config);
-      }
-    }
-
-    return configs;
-  }
-
-  int _selectedSelectorIndex(List<RateCalculatorConfig> configs) {
-    final currentId = _calculatorIdForConfig(widget.config);
-    final index = configs.indexWhere(
-      (config) => _calculatorIdForConfig(config) == currentId,
-    );
-    return index >= 0 ? index : 0;
-  }
-
-  Future<void> _switchCalculatorConfig(RateCalculatorConfig config) async {
-    final calculatorId = _calculatorIdForConfig(config);
-    String? instanceId;
-    if (widget.homeMultiMode) {
-      final activeTimer = await _rateTimerService.loadActiveTimerForCalculator(
-        calculatorId,
-      );
-      instanceId = activeTimer?.instanceId.isNotEmpty == true
-          ? activeTimer!.instanceId
-          : _sessionService.sessionKeyForCalculator(calculatorId);
-    }
-
-    if (!mounted) return;
-    await Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => RateCalculatorScreen(
-          config: config,
-          instanceId: instanceId,
-          homeMultiMode: widget.homeMultiMode,
-          availableConfigs: widget.availableConfigs,
-          homeTabs: widget.homeTabs,
-        ),
-      ),
-    );
-  }
-
   void _openHomeTab(int index) {
     final tabs = _resolvedHomeTabs();
     if (index < 0 || index >= tabs.length) return;
@@ -630,9 +519,12 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     _homeTabs = tabs;
     _persistHomeTabsState();
 
+    // Use an instant replacement to avoid a visual flash when swapping tanks.
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => RateCalculatorScreen(
+      PageRouteBuilder<void>(
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+        pageBuilder: (_, __, ___) => RateCalculatorScreen(
           config: selected.config,
           instanceId: selected.instanceId,
           homeMultiMode: true,
@@ -699,117 +591,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     );
   }
 
-  Widget _tankSelectionSection() {
-    final configs = _selectorConfigs;
-    if (configs.length <= 1) return const SizedBox.shrink();
-
-    final currentIndex = _selectedSelectorIndex(configs);
-    final currentConfig = configs[currentIndex];
-    final tankSubtitle = currentConfig.usesChart
-        ? 'Chart-based tank • ${currentConfig.chartId ?? ''}'
-        : 'Editable tank factor';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: Theme.of(context).cardColor,
-            border: Border.all(
-              color: Theme.of(context)
-                  .colorScheme
-                  .outlineVariant
-                  .withValues(alpha: 0.95),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'TANK SELECTION',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<RateCalculatorConfig>(
-                      value: currentConfig,
-                      decoration: const InputDecoration(labelText: 'Tank'),
-                      items: configs
-                          .map(
-                            (config) => DropdownMenuItem<RateCalculatorConfig>(
-                              value: config,
-                              child: Text(config.title),
-                            ),
-                          )
-                          .toList(growable: false),
-                      onChanged: (selected) {
-                        if (selected == null) return;
-                        final selectedId = _calculatorIdForConfig(selected);
-                        final currentId = _calculatorIdForConfig(currentConfig);
-                        if (selectedId == currentId) return;
-                        _switchCalculatorConfig(selected);
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  SizedBox(
-                    width: 120,
-                    child: FilledButton(
-                      onPressed: widget.homeMultiMode &&
-                              (widget.availableConfigs?.isNotEmpty ?? false)
-                          ? _openAddAnotherTankPicker
-                          : () =>
-                              _switchCalculatorConfig(configs[currentIndex]),
-                      child: Text(
-                        widget.homeMultiMode &&
-                                (widget.availableConfigs?.isNotEmpty ?? false)
-                            ? 'Add Tank'
-                            : 'Open',
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                tankSubtitle,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 12,
-                ),
-              ),
-              if (widget.homeMultiMode) ...[
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _selectorChip(
-                      currentConfig.usesChart ? 'Chart tank' : 'Custom factor',
-                    ),
-                    if (widget.availableConfigs?.isNotEmpty ?? false)
-                      _selectorChip('${configs.length} tanks available'),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-      ],
-    );
-  }
-
   String _activeTankTimerText(HomeRateTabSpec tab) {
     final timer = _homeTabTimers[tab.instanceId];
     if (timer == null) return 'No timer';
@@ -841,18 +622,30 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'ACTIVE CALCULATORS',
-                style: TextStyle(
-                  color: scheme.onSurfaceVariant,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8,
-                ),
+              Row(
+                children: [
+                  Text(
+                    'ACTIVE CALCULATORS',
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  const Spacer(),
+                  FilledButton.icon(
+                    onPressed: (widget.availableConfigs?.isNotEmpty ?? false)
+                        ? _openAddAnotherTankPicker
+                        : null,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Add Tank'),
+                  ),
+                ],
               ),
               const SizedBox(height: 10),
               SizedBox(
-                height: 92,
+                height: 82,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: tabs.length,
@@ -898,17 +691,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                                 fontSize: 12,
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              isCurrent ? 'Current' : 'Tap to open',
-                              style: TextStyle(
-                                color: isCurrent
-                                    ? scheme.primary
-                                    : scheme.onSurfaceVariant,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
                           ],
                         ),
                       ),
@@ -921,27 +703,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         ),
         const SizedBox(height: 12),
       ],
-    );
-  }
-
-  Widget _selectorChip(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.20),
-        ),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: Theme.of(context).colorScheme.primary,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
     );
   }
 
@@ -3377,7 +3138,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
               child: ListView(
                 padding: const EdgeInsets.all(18),
                 children: [
-                  _tankSelectionSection(),
                   _activeTanksSection(),
                   if (!widget.config.usesChart)
                     WwNumberField(
