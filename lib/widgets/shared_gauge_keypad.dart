@@ -70,6 +70,7 @@ class SharedGaugeKeypad extends StatelessWidget {
             _keypadRow([
               _fractionButton(context, '3/4'),
               _fractionButton(context, '7/8'),
+              _fractionButton(context, '±'),
               _fractionButton(context, 'Space'),
               _fractionButton(context, 'Backspace', onPressed: onBackspace),
             ]),

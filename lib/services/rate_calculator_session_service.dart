@@ -43,6 +43,8 @@ class RateCalculatorSession {
     required this.usesChart,
     required this.startGauge,
     required this.endGauge,
+    this.fluidHauledEnabled = false,
+    this.fluidHauledBarrels = '',
     required this.minutes,
     required this.factor,
     required this.rateDisplayUnit,
@@ -70,6 +72,8 @@ class RateCalculatorSession {
   final bool usesChart;
   final String startGauge;
   final String endGauge;
+  final bool fluidHauledEnabled;
+  final String fluidHauledBarrels;
   final String minutes;
   final String factor;
   final String rateDisplayUnit;
@@ -93,6 +97,8 @@ class RateCalculatorSession {
   bool get hasUserData {
     return startGauge.trim().isNotEmpty ||
         endGauge.trim().isNotEmpty ||
+        fluidHauledEnabled ||
+        fluidHauledBarrels.trim().isNotEmpty ||
         bblPerMin != null ||
         bblPerHr != null ||
         bblPerDay != null ||
@@ -116,6 +122,8 @@ class RateCalculatorSession {
       'usesChart': usesChart,
       'startGauge': startGauge,
       'endGauge': endGauge,
+      'fluidHauledEnabled': fluidHauledEnabled,
+      'fluidHauledBarrels': fluidHauledBarrels,
       'minutes': minutes,
       'factor': factor,
       'rateDisplayUnit': rateDisplayUnit,
@@ -170,6 +178,8 @@ class RateCalculatorSession {
       usesChart: map['usesChart'] as bool? ?? true,
       startGauge: (map['startGauge'] as String? ?? '').trim(),
       endGauge: (map['endGauge'] as String? ?? '').trim(),
+      fluidHauledEnabled: map['fluidHauledEnabled'] as bool? ?? false,
+      fluidHauledBarrels: (map['fluidHauledBarrels'] as String? ?? '').trim(),
       minutes: (map['minutes'] as String? ?? '').trim(),
       factor: (map['factor'] as String? ?? '').trim(),
       rateDisplayUnit: (map['rateDisplayUnit'] as String? ?? 'bbl_min').trim(),

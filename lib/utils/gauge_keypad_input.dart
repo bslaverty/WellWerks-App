@@ -16,6 +16,10 @@ class GaugeKeypadInput {
   }
 
   static TextEditingValue insert(TextEditingValue value, String raw) {
+    if (raw == '±') {
+      return toggleSign(value);
+    }
+
     final text = value.text;
     final start =
         value.selection.start < 0 ? text.length : value.selection.start;
@@ -28,6 +32,28 @@ class GaugeKeypadInput {
       text: next,
       selection: TextSelection.collapsed(
           offset: _safeOffset(next, start + insertText.length)),
+    );
+  }
+
+  static TextEditingValue toggleSign(TextEditingValue value) {
+    final text = value.text;
+    if (text.isEmpty) {
+      return const TextEditingValue(
+        text: '-',
+        selection: TextSelection.collapsed(offset: 1),
+      );
+    }
+
+    final leadingSpaces = text.length - text.trimLeft().length;
+    final prefix = ''.padLeft(leadingSpaces, ' ');
+    final trimmed = text.trimLeft();
+    final toggled =
+        trimmed.startsWith('-') ? trimmed.substring(1).trimLeft() : '-$trimmed';
+    final next = '$prefix$toggled';
+
+    return TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
     );
   }
 

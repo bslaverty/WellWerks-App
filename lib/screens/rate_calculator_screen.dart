@@ -214,6 +214,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
   final startGauge = TextEditingController();
   final endGauge = TextEditingController();
+  final fluidHauled = TextEditingController();
   final minutes = TextEditingController();
   late final TextEditingController factor;
   _KeypadTarget? _activeKeypadTarget;
@@ -228,6 +229,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   _RateDisplayUnit _rateDisplayUnit = _RateDisplayUnit.bblPerMin;
   bool _rateLogEnabled = false;
   bool _rateLogExpanded = false;
+  bool _fluidHauledEnabled = false;
   final List<_RateLogEntry> _rateLogEntries = <_RateLogEntry>[];
   DateTime? _timerEndsAt;
   RateTimerState? _activeTimerState;
@@ -252,6 +254,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         text: (widget.config.defaultFactor ?? 1.67).toString());
     startGauge.addListener(_handleSessionFieldChanged);
     endGauge.addListener(_handleSessionFieldChanged);
+    fluidHauled.addListener(_handleSessionFieldChanged);
     factor.addListener(_handleSessionFieldChanged);
     minutes.addListener(_handleMinutesChanged);
     _initializeSession();
@@ -675,6 +678,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     final hasCurrentTimer = _activeTimerState?.instanceId == _instanceStorageId;
     return startGauge.text.trim().isNotEmpty ||
         endGauge.text.trim().isNotEmpty ||
+        (widget.homeMultiMode &&
+            (_fluidHauledEnabled || fluidHauled.text.trim().isNotEmpty)) ||
         customFactorEntered ||
         bblPerMin != null ||
         bblPerHr != null ||
@@ -735,6 +740,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       usesChart: widget.config.usesChart,
       startGauge: startGauge.text,
       endGauge: endGauge.text,
+      fluidHauledEnabled: widget.homeMultiMode ? _fluidHauledEnabled : false,
+      fluidHauledBarrels: widget.homeMultiMode ? fluidHauled.text : '',
       minutes: minutes.text,
       factor: factor.text,
       rateDisplayUnit:
@@ -790,6 +797,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       if (session.minutes.trim().isNotEmpty) {
         minutes.text = session.minutes;
       }
+      fluidHauled.text = widget.homeMultiMode ? session.fluidHauledBarrels : '';
+      _fluidHauledEnabled = widget.homeMultiMode && session.fluidHauledEnabled;
       if (session.factor.trim().isNotEmpty) {
         factor.text = session.factor;
       }
@@ -2313,6 +2322,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       _liveClockElapsedSeconds = 0;
       startGauge.clear();
       endGauge.clear();
+      fluidHauled.clear();
+      _fluidHauledEnabled = false;
       bblPerMin = null;
       bblPerHr = null;
       bblPerDay = null;
@@ -2334,6 +2345,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     required double startBarrels,
     required double endBarrels,
     required double barrelChange,
+    required double fluidHauledBarrels,
+    required double adjustedBarrelChange,
     required double bblPerMinute,
     required double bblPerHour,
   }) async {
@@ -2395,6 +2408,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         'rateCalculatorStartBarrels': startBarrels,
         'rateCalculatorEndBarrels': endBarrels,
         'rateCalculatorBarrelChange': barrelChange,
+        'rateCalculatorFluidHauledBarrels': fluidHauledBarrels,
+        'rateCalculatorAdjustedBarrelChange': adjustedBarrelChange,
         'rateCalculatorBblPerMinute': bblPerMinute,
         'rateCalculatorBblPerHour': bblPerHour,
         'rateCalculatorSelectedRateValue': selectedRateValue,
@@ -2491,6 +2506,23 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
     final startInches = parseGauge(startText);
     final endInches = parseGauge(endText);
+    final hasNegativeGauge = startInches < 0 || endInches < 0;
+    final hauledText = fluidHauled.text.trim();
+    final fluidHauledBarrels =
+        _fluidHauledEnabled ? (double.tryParse(hauledText) ?? 0) : 0.0;
+
+    if (_fluidHauledEnabled && fluidHauledBarrels < 0) {
+      setState(() => error = 'Fluid hauled must be zero or greater.');
+      return;
+    }
+
+    if (hasNegativeGauge && (!_fluidHauledEnabled || fluidHauledBarrels <= 0)) {
+      setState(() {
+        error =
+            'Negative gauge detected. Enable Include Fluid Hauled and enter a positive hauled volume to calculate.';
+      });
+      return;
+    }
 
     final activeChart = chart;
     if (activeChart != null) {
@@ -2507,7 +2539,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     final startBbl = barrelsAt(startInches);
     final endBbl = barrelsAt(endInches);
     final change = (endBbl - startBbl).abs();
-    final perMin = change / elapsedMinutes;
+    final adjustedChange = change + fluidHauledBarrels;
+    final perMin = adjustedChange / elapsedMinutes;
     final perHour = perMin * 60;
 
     _countdownTimer?.cancel();
@@ -2552,6 +2585,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         startBarrels: startBbl,
         endBarrels: endBbl,
         barrelChange: change,
+        fluidHauledBarrels: fluidHauledBarrels,
+        adjustedBarrelChange: adjustedChange,
         bblPerMinute: perMin,
         bblPerHour: perHour,
       );
@@ -2575,10 +2610,12 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     _liveClockTicker?.cancel();
     startGauge.removeListener(_handleSessionFieldChanged);
     endGauge.removeListener(_handleSessionFieldChanged);
+    fluidHauled.removeListener(_handleSessionFieldChanged);
     factor.removeListener(_handleSessionFieldChanged);
     minutes.removeListener(_handleMinutesChanged);
     startGauge.dispose();
     endGauge.dispose();
+    fluidHauled.dispose();
     minutes.dispose();
     factor.dispose();
     super.dispose();
@@ -2935,6 +2972,33 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                     onTap: () => _setActiveKeypad(_KeypadTarget.end),
                     onChanged: (_) => setState(() {}),
                   ),
+                  if (widget.homeMultiMode) ...[
+                    SwitchListTile.adaptive(
+                      value: _fluidHauledEnabled,
+                      onChanged: (value) {
+                        setState(() {
+                          _fluidHauledEnabled = value;
+                          if (!value) {
+                            fluidHauled.clear();
+                          }
+                        });
+                        _persistCalculatorSession();
+                      },
+                      title: const Text('Include Fluid Hauled'),
+                      subtitle: const Text(
+                        'Optionally add hauled-off volume to the total barrel change.',
+                      ),
+                    ),
+                    if (_fluidHauledEnabled)
+                      WwNumberField(
+                        label: 'Fluid Hauled (BBL)',
+                        helperText:
+                            'Optional hauled volume to add to gauge-based barrel change.',
+                        controller: fluidHauled,
+                        allowDecimal: true,
+                        onChanged: (_) => setState(() {}),
+                      ),
+                  ],
                   if (!_useLiveClock)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 14),
