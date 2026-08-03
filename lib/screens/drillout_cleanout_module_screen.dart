@@ -403,7 +403,7 @@ class _DrilloutCleanoutModuleScreenState
     );
   }
 
-  Widget _recentEntries() {
+  Widget _recentEntriesCard() {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
@@ -642,7 +642,7 @@ class _DrilloutCleanoutModuleScreenState
                 _headerBanner(),
                 _workflowOverview(),
                 _quickAccess(),
-                _recentEntries(),
+                _recentEntriesCard(),
                 const SizedBox(height: 84),
               ],
             ),

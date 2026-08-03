@@ -289,6 +289,27 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
     );
   }
 
+  Widget _jobMetaChip({
+    required IconData icon,
+    required String text,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: scheme.primary, size: 16),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: TextStyle(
+            color: scheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _overviewCard() {
     final scheme = Theme.of(context).colorScheme;
     final latest = _latestRow;
