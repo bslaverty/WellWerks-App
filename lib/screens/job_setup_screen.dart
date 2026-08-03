@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 
 import '../models/drillout_tank_configuration.dart';
@@ -56,6 +57,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   bool _loading = true;
   bool _editing = false;
   bool _startingFreshJob = false;
+  bool _gpsFilling = false;
   JobSetup? _activeJob;
   ActiveWorkflowMode _activeWorkflowMode = ActiveWorkflowMode.production;
 
@@ -151,6 +153,56 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
 
   int _i(TextEditingController controller) {
     return int.tryParse(controller.text.trim()) ?? 0;
+  }
+
+  String _formatCoordinate(double value) {
+    return value.toStringAsFixed(6);
+  }
+
+  Future<void> _fillCoordinatesFromCurrentLocation() async {
+    if (_gpsFilling) return;
+    setState(() => _gpsFilling = true);
+    try {
+      final locationEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!locationEnabled) {
+        throw StateError('Location services are disabled.');
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        throw StateError('Location permission denied.');
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        jobLatitude.text = _formatCoordinate(position.latitude);
+        jobLongitude.text = _formatCoordinate(position.longitude);
+      });
+      _scheduleAutoSave();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Coordinates captured from current GPS.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      final message = error is StateError
+          ? error.message
+          : 'Unable to capture current GPS coordinates.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message.toString())),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() => _gpsFilling = false);
+    }
   }
 
   @override
@@ -2003,6 +2055,21 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
             ),
           ],
         ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: _gpsFilling ? null : _fillCoordinatesFromCurrentLocation,
+            icon: _gpsFilling
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.my_location),
+            label: Text(_gpsFilling ? 'Capturing GPS...' : 'Use Current GPS'),
+          ),
+        ),
         const SizedBox(height: 12),
         TextField(
           controller: state,
@@ -2599,6 +2666,21 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: _gpsFilling ? null : _fillCoordinatesFromCurrentLocation,
+            icon: _gpsFilling
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.my_location),
+            label: Text(_gpsFilling ? 'Capturing GPS...' : 'Use Current GPS'),
+          ),
         ),
         const SizedBox(height: 12),
         CheckboxListTile(

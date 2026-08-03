@@ -209,6 +209,32 @@ class _JsaScreenState extends State<JsaScreen>
       if (well.isNotEmpty) {
         _wellName.text = well;
       }
+      if (_county.text.trim().isEmpty && targetJob.county.trim().isNotEmpty) {
+        _county.text = targetJob.county.trim();
+      }
+      if (_cityState.text.trim().isEmpty && targetJob.state.trim().isNotEmpty) {
+        _cityState.text = targetJob.state.trim();
+      }
+
+      final setup = targetJob.drilloutSetup;
+      final latitude = (setup['locationLatitude'] ?? '')
+              .toString()
+              .trim()
+              .isEmpty
+          ? (setup['gpsLatitude'] ?? setup['latitude'] ?? '').toString().trim()
+          : (setup['locationLatitude'] ?? '').toString().trim();
+      final longitude =
+          (setup['locationLongitude'] ?? '').toString().trim().isEmpty
+              ? (setup['gpsLongitude'] ?? setup['longitude'] ?? '')
+                  .toString()
+                  .trim()
+              : (setup['locationLongitude'] ?? '').toString().trim();
+      if (latitude.isNotEmpty && longitude.isNotEmpty) {
+        final pinnedCoordinates = '$latitude, $longitude';
+        if (_gpsCoordinates.text.trim().isEmpty || _settings.jsaAutoLocation) {
+          _gpsCoordinates.text = pinnedCoordinates;
+        }
+      }
     }
 
     if (workflow == ActiveWorkflowMode.production) {

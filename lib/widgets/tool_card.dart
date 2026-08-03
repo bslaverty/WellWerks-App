@@ -17,24 +17,56 @@ class ToolCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Card(
-      color: Theme.of(context).cardColor,
-      shape: RoundedRectangleBorder(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: scheme.primary.withValues(alpha: 0.35)),
-      ),
-      child: ListTile(
-        minVerticalPadding: 16,
-        leading: Icon(icon, color: scheme.primary, size: 30),
-        title: Text(
-          title,
-          style: TextStyle(color: scheme.primary, fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(color: scheme.onSurfaceVariant),
-        ),
-        trailing: const Icon(Icons.chevron_right),
         onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, color: scheme.primary, size: 24),
+                  const Spacer(),
+                  Icon(
+                    Icons.chevron_right,
+                    color: scheme.onSurfaceVariant,
+                    size: 20,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                title,
+                style: TextStyle(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 20,
+                  height: 1.05,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 13,
+                  height: 1.2,
+                ),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                'Open',
+                style: TextStyle(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

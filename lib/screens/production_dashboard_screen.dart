@@ -111,28 +111,57 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
     return _shift.header.pad.trim();
   }
 
+  BoxDecoration _homeCardDecoration(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return BoxDecoration(
+      borderRadius: BorderRadius.circular(16),
+      color: Theme.of(context).cardColor,
+      border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.95)),
+    );
+  }
+
   Widget _activeJobCard(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     if (!_hasActiveJobContext) {
-      return Card(
+      return Container(
         margin: const EdgeInsets.only(bottom: 14),
+        decoration: _homeCardDecoration(context),
         child: Padding(
           padding: const EdgeInsets.all(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Active Job',
-                style: TextStyle(
-                  color: scheme.primary,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                ),
+              Row(
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(Icons.work_outline, color: scheme.primary),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Active Job',
+                    style: TextStyle(
+                      color: scheme.primary,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 'No active job selected',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                style: TextStyle(
+                  color: scheme.onSurface,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 14),
               Align(
@@ -152,8 +181,9 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
     final companyName = _activeCompanyName;
     final padName = _activePadName;
 
-    return Card(
+    return Container(
       margin: const EdgeInsets.only(bottom: 14),
+      decoration: _homeCardDecoration(context),
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(
@@ -273,20 +303,43 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
           _hero(context),
           if (_workflowMode == ActiveWorkflowMode.production)
             _activeJobCard(context),
-          Card(
+          Container(
             margin: const EdgeInsets.only(bottom: 14),
+            decoration: _homeCardDecoration(context),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Production Workflow',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  Row(
+                    children: [
+                      Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          Icons.alt_route,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Production Workflow',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   Text(
