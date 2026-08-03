@@ -122,6 +122,30 @@ class AppThemeCatalog {
     subtleText: Color(0xFFD6D6D6),
   );
 
+  static const okcThunder = AppThemeOption(
+    id: 'okc_thunder',
+    label: 'OKC Thunder',
+    brightness: Brightness.dark,
+    background: Color(0xFF0A1A2F),
+    surface: Color(0xFF123057),
+    appBarBackground: Color(0xFF0A213D),
+    accent: Color(0xFFEF7D00),
+    text: Colors.white,
+    subtleText: Color(0xFFC8D5E8),
+  );
+
+  static const kcChiefs = AppThemeOption(
+    id: 'kc_chiefs',
+    label: 'KC Chiefs',
+    brightness: Brightness.dark,
+    background: Color(0xFF1A0005),
+    surface: Color(0xFF3A0914),
+    appBarBackground: Color(0xFF220008),
+    accent: Color(0xFFFFB612),
+    text: Colors.white,
+    subtleText: Color(0xFFF1CDD6),
+  );
+
   static const options = <AppThemeOption>[
     wellWerksDefault,
     negative,
@@ -131,6 +155,8 @@ class AppThemeCatalog {
     ou,
     osu,
     highVisibility,
+    okcThunder,
+    kcChiefs,
   ];
 
   static AppThemeOption fromId(String id) {

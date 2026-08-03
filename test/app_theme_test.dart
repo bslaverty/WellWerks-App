@@ -5,7 +5,7 @@ import 'package:wellwerks/theme/app_theme.dart';
 
 void main() {
   group('AppThemeCatalog options', () {
-    test('includes the expected eight themes and labels', () {
+    test('includes the expected theme ids and labels', () {
       expect(
         AppThemeCatalog.options.map((theme) => theme.id).toList(),
         <String>[
@@ -17,6 +17,8 @@ void main() {
           'ou',
           'osu',
           'high_vis',
+          'okc_thunder',
+          'kc_chiefs',
         ],
       );
 
@@ -31,6 +33,8 @@ void main() {
           'OU',
           'OSU',
           'High Vis',
+          'OKC Thunder',
+          'KC Chiefs',
         ],
       );
     });
@@ -64,6 +68,11 @@ void main() {
       expect(theme.id, 'high_vis');
       expect(theme.accent.computeLuminance(), greaterThan(0.7));
       expect(theme.background.computeLuminance(), lessThan(0.02));
+    });
+
+    test('team themes exist with expected primary accents', () {
+      expect(AppThemeCatalog.okcThunder.accent, const Color(0xFFEF7D00));
+      expect(AppThemeCatalog.kcChiefs.accent, const Color(0xFFFFB612));
     });
   });
 

@@ -1158,6 +1158,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   DropdownMenuItem(value: 'ou', child: Text('OU')),
                   DropdownMenuItem(value: 'osu', child: Text('OSU')),
                   DropdownMenuItem(value: 'high_vis', child: Text('High Vis')),
+                  DropdownMenuItem(
+                    value: 'okc_thunder',
+                    child: Text('OKC Thunder'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'kc_chiefs',
+                    child: Text('KC Chiefs'),
+                  ),
                 ],
                 onChanged: (value) {
                   if (value == null) return;

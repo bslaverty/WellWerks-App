@@ -1,5 +1,11 @@
-import 'package:flutter/material.dart';
+import 'dart:convert';
 
+import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../models/job_setup.dart';
 import '../widgets/app_header.dart';
 import '../widgets/tool_card.dart';
 import '../services/app_settings_service.dart';
@@ -27,6 +33,30 @@ import 'drillout_cleanout_module_screen.dart';
 import 'flywheel_diesel_tank_screen.dart';
 import 'operations_log_screen.dart';
 
+class _HomeRecentItem {
+  const _HomeRecentItem({
+    required this.toolId,
+    required this.lastUsedMs,
+  });
+
+  final String toolId;
+  final int lastUsedMs;
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'toolId': toolId,
+      'lastUsedMs': lastUsedMs,
+    };
+  }
+
+  factory _HomeRecentItem.fromJson(Map<String, dynamic> map) {
+    return _HomeRecentItem(
+      toolId: (map['toolId'] as String? ?? '').trim(),
+      lastUsedMs: (map['lastUsedMs'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -35,6 +65,20 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const _recentToolsPrefKey = 'wellwerks_home_recent_tools_v1';
+  static const _favoriteToolsPrefKey = 'wellwerks_home_favorite_tools_v1';
+  static const _maxRecentTools = 6;
+  static const _maxFavorites = 3;
+  static const List<String> _favoriteToolChoices = <String>[
+    'production',
+    'completions',
+    'rigup',
+    'rate',
+    'jsa',
+    'charts',
+    'history',
+  ];
+
   final _jobStorage = JobStorageService();
   final _recoveryState = RecoveryStateService();
   final _rateTimerService = RateTimerService();
@@ -42,6 +86,13 @@ class _HomeScreenState extends State<HomeScreen> {
   final _rateTimerNotifications = RateTimerNotificationService.instance;
 
   bool _loading = true;
+  bool _weatherLoading = false;
+  String _weatherSummary = '--';
+  String _windSummary = '--';
+  String _gpsSummary = '--';
+  String _locationSummary = '--';
+  List<_HomeRecentItem> _recentTools = const <_HomeRecentItem>[];
+  List<String> _favoriteToolIds = const <String>[];
 
   @override
   void initState() {
@@ -73,6 +124,241 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     _handlePendingRateTimerAction();
     _handlePendingEstimatedStsAction();
+    _loadFavoriteTools();
+    _loadRecentTools();
+    _refreshWeatherAndGps();
+  }
+
+  JobSetup? get _activeJob => _jobStorage.activeJobListenable.value;
+
+  Future<void> _loadRecentTools() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_recentToolsPrefKey) ?? '';
+    if (raw.trim().isEmpty) return;
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      final loaded = <_HomeRecentItem>[];
+      for (final item in decoded) {
+        if (item is! Map) continue;
+        final mapped = Map<String, dynamic>.from(item);
+        final recent = _HomeRecentItem.fromJson(mapped);
+        if (recent.toolId.isEmpty || recent.lastUsedMs <= 0) continue;
+        loaded.add(recent);
+      }
+      loaded.sort((a, b) => b.lastUsedMs.compareTo(a.lastUsedMs));
+      if (!mounted) return;
+      setState(() {
+        _recentTools = loaded.take(_maxRecentTools).toList(growable: false);
+      });
+    } catch (_) {
+      // Ignore malformed saved recents.
+    }
+  }
+
+  Future<void> _saveRecentTools() async {
+    final prefs = await SharedPreferences.getInstance();
+    final payload =
+        _recentTools.map((item) => item.toJson()).toList(growable: false);
+    await prefs.setString(_recentToolsPrefKey, jsonEncode(payload));
+  }
+
+  Future<void> _loadFavoriteTools() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_favoriteToolsPrefKey) ?? '';
+    if (raw.trim().isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      final loaded = <String>[];
+      for (final item in decoded) {
+        final id = (item?.toString() ?? '').trim().toLowerCase();
+        if (id.isEmpty || !_favoriteToolChoices.contains(id)) continue;
+        if (loaded.contains(id)) continue;
+        loaded.add(id);
+        if (loaded.length >= _maxFavorites) break;
+      }
+      if (!mounted) return;
+      setState(() {
+        _favoriteToolIds = loaded;
+      });
+    } catch (_) {
+      // Ignore malformed saved favorites.
+    }
+  }
+
+  Future<void> _saveFavoriteTools() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_favoriteToolsPrefKey, jsonEncode(_favoriteToolIds));
+  }
+
+  Future<void> _recordRecentTool(String toolId) async {
+    final normalized = toolId.trim().toLowerCase();
+    if (normalized.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final updated = <_HomeRecentItem>[
+      _HomeRecentItem(toolId: normalized, lastUsedMs: now),
+      for (final item in _recentTools)
+        if (item.toolId != normalized) item,
+    ].take(_maxRecentTools).toList(growable: false);
+    if (!mounted) return;
+    setState(() {
+      _recentTools = updated;
+    });
+    await _saveRecentTools();
+  }
+
+  String _weatherConditionFromCode(int code) {
+    switch (code) {
+      case 0:
+        return 'Clear';
+      case 1:
+      case 2:
+      case 3:
+        return 'Partly Cloudy';
+      case 45:
+      case 48:
+        return 'Fog';
+      case 51:
+      case 53:
+      case 55:
+      case 56:
+      case 57:
+        return 'Drizzle';
+      case 61:
+      case 63:
+      case 65:
+      case 66:
+      case 67:
+        return 'Rain';
+      case 71:
+      case 73:
+      case 75:
+      case 77:
+        return 'Snow';
+      case 80:
+      case 81:
+      case 82:
+        return 'Rain Showers';
+      case 95:
+      case 96:
+      case 99:
+        return 'Thunderstorm';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  Future<Position> _ensurePosition() async {
+    final locationEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!locationEnabled) {
+      throw StateError('Location services are disabled.');
+    }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      throw StateError('Location permission denied.');
+    }
+
+    return Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+    );
+  }
+
+  String _cityStateFromAddress(Map<String, dynamic> address) {
+    final city = (address['city'] ??
+            address['town'] ??
+            address['village'] ??
+            address['hamlet'] ??
+            '')
+        .toString()
+        .trim();
+    final state = (address['state'] ?? '').toString().trim();
+    if (city.isEmpty) return state;
+    if (state.isEmpty) return city;
+    return '$city, $state';
+  }
+
+  Future<void> _refreshWeatherAndGps() async {
+    if (_weatherLoading) return;
+    if (!mounted) return;
+    setState(() => _weatherLoading = true);
+    try {
+      final position = await _ensurePosition();
+      final gps =
+          '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
+
+      var locationText = '--';
+      final reverseUri = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${position.latitude}&lon=${position.longitude}&addressdetails=1',
+      );
+      final reverseResponse = await http.get(
+        reverseUri,
+        headers: const {'User-Agent': 'WellWerks/1.0'},
+      );
+      if (reverseResponse.statusCode == 200) {
+        final reverseMap =
+            jsonDecode(reverseResponse.body) as Map<String, dynamic>;
+        final address = reverseMap['address'] as Map<String, dynamic>?;
+        if (address != null) {
+          final county = (address['county'] ?? '').toString().trim();
+          final cityState = _cityStateFromAddress(address);
+          final composed = [county, cityState]
+              .where((item) => item.trim().isNotEmpty)
+              .join(' • ')
+              .trim();
+          if (composed.isNotEmpty) {
+            locationText = composed;
+          }
+        }
+      }
+
+      final weatherUri = Uri.parse(
+        'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&current=temperature_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph',
+      );
+      final weatherResponse = await http.get(weatherUri);
+      if (weatherResponse.statusCode != 200) {
+        throw StateError('Unable to fetch weather.');
+      }
+
+      final weatherMap =
+          jsonDecode(weatherResponse.body) as Map<String, dynamic>;
+      final current =
+          weatherMap['current'] as Map<String, dynamic>? ?? <String, dynamic>{};
+      final temperature = (current['temperature_2m'] as num?)?.toDouble();
+      final weatherCode = (current['weather_code'] as num?)?.toInt();
+      final windSpeed = (current['wind_speed_10m'] as num?)?.toDouble();
+
+      final weather =
+          temperature == null ? '--' : '${temperature.toStringAsFixed(0)} F';
+      final condition = weatherCode == null
+          ? 'Weather unavailable'
+          : _weatherConditionFromCode(weatherCode);
+      final wind =
+          windSpeed == null ? '--' : '${windSpeed.toStringAsFixed(1)} mph';
+
+      if (!mounted) return;
+      setState(() {
+        _gpsSummary = gps;
+        _locationSummary = locationText;
+        _weatherSummary = '$weather • $condition';
+        _windSummary = wind;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _weatherSummary = 'Weather unavailable';
+        _windSummary = '--';
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() => _weatherLoading = false);
+    }
   }
 
   Future<void> _handlePendingEstimatedStsAction() async {
@@ -196,6 +482,175 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadRecovery();
   }
 
+  Future<void> _openHomeTool(String toolId) async {
+    await _recordRecentTool(toolId);
+    if (!mounted) return;
+    switch (toolId) {
+      case 'production':
+        await open(context, const ProductionDashboardScreen());
+        return;
+      case 'completions':
+        await open(
+          context,
+          ModuleMenuScreen(
+            title: 'Completions',
+            tools: [
+              const ModuleTool(
+                icon: Icons.text_snippet_outlined,
+                title: 'Drillout / Cleanout',
+                subtitle:
+                    'Operations Log, Rate Calculator, STS, updates, and shift tools',
+                screen: DrilloutCleanoutModuleScreen(),
+              ),
+              const ModuleTool(
+                icon: Icons.calculate_outlined,
+                title: 'Calculators',
+                subtitle:
+                    'Gas Accum, Bottoms Up, Multiple Choke, Conversion, and Chlorides',
+                screen: CompletionsCalculatorsScreen(),
+              ),
+            ],
+            showHomeButton: true,
+          ),
+        );
+        return;
+      case 'rigup':
+        await open(
+          context,
+          ModuleMenuScreen(
+            title: 'Rig-Up',
+            tools: const [
+              ModuleTool(
+                icon: Icons.account_tree,
+                title: 'Layout Designer',
+                subtitle: 'Design rig-up layouts and iron flow paths',
+                screen: EquipmentLayoutScreen(),
+              ),
+              ModuleTool(
+                icon: Icons.inventory_2_outlined,
+                title: 'Rig-Up Inventory',
+                subtitle: 'Track equipment, assign by well, and share summary',
+                screen: RigUpInventoryScreen(),
+              ),
+              ModuleTool(
+                icon: Icons.history,
+                title: 'Rig-Up History',
+                subtitle: 'Open, share, or delete saved rig-up records',
+                screen: RigUpHistoryScreen(),
+              ),
+            ],
+            showHomeButton: true,
+          ),
+        );
+        return;
+      case 'rate':
+        await open(
+            context, const RateCalculatorMenuScreen(homeMultiMode: true));
+        return;
+      case 'jsa':
+        await open(context, const JsaScreen());
+        return;
+      case 'charts':
+        await open(
+          context,
+          ModuleMenuScreen(
+            title: 'Charts',
+            tools: [
+              const ModuleTool(
+                icon: Icons.storage,
+                title: 'Tank Charts',
+                subtitle:
+                    'FS3, SandX, V Bottom, Round Bottom, Gas Tank, and Production Tank',
+                screen: TankChartsMenuScreen(),
+              ),
+              const ModuleTool(
+                icon: Icons.straighten,
+                title: 'Conversion Calculator',
+                subtitle: 'Field and cooking unit conversions',
+                screen: ConversionCalculatorScreen(),
+              ),
+              const ModuleTool(
+                icon: Icons.local_gas_station,
+                title: 'Flywheel Diesel Tank',
+                subtitle: '3-compartment diesel fuel calculator',
+                screen: FlywheelDieselTankScreen(),
+              ),
+              ModuleTool(
+                icon: Icons.table_chart,
+                title: 'Chlorides Chart',
+                subtitle: 'Field chloride reference chart',
+                screen: _chloridesCalculatorScreen(),
+              ),
+            ],
+            showHomeButton: true,
+          ),
+        );
+        return;
+      case 'history':
+        await open(context, const ProductionHistoryScreen());
+        return;
+    }
+  }
+
+  ({String title, String subtitle, IconData icon})? _recentMeta(String toolId) {
+    switch (toolId) {
+      case 'production':
+        return (
+          title: 'Production',
+          subtitle: 'Quick Round',
+          icon: Icons.oil_barrel
+        );
+      case 'completions':
+        return (
+          title: 'Completions',
+          subtitle: 'Drillout Workflow',
+          icon: Icons.build
+        );
+      case 'rigup':
+        return (
+          title: 'Rig-Up',
+          subtitle: 'Layout & Inventory',
+          icon: Icons.account_tree
+        );
+      case 'rate':
+        return (
+          title: 'Rate Calculator',
+          subtitle: 'Tank Rates',
+          icon: Icons.speed
+        );
+      case 'jsa':
+        return (
+          title: 'JSA',
+          subtitle: 'Safety Worksheet',
+          icon: Icons.assignment
+        );
+      case 'charts':
+        return (
+          title: 'Charts',
+          subtitle: 'Tank & Field',
+          icon: Icons.bar_chart
+        );
+      case 'history':
+        return (
+          title: 'History',
+          subtitle: 'Archived Jobs',
+          icon: Icons.history
+        );
+      default:
+        return null;
+    }
+  }
+
+  String _timeAgoLabel(int timestampMs) {
+    final diff = DateTime.now().difference(
+      DateTime.fromMillisecondsSinceEpoch(timestampMs),
+    );
+    if (diff.inMinutes < 1) return 'Now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
   Widget _chloridesCalculatorScreen() {
     return const ChartReferenceScreen(
       title: 'Chlorides Chart',
@@ -247,32 +702,772 @@ class _HomeScreenState extends State<HomeScreen> {
     required String title,
     required String subtitle,
     required List<ModuleTool> tools,
+    String? recentToolId,
   }) {
     return ToolCard(
       icon: icon,
       title: title,
       subtitle: subtitle,
-      onTap: () => open(
-        context,
-        ModuleMenuScreen(
-          title: title,
-          tools: tools,
-          showHomeButton: true,
+      onTap: () async {
+        if (recentToolId != null && recentToolId.trim().isNotEmpty) {
+          await _recordRecentTool(recentToolId);
+        }
+        if (!context.mounted) return;
+        await open(
+          context,
+          ModuleMenuScreen(
+            title: title,
+            tools: tools,
+            showHomeButton: true,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _brandHeaderCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1A202A), Color(0xFF0A1017)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        border: Border.all(color: const Color(0xFF3A4758)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: const Color(0x18CDA56A),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0x66CDA56A)),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.business_center,
+              color: Color(0xFFCDA56A),
+              size: 29,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'WELLWERKS TOOLBOX',
+                  style: TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.4,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Field Ready',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    letterSpacing: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Refresh Weather & GPS',
+            onPressed: _weatherLoading ? null : _refreshWeatherAndGps,
+            icon: _weatherLoading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _activeJobCard() {
+    final job = _activeJob;
+    if (job == null) {
+      return Card(
+        margin: const EdgeInsets.only(bottom: 14),
+        child: ListTile(
+          leading: const Icon(Icons.work_outline),
+          title: const Text('No Active Job'),
+          subtitle: const Text('Start a production job to see live details.'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _openHomeTool('production'),
+        ),
+      );
+    }
+
+    final countyState = [job.county.trim(), job.state.trim()]
+        .where((item) => item.isNotEmpty)
+        .join(', ');
+    final started = job.startedAt;
+    final startedText = started == null
+        ? '--'
+        : TimeOfDay.fromDateTime(started).format(context);
+    final workflow = job.workflow.trim().isEmpty
+        ? 'Production'
+        : job.workflow.trim()[0].toUpperCase() +
+            job.workflow.trim().substring(1);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        color: const Color(0xFF14181D),
+        border: Border.all(color: const Color(0xFF3A3122)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => _openHomeTool('production'),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'ACTIVE JOB',
+                style: TextStyle(
+                  color: Color(0xFF7BDE5A),
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.0,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                job.company.trim().isEmpty ? 'Job Active' : job.company.trim(),
+                style: const TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w900,
+                  height: 1.02,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                job.padName.trim().isEmpty
+                    ? job.primaryWell.trim()
+                    : job.padName.trim(),
+                style: const TextStyle(
+                  fontSize: 19,
+                  color: Color(0xFFCDA56A),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 14,
+                runSpacing: 8,
+                children: [
+                  if (countyState.isNotEmpty)
+                    _jobMetaChip(
+                      icon: Icons.place,
+                      text: countyState,
+                    ),
+                  _jobMetaChip(
+                    icon: Icons.precision_manufacturing,
+                    text: workflow,
+                  ),
+                  _jobMetaChip(
+                    icon: Icons.schedule,
+                    text: 'Started $startedText',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _jobMetaChip({
+    required IconData icon,
+    required String text,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: const Color(0xFFCDA56A)),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: const TextStyle(
+              color: Colors.white70, fontWeight: FontWeight.w600),
+        ),
+      ],
+    );
+  }
+
+  Widget _recentlyUsedSection() {
+    final recents = _recentTools
+        .where((item) => _recentMeta(item.toolId) != null)
+        .toList(growable: false);
+
+    if (recents.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(2, 0, 2, 10),
+          child: Text(
+            'RECENTLY USED',
+            style: TextStyle(
+              color: Color(0xFFCDA56A),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.0,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 130,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemBuilder: (context, index) {
+              final entry = recents[index];
+              final meta = _recentMeta(entry.toolId)!;
+              return SizedBox(
+                width: 188,
+                child: Card(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => _openHomeTool(entry.toolId),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(meta.icon, color: const Color(0xFFCDA56A)),
+                          const SizedBox(height: 8),
+                          Text(meta.title,
+                              style: const TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 2),
+                          Text(meta.subtitle,
+                              style: const TextStyle(color: Colors.white70)),
+                          const Spacer(),
+                          Text(
+                            _timeAgoLabel(entry.lastUsedMs),
+                            style: const TextStyle(
+                              color: Color(0xFFCDA56A),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemCount: recents.length,
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  Widget _weatherGpsCard() {
+    return Container(
+      margin: const EdgeInsets.only(top: 6, bottom: 8),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        color: const Color(0xFF14181D),
+        border: Border.all(color: const Color(0xFF3A3122)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.wb_sunny_outlined,
+              color: Color(0xFFCDA56A), size: 30),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_weatherSummary,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 2),
+                Text('Wind $_windSummary',
+                    style: const TextStyle(color: Colors.white70)),
+                const SizedBox(height: 2),
+                Text(_locationSummary,
+                    style: const TextStyle(color: Colors.white70)),
+                const SizedBox(height: 2),
+                Text('GPS $_gpsSummary',
+                    style: const TextStyle(color: Colors.white70)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  _HomeRecentItem? _recentForTool(String toolId) {
+    final normalized = toolId.trim().toLowerCase();
+    for (final item in _recentTools) {
+      if (item.toolId == normalized) return item;
+    }
+    return null;
+  }
+
+  List<String> _suggestedFavoriteIds() {
+    final defaults = <String>['production', 'rate', 'charts'];
+    final candidateIds = <String>[];
+
+    for (final item in _recentTools) {
+      if (_recentMeta(item.toolId) == null) continue;
+      if (!_favoriteToolChoices.contains(item.toolId)) continue;
+      if (!candidateIds.contains(item.toolId)) {
+        candidateIds.add(item.toolId);
+      }
+      if (candidateIds.length == _maxFavorites) break;
+    }
+
+    for (final fallback in defaults) {
+      if (candidateIds.length == _maxFavorites) break;
+      if (!candidateIds.contains(fallback)) {
+        candidateIds.add(fallback);
+      }
+    }
+    return candidateIds;
+  }
+
+  List<String> _resolvedFavoriteIds() {
+    if (_favoriteToolIds.isNotEmpty) {
+      return _favoriteToolIds
+          .where(_favoriteToolChoices.contains)
+          .take(_maxFavorites)
+          .toList(growable: false);
+    }
+    return _suggestedFavoriteIds();
+  }
+
+  Future<void> _openFavoritesEditor() async {
+    final selected = List<String>.from(_resolvedFavoriteIds());
+
+    final updated = await showModalBottomSheet<List<String>>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final available = _favoriteToolChoices
+                .where((id) => !selected.contains(id))
+                .toList(growable: false);
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Edit Favorites',
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Choose up to $_maxFavorites and drag to reorder.',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 220,
+                      child: ReorderableListView.builder(
+                        itemCount: selected.length,
+                        onReorder: (oldIndex, newIndex) {
+                          setSheetState(() {
+                            if (newIndex > oldIndex) newIndex -= 1;
+                            final item = selected.removeAt(oldIndex);
+                            selected.insert(newIndex, item);
+                          });
+                        },
+                        itemBuilder: (context, index) {
+                          final id = selected[index];
+                          final meta = _recentMeta(id)!;
+                          return ListTile(
+                            key: ValueKey('fav-$id'),
+                            leading:
+                                Icon(meta.icon, color: const Color(0xFFCDA56A)),
+                            title: Text(meta.title),
+                            subtitle: Text(meta.subtitle),
+                            trailing: IconButton(
+                              tooltip: 'Remove',
+                              icon: const Icon(Icons.remove_circle_outline),
+                              onPressed: () {
+                                setSheetState(() {
+                                  selected.removeAt(index);
+                                });
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Add Tool',
+                      style: TextStyle(
+                        color: Color(0xFFCDA56A),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final id in available)
+                          ActionChip(
+                            label: Text(_recentMeta(id)?.title ?? id),
+                            onPressed: selected.length >= _maxFavorites
+                                ? null
+                                : () {
+                                    setSheetState(() {
+                                      selected.add(id);
+                                    });
+                                  },
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(sheetContext).pop(),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () {
+                              Navigator.of(sheetContext)
+                                  .pop(selected.take(_maxFavorites).toList());
+                            },
+                            child: const Text('Save'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (!mounted || updated == null) return;
+    setState(() {
+      _favoriteToolIds = updated;
+    });
+    await _saveFavoriteTools();
+  }
+
+  Widget _favoritesRow() {
+    final candidateIds = _resolvedFavoriteIds();
+
+    return SizedBox(
+      height: 160,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: candidateIds.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final toolId = candidateIds[index];
+          final meta = _recentMeta(toolId)!;
+          final recent = _recentForTool(toolId);
+          return SizedBox(
+            width: 174,
+            child: Card(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => _openHomeTool(toolId),
+                child: Padding(
+                  padding: const EdgeInsets.all(11),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(meta.icon, color: const Color(0xFFCDA56A), size: 29),
+                      const SizedBox(height: 10),
+                      Text(
+                        meta.title,
+                        style: const TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.w900),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(meta.subtitle,
+                          style: const TextStyle(color: Colors.white70)),
+                      const Spacer(),
+                      Text(
+                        recent == null
+                            ? 'Favorite'
+                            : _timeAgoLabel(recent.lastUsedMs),
+                        style: const TextStyle(
+                          color: Color(0xFFCDA56A),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _favoritesHeaderRow() {
+    return Row(
+      children: [
+        const Expanded(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(2, 4, 2, 9),
+            child: Text(
+              'FAVORITES',
+              style: TextStyle(
+                color: Color(0xFFCDA56A),
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: _openFavoritesEditor,
+          child: const Text(
+            'Edit',
+            style: TextStyle(
+              color: Color(0xFFCDA56A),
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _moduleGrid() {
+    final tiles = <({
+      String id,
+      String title,
+      String subtitle,
+      IconData icon,
+      VoidCallback onTap,
+    })>[
+      (
+        id: 'production',
+        title: 'Production',
+        subtitle: 'Quick Round, reports, and setup',
+        icon: Icons.oil_barrel,
+        onTap: () => _openHomeTool('production'),
+      ),
+      (
+        id: 'completions',
+        title: 'Completions',
+        subtitle: 'Drillout workflow and calculators',
+        icon: Icons.build,
+        onTap: () => _openHomeTool('completions'),
+      ),
+      (
+        id: 'rigup',
+        title: 'Rig-Up',
+        subtitle: 'Layout, inventory, and history',
+        icon: Icons.account_tree,
+        onTap: () => _openHomeTool('rigup'),
+      ),
+      (
+        id: 'rate',
+        title: 'Rate Calculator',
+        subtitle: 'Run multiple tank calculators',
+        icon: Icons.speed,
+        onTap: () => _openHomeTool('rate'),
+      ),
+      (
+        id: 'jsa',
+        title: 'JSA',
+        subtitle: 'Safety worksheet and signatures',
+        icon: Icons.assignment,
+        onTap: () => _openHomeTool('jsa'),
+      ),
+      (
+        id: 'charts',
+        title: 'Charts',
+        subtitle: 'Tank and field references',
+        icon: Icons.bar_chart,
+        onTap: () => _openHomeTool('charts'),
+      ),
+      (
+        id: 'history',
+        title: 'History',
+        subtitle: 'Archived jobs and records',
+        icon: Icons.history,
+        onTap: () => _openHomeTool('history'),
+      ),
+      (
+        id: 'settings',
+        title: 'Settings',
+        subtitle: 'Preferences and themes',
+        icon: Icons.settings,
+        onTap: () => open(context, const SettingsScreen()),
+      ),
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: tiles.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        childAspectRatio: 0.98,
+      ),
+      itemBuilder: (context, index) {
+        final tile = tiles[index];
+        final recent = _recentForTool(tile.id);
+        return Card(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: tile.onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(11),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(tile.icon, color: const Color(0xFFCDA56A), size: 28),
+                      const Spacer(),
+                      const Icon(
+                        Icons.chevron_right,
+                        size: 18,
+                        color: Color(0x887F8B97),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    tile.title,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w900),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    tile.subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                      height: 1.2,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    recent == null ? 'Open' : _timeAgoLabel(recent.lastUsedMs),
+                    style: const TextStyle(
+                      color: Color(0xFFCDA56A),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _bottomNavShell() {
+    Widget navItem({
+      required IconData icon,
+      required String label,
+      bool active = false,
+    }) {
+      final color = active ? const Color(0xFFCDA56A) : Colors.white60;
+      return Expanded(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0E1116),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF2D3C4D)),
+      ),
+      child: Row(
+        children: [
+          navItem(icon: Icons.home, label: 'Home', active: true),
+          navItem(icon: Icons.work_outline, label: 'Jobs'),
+          navItem(icon: Icons.add_box_outlined, label: 'New Job'),
+          navItem(icon: Icons.forum_outlined, label: 'Updates'),
+          navItem(icon: Icons.person_outline, label: 'Profile'),
+        ],
       ),
     );
   }
 
   Widget _sectionLabel(String label) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 6, 2, 10),
+      padding: const EdgeInsets.fromLTRB(2, 4, 2, 9),
       child: Text(
         label,
         style: const TextStyle(
           color: Color(0xFFCDA56A),
-          fontSize: 12,
+          fontSize: 13,
           fontWeight: FontWeight.w800,
-          letterSpacing: 1.0,
+          letterSpacing: 1.2,
         ),
       ),
     );
@@ -320,420 +1515,31 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(18),
-        children: [
-          _sectionLabel('OPERATIONS'),
-          ToolCard(
-            icon: Icons.oil_barrel,
-            title: 'Production',
-            subtitle: 'Quick Round, reports, text updates, and setup',
-            onTap: () => open(context, const ProductionDashboardScreen()),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF0A0B0D), Color(0xFF10141A)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
-          const SizedBox(height: 8),
-          _moduleCard(
-            context: context,
-            icon: Icons.build,
-            title: 'Completions',
-            subtitle: 'Drillout workflow and dedicated calculators',
-            tools: [
-              const ModuleTool(
-                icon: Icons.text_snippet_outlined,
-                title: 'Drillout / Cleanout',
-                subtitle:
-                    'Operations Log, Rate Calculator, STS, updates, and shift tools',
-                screen: DrilloutCleanoutModuleScreen(),
-              ),
-              const ModuleTool(
-                icon: Icons.calculate_outlined,
-                title: 'Calculators',
-                subtitle:
-                    'Gas Accum, Bottoms Up, Multiple Choke, Conversion, and Chlorides',
-                screen: CompletionsCalculatorsScreen(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _moduleCard(
-            context: context,
-            icon: Icons.account_tree,
-            title: 'Rig-Up',
-            subtitle: 'Layout Designer, Rig-Up Inventory, and Rig-Up History',
-            tools: const [
-              ModuleTool(
-                icon: Icons.account_tree,
-                title: 'Layout Designer',
-                subtitle: 'Design rig-up layouts and iron flow paths',
-                screen: EquipmentLayoutScreen(),
-              ),
-              ModuleTool(
-                icon: Icons.inventory_2_outlined,
-                title: 'Rig-Up Inventory',
-                subtitle: 'Track equipment, assign by well, and share summary',
-                screen: RigUpInventoryScreen(),
-              ),
-              ModuleTool(
-                icon: Icons.history,
-                title: 'Rig-Up History',
-                subtitle: 'Open, share, or delete saved rig-up records',
-                screen: RigUpHistoryScreen(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _sectionLabel('TOOLS'),
-          ToolCard(
-            icon: Icons.speed,
-            title: 'Rate Calculator',
-            subtitle:
-                'Open tank rate calculators and run more than one at a time',
-            onTap: () => open(
-                context, const RateCalculatorMenuScreen(homeMultiMode: true)),
-          ),
-          const SizedBox(height: 8),
-          ToolCard(
-            icon: Icons.assignment,
-            title: 'JSA',
-            subtitle: 'Safety worksheet, crew rows, and signatures',
-            onTap: () => open(context, const JsaScreen()),
-          ),
-          const SizedBox(height: 8),
-          _sectionLabel('REFERENCES'),
-          _moduleCard(
-            context: context,
-            icon: Icons.bar_chart,
-            title: 'Charts',
-            subtitle: 'Tank and field chart references',
-            tools: [
-              const ModuleTool(
-                icon: Icons.storage,
-                title: 'Tank Charts',
-                subtitle:
-                    'FS3, SandX, V Bottom, Round Bottom, Gas Tank, and Production Tank',
-                screen: TankChartsMenuScreen(),
-              ),
-              const ModuleTool(
-                icon: Icons.straighten,
-                title: 'Conversion Calculator',
-                subtitle: 'Field and cooking unit conversions',
-                screen: ConversionCalculatorScreen(),
-              ),
-              const ModuleTool(
-                icon: Icons.local_gas_station,
-                title: 'Flywheel Diesel Tank',
-                subtitle: '3-compartment diesel fuel calculator',
-                screen: FlywheelDieselTankScreen(),
-              ),
-              ModuleTool(
-                icon: Icons.table_chart,
-                title: 'Chlorides Chart',
-                subtitle: 'Field chloride reference chart',
-                screen: _chloridesCalculatorScreen(),
-              ),
-              const ModuleTool(
-                icon: Icons.table_chart,
-                title: 'Tubing Chart',
-                subtitle: 'Tubing and casing capacity reference',
-                screen: ChartReferenceScreen(
-                  title: 'Tubing Chart',
-                  description:
-                      'Tubing and casing dimensional rows captured from the web app tubing sheet.',
-                  enableSearch: true,
-                  sections: [
-                    ChartSection(
-                      title: 'Tubing',
-                      columns: ['OD', 'Lbs/ft', 'ID'],
-                      rows: [
-                        ['1.050', '1.2', '0.824'],
-                        ['1.050', '1.5', '0.742'],
-                        ['1.315', '1.8', '1.049'],
-                        ['1.660', '2.4', '1.38'],
-                        ['1.900', '2.9', '1.61'],
-                        ['2.375', '4.7', '1.995'],
-                        ['2.375', '5.95', '1.867'],
-                        ['2.875', '6.5', '2.441'],
-                        ['2.875', '8.7', '2.259'],
-                        ['3.500', '9.3', '2.992'],
-                        ['3.500', '12.95', '2.75'],
-                        ['4.000', '11', '3.476'],
-                        ['4.500', '12.75', '3.958'],
-                      ],
-                    ),
-                    ChartSection(
-                      title: 'Casing',
-                      columns: ['OD', 'Lbs/ft', 'ID'],
-                      rows: [
-                        ['5.500', '15.5', '4.95'],
-                        ['5.500', '17', '4.892'],
-                        ['5.500', '20', '4.778'],
-                        ['5.500', '23', '4.67'],
-                        ['5.500', '26', '4.548'],
-                        ['5.750', '14', '5.29'],
-                        ['5.750', '17', '5.19'],
-                        ['5.750', '19.5', '5.09'],
-                        ['6.000', '15', '5.524'],
-                        ['6.000', '20', '5.352'],
-                        ['6.625', '13', '6.255'],
-                        ['6.625', '20', '6.049'],
-                        ['6.625', '32', '5.675'],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const ModuleTool(
-                icon: Icons.table_chart,
-                title: 'Sand Chart',
-                subtitle: 'Sand measurement and weight reference',
-                screen: ChartReferenceScreen(
-                  title: 'Sand Chart',
-                  description:
-                      'Sand measurement and weight tables from the web app sand sheet.',
-                  enableSearch: true,
-                  sections: [
-                    ChartSection(
-                      title: 'Sand Measurement',
-                      columns: ['From', '=', 'To'],
-                      rows: [
-                        ['1 Gallon', '=', '4 Quarts'],
-                        ['1 Quart', '=', '4 Cups'],
-                        ['1 Quart', '=', '2 Pints'],
-                        ['1 Pint', '=', '2 Cups'],
-                        ['1 Cup', '=', '16 Tblsp'],
-                        ['1/2 Cup', '=', '8 Tblsp'],
-                        ['1/4 Cup', '=', '4 Tblsp'],
-                        ['1 Tblsp', '=', '3 Tsp'],
-                      ],
-                    ),
-                    ChartSection(
-                      title: 'Sand Weight',
-                      columns: ['From', '=', 'Weight'],
-                      rows: [
-                        ['1 Bbl', '=', '756 lbs'],
-                        ['1/2 Bbl', '=', '378 lbs'],
-                        ['1/4 Bbl', '=', '189 lbs'],
-                        ['1 Gal', '=', '18 lbs'],
-                        ['1/2 Gal', '=', '9 lbs'],
-                        ['1/4 Gal', '=', '4.5 lbs'],
-                        ['1 Pint', '=', '2.3 lbs'],
-                        ['1 Cup', '=', '1.1 lbs'],
-                        ['1/2 Cup', '=', '0.55 lbs'],
-                        ['1 Tblsp', '=', '0.07 lbs'],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const ModuleTool(
-                icon: Icons.table_chart,
-                title: 'Flanges Chart',
-                subtitle: 'Flange pressure, gasket, studs, and wrench sizes',
-                screen: ChartReferenceScreen(
-                  title: 'Flanges Chart',
-                  description:
-                      'Flange table rows captured from the web app flange sheet.',
-                  enableSearch: true,
-                  sections: [
-                    ChartSection(
-                      title: 'Flanges',
-                      columns: [
-                        'Flange Size',
-                        'Pressure',
-                        'Ring Gasket',
-                        'No. Studs',
-                        'Stud Size',
-                        'Nut Size',
-                        'Oteco Wrench'
-                      ],
-                      rows: [
-                        [
-                          '1-11/16"',
-                          '10000',
-                          'BX-150',
-                          '8',
-                          '3/4"',
-                          '1-1/4"',
-                          '3/4"'
-                        ],
-                        [
-                          '1-11/16"',
-                          '15000',
-                          'BX-150',
-                          '8',
-                          '3/4"',
-                          '1-1/4"',
-                          '3/4"'
-                        ],
-                        [
-                          '1-13/16"',
-                          '10000',
-                          'BX-151',
-                          '8',
-                          '3/4"',
-                          '1-1/4"',
-                          '3/4"'
-                        ],
-                        [
-                          '1-13/16"',
-                          '15000',
-                          'BX-151',
-                          '8',
-                          '7/8"',
-                          '1-7/16"',
-                          '7/8"'
-                        ],
-                        [
-                          '1-13/16"',
-                          '20000',
-                          'BX-151',
-                          '8',
-                          '1"',
-                          '1-5/8"',
-                          '1"'
-                        ],
-                        [
-                          '2-1/16"',
-                          '10000',
-                          'BX-152',
-                          '8',
-                          '3/4"',
-                          '1-1/4"',
-                          '3/4"'
-                        ],
-                        [
-                          '2-1/16"',
-                          '15000',
-                          'BX-152',
-                          '8',
-                          '7/8"',
-                          '1-7/16"',
-                          '7/8"'
-                        ],
-                        [
-                          '2-1/16"',
-                          '20000',
-                          'BX-152',
-                          '8',
-                          '1-1/8"',
-                          '1-13/16"',
-                          '1-1/8"'
-                        ],
-                        [
-                          '2-9/16"',
-                          '10000',
-                          'BX-153',
-                          '8',
-                          '7/8"',
-                          '1-7/16"',
-                          '7/8"'
-                        ],
-                        [
-                          '2-9/16"',
-                          '15000',
-                          'BX-153',
-                          '8',
-                          '1"',
-                          '1-5/8"',
-                          '1"'
-                        ],
-                        [
-                          '2-9/16"',
-                          '20000',
-                          'BX-153',
-                          '8',
-                          '1-1/4"',
-                          '2"',
-                          '1-1/4"'
-                        ],
-                        [
-                          '3-1/16"',
-                          '10000',
-                          'BX-154',
-                          '8',
-                          '1"',
-                          '1-5/8"',
-                          '1"'
-                        ],
-                        [
-                          '3-1/16"',
-                          '15000',
-                          'BX-154',
-                          '8',
-                          '1-1/8"',
-                          '1-13/16"',
-                          '1-1/8"'
-                        ],
-                        [
-                          '3-1/16"',
-                          '20000',
-                          'BX-154',
-                          '8',
-                          '1-3/8"',
-                          '2-3/16"',
-                          '1-3/8"'
-                        ],
-                        [
-                          '4-1/16"',
-                          '10000',
-                          'BX-155',
-                          '8',
-                          '1-1/8"',
-                          '1-13/16"',
-                          '1-1/8"'
-                        ],
-                        [
-                          '4-1/16"',
-                          '15000',
-                          'BX-155',
-                          '8',
-                          '1-3/8"',
-                          '2-3/16"',
-                          '1-3/8"'
-                        ],
-                        [
-                          '4-1/16"',
-                          '20000',
-                          'BX-155',
-                          '8',
-                          '1-3/4"',
-                          '2-3/4"',
-                          '1-3/4"'
-                        ],
-                        [
-                          '7-1/16"',
-                          '10000',
-                          'BX-156',
-                          '12',
-                          '1-1/2"',
-                          '2-3/8"',
-                          '1-1/2"'
-                        ],
-                        [
-                          '7-1/16"',
-                          '15000',
-                          'BX-156',
-                          '16',
-                          '1-1/2"',
-                          '2-3/8"',
-                          '1-1/2"'
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _sectionLabel('RECORDS'),
-          ToolCard(
-            icon: Icons.history,
-            title: 'History',
-            subtitle: 'Search archived jobs and past shift records',
-            onTap: () => open(context, const ProductionHistoryScreen()),
-          ),
-          const SizedBox(height: 6),
-        ],
+        ),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          children: [
+            _brandHeaderCard(),
+            _activeJobCard(),
+            _recentlyUsedSection(),
+            _favoritesHeaderRow(),
+            _favoritesRow(),
+            const SizedBox(height: 8),
+            _sectionLabel('MODULES'),
+            _moduleGrid(),
+            const SizedBox(height: 6),
+            _weatherGpsCard(),
+            _bottomNavShell(),
+            const SizedBox(height: 2),
+          ],
+        ),
       ),
     );
   }

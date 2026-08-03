@@ -471,6 +471,8 @@ class AppSettingsData {
       case 'military':
       case 'light':
       case 'high_vis':
+      case 'okc_thunder':
+      case 'kc_chiefs':
       case 'wellwerks_default':
         return normalized;
       case 'high_visibility':
