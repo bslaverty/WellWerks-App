@@ -49,7 +49,8 @@ class _GlobalChromeBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final background = colors.surface.dim;
+    final background =
+        Color.lerp(colors.surface, colors.primary, 0.06) ?? colors.surface;
     final accent = colors.primary;
     return DecoratedBox(
       decoration: BoxDecoration(

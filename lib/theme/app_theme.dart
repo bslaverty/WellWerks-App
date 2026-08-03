@@ -475,11 +475,6 @@ ThemeData buildAppTheme(String themeId) {
       unselectedItemColor: option.subtleText,
       selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
     ),
-    listTileTheme: ListTileThemeData(
-      iconColor: option.accent,
-      textColor: option.text,
-      tileColor: option.surface,
-    ),
     floatingActionButtonTheme: FloatingActionButtonThemeData(
       backgroundColor: option.accent,
       foregroundColor: onAccent,
