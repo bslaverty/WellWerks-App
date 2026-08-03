@@ -112,20 +112,19 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
   }
 
   Widget _activeJobCard(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     if (!_hasActiveJobContext) {
       return Card(
-        color: const Color(0xFF17130E),
         margin: const EdgeInsets.only(bottom: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Padding(
           padding: const EdgeInsets.all(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Active Job',
                 style: TextStyle(
-                  color: Color(0xFFCDA56A),
+                  color: scheme.primary,
                   fontSize: 20,
                   fontWeight: FontWeight.w800,
                 ),
@@ -154,9 +153,7 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
     final padName = _activePadName;
 
     return Card(
-      color: const Color(0xFF17130E),
       margin: const EdgeInsets.only(bottom: 14),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(
@@ -166,8 +163,8 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
               companyName.isEmpty
                   ? 'Production ready'
                   : 'Production ready • $companyName${padName.isEmpty ? '' : ' • $padName'}',
-              style: const TextStyle(
-                color: Colors.white70,
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -185,17 +182,21 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
 
   Widget _hero(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1A232F), Color(0xFF121821)],
+        gradient: LinearGradient(
+          colors: [
+            Color.lerp(scheme.surface, scheme.primary, 0.16) ?? scheme.surface,
+            Color.lerp(scheme.surface, scheme.primary, 0.08) ?? scheme.surface,
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        border: Border.all(color: const Color(0xFF2D3C4D)),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.8)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -204,13 +205,13 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: const Color(0x1FCDA56A),
+              color: scheme.primary.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(10),
             ),
             alignment: Alignment.center,
-            child: const Icon(
+            child: Icon(
               Icons.oil_barrel,
-              color: Color(0xFFCDA56A),
+              color: scheme.primary,
               size: 20,
             ),
           ),
@@ -245,8 +246,8 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
       padding: const EdgeInsets.fromLTRB(2, 2, 2, 10),
       child: Text(
         label,
-        style: const TextStyle(
-          color: Color(0xFFCDA56A),
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.primary,
           fontSize: 12,
           fontWeight: FontWeight.w800,
           letterSpacing: 1.0,
@@ -273,37 +274,43 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
           if (_workflowMode == ActiveWorkflowMode.production)
             _activeJobCard(context),
           Card(
-            color: const Color(0xFF17130E),
             margin: const EdgeInsets.only(bottom: 14),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: const Padding(
-              padding: EdgeInsets.all(16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Production Workflow',
                     style: TextStyle(
-                      color: Color(0xFFCDA56A),
+                      color: Theme.of(context).colorScheme.primary,
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   Text(
                     '1. Enter production data in Quick Round.',
-                    style: TextStyle(color: Colors.white70, fontSize: 15),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 15,
+                    ),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text(
                     '2. Review current shift production in Production Report.',
-                    style: TextStyle(color: Colors.white70, fontSize: 15),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 15,
+                    ),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text(
                     '3. Generate production outputs from Production Report actions.',
-                    style: TextStyle(color: Colors.white70, fontSize: 15),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 15,
+                    ),
                   ),
                 ],
               ),

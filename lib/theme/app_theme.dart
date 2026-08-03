@@ -223,6 +223,8 @@ ThemeData buildAppTheme(String themeId) {
       backgroundColor: option.appBarBackground,
       foregroundColor: appBarForeground,
       elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
       iconTheme: IconThemeData(color: appBarForeground),
       actionsIconTheme: IconThemeData(color: appBarForeground),
       titleTextStyle: TextStyle(
@@ -234,10 +236,17 @@ ThemeData buildAppTheme(String themeId) {
     cardTheme: CardThemeData(
       color: option.surface,
       elevation: 0,
+      clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: option.accent.withValues(alpha: 0.25)),
+        side: BorderSide(color: option.accent.withValues(alpha: 0.22)),
       ),
+    ),
+    listTileTheme: ListTileThemeData(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      iconColor: option.accent,
+      tileColor: option.surface.withValues(alpha: 0.45),
+      textColor: option.text,
     ),
     textTheme: base.textTheme.apply(
       bodyColor: option.text,
@@ -279,12 +288,16 @@ ThemeData buildAppTheme(String themeId) {
       style: FilledButton.styleFrom(
         backgroundColor: option.accent,
         foregroundColor: onAccent,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: option.accent,
         foregroundColor: onAccent,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(

@@ -29,9 +29,70 @@ class WellWerksApp extends StatelessWidget {
           title: 'WellWerks Toolbox',
           debugShowCheckedModeBanner: false,
           theme: buildAppTheme(themeId),
+          builder: (context, child) {
+            return _GlobalChromeBackground(
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
           home: const HomeScreen(),
         );
       },
+    );
+  }
+}
+
+class _GlobalChromeBackground extends StatelessWidget {
+  const _GlobalChromeBackground({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final background = colors.surface.dim;
+    final accent = colors.primary;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color.lerp(background, accent, 0.12) ?? background,
+            background,
+          ],
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            top: -100,
+            left: -120,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: accent.withValues(alpha: 0.08),
+                ),
+                child: const SizedBox(width: 260, height: 260),
+              ),
+            ),
+          ),
+          Positioned(
+            right: -90,
+            top: 130,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: accent.withValues(alpha: 0.06),
+                ),
+                child: const SizedBox(width: 200, height: 200),
+              ),
+            ),
+          ),
+          child,
+        ],
+      ),
     );
   }
 }

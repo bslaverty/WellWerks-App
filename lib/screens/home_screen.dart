@@ -725,78 +725,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _brandHeaderCard() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1A202A), Color(0xFF0A1017)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        border: Border.all(color: const Color(0xFF3A4758)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: const Color(0x18CDA56A),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0x66CDA56A)),
-            ),
-            alignment: Alignment.center,
-            child: const Icon(
-              Icons.business_center,
-              color: Color(0xFFCDA56A),
-              size: 29,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'WELLWERKS TOOLBOX',
-                  style: TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.4,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Field Ready',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
-                    letterSpacing: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: 'Refresh Weather & GPS',
-            onPressed: _weatherLoading ? null : _refreshWeatherAndGps,
-            icon: _weatherLoading
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _activeJobCard() {
     final job = _activeJob;
     if (job == null) {
@@ -995,13 +923,37 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.wb_sunny_outlined,
-              color: Color(0xFFCDA56A), size: 30),
-          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Row(
+                  children: [
+                    const Icon(Icons.wb_sunny_outlined,
+                        color: Color(0xFFCDA56A), size: 22),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Job Weather & GPS',
+                        style: TextStyle(
+                          color: Color(0xFFCDA56A),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Refresh Weather & GPS',
+                      onPressed: _weatherLoading ? null : _refreshWeatherAndGps,
+                      icon: _weatherLoading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.refresh),
+                    ),
+                  ],
+                ),
                 Text(_weatherSummary,
                     style: const TextStyle(
                         fontSize: 16, fontWeight: FontWeight.w800)),
@@ -1526,7 +1478,6 @@ class _HomeScreenState extends State<HomeScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           children: [
-            _brandHeaderCard(),
             _activeJobCard(),
             _recentlyUsedSection(),
             _favoritesHeaderRow(),

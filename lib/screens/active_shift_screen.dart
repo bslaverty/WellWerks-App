@@ -50,9 +50,9 @@ class _ActiveShiftScreenState extends State<ActiveShiftScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('Quick Actions',
+              Text('Quick Actions',
                   style: TextStyle(
-                      color: Color(0xFFCDA56A),
+                      color: colors.primary,
                       fontSize: 20,
                       fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
@@ -163,14 +163,16 @@ class _ActiveShiftScreenState extends State<ActiveShiftScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Current Shift',
+                  Text('Current Shift',
                       style: TextStyle(
-                          color: Color(0xFFCDA56A),
+                          color: Theme.of(context).colorScheme.primary,
                           fontSize: 20,
                           fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   Text('Last updated: $lastUpdated',
-                      style: const TextStyle(color: Colors.white70)),
+                      style: TextStyle(
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 16),
                   Row(children: [
                     Expanded(
@@ -251,9 +253,9 @@ class _ActiveShiftScreenState extends State<ActiveShiftScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          const Text('Round History',
+          Text('Round History',
               style: TextStyle(
-                  color: Color(0xFFCDA56A),
+                  color: Theme.of(context).colorScheme.primary,
                   fontSize: 18,
                   fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
@@ -296,8 +298,8 @@ class _InfoCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(title,
-                style: const TextStyle(
-                    color: Color(0xFFCDA56A),
+                style: TextStyle(
+                    color: colors.primary,
                     fontSize: 18,
                     fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
@@ -318,22 +320,23 @@ class _StatusTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(right: 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Theme.of(context).dividerColor),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label,
-            style: const TextStyle(
-                color: Color(0xFFCDA56A), fontWeight: FontWeight.bold)),
+            style:
+                TextStyle(color: colors.primary, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         Text(value,
             style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-        Text(unit, style: const TextStyle(color: Colors.white54)),
+        Text(unit, style: TextStyle(color: colors.onSurfaceVariant)),
       ]),
     );
   }
@@ -346,13 +349,12 @@ class _Line extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final subtle = Theme.of(context).colorScheme.onSurfaceVariant;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
-          Expanded(
-              child:
-                  Text(label, style: const TextStyle(color: Colors.white70))),
+          Expanded(child: Text(label, style: TextStyle(color: subtle))),
           Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
         ],
       ),

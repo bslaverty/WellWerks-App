@@ -1833,6 +1833,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
   Widget _timerModeSelector() {
     if (!_liveClockAvailable) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
 
     return Card(
       child: Padding(
@@ -1840,10 +1841,10 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Timer Mode',
               style: TextStyle(
-                color: Color(0xFFCDA56A),
+                color: scheme.primary,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -1871,6 +1872,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   }
 
   Widget _timedRateSection() {
+    final scheme = Theme.of(context).colorScheme;
     final canRunTimer =
         _hasValidMinutes && !_isCurrentCalculatorTimerActive && !_timerRunning;
 
@@ -1880,10 +1882,10 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Timed Rate',
               style: TextStyle(
-                color: Color(0xFFCDA56A),
+                color: scheme.primary,
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
               ),
@@ -1891,9 +1893,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
             const SizedBox(height: 8),
             Container(
               decoration: BoxDecoration(
-                color: const Color(0xFF111418),
+                color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF3A3A3A)),
+                border: Border.all(color: scheme.outlineVariant),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Column(
@@ -1901,8 +1903,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.timer_outlined,
-                          color: Color(0xFFCDA56A), size: 28),
+                      Icon(Icons.timer_outlined,
+                          color: scheme.primary, size: 28),
                       const SizedBox(width: 8),
                       Text(
                         _timerFinished ? 'TIME' : _timerText(),
@@ -1912,7 +1914,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                           letterSpacing: 1.2,
                           color: _timerFinished
                               ? Colors.redAccent
-                              : const Color(0xFFCDA56A),
+                              : scheme.primary,
                         ),
                       ),
                     ],
@@ -1984,6 +1986,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
   Widget _liveClockSection() {
     if (!_liveClockAvailable) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
 
     return Card(
       child: Padding(
@@ -1991,10 +1994,10 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Live Clock',
               style: TextStyle(
-                color: Color(0xFFCDA56A),
+                color: scheme.primary,
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
               ),
@@ -2007,9 +2010,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
             const SizedBox(height: 8),
             Container(
               decoration: BoxDecoration(
-                color: const Color(0xFF111418),
+                color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF3A3A3A)),
+                border: Border.all(color: scheme.outlineVariant),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Column(
@@ -2017,16 +2020,15 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.av_timer,
-                          color: Color(0xFFCDA56A), size: 28),
+                      Icon(Icons.av_timer, color: scheme.primary, size: 28),
                       const SizedBox(width: 8),
                       Text(
                         _liveClockText(),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 44,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 1.2,
-                          color: Color(0xFFCDA56A),
+                          color: scheme.primary,
                         ),
                       ),
                     ],
@@ -2145,22 +2147,32 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       context: context,
       showDragHandle: true,
       builder: (sheetContext) {
+        final scheme = Theme.of(sheetContext).colorScheme;
         return SafeArea(
           child: Container(
-            color: const Color(0xFF0F1114),
+            color: scheme.surface,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 6, 16, 10),
-                  child: Align(
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+                  child: const Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
                       'Select Timer Length',
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Choose the timer length for this run.',
                       style: TextStyle(
-                        color: Color(0xFFCDA56A),
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -2181,8 +2193,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                         ),
                         child: Material(
                           color: selected
-                              ? const Color(0x33282E36)
-                              : const Color(0xFF15181C),
+                              ? scheme.primary.withValues(alpha: 0.2)
+                              : scheme.surfaceContainerHigh
+                                  .withValues(alpha: 0.45),
                           borderRadius: BorderRadius.circular(12),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(12),
@@ -2201,8 +2214,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                                           : '$minute minutes',
                                       style: TextStyle(
                                         color: selected
-                                            ? const Color(0xFFCDA56A)
-                                            : Colors.white,
+                                            ? scheme.primary
+                                            : scheme.onSurface,
                                         fontSize: 20,
                                         fontWeight: selected
                                             ? FontWeight.w900
@@ -2211,9 +2224,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                                     ),
                                   ),
                                   if (selected)
-                                    const Icon(
+                                    Icon(
                                       Icons.check_circle,
-                                      color: Color(0xFFCDA56A),
+                                      color: scheme.primary,
                                     ),
                                 ],
                               ),
@@ -2265,11 +2278,12 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   }
 
   ButtonStyle _calculateButtonStyle() {
+    final scheme = Theme.of(context).colorScheme;
     return FilledButton.styleFrom(
-      backgroundColor: const Color(0xFFCDA56A),
-      foregroundColor: Colors.black,
-      disabledBackgroundColor: const Color(0xFF3A3A3A),
-      disabledForegroundColor: const Color(0xFF9BA0A7),
+      backgroundColor: scheme.primary,
+      foregroundColor: scheme.onPrimary,
+      disabledBackgroundColor: scheme.surfaceContainerHighest,
+      disabledForegroundColor: scheme.onSurfaceVariant,
       minimumSize: const Size.fromHeight(52),
       textStyle: const TextStyle(
         fontSize: 17,
@@ -2512,14 +2526,22 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         _fluidHauledEnabled ? (double.tryParse(hauledText) ?? 0) : 0.0;
 
     if (_fluidHauledEnabled && fluidHauledBarrels < 0) {
-      setState(() => error = 'Fluid hauled must be zero or greater.');
+      setState(() {
+        error = 'Fluid hauled must be zero or greater.';
+        bblPerMin = null;
+        bblPerHr = null;
+        bblPerDay = null;
+      });
       return;
     }
 
-    if (hasNegativeGauge && (!_fluidHauledEnabled || fluidHauledBarrels <= 0)) {
+    if (hasNegativeGauge) {
       setState(() {
         error =
-            'Negative gauge detected. Enable Include Fluid Hauled and enter a positive hauled volume to calculate.';
+            'Negative gauge detected. Enter non-negative gauge values before calculating.';
+        bblPerMin = null;
+        bblPerHr = null;
+        bblPerDay = null;
       });
       return;
     }
@@ -2622,16 +2644,17 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   }
 
   Widget _resultsCard() {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Results',
               style: TextStyle(
-                color: Color(0xFFCDA56A),
+                color: scheme.primary,
                 fontWeight: FontWeight.w800,
                 fontSize: 18,
               ),
@@ -2685,10 +2708,10 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
             const SizedBox(height: 16),
             Text(
               _formatSelectedRateValue(_selectedRateValue),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 42,
                 fontWeight: FontWeight.w900,
-                color: Color(0xFFCDA56A),
+                color: scheme.primary,
               ),
             ),
             const SizedBox(height: 4),
@@ -2706,14 +2729,15 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   }
 
   Widget _rateLogSection() {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
       child: Column(
         children: [
           ListTile(
             title: Text(
               'Rate Log (${_rateLogEntries.length})',
-              style: const TextStyle(
-                color: Color(0xFFCDA56A),
+              style: TextStyle(
+                color: scheme.primary,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -2811,9 +2835,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                                 ),
                               ),
                               if (isSelected)
-                                const Icon(
+                                Icon(
                                   Icons.check,
-                                  color: Color(0xFFCDA56A),
+                                  color: scheme.primary,
                                   size: 18,
                                 ),
                             ],
@@ -3011,10 +3035,15 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: const Color(0xFF4A4A4A),
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .outlineVariant,
                                 width: 1.2,
                               ),
-                              color: const Color(0xFF121418),
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHigh
+                                  .withValues(alpha: 0.35),
                             ),
                             padding: const EdgeInsets.symmetric(
                               horizontal: 14,
@@ -3034,10 +3063,11 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                                 const SizedBox(height: 4),
                                 Text(
                                   _minutesDisplayText,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w800,
-                                    color: Color(0xFFCDA56A),
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
                                   ),
                                 ),
                               ],
@@ -3080,11 +3110,16 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                   ),
                   if (error != null)
                     Card(
-                      color: const Color(0xFF3A1E1E),
+                      color: Theme.of(context).colorScheme.errorContainer,
                       child: Padding(
                         padding: const EdgeInsets.all(14),
-                        child: Text(error!,
-                            style: const TextStyle(color: Colors.white)),
+                        child: Text(
+                          error!,
+                          style: TextStyle(
+                            color:
+                                Theme.of(context).colorScheme.onErrorContainer,
+                          ),
+                        ),
                       ),
                     ),
                   if (bblPerMin != null) ...[

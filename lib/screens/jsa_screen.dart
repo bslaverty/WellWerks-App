@@ -1013,6 +1013,7 @@ out center tags;
   }
 
   Widget _activeJobBanner() {
+    final scheme = Theme.of(context).colorScheme;
     final activeJob = _activeJob;
     if (activeJob == null) {
       return Card(
@@ -1027,9 +1028,9 @@ out center tags;
                 style: TextStyle(color: gold, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'No active job found. Start a job first so this JSA can save under the current job.',
-                style: TextStyle(color: Colors.white70),
+                style: TextStyle(color: scheme.onSurfaceVariant),
               ),
             ],
           ),
@@ -1067,20 +1068,20 @@ out center tags;
             const SizedBox(height: 6),
             Text(
               bestIdentifier,
-              style: const TextStyle(
-                color: Colors.white70,
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 6),
             Text(
               '$workflow • ${activeJob.shift.trim().isEmpty ? '-' : activeJob.shift.trim()} Shift',
-              style: const TextStyle(color: Colors.white70),
+              style: TextStyle(color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'JSA will save under this active job.',
-              style: TextStyle(color: Colors.white70),
+              style: TextStyle(color: scheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -1639,7 +1640,9 @@ out center tags;
                   borderRadius: BorderRadius.circular(12),
                   child: Signature(
                       controller: _signatures[index],
-                      backgroundColor: const Color(0xFF111111)),
+                      backgroundColor: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest),
                 ),
               ),
               Align(

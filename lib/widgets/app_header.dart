@@ -38,21 +38,63 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
+  Widget _headerActionButton({
+    required BuildContext context,
+    required IconData icon,
+    required VoidCallback onPressed,
+    String? tooltip,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 2),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: colors.surface.withValues(alpha: 0.65),
+        border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.8)),
+      ),
+      child: IconButton(
+        icon: Icon(icon),
+        tooltip: tooltip,
+        onPressed: onPressed,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return AppBar(
       backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
       elevation: 0,
-      leading: showBack
-          ? IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () => Navigator.of(context).pop(),
-            )
-          : IconButton(
-              icon: const Icon(Icons.home),
-              onPressed: () => _goHome(context),
+      flexibleSpace: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              colors.surface.withValues(alpha: 0.55),
+              Colors.transparent,
+            ],
+          ),
+          border: Border(
+            bottom: BorderSide(
+              color: colors.outlineVariant.withValues(alpha: 0.65),
             ),
+          ),
+        ),
+      ),
+      leadingWidth: 56,
+      leading: Padding(
+        padding: const EdgeInsets.only(left: 8),
+        child: _headerActionButton(
+          context: context,
+          icon: showBack ? Icons.arrow_back : Icons.home,
+          onPressed: showBack
+              ? () => Navigator.of(context).pop()
+              : () => _goHome(context),
+          tooltip: showBack ? 'Back' : 'Home',
+        ),
+      ),
       title: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.max,
@@ -77,17 +119,21 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
       actions: trailingActions ??
           [
             if (showBack || showHomeAction)
-              IconButton(
-                icon: const Icon(Icons.home),
+              _headerActionButton(
+                context: context,
+                icon: Icons.home,
                 onPressed: () => _goHome(context),
+                tooltip: 'Home',
               )
             else
               const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.settings),
+            _headerActionButton(
+              context: context,
+              icon: Icons.settings,
               tooltip: 'Settings',
               onPressed: () => _openSettings(context),
             ),
+            const SizedBox(width: 6),
           ],
       bottom: showActiveJobBanner
           ? const PreferredSize(

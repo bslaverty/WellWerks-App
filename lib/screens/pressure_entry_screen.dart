@@ -1068,21 +1068,22 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   Widget _sandClassificationLine(String rawValue) {
+    final scheme = Theme.of(context).colorScheme;
     final label = _sandClassLabel(rawValue);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Text(
               'Sand Classification',
-              style: TextStyle(color: Colors.white70),
+              style: TextStyle(color: scheme.onSurfaceVariant),
             ),
           ),
           Text(
             label,
-            style: const TextStyle(
-              color: Color(0xFFCDA56A),
+            style: TextStyle(
+              color: scheme.primary,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -1598,16 +1599,18 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         padding: const EdgeInsets.only(bottom: 14),
         child: Row(
           children: [
-            const Expanded(
+            Expanded(
               child: Text(
                 'Current Oil Inventory (BBL)',
-                style: TextStyle(color: Colors.white70),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
             Text(
               hasCurrent ? _fmt(current) : '--',
-              style: const TextStyle(
-                color: Color(0xFFCDA56A),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.primary,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1634,7 +1637,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (hasCushion && cushion >= 0) ...[
         Text(
           'Current Cushion (BBL): ${_fmtCushion(cushion)}',
-          style: const TextStyle(color: Colors.white70),
+          style:
+              TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 8),
       ],
@@ -2368,8 +2372,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           const SizedBox(width: 10),
           Text(
             _controllers[hourIndex].time,
-            style: const TextStyle(
-              color: Color(0xFFCDA56A),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
               fontWeight: FontWeight.w800,
               fontSize: 18,
             ),
@@ -2388,6 +2392,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   Widget _section(String title, List<Widget> children) {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       child: Padding(
@@ -2397,8 +2402,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           children: [
             Text(
               title,
-              style: const TextStyle(
-                color: Color(0xFFCDA56A),
+              style: TextStyle(
+                color: scheme.primary,
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
               ),
@@ -2412,6 +2417,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   Widget _calcLine(String label, double value, {String suffix = 'bbl'}) {
+    final scheme = Theme.of(context).colorScheme;
     final unavailable = value.isNaN;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -2420,15 +2426,15 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(color: Colors.white70),
+              style: TextStyle(color: scheme.onSurfaceVariant),
             ),
           ),
           Text(
             unavailable
                 ? '--'
                 : (suffix.isEmpty ? _fmt(value) : '${_fmt(value)} $suffix'),
-            style: const TextStyle(
-              color: Color(0xFFCDA56A),
+            style: TextStyle(
+              color: scheme.primary,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -2438,6 +2444,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   Widget _inventorySummary() {
+    final scheme = Theme.of(context).colorScheme;
     final header = _shift.header;
     final wells = _activeWells;
     final inventory = _shift.inventory;
@@ -2451,40 +2458,39 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
             : [header.company, header.pad]
                 .where((item) => item.trim().isNotEmpty)
                 .join(' • '),
-        style: const TextStyle(color: Colors.white70),
+        style: TextStyle(color: scheme.onSurfaceVariant),
       ),
       if (header.date.trim().isNotEmpty) ...[
         const SizedBox(height: 8),
         Text('Date: ${header.date}',
-            style: const TextStyle(color: Colors.white70)),
+            style: TextStyle(color: scheme.onSurfaceVariant)),
       ],
       const SizedBox(height: 8),
       Text(
         'Well Choke Types: ${wells.isEmpty ? '-' : wells.map((well) => '$well ${_chokeTypeForWell(well)}').join(' • ')}',
-        style: const TextStyle(color: Colors.white70),
+        style: TextStyle(color: scheme.onSurfaceVariant),
       ),
       const SizedBox(height: 8),
       Text(
         'Gas Setup: ${_shift.inventory.gasUnit.toUpperCase()} • ${_useGasAccumulator ? 'Gas Accumulation' : 'Instant Spot Rate'}',
-        style: const TextStyle(color: Colors.white70),
+        style: TextStyle(color: scheme.onSurfaceVariant),
       ),
       const SizedBox(height: 10),
       Text(
         'Wells: ${wells.isEmpty ? '-' : wells.join(', ')}',
-        style: const TextStyle(color: Colors.white70),
+        style: TextStyle(color: scheme.onSurfaceVariant),
       ),
       const SizedBox(height: 10),
       SwitchListTile.adaptive(
         value: _useStartingReadings,
         contentPadding: EdgeInsets.zero,
-        title: const Text(
+        title: Text(
           'Use Starting Readings',
-          style:
-              TextStyle(color: Color(0xFFCDA56A), fontWeight: FontWeight.w700),
+          style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w700),
         ),
-        subtitle: const Text(
+        subtitle: Text(
           'When off, first saved hour becomes the baseline.',
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(color: scheme.onSurfaceVariant),
         ),
         onChanged: _setUseStartingReadings,
       ),
@@ -2519,13 +2525,13 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       for (final tank in inventory.waterTanks)
         Text(
           '${tank.name}: ${tank.gaugeEntry.entryText()} (${tank.gaugeEntry.inchesText().isEmpty ? '0' : tank.gaugeEntry.inchesText()} in) @ ${tank.bblPerInch} BBL/in',
-          style: const TextStyle(color: Colors.white70),
+          style: TextStyle(color: scheme.onSurfaceVariant),
         ),
       if (inventory.waterTanks.isNotEmpty) const SizedBox(height: 8),
       for (final tank in inventory.oilTanks)
         Text(
           '${tank.name}: ${tank.gaugeEntry.entryText()} (${tank.gaugeEntry.inchesText().isEmpty ? '0' : tank.gaugeEntry.inchesText()} in) @ ${tank.bblPerInch} BBL/in',
-          style: const TextStyle(color: Colors.white70),
+          style: TextStyle(color: scheme.onSurfaceVariant),
         ),
       const SizedBox(height: 10),
       _calcLine(
@@ -2568,6 +2574,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   Widget _activeJobBanner() {
+    final scheme = Theme.of(context).colorScheme;
     final activeJob = _activeJob;
     if (activeJob == null) {
       final summary = [_shift.header.company, _shift.header.pad]
@@ -2577,23 +2584,23 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         return _section('Active Job', [
           Text(
             summary.isEmpty ? 'Active shift job linked' : summary,
-            style: const TextStyle(
-              color: Color(0xFFCDA56A),
+            style: TextStyle(
+              color: scheme.primary,
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Using active shift job link.',
-            style: TextStyle(color: Colors.white70),
+            style: TextStyle(color: scheme.onSurfaceVariant),
           ),
         ]);
       }
 
-      return _section('Active Job', const [
+      return _section('Active Job', [
         Text(
           'No active job currently selected. Start a job in Job Setup to link all Production modules.',
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(color: scheme.onSurfaceVariant),
         ),
       ]);
     }
@@ -2603,8 +2610,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         activeJob.company.trim().isEmpty
             ? 'No company entered'
             : activeJob.company,
-        style: const TextStyle(
-            color: Color(0xFFCDA56A), fontWeight: FontWeight.w700),
+        style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w700),
       ),
       const SizedBox(height: 8),
       Wrap(
@@ -2625,18 +2631,18 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   Widget _jobChip(String label, String value) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.18),
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.32),
         borderRadius: BorderRadius.circular(12),
-        border:
-            Border.all(color: const Color(0xFFCDA56A).withValues(alpha: 0.35)),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.35)),
       ),
       child: Text(
         '$label: ${value.trim().isEmpty ? 'Not entered' : value.trim()}',
-        style:
-            const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+        style: TextStyle(
+            color: scheme.onSurfaceVariant, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -2645,10 +2651,11 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     final controller = _controllers[index];
     final wells = _activeWells;
     if (wells.isEmpty) {
-      return _section('Active Hour', const [
+      return _section('Active Hour', [
         Text(
           'No active wells found. Save Production Inventory or start an Active Job first.',
-          style: TextStyle(color: Colors.white70),
+          style:
+              TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       ]);
     }
@@ -2673,9 +2680,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         },
       ),
       const SizedBox(height: 8),
-      const Text(
+      Text(
         'All quick-round values below are for the selected well only.',
-        style: TextStyle(color: Colors.white70),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
       const SizedBox(height: 12),
       ListTile(
@@ -2947,11 +2954,12 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   Widget _hourProgressSection() {
+    final scheme = Theme.of(context).colorScheme;
     final hourIndex = _activeHourIndex;
     return _section('Round Progress', [
       Text(
         'Current Hour: ${_controllers[hourIndex].time}',
-        style: const TextStyle(color: Colors.white70),
+        style: TextStyle(color: scheme.onSurfaceVariant),
       ),
       const SizedBox(height: 10),
       for (final well in _activeWells)
@@ -2971,7 +2979,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
               Expanded(
                 child: Text(
                   well,
-                  style: const TextStyle(color: Colors.white70),
+                  style: TextStyle(color: scheme.onSurfaceVariant),
                 ),
               ),
             ],
@@ -3151,11 +3159,15 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     final message = _hourValidationMessage;
     if (message == null) return const SizedBox.shrink();
     return Card(
-      color: const Color(0xFF3A1E1E),
+      color: Theme.of(context).colorScheme.errorContainer,
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
         padding: const EdgeInsets.all(14),
-        child: Text(message, style: const TextStyle(color: Colors.white)),
+        child: Text(
+          message,
+          style:
+              TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
+        ),
       ),
     );
   }
@@ -3165,14 +3177,15 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     required List<ProductionTank> tanks,
     required List<_GaugeEntryControllers> entries,
   }) {
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 4),
         Text(
           title,
-          style: const TextStyle(
-            color: Color(0xFFCDA56A),
+          style: TextStyle(
+            color: scheme.primary,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -3187,26 +3200,26 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
                 children: [
                   Text(
                     tanks[i].name,
-                    style: const TextStyle(
-                      color: Color(0xFFCDA56A),
+                    style: TextStyle(
+                      color: scheme.primary,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Gauge Entry Type: ${_shift.inventory.gaugeEntryType == 'feetInches' ? 'Feet + Inches' : _shift.inventory.gaugeEntryType == 'decimalFeet' ? 'Decimal Feet' : 'Inches'}',
-                    style: const TextStyle(color: Colors.white70),
+                    style: TextStyle(color: scheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 8),
                   ..._gaugeInputs(entries[i]),
                   Text(
                     'Entered: ${entries[i].entry(_shift.inventory.gaugeEntryType).entryText()}',
-                    style: const TextStyle(color: Colors.white70),
+                    style: TextStyle(color: scheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     'Converted Gauge: ${entries[i].convertedInchesText(_shift.inventory.gaugeEntryType)} in',
-                    style: const TextStyle(color: Colors.white70),
+                    style: TextStyle(color: scheme.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -3283,10 +3296,11 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           ]),
           _inventorySummary(),
           if (_shift.hourlyChecks.isEmpty)
-            _section('Hourly Checks', const [
+            _section('Hourly Checks', [
               Text(
                 'Build a round after saving Production Inventory. Quick Round is the only place hourly field data is entered.',
-                style: TextStyle(color: Colors.white70),
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ]),
           if (_shift.hourlyChecks.isNotEmpty) ...[

@@ -399,22 +399,23 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
   }
 
   Widget _controlsCard() {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       child: ExpansionTile(
         tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         childrenPadding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-        title: const Text(
+        title: Text(
           'Search & Filter',
           style: TextStyle(
-            color: Color(0xFFCDA56A),
+            color: scheme.primary,
             fontSize: 18,
             fontWeight: FontWeight.w800,
           ),
         ),
-        subtitle: const Text(
+        subtitle: Text(
           'Tap to refine jobs and JSA records',
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(color: scheme.onSurfaceVariant),
         ),
         children: [
           _searchField(controller: _companySearch, label: 'Search Company'),
@@ -425,10 +426,10 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
           _searchField(controller: _padSearch, label: 'Search Pad'),
           _searchField(controller: _wellSearch, label: 'Search Well'),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Show',
             style: TextStyle(
-              color: Colors.white70,
+              color: scheme.onSurfaceVariant,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -443,10 +444,10 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'Job Filter',
             style: TextStyle(
-              color: Colors.white70,
+              color: scheme.onSurfaceVariant,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -493,7 +494,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
       onSelected: (_) => setState(() => _contentFilter = value),
       selectedColor: colors.primary,
       labelStyle: TextStyle(
-        color: selected ? Colors.black : Colors.white,
+        color: selected ? colors.onPrimary : colors.onSurface,
         fontWeight: FontWeight.w700,
       ),
       side: BorderSide(color: colors.primary),
@@ -510,7 +511,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
       onSelected: (_) => setState(() => _statusFilter = value),
       selectedColor: colors.primary,
       labelStyle: TextStyle(
-        color: selected ? Colors.black : Colors.white,
+        color: selected ? colors.onPrimary : colors.onSurface,
         fontWeight: FontWeight.w700,
       ),
       side: BorderSide(color: colors.primary),
@@ -530,7 +531,8 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
         padding: const EdgeInsets.all(18),
         child: Text(
           message,
-          style: const TextStyle(color: Colors.white70),
+          style:
+              TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       ),
     );
@@ -587,7 +589,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
                           const SizedBox(height: 4),
                           Text(
                             'Customer: ${job.customer}',
-                            style: const TextStyle(color: Colors.white70),
+                            style: TextStyle(color: colors.onSurfaceVariant),
                           ),
                         ],
                       ],
@@ -653,9 +655,12 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
               _infoLine('Shift', job.shift),
               _infoLine('Date Started', job.startedDisplay),
               const SizedBox(height: 10),
-              const Align(
+              Align(
                 alignment: Alignment.centerRight,
-                child: Icon(Icons.chevron_right, color: Colors.white54),
+                child: Icon(
+                  Icons.chevron_right,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),
@@ -686,13 +691,13 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
               drafts.isEmpty
                   ? 'No saved JSAs found.'
                   : '${drafts.length} saved JSA${drafts.length == 1 ? '' : 's'}',
-              style: const TextStyle(color: Colors.white70),
+              style: TextStyle(color: colors.onSurfaceVariant),
             ),
             const SizedBox(height: 12),
             if (drafts.isEmpty)
-              const Text(
+              Text(
                 'Save a JSA to see it here in Home History.',
-                style: TextStyle(color: Colors.white70),
+                style: TextStyle(color: colors.onSurfaceVariant),
               )
             else
               for (final draft in drafts) _jsaCard(draft),
@@ -764,6 +769,7 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
     if (value.trim().isEmpty) {
       return const SizedBox.shrink();
     }
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -773,8 +779,8 @@ class _ProductionHistoryScreenState extends State<ProductionHistoryScreen> {
             width: 110,
             child: Text(
               label,
-              style: const TextStyle(
-                color: Colors.white70,
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -976,12 +982,12 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
   }
 
   Widget _headerCard() {
+    final scheme = Theme.of(context).colorScheme;
     final job = _detail.job;
-    final statusColor =
-        job.isActive ? const Color(0xFFCDA56A) : const Color(0xFF5E646C);
+    final statusColor = job.isActive ? scheme.primary : scheme.outline;
 
     return Card(
-      color: job.isActive ? const Color(0xFF17130E) : null,
+      color: job.isActive ? scheme.primary.withValues(alpha: 0.08) : null,
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(
@@ -993,8 +999,8 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
                 Expanded(
                   child: Text(
                     job.companyLabel,
-                    style: const TextStyle(
-                      color: Color(0xFFCDA56A),
+                    style: TextStyle(
+                      color: scheme.primary,
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
                     ),
@@ -1011,7 +1017,7 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
                   child: Text(
                     job.statusLabel,
                     style: TextStyle(
-                      color: job.isActive ? Colors.black : statusColor,
+                      color: job.isActive ? scheme.onPrimary : statusColor,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -1033,14 +1039,7 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFCDA56A),
-                    foregroundColor: Colors.black,
-                    minimumSize: const Size.fromHeight(56),
-                    textStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
+                      minimumSize: const Size.fromHeight(56)),
                   onPressed: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
@@ -1075,6 +1074,7 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
   }
 
   Widget _detailRow(String label, String value) {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -1084,8 +1084,8 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
             width: 110,
             child: Text(
               label,
-              style: const TextStyle(
-                color: Colors.white70,
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -1105,6 +1105,7 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
     required List<Widget> children,
     bool initiallyExpanded = false,
   }) {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       child: Theme(
@@ -1113,12 +1114,12 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
           initiallyExpanded: initiallyExpanded,
           tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          iconColor: const Color(0xFFCDA56A),
-          collapsedIconColor: const Color(0xFFCDA56A),
+          iconColor: scheme.primary,
+          collapsedIconColor: scheme.primary,
           title: Text(
             title,
-            style: const TextStyle(
-              color: Color(0xFFCDA56A),
+            style: TextStyle(
+              color: scheme.primary,
               fontSize: 18,
               fontWeight: FontWeight.w800,
             ),
@@ -1127,7 +1128,7 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
             count == 0
                 ? 'No saved items'
                 : '$count saved item${count == 1 ? '' : 's'}',
-            style: const TextStyle(color: Colors.white70),
+            style: TextStyle(color: scheme.onSurfaceVariant),
           ),
           children: children.isEmpty
               ? [
@@ -1135,12 +1136,13 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1A1D20),
+                      color:
+                          scheme.surfaceContainerHigh.withValues(alpha: 0.45),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       emptyMessage,
-                      style: const TextStyle(color: Colors.white70),
+                      style: TextStyle(color: scheme.onSurfaceVariant),
                     ),
                   ),
                 ]
@@ -1156,22 +1158,23 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
     List<Widget> details = const [],
     Widget? footer,
   }) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1D20),
+        color: scheme.surfaceContainerHigh.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF2A2E33)),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: scheme.onSurface,
               fontSize: 16,
               fontWeight: FontWeight.w700,
             ),
@@ -1180,7 +1183,7 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
             const SizedBox(height: 6),
             Text(
               subtitle,
-              style: const TextStyle(color: Colors.white70),
+              style: TextStyle(color: scheme.onSurfaceVariant),
             ),
           ],
           if (details.isNotEmpty) ...[
@@ -1197,16 +1200,17 @@ class _HistoryJobDetailScreenState extends State<_HistoryJobDetailScreen> {
   }
 
   Widget _labelValue(String label, String value) {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: RichText(
         text: TextSpan(
-          style: const TextStyle(color: Colors.white, height: 1.35),
+          style: TextStyle(color: scheme.onSurface, height: 1.35),
           children: [
             TextSpan(
               text: '$label: ',
-              style: const TextStyle(
-                color: Colors.white70,
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
                 fontWeight: FontWeight.w700,
               ),
             ),

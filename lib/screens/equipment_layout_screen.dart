@@ -6146,11 +6146,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Widget _activeJobBanner() {
+    final scheme = Theme.of(context).colorScheme;
     final activeJob = _activeJob;
     if (activeJob == null) {
-      return const Card(
+      return Card(
         margin: EdgeInsets.fromLTRB(12, 12, 12, 0),
-        child: Padding(
+        child: const Padding(
           padding: EdgeInsets.all(14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -6158,14 +6159,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               Text(
                 'Active Job',
                 style: TextStyle(
-                  color: Color(0xFFCDA56A),
+                  color: Color(0xFFFFFFFF),
                   fontWeight: FontWeight.bold,
                 ),
               ),
               SizedBox(height: 8),
               Text(
                 'No active job found. Start a job first so saved layout drawings can attach to the current job.',
-                style: TextStyle(color: Colors.white70),
+                style: TextStyle(color: Color(0xFFB0B0B0)),
               ),
             ],
           ),
@@ -6180,10 +6181,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Active Job',
               style: TextStyle(
-                color: Color(0xFFCDA56A),
+                color: scheme.primary,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -6192,8 +6193,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               activeJob.company.trim().isEmpty
                   ? 'No company entered'
                   : activeJob.company,
-              style: const TextStyle(
-                color: Color(0xFFCDA56A),
+              style: TextStyle(
+                color: scheme.primary,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -6214,19 +6215,22 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Widget _jobChip(String label, String value) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.18),
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.32),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFFCDA56A).withValues(alpha: 0.35),
+          color: scheme.primary.withValues(alpha: 0.35),
         ),
       ),
       child: Text(
         '$label: ${value.trim().isEmpty ? 'Not entered' : value.trim()}',
-        style:
-            const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+        style: TextStyle(
+          color: scheme.onSurfaceVariant,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -9673,13 +9677,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Widget _equipmentCategoryBody({required bool isMobile}) {
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Equipment',
           style: TextStyle(
-            color: Color(0xFFCDA56A),
+            color: scheme.primary,
             fontWeight: FontWeight.w700,
             fontSize: 15,
           ),
@@ -9795,13 +9800,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Widget _completionsCategoryBody({required bool isMobile}) {
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Completions',
           style: TextStyle(
-            color: Color(0xFFCDA56A),
+            color: scheme.primary,
             fontWeight: FontWeight.w700,
             fontSize: 15,
           ),
@@ -9840,10 +9846,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Straight Iron',
               style: TextStyle(
-                color: Color(0xFFCDA56A),
+                color: Theme.of(context).colorScheme.primary,
                 fontWeight: FontWeight.w700,
                 fontSize: 15,
               ),
@@ -9907,10 +9913,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Labels',
               style: TextStyle(
-                color: Color(0xFFCDA56A),
+                color: Theme.of(context).colorScheme.primary,
                 fontWeight: FontWeight.w700,
                 fontSize: 15,
               ),
@@ -9936,8 +9942,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       children: [
         Text(
           title,
-          style: const TextStyle(
-            color: Color(0xFFCDA56A),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.primary,
             fontWeight: FontWeight.w700,
             fontSize: 15,
           ),
@@ -9957,24 +9963,25 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Widget _sideLibraryPanel() {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 8, 12),
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0D0F),
+        color: scheme.surfaceContainerHigh.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF333333)),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Rig-Up Library',
                   style: TextStyle(
-                    color: Color(0xFFCDA56A),
+                    color: scheme.primary,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
@@ -9985,16 +9992,16 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                   _resetTransientInteractionState();
                   setState(() => _showSideLibrary = false);
                 },
-                icon: const Icon(Icons.close, color: Colors.white70),
+                icon: Icon(Icons.close, color: scheme.onSurfaceVariant),
                 tooltip: 'Close library',
               ),
             ],
           ),
           Row(
             children: [
-              const Text(
+              Text(
                 'Keep Open',
-                style: TextStyle(color: Colors.white70, fontSize: 12),
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
               ),
               Switch.adaptive(
                 value: _libraryKeepOpen,
@@ -10006,9 +10013,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Tap to place multiple pieces quickly. Panel stays open while you build.',
-            style: TextStyle(color: Colors.white70, fontSize: 12),
+            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
           ),
           const SizedBox(height: 10),
           _libraryCategoryTabs(isMobile: false),
@@ -10024,11 +10031,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Widget _library() {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-      decoration: const BoxDecoration(
-        color: Color(0xFF0D0D0F),
-        border: Border(bottom: BorderSide(color: Color(0xFF333333))),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHigh.withValues(alpha: 0.45),
+        border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
       ),
       child: SizedBox(
         height: 112,
@@ -10451,6 +10459,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Widget _mobileEquipmentDrawer() {
+    final scheme = Theme.of(context).colorScheme;
     final expandedHeight = _effectiveMobileLibraryHeight();
     final panelHeight =
         _showSideLibrary ? expandedHeight : _mobileLibraryMinHeight;
@@ -10499,7 +10508,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                       height: 4,
                       margin: const EdgeInsets.only(right: 10),
                       decoration: BoxDecoration(
-                        color: Colors.white30,
+                        color: scheme.onSurfaceVariant.withValues(alpha: 0.55),
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -10517,10 +10526,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                     if (_showSideLibrary)
                       Row(
                         children: [
-                          const Text(
+                          Text(
                             'Keep Open',
-                            style:
-                                TextStyle(color: Colors.white70, fontSize: 12),
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
                           ),
                           Switch.adaptive(
                             value: _libraryKeepOpen,
@@ -10548,7 +10559,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                         _showSideLibrary
                             ? Icons.keyboard_arrow_down
                             : Icons.keyboard_arrow_up,
-                        color: Colors.white70,
+                        color: scheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -10580,6 +10591,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   Widget _ironDrawControls() {
+    final scheme = Theme.of(context).colorScheme;
     final hasStart = _drawIronStartTarget != null;
     final canContinue = _pendingContinueIronTarget != null;
     return Container(
@@ -10609,8 +10621,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               const SizedBox(width: 10),
               Text(
                 'Selected Size: ${_drawIronSize}"',
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: scheme.onSurface,
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
                 ),
@@ -10624,7 +10636,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 : hasStart
                     ? 'Select destination. Valid equipment anchors, bypass ports, and iron endpoints stay visible until the segment is created.'
                     : 'Select starting point. Choose an iron size, then tap a valid anchor or existing iron endpoint.',
-            style: const TextStyle(color: Colors.white70, fontSize: 12.5),
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontSize: 12.5,
+            ),
           ),
           const SizedBox(height: 10),
           Wrap(
@@ -10692,9 +10707,12 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF131519),
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHigh
+            .withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF3A3A3A)),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
@@ -10706,7 +10724,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 alignment: Alignment.centerLeft,
                 child: Text(
                   'No item selected',
-                  style: TextStyle(color: Colors.white60),
+                  style: TextStyle(color: Colors.white70),
                 ),
               ),
             )
@@ -10721,9 +10739,14 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1A1D23),
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest
+                            .withValues(alpha: 0.35),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFF3A3A3A)),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
                       ),
                       child: Text(
                         selected?.displayLabel ??
@@ -10788,6 +10811,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
 
   Widget _floatingSelectionToolbar(
       _LayoutItem item, Size viewportSize, bool isLocked) {
+    final scheme = Theme.of(context).colorScheme;
     final showDisconnect =
         _isStraightIronType(item.type) && _selectedEndpointLeading != null;
     final width = showDisconnect ? 248.0 : 206.0;
@@ -10870,10 +10894,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         height: height,
         padding: const EdgeInsets.symmetric(horizontal: 4),
         decoration: BoxDecoration(
-          color: const Color(0xFF0F1114),
+          color: scheme.surfaceContainerHigh.withValues(alpha: 0.82),
           borderRadius: BorderRadius.circular(12),
-          border:
-              Border.all(color: const Color(0xFFCDA56A).withValues(alpha: 0.8)),
+          border: Border.all(color: scheme.primary.withValues(alpha: 0.72)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.4),
@@ -10890,7 +10913,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
                 padding: EdgeInsets.zero,
                 iconSize: 20,
-                icon: const Icon(Icons.copy_outlined, color: Colors.white),
+                icon: Icon(Icons.copy_outlined, color: scheme.onSurface),
                 tooltip: 'Duplicate',
               ),
             ),
@@ -10900,7 +10923,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
                 padding: EdgeInsets.zero,
                 iconSize: 20,
-                icon: const Icon(Icons.rotate_right, color: Colors.white),
+                icon: Icon(Icons.rotate_right, color: scheme.onSurface),
                 tooltip: 'Rotate 90°',
               ),
             ),
@@ -10912,7 +10935,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 iconSize: 20,
                 icon: Icon(
                   isLocked ? Icons.lock_open : Icons.lock_outline,
-                  color: Colors.white,
+                  color: scheme.onSurface,
                 ),
                 tooltip: isLocked ? 'Unlock' : 'Lock',
               ),
@@ -10923,7 +10946,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
                 padding: EdgeInsets.zero,
                 iconSize: 20,
-                icon: const Icon(Icons.delete_outline, color: Colors.white),
+                icon: Icon(Icons.delete_outline, color: scheme.onSurface),
                 tooltip: 'Delete',
               ),
             ),
@@ -10935,7 +10958,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                       const BoxConstraints(minWidth: 44, minHeight: 44),
                   padding: EdgeInsets.zero,
                   iconSize: 20,
-                  icon: const Icon(Icons.link_off, color: Colors.white),
+                  icon: Icon(Icons.link_off, color: scheme.onSurface),
                   tooltip: 'Disconnect',
                 ),
               ),
