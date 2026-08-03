@@ -545,21 +545,6 @@ class _DrilloutCleanoutModuleScreenState
   }
 
   Widget _bottomNav() {
-                          Container(
-                            width: 30,
-                            height: 30,
-                            decoration: BoxDecoration(
-                              color: scheme.primary.withValues(alpha: 0.14),
-                              borderRadius: BorderRadius.circular(9),
-                            ),
-                            alignment: Alignment.center,
-                            child: Icon(
-                              Icons.timeline,
-                              color: scheme.primary,
-                              size: 16,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
     final scheme = Theme.of(context).colorScheme;
 
     Widget tab({
