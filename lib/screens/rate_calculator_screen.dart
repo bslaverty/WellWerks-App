@@ -2560,8 +2560,18 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
     final startBbl = barrelsAt(startInches);
     final endBbl = barrelsAt(endInches);
-    final change = (endBbl - startBbl).abs();
+    final change = endBbl - startBbl;
     final adjustedChange = change + fluidHauledBarrels;
+    if (adjustedChange <= 0) {
+      setState(() {
+        error =
+            'Adjusted barrel change must be greater than zero. Increase ending gauge or fluid hauled.';
+        bblPerMin = null;
+        bblPerHr = null;
+        bblPerDay = null;
+      });
+      return;
+    }
     final perMin = adjustedChange / elapsedMinutes;
     final perHour = perMin * 60;
 
@@ -2761,36 +2771,74 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
             else ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Row(
-                  children: [
-                    if (_rateLogEnabled && _rateLogEntries.isNotEmpty)
-                      Expanded(
-                        child: OutlinedButton.icon(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final actions = <Widget>[];
+                    if (_rateLogEnabled && _rateLogEntries.isNotEmpty) {
+                      actions.add(
+                        OutlinedButton.icon(
                           onPressed: _copyRateUpdate,
                           icon: const Icon(Icons.copy_outlined),
                           label: const Text('Copy Update'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(54),
+                            alignment: Alignment.center,
+                            textStyle:
+                                const TextStyle(fontWeight: FontWeight.w600),
+                          ),
                         ),
-                      ),
-                    if (_rateLogEnabled && _rateLogEntries.isNotEmpty)
-                      const SizedBox(width: 10),
-                    if (_rateLogEnabled && _rateLogEntries.isNotEmpty)
-                      Expanded(
-                        child: OutlinedButton.icon(
+                      );
+                      actions.add(
+                        OutlinedButton.icon(
                           onPressed: _shareRateLogQr,
                           icon: const Icon(Icons.qr_code_2_outlined),
                           label: const Text('Share QR'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(54),
+                            alignment: Alignment.center,
+                            textStyle:
+                                const TextStyle(fontWeight: FontWeight.w600),
+                          ),
                         ),
-                      ),
-                    if (_rateLogEnabled && _rateLogEntries.isNotEmpty)
-                      const SizedBox(width: 10),
-                    Expanded(
-                      child: OutlinedButton.icon(
+                      );
+                    }
+                    actions.add(
+                      OutlinedButton.icon(
                         onPressed: _clearRateLogWithConfirmation,
                         icon: const Icon(Icons.delete_outline),
                         label: const Text('Clear Log'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(54),
+                          alignment: Alignment.center,
+                          textStyle:
+                              const TextStyle(fontWeight: FontWeight.w600),
+                        ),
                       ),
-                    ),
-                  ],
+                    );
+
+                    final compactTwoAcross = constraints.maxWidth < 520;
+                    final columns = compactTwoAcross ? 2 : actions.length;
+                    final spacing = 10.0;
+                    final itemWidth =
+                        (constraints.maxWidth - ((columns - 1) * spacing)) /
+                            columns;
+
+                    return Wrap(
+                      spacing: spacing,
+                      runSpacing: 10,
+                      children: actions
+                          .map(
+                            (button) => SizedBox(
+                              width: itemWidth,
+                              child: IconTheme(
+                                data: const IconThemeData(size: 20),
+                                child: button,
+                              ),
+                            ),
+                          )
+                          .toList(growable: false),
+                    );
+                  },
                 ),
               ),
               Padding(
@@ -2801,6 +2849,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                     onPressed: _importRateLogQr,
                     icon: const Icon(Icons.file_download_outlined),
                     label: const Text('Import QR'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(54),
+                    ),
                   ),
                 ),
               ),

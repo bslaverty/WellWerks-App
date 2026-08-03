@@ -6,13 +6,19 @@ import 'package:wellwerks/services/rate_calculator_session_service.dart';
 
 Future<void> _pumpRateCalculator(
   WidgetTester tester,
-  RateCalculatorConfig config,
-) async {
+  RateCalculatorConfig config, {
+  bool homeMultiMode = false,
+}) async {
   SharedPreferences.setMockInitialValues(<String, Object>{});
   RateCalculatorSessionService.instance.resetForTesting();
   await tester.binding.setSurfaceSize(const Size(1280, 1800));
   await tester.pumpWidget(
-    MaterialApp(home: RateCalculatorScreen(config: config)),
+    MaterialApp(
+      home: RateCalculatorScreen(
+        config: config,
+        homeMultiMode: homeMultiMode,
+      ),
+    ),
   );
   await tester.pumpAndSettle();
 }
@@ -139,6 +145,71 @@ void main() {
         'Gauge reading is outside the supported Round Bottom chart.',
       ),
       findsOneWidget,
+    );
+  });
+
+  testWidgets('Build 241 rejects non-positive adjusted barrel change',
+      (WidgetTester tester) async {
+    await _pumpRateCalculator(
+      tester,
+      const RateCalculatorConfig.chart(
+        'Round Bottom',
+        'flowback_round_bottom',
+      ),
+    );
+
+    await _enterIntegerGauge(tester, label: 'Starting Gauge', value: '11');
+    await _enterIntegerGauge(tester, label: 'Ending Gauge', value: '7');
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Calculate Rate'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Adjusted barrel change must be greater than zero. Increase ending gauge or fluid hauled.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('35.1'), findsNothing);
+  });
+
+  testWidgets(
+      'Build 241 allows lower ending gauge when fluid hauled is positive',
+      (WidgetTester tester) async {
+    await _pumpRateCalculator(
+      tester,
+      const RateCalculatorConfig.chart(
+        'Round Bottom',
+        'flowback_round_bottom',
+      ),
+      homeMultiMode: true,
+    );
+
+    await _enterIntegerGauge(tester, label: 'Starting Gauge', value: '11');
+    await _enterIntegerGauge(tester, label: 'Ending Gauge', value: '7');
+
+    await tester.tap(find.text('Include Fluid Hauled'));
+    await tester.pumpAndSettle();
+
+    final fluidFieldFinder = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField &&
+          widget.decoration?.labelText == 'Fluid Hauled (BBL)',
+    );
+    await tester.ensureVisible(fluidFieldFinder.first);
+    await tester.pumpAndSettle();
+    await tester.enterText(fluidFieldFinder.first, '200');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Calculate Rate'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Results'), findsOneWidget);
+    expect(
+      find.text(
+        'Adjusted barrel change must be greater than zero. Increase ending gauge or fluid hauled.',
+      ),
+      findsNothing,
     );
   });
 }
