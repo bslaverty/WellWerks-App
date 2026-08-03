@@ -1,15 +1,24 @@
 import 'package:flutter/material.dart';
+
 import '../services/rate_calculator_session_service.dart';
 import '../services/rate_timer_service.dart';
 import '../widgets/app_header.dart';
-import '../widgets/tool_card.dart';
+import '../widgets/ww_number_field.dart';
 import 'rate_calculator_screen.dart';
 
-class RateCalculatorMenuScreen extends StatelessWidget {
+class RateCalculatorMenuScreen extends StatefulWidget {
   final bool homeMultiMode;
+
+  const RateCalculatorMenuScreen({super.key, this.homeMultiMode = false});
+
+  @override
+  State<RateCalculatorMenuScreen> createState() =>
+      _RateCalculatorMenuScreenState();
+}
+
+class _RateCalculatorMenuScreenState extends State<RateCalculatorMenuScreen> {
   static final _sessionService = RateCalculatorSessionService.instance;
   static final _timerService = RateTimerService();
-  const RateCalculatorMenuScreen({super.key, this.homeMultiMode = false});
 
   static const List<RateCalculatorConfig> _menuConfigs = [
     RateCalculatorConfig.chart('FS3 Tank', 'fs3'),
@@ -24,6 +33,23 @@ class RateCalculatorMenuScreen extends StatelessWidget {
     RateCalculatorConfig.linear('Production Tank', defaultFactor: 1.67),
   ];
 
+  final TextEditingController _productionTankFactorController =
+      TextEditingController(text: '1.67');
+
+  late RateCalculatorConfig _selectedConfig;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedConfig = _menuConfigs.first;
+  }
+
+  @override
+  void dispose() {
+    _productionTankFactorController.dispose();
+    super.dispose();
+  }
+
   String _calculatorIdForConfig(RateCalculatorConfig config) {
     return (config.storageId ?? config.chartId ?? config.title)
         .toLowerCase()
@@ -32,7 +58,7 @@ class RateCalculatorMenuScreen extends StatelessWidget {
 
   Future<void> _open(BuildContext context, RateCalculatorConfig config) async {
     String? instanceId;
-    if (homeMultiMode) {
+    if (widget.homeMultiMode) {
       final calculatorId = _calculatorIdForConfig(config);
       await _sessionService.ensureInitialized();
       final activeTimer =
@@ -48,10 +74,22 @@ class RateCalculatorMenuScreen extends StatelessWidget {
         builder: (_) => RateCalculatorScreen(
           config: config,
           instanceId: instanceId,
-          homeMultiMode: homeMultiMode,
-          availableConfigs: homeMultiMode ? _menuConfigs : null,
+          homeMultiMode: widget.homeMultiMode,
+          availableConfigs: _menuConfigs,
         ),
       ),
+    );
+  }
+
+  RateCalculatorConfig _productionTankConfig() {
+    final factor =
+        double.tryParse(_productionTankFactorController.text.trim()) ?? 1.67;
+    return RateCalculatorConfig.linear(
+      'Production Tank',
+      defaultFactor: factor,
+      storageId: 'production_tank_linear',
+      allowOperationsLogAutoSave: false,
+      rateLogEnabledByDefault: true,
     );
   }
 
@@ -93,7 +131,7 @@ class RateCalculatorMenuScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Choose a tank chart to calculate BBL/min, BBL/hr, and BBL/day.',
+                  'Choose a tank from the dropdown and open the calculator directly.',
                   style: TextStyle(
                     color: theme.colorScheme.onSurfaceVariant,
                     fontSize: 13,
@@ -124,73 +162,74 @@ class RateCalculatorMenuScreen extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: const AppHeader(title: 'Rate Calculator', showBack: true),
-        body: ListView(
-          padding: const EdgeInsets.all(18),
-          children: [
-            _hero(context),
-            _sectionLabel('FLOWBACK & PRODUCTION TANKS'),
-            ToolCard(
-              icon: Icons.speed,
-              title: 'FS3 Tank',
-              subtitle: 'Falcon FS3 strapping chart',
-              onTap: () => _open(
-                context,
-                const RateCalculatorConfig.chart('FS3 Tank', 'fs3'),
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: const AppHeader(title: 'Rate Calculator', showBack: true),
+      body: ListView(
+        padding: const EdgeInsets.all(18),
+        children: [
+          _hero(context),
+          _sectionLabel('TANK SELECTOR'),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Theme.of(context)
+                    .colorScheme
+                    .outlineVariant
+                    .withValues(alpha: 0.95),
               ),
             ),
-            const SizedBox(height: 8),
-            ToolCard(
-              icon: Icons.speed,
-              title: 'SandX G3',
-              subtitle: 'SandX G3 hopper chart',
-              onTap: () => _open(context,
-                  const RateCalculatorConfig.chart('SandX G3', 'sandx')),
-            ),
-            const SizedBox(height: 8),
-            ToolCard(
-              icon: Icons.speed,
-              title: 'V-Bottom',
-              subtitle: 'V-bottom strapping chart',
-              onTap: () => _open(context,
-                  const RateCalculatorConfig.chart('V-Bottom', 'flowback500')),
-            ),
-            const SizedBox(height: 8),
-            ToolCard(
-              icon: Icons.speed,
-              title: 'Round Bottom',
-              subtitle: 'Round-bottom strapping chart',
-              onTap: () => _open(
-                  context,
-                  const RateCalculatorConfig.chart(
-                      'Round Bottom', 'flowback_round_bottom')),
-            ),
-            const SizedBox(height: 8),
-            ToolCard(
-              icon: Icons.speed,
-              title: 'Flowback Tank (MR 810039)',
-              subtitle: 'MR 810039 strapping chart',
-              onTap: () => _open(
-                context,
-                const RateCalculatorConfig.chart(
-                  'Flowback Tank (MR 810039)',
-                  'mr_810039',
-                  storageId: 'mr_810039',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DropdownButtonFormField<RateCalculatorConfig>(
+                  value: _selectedConfig,
+                  decoration: const InputDecoration(labelText: 'Tank'),
+                  items: _menuConfigs
+                      .map(
+                        (config) => DropdownMenuItem(
+                          value: config,
+                          child: Text(config.title),
+                        ),
+                      )
+                      .toList(growable: false),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _selectedConfig = value);
+                  },
                 ),
-              ),
+                if (_selectedConfig.title == 'Production Tank') ...[
+                  const SizedBox(height: 12),
+                  WwNumberField(
+                    label: 'Production Tank Factor (BBL/In)',
+                    controller: _productionTankFactorController,
+                    helperText:
+                        'Default: 1.67. Change this if your production tank factor is different.',
+                    allowDecimal: true,
+                  ),
+                ],
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => _open(
+                      context,
+                      _selectedConfig.title == 'Production Tank'
+                          ? _productionTankConfig()
+                          : _selectedConfig,
+                    ),
+                    icon: const Icon(Icons.arrow_forward),
+                    label: const Text('Open Calculator'),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            ToolCard(
-              icon: Icons.oil_barrel,
-              title: 'Production Tank',
-              subtitle: 'Default 1.67 BBL/in, editable',
-              onTap: () => _open(
-                  context,
-                  const RateCalculatorConfig.linear('Production Tank',
-                      defaultFactor: 1.67)),
-            ),
-          ],
-        ),
-      );
+          ),
+        ],
+      ),
+    );
+  }
 }

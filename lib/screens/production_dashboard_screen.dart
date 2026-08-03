@@ -6,14 +6,15 @@ import '../services/active_workflow_mode_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../widgets/app_header.dart';
-import '../widgets/tool_card.dart';
 import 'job_management_screen.dart';
+import 'equipment_screen.dart';
 import 'pressure_entry_screen.dart';
 import 'production_inventory_screen.dart';
 import 'production_history_screen.dart';
 import 'production_rate_calculator_menu_screen.dart';
 import 'report_template_screen.dart';
 import 'shift_report_screen.dart';
+import 'text_update_screen.dart';
 
 class ProductionDashboardScreen extends StatefulWidget {
   const ProductionDashboardScreen({super.key});
@@ -109,6 +110,557 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
     final fromJob = _activeJob?.padName.trim() ?? '';
     if (fromJob.isNotEmpty) return fromJob;
     return _shift.header.pad.trim();
+  }
+
+  String get _activeJobTitle {
+    final company = _activeCompanyName;
+    final pad = _activePadName;
+    if (company.isEmpty && pad.isEmpty) return 'No active job';
+    if (company.isEmpty) return pad;
+    if (pad.isEmpty) return company;
+    return '$company • $pad';
+  }
+
+  String _relativeUpdatedText() {
+    final diff = DateTime.now().difference(_shift.updatedAt);
+    if (diff.inMinutes < 1) return 'Updated just now';
+    if (diff.inHours < 1) return 'Updated ${diff.inMinutes} min ago';
+    if (diff.inDays < 1) return 'Updated ${diff.inHours} hr ago';
+    return 'Updated ${diff.inDays} day${diff.inDays == 1 ? '' : 's'} ago';
+  }
+
+  List<ProductionReportRow> get _activeRows => _shift.savedRows;
+
+  ProductionReportRow? get _latestRow =>
+      _activeRows.isEmpty ? null : _activeRows.last;
+
+  double _loggedHours() {
+    return _activeRows.fold<double>(
+        0, (sum, row) => sum + row.hoursSincePrevious);
+  }
+
+  double? _dailyRateFromLatest(double valuePerHour) {
+    if (valuePerHour <= 0) return null;
+    return valuePerHour * 24;
+  }
+
+  double? _parsedSandValue(ProductionReportRow? row) {
+    if (row == null) return null;
+    final value = double.tryParse(row.sandRate.trim());
+    if (value == null || value <= 0) return null;
+    return value;
+  }
+
+  Widget _statTile(String value, String label) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          decoration: BoxDecoration(
+            color:
+                Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: [
+              Text(
+                value,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  height: 1.0,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _dashboardCard({required Widget child}) {
+    return Container(
+      decoration: _homeCardDecoration(context),
+      child: child,
+    );
+  }
+
+  Widget _activeJobBanner() {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: _homeCardDecoration(context),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => _open(context, const JobManagementScreen()),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: scheme.primary.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                alignment: Alignment.center,
+                child: Icon(Icons.circle, color: scheme.primary, size: 14),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _hasActiveJobContext ? 'Active Job' : 'No active job',
+                      style: TextStyle(
+                        color: scheme.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _activeJobTitle,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        height: 1.0,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _workflowMode == ActiveWorkflowMode.production
+                          ? 'Production'
+                          : 'Completions',
+                      style: TextStyle(
+                        color: scheme.primary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 14,
+                      runSpacing: 8,
+                      children: [
+                        if (_activeJob?.resolvedWellNames.isNotEmpty ?? false)
+                          _jobMetaChip(
+                            icon: Icons.place,
+                            text: _activeJob!.resolvedWellNames.join(', '),
+                          ),
+                        _jobMetaChip(
+                          icon: Icons.oil_barrel_outlined,
+                          text: _activeWells.isEmpty
+                              ? '0 wells'
+                              : '${_activeWells.length} wells',
+                        ),
+                        _jobMetaChip(
+                          icon: Icons.schedule,
+                          text: _relativeUpdatedText(),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.chevron_right, color: scheme.primary, size: 28),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _overviewCard() {
+    final scheme = Theme.of(context).colorScheme;
+    final latest = _latestRow;
+    final oilDaily = _dailyRateFromLatest(latest?.oilProduction ?? 0);
+    final waterDaily = _dailyRateFromLatest(latest?.waterProduction ?? 0);
+    final sandValue = _parsedSandValue(latest);
+    final checks = _shift.hourlyChecks.length;
+
+    String fmtNumber(double? value, {int fractionDigits = 0}) {
+      if (value == null) return '--';
+      return value.toStringAsFixed(fractionDigits);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: _dashboardCard(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    alignment: Alignment.center,
+                    child:
+                        Icon(Icons.bar_chart, color: scheme.primary, size: 18),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Production Overview',
+                    style: TextStyle(
+                      color: scheme.primary,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: 3,
+                childAspectRatio: 1.1,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                children: [
+                  _statTile('${_activeWells.length}', 'Wells'),
+                  _statTile(fmtNumber(_loggedHours(), fractionDigits: 1),
+                      'Hrs Logged'),
+                  _statTile(
+                      '${fmtNumber(oilDaily, fractionDigits: 0)}', 'Oil bbl/d'),
+                  _statTile('${fmtNumber(waterDaily, fractionDigits: 0)}',
+                      'Water bbl/d'),
+                  _statTile(
+                      fmtNumber(sandValue, fractionDigits: 1), 'Sand tons'),
+                  _statTile('$checks', 'Checks'),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                _relativeUpdatedText(),
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _quickActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border:
+              Border.all(color: scheme.outlineVariant.withValues(alpha: 0.9)),
+          color: Theme.of(context).cardColor,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: scheme.primary.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, color: scheme.primary, size: 18),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _quickActionsCard() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: _dashboardCard(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.flash_on,
+                      color: Theme.of(context).colorScheme.primary, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Quick Actions',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: 4,
+                childAspectRatio: 0.82,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+                children: [
+                  _quickActionButton(
+                    icon: Icons.add_circle_outline,
+                    label: 'Quick Round',
+                    onTap: () => _open(context, const PressureEntryScreen()),
+                  ),
+                  _quickActionButton(
+                    icon: Icons.table_chart_outlined,
+                    label: 'Production Report',
+                    onTap: () => _open(context, const ShiftReportScreen()),
+                  ),
+                  _quickActionButton(
+                    icon: Icons.speed_outlined,
+                    label: 'Rate Calculator',
+                    onTap: () => _open(
+                      context,
+                      const ProductionRateCalculatorMenuScreen(),
+                    ),
+                  ),
+                  _quickActionButton(
+                    icon: Icons.chat_bubble_outline,
+                    label: 'Text Update',
+                    onTap: () => _open(context, const TextUpdateScreen()),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionItem({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: scheme.primary.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, color: scheme.primary, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 12,
+                      height: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: scheme.primary),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _productionSectionsCard() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: _dashboardCard(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Production Sections',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              _sectionItem(
+                icon: Icons.inventory_2_outlined,
+                title: 'Tank Inventory',
+                subtitle:
+                    'Tank levels, running totals, and production inventory',
+                onTap: () => _open(context, const ProductionInventoryScreen()),
+              ),
+              const Divider(height: 1),
+              _sectionItem(
+                icon: Icons.precision_manufacturing_outlined,
+                title: 'Equipment',
+                subtitle: 'Flowback, bypass, and layout tools',
+                onTap: () => _open(context, const EquipmentScreen()),
+              ),
+              const Divider(height: 1),
+              _sectionItem(
+                icon: Icons.history_outlined,
+                title: 'Production History',
+                subtitle: 'Archived reports, checks, and text updates',
+                onTap: () => _open(context, const ProductionHistoryScreen()),
+              ),
+              const Divider(height: 1),
+              _sectionItem(
+                icon: Icons.sticky_note_2_outlined,
+                title: 'Notes',
+                subtitle: 'Text updates and production notes',
+                onTap: () => _open(context, const TextUpdateScreen()),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _bottomTabBar() {
+    final scheme = Theme.of(context).colorScheme;
+
+    Widget tab({
+      required IconData icon,
+      required String label,
+      bool active = false,
+      VoidCallback? onTap,
+    }) {
+      final color = active ? scheme.primary : scheme.onSurfaceVariant;
+      return Expanded(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: color),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 12,
+                    fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border:
+              Border.all(color: scheme.outlineVariant.withValues(alpha: 0.9)),
+        ),
+        child: Row(
+          children: [
+            tab(
+                icon: Icons.dashboard_outlined,
+                label: 'Production',
+                active: true),
+            tab(
+              icon: Icons.article_outlined,
+              label: 'Reports',
+              onTap: () => _open(context, const ProductionHistoryScreen()),
+            ),
+            tab(
+              icon: Icons.chat_bubble_outline,
+              label: 'Text Updates',
+              onTap: () => _open(context, const TextUpdateScreen()),
+            ),
+            tab(
+              icon: Icons.settings_outlined,
+              label: 'Setup',
+              onTap: () => _open(
+                context,
+                const ReportTemplateScreen(initialSection: 'inventory'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   BoxDecoration _homeCardDecoration(BuildContext context) {
@@ -297,123 +849,21 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
 
     return Scaffold(
       appBar: const AppHeader(title: 'Production', showBack: true),
-      body: ListView(
-        padding: const EdgeInsets.all(18),
+      body: Column(
         children: [
-          _hero(context),
-          if (_workflowMode == ActiveWorkflowMode.production)
-            _activeJobCard(context),
-          Container(
-            margin: const EdgeInsets.only(bottom: 14),
-            decoration: _homeCardDecoration(context),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 30,
-                        height: 30,
-                        decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha: 0.16),
-                          borderRadius: BorderRadius.circular(9),
-                        ),
-                        alignment: Alignment.center,
-                        child: Icon(
-                          Icons.alt_route,
-                          color: Theme.of(context).colorScheme.primary,
-                          size: 18,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Production Workflow',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '1. Enter production data in Quick Round.',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 15,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '2. Review current shift production in Production Report.',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 15,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '3. Generate production outputs from Production Report actions.',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 15,
-                    ),
-                  ),
-                ],
-              ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+              children: [
+                _activeJobBanner(),
+                _overviewCard(),
+                _quickActionsCard(),
+                _productionSectionsCard(),
+                const SizedBox(height: 84),
+              ],
             ),
           ),
-          _sectionLabel('PRIMARY WORKFLOW'),
-          ToolCard(
-            icon: Icons.add_circle,
-            title: 'Quick Round',
-            subtitle:
-                'Primary production entry: gauges, hauled, pumped, and interval hours',
-            onTap: () => _open(context, const PressureEntryScreen()),
-          ),
-          ToolCard(
-            icon: Icons.table_chart,
-            title: 'Production Report',
-            subtitle:
-                'Central reporting workspace for the current active shift and output actions',
-            onTap: () => _open(context, const ShiftReportScreen()),
-          ),
-          ToolCard(
-            icon: Icons.local_drink,
-            title: 'Tank Inventory',
-            subtitle: 'Tank levels, running totals, and production inventory',
-            onTap: () => _open(context, const ProductionInventoryScreen()),
-          ),
-          ToolCard(
-            icon: Icons.speed,
-            title: 'Rate Calculator',
-            subtitle:
-                'Production-only tank rates and logs (excludes SandX / FS3)',
-            onTap: () =>
-                _open(context, const ProductionRateCalculatorMenuScreen()),
-          ),
-          const SizedBox(height: 10),
-          _sectionLabel('SECONDARY'),
-          ToolCard(
-            icon: Icons.inventory,
-            title: 'Production Setup',
-            subtitle: 'Company, wells, report layout, and production defaults',
-            onTap: () => _open(context,
-                const ReportTemplateScreen(initialSection: 'inventory')),
-          ),
-          ToolCard(
-            icon: Icons.history,
-            title: 'Production History',
-            subtitle:
-                'Archived production reports, hourly checks, text updates, and JSA records',
-            onTap: () => _open(context, const ProductionHistoryScreen()),
-          ),
+          _bottomTabBar(),
         ],
       ),
     );

@@ -1,5 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 
 import '../models/job_setup.dart';
 import '../widgets/app_header.dart';
@@ -10,7 +14,7 @@ import '../services/rate_timer_notification_service.dart';
 import '../services/rate_timer_service.dart';
 import '../services/recovery_state_service.dart';
 import 'module_menu_screen.dart';
-import 'completions_calculators_screen.dart';
+import 'completions_dashboard_screen.dart';
 import 'conversion_calculator_screen.dart';
 import 'rate_calculator_screen.dart';
 import 'equipment_layout_screen.dart';
@@ -27,6 +31,7 @@ import 'about_support_screen.dart';
 import 'drillout_cleanout_module_screen.dart';
 import 'flywheel_diesel_tank_screen.dart';
 import 'operations_log_screen.dart';
+import 'rig_up_dashboard_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -43,23 +48,41 @@ class _HomeScreenState extends State<HomeScreen> {
   final _rateTimerNotifications = RateTimerNotificationService.instance;
 
   bool _loading = true;
+  bool _weatherLoading = false;
+  String? _weatherTemp;
+  String? _weatherSummary;
+  String? _weatherWind;
+  String? _weatherCoordKey;
+  DateTime? _weatherFetchedAt;
+  Timer? _weatherRefreshTimer;
+  static const Duration _weatherRefreshInterval = Duration(hours: 1);
 
   @override
   void initState() {
     super.initState();
     _jobStorage.activeJobListenable.addListener(_handleActiveJobChanged);
+    _startWeatherRefreshTicker();
     _loadRecovery();
   }
 
   @override
   void dispose() {
     _jobStorage.activeJobListenable.removeListener(_handleActiveJobChanged);
+    _weatherRefreshTimer?.cancel();
     super.dispose();
+  }
+
+  void _startWeatherRefreshTicker() {
+    _weatherRefreshTimer?.cancel();
+    _weatherRefreshTimer = Timer.periodic(const Duration(hours: 1), (_) {
+      _loadPinnedWeatherForActiveJob();
+    });
   }
 
   void _handleActiveJobChanged() {
     if (!mounted) return;
     setState(() {});
+    _loadPinnedWeatherForActiveJob();
   }
 
   Future<void> _loadRecovery() async {
@@ -72,11 +95,130 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _loading = false;
     });
+    _loadPinnedWeatherForActiveJob();
     _handlePendingRateTimerAction();
     _handlePendingEstimatedStsAction();
   }
 
   JobSetup? get _activeJob => _jobStorage.activeJobListenable.value;
+
+  (String, String)? _activeJobCoordinates() {
+    final activeJob = _activeJob;
+    if (activeJob == null) return null;
+    final setup = activeJob.drilloutSetup;
+    final latitude = (setup['locationLatitude'] ?? '').toString().trim().isEmpty
+        ? (setup['gpsLatitude'] ?? setup['latitude'] ?? '').toString().trim()
+        : (setup['locationLatitude'] ?? '').toString().trim();
+    final longitude = (setup['locationLongitude'] ?? '')
+            .toString()
+            .trim()
+            .isEmpty
+        ? (setup['gpsLongitude'] ?? setup['longitude'] ?? '').toString().trim()
+        : (setup['locationLongitude'] ?? '').toString().trim();
+    if (latitude.isEmpty || longitude.isEmpty) return null;
+    return (latitude, longitude);
+  }
+
+  String _weatherCodeLabel(int code) {
+    if (code == 0) return 'Clear';
+    if (code <= 3) return 'Cloudy';
+    if (code == 45 || code == 48) return 'Fog';
+    if (code >= 51 && code <= 67) return 'Drizzle/Rain';
+    if (code >= 71 && code <= 77) return 'Snow';
+    if (code >= 80 && code <= 82) return 'Showers';
+    if (code >= 95) return 'Storm';
+    return 'Weather';
+  }
+
+  String _formatCoordinateLabel(String raw, {required bool latitude}) {
+    final value = double.tryParse(raw);
+    if (value == null) return raw;
+    final abs = value.abs().toStringAsFixed(4);
+    final suffix =
+        latitude ? (value >= 0 ? 'N' : 'S') : (value >= 0 ? 'E' : 'W');
+    return '$abs° $suffix';
+  }
+
+  Future<void> _loadPinnedWeatherForActiveJob(
+      {bool forceRefresh = false}) async {
+    final coordinates = _activeJobCoordinates();
+    if (coordinates == null) {
+      if (!mounted) return;
+      setState(() {
+        _weatherCoordKey = null;
+        _weatherLoading = false;
+        _weatherTemp = null;
+        _weatherSummary = null;
+        _weatherWind = null;
+        _weatherFetchedAt = null;
+      });
+      return;
+    }
+
+    final latitude = coordinates.$1;
+    final longitude = coordinates.$2;
+    final key = '$latitude,$longitude';
+    final hasFreshWeatherForPinnedLocation = _weatherCoordKey == key &&
+        _weatherFetchedAt != null &&
+        DateTime.now().difference(_weatherFetchedAt!) < _weatherRefreshInterval;
+
+    if (_weatherLoading ||
+        (!forceRefresh && hasFreshWeatherForPinnedLocation)) {
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _weatherCoordKey = key;
+      _weatherLoading = true;
+    });
+
+    try {
+      final uri = Uri.https('api.open-meteo.com', '/v1/forecast', {
+        'latitude': latitude,
+        'longitude': longitude,
+        'current': 'temperature_2m,weather_code,wind_speed_10m',
+        'temperature_unit': 'fahrenheit',
+        'wind_speed_unit': 'mph',
+      });
+      final response = await http.get(uri);
+      if (response.statusCode != 200) {
+        throw StateError('Weather request failed.');
+      }
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('Weather payload was invalid.');
+      }
+      final current = decoded['current'];
+      if (current is! Map<String, dynamic>) {
+        throw const FormatException('Weather values missing.');
+      }
+      final temperature = (current['temperature_2m'] as num?)?.toDouble();
+      final weatherCode = (current['weather_code'] as num?)?.toInt();
+      final wind = (current['wind_speed_10m'] as num?)?.toDouble();
+
+      if (!mounted) return;
+      setState(() {
+        _weatherTemp =
+            temperature == null ? null : '${temperature.toStringAsFixed(0)}°F';
+        _weatherSummary =
+            weatherCode == null ? 'Weather' : _weatherCodeLabel(weatherCode);
+        _weatherWind =
+            wind == null ? null : 'Wind ${wind.toStringAsFixed(0)} mph';
+        _weatherFetchedAt = DateTime.now();
+        _weatherLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _weatherTemp = null;
+        _weatherSummary = 'Weather unavailable';
+        _weatherWind = null;
+        _weatherFetchedAt = DateTime.now();
+        _weatherLoading = false;
+      });
+    }
+  }
 
   Future<void> _handlePendingEstimatedStsAction() async {
     final payload =
@@ -208,56 +350,11 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'completions':
         await open(
           context,
-          ModuleMenuScreen(
-            title: 'Completions',
-            tools: [
-              const ModuleTool(
-                icon: Icons.text_snippet_outlined,
-                title: 'Drillout / Cleanout',
-                subtitle:
-                    'Operations Log, Rate Calculator, STS, updates, and shift tools',
-                screen: DrilloutCleanoutModuleScreen(),
-              ),
-              const ModuleTool(
-                icon: Icons.calculate_outlined,
-                title: 'Calculators',
-                subtitle:
-                    'Gas Accum, Bottoms Up, Multiple Choke, Conversion, and Chlorides',
-                screen: CompletionsCalculatorsScreen(),
-              ),
-            ],
-            showHomeButton: true,
-          ),
+          const CompletionsDashboardScreen(),
         );
         return;
       case 'rigup':
-        await open(
-          context,
-          ModuleMenuScreen(
-            title: 'Rig-Up',
-            tools: const [
-              ModuleTool(
-                icon: Icons.account_tree,
-                title: 'Layout Designer',
-                subtitle: 'Design rig-up layouts and iron flow paths',
-                screen: EquipmentLayoutScreen(),
-              ),
-              ModuleTool(
-                icon: Icons.inventory_2_outlined,
-                title: 'Rig-Up Inventory',
-                subtitle: 'Track equipment, assign by well, and share summary',
-                screen: RigUpInventoryScreen(),
-              ),
-              ModuleTool(
-                icon: Icons.history,
-                title: 'Rig-Up History',
-                subtitle: 'Open, share, or delete saved rig-up records',
-                screen: RigUpHistoryScreen(),
-              ),
-            ],
-            showHomeButton: true,
-          ),
-        );
+        await open(context, const RigUpDashboardScreen());
         return;
       case 'rate':
         await open(
@@ -470,95 +567,158 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _weatherGpsCard() {
     final scheme = Theme.of(context).colorScheme;
-    final activeJob = _activeJob;
-    final setup = activeJob?.drilloutSetup ?? const <String, dynamic>{};
-    final latitude = (setup['locationLatitude'] ?? '').toString().trim().isEmpty
-        ? (setup['gpsLatitude'] ?? setup['latitude'] ?? '').toString().trim()
-        : (setup['locationLatitude'] ?? '').toString().trim();
-    final longitude = (setup['locationLongitude'] ?? '')
-            .toString()
-            .trim()
-            .isEmpty
-        ? (setup['gpsLongitude'] ?? setup['longitude'] ?? '').toString().trim()
-        : (setup['locationLongitude'] ?? '').toString().trim();
-    final coordinatesText =
-        latitude.isEmpty || longitude.isEmpty ? '' : '$latitude, $longitude';
+    final coordinates = _activeJobCoordinates();
+    final latitude = coordinates?.$1 ?? '';
+    final longitude = coordinates?.$2 ?? '';
+    final coordinatesText = coordinates == null ? '' : '$latitude, $longitude';
     final canCopy = coordinatesText.isNotEmpty;
+    final weatherPrimary =
+        _weatherLoading ? 'Loading...' : (_weatherTemp ?? '--°F');
+    final weatherSummary = _weatherSummary ?? 'Set job coordinates';
+    final weatherWind =
+        _weatherWind ?? (canCopy ? '' : 'Add coordinates in Job Setup');
 
     return Container(
       margin: const EdgeInsets.only(top: 6, bottom: 8),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
         color: Theme.of(context).cardColor,
         border: Border.all(color: scheme.outlineVariant),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.place_outlined, color: scheme.primary, size: 22),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Job Coordinates',
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            Expanded(
+              flex: 4,
+              child: Row(
+                children: [
+                  Icon(Icons.wb_sunny_outlined,
+                      color: scheme.primary, size: 24),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          weatherPrimary,
+                          style: TextStyle(
+                            color: scheme.onSurface,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          weatherSummary,
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (weatherWind.isNotEmpty)
+                          Text(
+                            weatherWind,
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            VerticalDivider(
+              width: 20,
+              thickness: 1,
+              color: scheme.outlineVariant.withValues(alpha: 0.85),
+            ),
+            Expanded(
+              flex: 4,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: !canCopy
+                    ? null
+                    : () async {
+                        await Clipboard.setData(
+                            ClipboardData(text: coordinatesText));
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Coordinates copied.')),
+                        );
+                      },
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.place_outlined,
+                              color: scheme.primary, size: 20),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Coordinates',
+                            style: TextStyle(
+                              color: scheme.primary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          if (canCopy) ...[
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.copy_outlined,
+                              size: 14,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        canCopy
+                            ? _formatCoordinateLabel(latitude, latitude: true)
+                            : 'No saved location',
                         style: TextStyle(
-                          color: scheme.primary,
-                          fontWeight: FontWeight.w800,
+                          color: scheme.onSurface,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
                         ),
                       ),
-                    ),
-                    IconButton(
-                      tooltip:
-                          canCopy ? 'Copy Coordinates' : 'No coordinates saved',
-                      onPressed: !canCopy
-                          ? null
-                          : () async {
-                              await Clipboard.setData(
-                                ClipboardData(text: coordinatesText),
-                              );
-                              if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Coordinates copied.'),
-                                ),
-                              );
-                            },
-                      icon: const Icon(Icons.copy_outlined),
-                    ),
-                  ],
+                      Text(
+                        canCopy
+                            ? _formatCoordinateLabel(longitude, latitude: false)
+                            : 'Set in Job Setup',
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                Text(
-                  activeJob == null
-                      ? 'No active job'
-                      : activeJob.padName.trim().isEmpty
-                          ? activeJob.primaryWell.trim()
-                          : activeJob.padName.trim(),
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  coordinatesText.isEmpty
-                      ? 'Set Latitude and Longitude in Job Setup to pin them here.'
-                      : coordinatesText,
-                  style: TextStyle(color: scheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  canCopy
-                      ? 'Tap copy to share by text.'
-                      : 'Coordinates not saved yet.',
-                  style: TextStyle(color: scheme.onSurfaceVariant),
-                ),
-              ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            OutlinedButton(
+              onPressed: canCopy
+                  ? () => _loadPinnedWeatherForActiveJob(forceRefresh: true)
+                  : null,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(0, 40),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              ),
+              child: const Text('Job Weather'),
+            ),
+          ],
+        ),
       ),
     );
   }

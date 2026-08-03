@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../widgets/app_header.dart';
-import '../widgets/tool_card.dart';
 import '../widgets/ww_number_field.dart';
 import 'rate_calculator_screen.dart';
 
@@ -18,6 +17,44 @@ class _ProductionRateCalculatorMenuScreenState
   final TextEditingController _productionTankFactorController =
       TextEditingController(text: '1.67');
 
+  static const List<RateCalculatorConfig> _productionConfigs = [
+    RateCalculatorConfig.chart(
+      'V-Bottom',
+      'flowback500',
+      storageId: 'production_flowback500',
+      allowOperationsLogAutoSave: false,
+      rateLogEnabledByDefault: true,
+    ),
+    RateCalculatorConfig.chart(
+      'Round Bottom',
+      'flowback_round_bottom',
+      storageId: 'production_flowback_round_bottom',
+      allowOperationsLogAutoSave: false,
+      rateLogEnabledByDefault: true,
+    ),
+    RateCalculatorConfig.chart(
+      'Flowback Tank (MR 810039)',
+      'mr_810039',
+      storageId: 'mr_810039',
+      rateLogEnabledByDefault: true,
+    ),
+    RateCalculatorConfig.linear(
+      'Production Tank',
+      defaultFactor: 1.67,
+      storageId: 'production_tank_linear',
+      allowOperationsLogAutoSave: false,
+      rateLogEnabledByDefault: true,
+    ),
+  ];
+
+  late RateCalculatorConfig _selectedConfig;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedConfig = _productionConfigs.first;
+  }
+
   @override
   void dispose() {
     _productionTankFactorController.dispose();
@@ -26,7 +63,12 @@ class _ProductionRateCalculatorMenuScreenState
 
   void _open(BuildContext context, RateCalculatorConfig config) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => RateCalculatorScreen(config: config)),
+      MaterialPageRoute(
+        builder: (_) => RateCalculatorScreen(
+          config: config,
+          availableConfigs: _productionConfigs,
+        ),
+      ),
     );
   }
 
@@ -80,7 +122,7 @@ class _ProductionRateCalculatorMenuScreenState
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Production-only rate tools and logs that stay separate from Quick Round and reports.',
+                  'Choose a tank from the dropdown, then open the calculator directly.',
                   style: TextStyle(
                     color: theme.colorScheme.onSurfaceVariant,
                     fontSize: 13,
@@ -119,68 +161,64 @@ class _ProductionRateCalculatorMenuScreenState
         padding: const EdgeInsets.all(18),
         children: [
           _hero(context),
-          _sectionLabel('TANK OPTIONS'),
-          ToolCard(
-            icon: Icons.speed,
-            title: 'V-Bottom',
-            subtitle: 'Production-only rate + log (no FS3 / SandX)',
-            onTap: () => _open(
-              context,
-              const RateCalculatorConfig.chart(
-                'Production V-Bottom',
-                'flowback500',
-                storageId: 'production_flowback500',
-                allowOperationsLogAutoSave: false,
-                rateLogEnabledByDefault: true,
+          _sectionLabel('TANK SELECTOR'),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Theme.of(context)
+                    .colorScheme
+                    .outlineVariant
+                    .withValues(alpha: 0.95),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          ToolCard(
-            icon: Icons.speed,
-            title: 'Round Bottom',
-            subtitle: 'Production-only rate + log (no FS3 / SandX)',
-            onTap: () => _open(
-              context,
-              const RateCalculatorConfig.chart(
-                'Production Round Bottom',
-                'flowback_round_bottom',
-                storageId: 'production_flowback_round_bottom',
-                allowOperationsLogAutoSave: false,
-                rateLogEnabledByDefault: true,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DropdownButtonFormField<RateCalculatorConfig>(
+                  value: _selectedConfig,
+                  decoration: const InputDecoration(labelText: 'Tank'),
+                  items: _productionConfigs
+                      .map(
+                        (config) => DropdownMenuItem(
+                          value: config,
+                          child: Text(config.title),
+                        ),
+                      )
+                      .toList(growable: false),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _selectedConfig = value);
+                  },
+                ),
+                if (_selectedConfig.title == 'Production Tank') ...[
+                  const SizedBox(height: 12),
+                  WwNumberField(
+                    label: 'Production Tank Factor (BBL/In)',
+                    controller: _productionTankFactorController,
+                    helperText:
+                        'Default: 1.67. Change this if your production tank factor is different.',
+                    allowDecimal: true,
+                  ),
+                ],
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => _open(
+                      context,
+                      _selectedConfig.title == 'Production Tank'
+                          ? _productionTankConfig()
+                          : _selectedConfig,
+                    ),
+                    icon: const Icon(Icons.arrow_forward),
+                    label: const Text('Open Calculator'),
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          ToolCard(
-            icon: Icons.speed,
-            title: 'Flowback Tank (MR 810039)',
-            subtitle: 'MR 810039 production-only rate + log',
-            onTap: () => _open(
-              context,
-              const RateCalculatorConfig.chart(
-                'Flowback Tank (MR 810039)',
-                'mr_810039',
-                storageId: 'mr_810039',
-                rateLogEnabledByDefault: true,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          _sectionLabel('CUSTOM FACTOR'),
-          WwNumberField(
-            label: 'Production Tank Factor (BBL/In)',
-            controller: _productionTankFactorController,
-            helperText:
-                'Default: 1.67. Change this if your production tank factor is different.',
-            allowDecimal: true,
-          ),
-          const SizedBox(height: 8),
-          ToolCard(
-            icon: Icons.oil_barrel,
-            title: 'Production Tank',
-            subtitle: 'Default 1.67 BBL/in, editable, production-only rate log',
-            onTap: () => _open(context, _productionTankConfig()),
           ),
         ],
       ),

@@ -473,6 +473,68 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     return byConfig >= 0 ? byConfig : 0;
   }
 
+  List<RateCalculatorConfig> get _selectorConfigs {
+    final configs = <RateCalculatorConfig>[];
+
+    void addUnique(RateCalculatorConfig config) {
+      final calculatorId = _calculatorIdForConfig(config);
+      final exists = configs.any(
+        (existing) => _calculatorIdForConfig(existing) == calculatorId,
+      );
+      if (!exists) {
+        configs.add(config);
+      }
+    }
+
+    addUnique(widget.config);
+    for (final config
+        in widget.availableConfigs ?? const <RateCalculatorConfig>[]) {
+      addUnique(config);
+    }
+
+    if (configs.length == 1 && widget.homeMultiMode) {
+      for (final tab in _resolvedHomeTabs()) {
+        addUnique(tab.config);
+      }
+    }
+
+    return configs;
+  }
+
+  int _selectedSelectorIndex(List<RateCalculatorConfig> configs) {
+    final currentId = _calculatorIdForConfig(widget.config);
+    final index = configs.indexWhere(
+      (config) => _calculatorIdForConfig(config) == currentId,
+    );
+    return index >= 0 ? index : 0;
+  }
+
+  Future<void> _switchCalculatorConfig(RateCalculatorConfig config) async {
+    final calculatorId = _calculatorIdForConfig(config);
+    String? instanceId;
+    if (widget.homeMultiMode) {
+      final activeTimer = await _rateTimerService.loadActiveTimerForCalculator(
+        calculatorId,
+      );
+      instanceId = activeTimer?.instanceId.isNotEmpty == true
+          ? activeTimer!.instanceId
+          : _sessionService.sessionKeyForCalculator(calculatorId);
+    }
+
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => RateCalculatorScreen(
+          config: config,
+          instanceId: instanceId,
+          homeMultiMode: widget.homeMultiMode,
+          availableConfigs: widget.availableConfigs,
+          homeTabs: widget.homeTabs,
+        ),
+      ),
+    );
+  }
+
   void _openHomeTab(int index) {
     final tabs = _resolvedHomeTabs();
     if (index < 0 || index >= tabs.length) return;
@@ -550,45 +612,180 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     );
   }
 
-  Widget _homeTabsSection() {
-    if (!widget.homeMultiMode) return const SizedBox.shrink();
-    final tabs = _resolvedHomeTabs();
-    final currentIndex = _currentHomeTabIndex(tabs);
+  Widget _tankSelectionSection() {
+    final configs = _selectorConfigs;
+    if (configs.length <= 1) return const SizedBox.shrink();
+
+    final currentIndex = _selectedSelectorIndex(configs);
+    final currentConfig = configs[currentIndex];
+    final tankSubtitle = currentConfig.usesChart
+        ? 'Chart-based tank • ${currentConfig.chartId ?? ''}'
+        : 'Editable tank factor';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: List<Widget>.generate(tabs.length, (index) {
-              final tab = tabs[index];
-              return Padding(
-                padding: EdgeInsets.only(
-                  right: index == tabs.length - 1 ? 0 : 8,
-                ),
-                child: InputChip(
-                  selected: index == currentIndex,
-                  onSelected: (_) => _openHomeTab(index),
-                  onDeleted: () => _deleteHomeTab(index),
-                  deleteIcon: const Icon(Icons.close, size: 18),
-                  label: Text(tab.config.title),
-                ),
-              );
-            }),
-          ),
-        ),
-        const SizedBox(height: 8),
-        if ((widget.availableConfigs?.isNotEmpty ?? false))
-          SizedBox(
-            child: OutlinedButton.icon(
-              onPressed: _openAddAnotherTankPicker,
-              icon: const Icon(Icons.add_circle_outline),
-              label: const Text('Add Another Tank'),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: Theme.of(context).cardColor,
+            border: Border.all(
+              color: Theme.of(context)
+                  .colorScheme
+                  .outlineVariant
+                  .withValues(alpha: 0.95),
             ),
           ),
-        const SizedBox(height: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'TANK SELECTION',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: () => _switchCalculatorConfig(currentConfig),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .outlineVariant
+                                .withValues(alpha: 0.95),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .primary
+                                    .withValues(alpha: 0.14),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              alignment: Alignment.center,
+                              child: Icon(
+                                currentConfig.usesChart
+                                    ? Icons.opacity_outlined
+                                    : Icons.oil_barrel_outlined,
+                                color: Theme.of(context).colorScheme.primary,
+                                size: 18,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    currentConfig.title,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    tankSubtitle,
+                                    style: TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Icon(
+                              Icons.expand_more,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  SizedBox(
+                    width: 120,
+                    child: FilledButton(
+                      onPressed: widget.homeMultiMode &&
+                              (widget.availableConfigs?.isNotEmpty ?? false)
+                          ? _openAddAnotherTankPicker
+                          : () =>
+                              _switchCalculatorConfig(configs[currentIndex]),
+                      child: Text(
+                        widget.homeMultiMode &&
+                                (widget.availableConfigs?.isNotEmpty ?? false)
+                            ? 'Add Tank'
+                            : 'Open',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (widget.homeMultiMode) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _selectorChip(
+                      currentConfig.usesChart ? 'Chart tank' : 'Custom factor',
+                    ),
+                    if (widget.availableConfigs?.isNotEmpty ?? false)
+                      _selectorChip('${configs.length} tanks available'),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
       ],
+    );
+  }
+
+  Widget _selectorChip(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.20),
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.primary,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 
@@ -3022,7 +3219,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
               child: ListView(
                 padding: const EdgeInsets.all(18),
                 children: [
-                  _homeTabsSection(),
+                  _tankSelectionSection(),
                   if (!widget.config.usesChart)
                     WwNumberField(
                       label: 'Tank Factor (BBL/In)',
