@@ -86,10 +86,15 @@ class RateCalculatorConfig {
       case 'sandx':
         return const RateCalculatorConfig.chart('SandX G3', 'sandx');
       case 'flowback500':
-        return const RateCalculatorConfig.chart('V-Bottom', 'flowback500');
+        return const RateCalculatorConfig.chart(
+          'Flowback Tank (V-Bottom)',
+          'flowback500',
+        );
       case 'flowback_round_bottom':
         return const RateCalculatorConfig.chart(
-            'Round Bottom', 'flowback_round_bottom');
+          'Flowback Tank (Round Bottom)',
+          'flowback_round_bottom',
+        );
       case 'mr_810039':
         return const RateCalculatorConfig.chart(
           'Flowback Tank (MR 810039)',
@@ -101,7 +106,7 @@ class RateCalculatorConfig {
             defaultFactor: 1.67);
       case 'production_flowback500':
         return const RateCalculatorConfig.chart(
-          'Production V-Bottom',
+          'Flowback Tank (V-Bottom)',
           'flowback500',
           storageId: 'production_flowback500',
           allowOperationsLogAutoSave: false,
@@ -109,7 +114,7 @@ class RateCalculatorConfig {
         );
       case 'production_flowback_round_bottom':
         return const RateCalculatorConfig.chart(
-          'Production Round Bottom',
+          'Flowback Tank (Round Bottom)',
           'flowback_round_bottom',
           storageId: 'production_flowback_round_bottom',
           allowOperationsLogAutoSave: false,
@@ -142,8 +147,11 @@ class HomeRateTabSpec {
 const List<RateCalculatorConfig> kDefaultRateCalculatorConfigs = [
   RateCalculatorConfig.chart('FS3 Tank', 'fs3'),
   RateCalculatorConfig.chart('SandX G3', 'sandx'),
-  RateCalculatorConfig.chart('V-Bottom', 'flowback500'),
-  RateCalculatorConfig.chart('Round Bottom', 'flowback_round_bottom'),
+  RateCalculatorConfig.chart('Flowback Tank (V-Bottom)', 'flowback500'),
+  RateCalculatorConfig.chart(
+    'Flowback Tank (Round Bottom)',
+    'flowback_round_bottom',
+  ),
   RateCalculatorConfig.chart(
     'Flowback Tank (MR 810039)',
     'mr_810039',
@@ -154,14 +162,14 @@ const List<RateCalculatorConfig> kDefaultRateCalculatorConfigs = [
 
 const List<RateCalculatorConfig> kProductionRateCalculatorConfigs = [
   RateCalculatorConfig.chart(
-    'V-Bottom',
+    'Flowback Tank (V-Bottom)',
     'flowback500',
     storageId: 'production_flowback500',
     allowOperationsLogAutoSave: false,
     rateLogEnabledByDefault: true,
   ),
   RateCalculatorConfig.chart(
-    'Round Bottom',
+    'Flowback Tank (Round Bottom)',
     'flowback_round_bottom',
     storageId: 'production_flowback_round_bottom',
     allowOperationsLogAutoSave: false,
@@ -206,13 +214,17 @@ class RateCalculatorScreen extends StatefulWidget {
       case 'Flowback':
         return RateCalculatorScreen(
             key: key,
-            config:
-                const RateCalculatorConfig.chart('V-Bottom', 'flowback500'));
+            config: const RateCalculatorConfig.chart(
+              'Flowback Tank (V-Bottom)',
+              'flowback500',
+            ));
       case 'Flowback Round Bottom':
         return RateCalculatorScreen(
             key: key,
             config: const RateCalculatorConfig.chart(
-                'Round Bottom', 'flowback_round_bottom'));
+              'Flowback Tank (Round Bottom)',
+              'flowback_round_bottom',
+            ));
       case 'Flowback Tank (MR 810039)':
       case 'MR 810039':
         return RateCalculatorScreen(
@@ -535,6 +547,89 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     );
   }
 
+  Future<RateCalculatorConfig?> _pickTankConfig({
+    RateCalculatorConfig? disabledConfig,
+  }) async {
+    final configs = widget.availableConfigs ?? const <RateCalculatorConfig>[];
+    if (configs.isEmpty || !widget.homeMultiMode) return null;
+
+    return showModalBottomSheet<RateCalculatorConfig>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: configs.length,
+            itemBuilder: (context, index) {
+              final config = configs[index];
+              final isDisabled = disabledConfig != null &&
+                  config.title == disabledConfig.title &&
+                  config.chartId == disabledConfig.chartId &&
+                  config.storageId == disabledConfig.storageId;
+              return ListTile(
+                leading: const Icon(Icons.speed),
+                title: Text(config.title),
+                subtitle: isDisabled
+                    ? const Text('Current tank')
+                    : const Text('Open this calculator'),
+                onTap: isDisabled
+                    ? null
+                    : () => Navigator.of(sheetContext).pop(config),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _openTankSelection(
+    RateCalculatorConfig selected,
+    List<HomeRateTabSpec> nextTabs,
+  ) async {
+    await _sessionService.ensureInitialized();
+    final selectedCalculatorId = _calculatorIdForConfig(selected);
+
+    final activeTimer = await _rateTimerService.loadActiveTimerForCalculator(
+      selectedCalculatorId,
+    );
+    final restoredInstanceId = activeTimer?.instanceId.isNotEmpty == true
+        ? activeTimer!.instanceId
+        : _sessionService.sessionKeyForCalculator(selectedCalculatorId);
+    final nextInstanceId = (restoredInstanceId ??
+            '${selectedCalculatorId}_${DateTime.now().microsecondsSinceEpoch}')
+        .trim();
+
+    final alreadyOpenIndex = nextTabs.indexWhere(
+      (tab) => tab.instanceId == nextInstanceId,
+    );
+    final resolvedTabs = List<HomeRateTabSpec>.from(nextTabs);
+    if (alreadyOpenIndex < 0) {
+      resolvedTabs.add(
+        HomeRateTabSpec(config: selected, instanceId: nextInstanceId),
+      );
+    }
+    _homeTabs = resolvedTabs;
+    await _persistHomeTabsState();
+    await _refreshHomeTabTimers();
+
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      PageRouteBuilder<void>(
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+        pageBuilder: (_, __, ___) => RateCalculatorScreen(
+          config: selected,
+          instanceId: nextInstanceId,
+          homeMultiMode: true,
+          availableConfigs: widget.availableConfigs,
+          homeTabs: resolvedTabs,
+        ),
+      ),
+    );
+  }
+
   Future<void> _deleteHomeTab(int index) async {
     final tabs = _resolvedHomeTabs();
     if (index < 0 || index >= tabs.length) return;
@@ -563,24 +658,40 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
     final removed = tabs[index];
     final nextTabs = List<HomeRateTabSpec>.from(tabs)..removeAt(index);
+
+    final activeTimer = await _rateTimerService.loadActiveTimerForInstance(
+      removed.instanceId,
+    );
+    if (activeTimer != null) {
+      await _rateTimerNotifications.cancelNotifications(activeTimer);
+    }
+    await _rateTimerService.clearActiveTimer(instanceId: removed.instanceId);
+    await _sessionService.clearSession(removed.instanceId);
+
     if (nextTabs.isEmpty) {
       _homeTabs = nextTabs;
       await _persistHomeTabsState();
-      await _sessionService.clearSession(removed.instanceId);
+      final replacement = await _pickTankConfig();
       if (!mounted) return;
-      Navigator.of(context).pop();
+      if (replacement == null) {
+        Navigator.of(context).pop();
+        return;
+      }
+      await _openTankSelection(replacement, nextTabs);
       return;
     }
 
     _homeTabs = nextTabs;
     await _persistHomeTabsState();
-    await _sessionService.clearSession(removed.instanceId);
+    await _refreshHomeTabTimers();
 
     if (!mounted) return;
     final nextIndex = index.clamp(0, nextTabs.length - 1);
     await Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => RateCalculatorScreen(
+      PageRouteBuilder<void>(
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+        pageBuilder: (_, __, ___) => RateCalculatorScreen(
           config: nextTabs[nextIndex].config,
           instanceId: nextTabs[nextIndex].instanceId,
           homeMultiMode: true,
@@ -675,13 +786,33 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(
-                              tab.config.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    tab.config.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                InkWell(
+                                  borderRadius: BorderRadius.circular(999),
+                                  onTap: () {
+                                    _deleteHomeTab(index);
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(4),
+                                    child: Icon(
+                                      Icons.close,
+                                      size: 16,
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 4),
                             Text(
@@ -3044,74 +3175,12 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     final configs = widget.availableConfigs ?? const <RateCalculatorConfig>[];
     if (configs.isEmpty || !widget.homeMultiMode) return;
 
-    final selected = await showModalBottomSheet<RateCalculatorConfig>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        return SafeArea(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: configs.length,
-            itemBuilder: (context, index) {
-              final config = configs[index];
-              final isCurrent = config.title == widget.config.title &&
-                  config.chartId == widget.config.chartId;
-              return ListTile(
-                leading: const Icon(Icons.speed),
-                title: Text(config.title),
-                subtitle: isCurrent
-                    ? const Text('Current tank')
-                    : const Text('Start separate timer'),
-                onTap: isCurrent
-                    ? null
-                    : () => Navigator.of(sheetContext).pop(config),
-              );
-            },
-          ),
-        );
-      },
-    );
-
+    final selected = await _pickTankConfig(disabledConfig: widget.config);
     if (!mounted || selected == null) return;
-    await _sessionService.ensureInitialized();
-    final selectedCalculatorId = _calculatorIdForConfig(selected);
-
-    final activeTimer = await _rateTimerService.loadActiveTimerForCalculator(
-      selectedCalculatorId,
-    );
-    final restoredInstanceId = activeTimer?.instanceId.isNotEmpty == true
-        ? activeTimer!.instanceId
-        : _sessionService.sessionKeyForCalculator(selectedCalculatorId);
-    final nextInstanceId = (restoredInstanceId ??
-            '${selectedCalculatorId}_${DateTime.now().microsecondsSinceEpoch}')
-        .trim();
 
     final existingTabs = _resolvedHomeTabs();
-    final alreadyOpenIndex = existingTabs.indexWhere(
-      (tab) => tab.instanceId == nextInstanceId,
-    );
     final nextTabs = List<HomeRateTabSpec>.from(existingTabs);
-    if (alreadyOpenIndex < 0) {
-      nextTabs.add(
-        HomeRateTabSpec(config: selected, instanceId: nextInstanceId),
-      );
-    }
-    _homeTabs = nextTabs;
-    await _persistHomeTabsState();
-    await _refreshHomeTabTimers();
-
-    if (!mounted) return;
-    await Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => RateCalculatorScreen(
-          config: selected,
-          instanceId: nextInstanceId,
-          homeMultiMode: true,
-          availableConfigs: configs,
-          homeTabs: nextTabs,
-        ),
-      ),
-    );
+    await _openTankSelection(selected, nextTabs);
   }
 
   @override

@@ -19,14 +19,14 @@ class _ProductionRateCalculatorMenuScreenState
 
   static const List<RateCalculatorConfig> _productionConfigs = [
     RateCalculatorConfig.chart(
-      'V-Bottom',
+      'Flowback Tank (V-Bottom)',
       'flowback500',
       storageId: 'production_flowback500',
       allowOperationsLogAutoSave: false,
       rateLogEnabledByDefault: true,
     ),
     RateCalculatorConfig.chart(
-      'Round Bottom',
+      'Flowback Tank (Round Bottom)',
       'flowback_round_bottom',
       storageId: 'production_flowback_round_bottom',
       allowOperationsLogAutoSave: false,

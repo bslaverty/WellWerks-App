@@ -303,7 +303,7 @@ class _CompletionsDashboardScreenState
                       context,
                       const RateCalculatorScreen(
                         config: RateCalculatorConfig.chart(
-                          'V-Bottom',
+                          'Flowback Tank (V-Bottom)',
                           'flowback500',
                           storageId: 'production_flowback500',
                           allowOperationsLogAutoSave: false,
@@ -428,7 +428,7 @@ class _CompletionsDashboardScreenState
                   context,
                   const RateCalculatorScreen(
                     config: RateCalculatorConfig.chart(
-                      'V-Bottom',
+                      'Flowback Tank (V-Bottom)',
                       'flowback500',
                       storageId: 'production_flowback500',
                       allowOperationsLogAutoSave: false,
@@ -525,7 +525,7 @@ class _CompletionsDashboardScreenState
                 context,
                 const RateCalculatorScreen(
                   config: RateCalculatorConfig.chart(
-                    'V-Bottom',
+                    'Flowback Tank (V-Bottom)',
                     'flowback500',
                     storageId: 'production_flowback500',
                     allowOperationsLogAutoSave: false,
