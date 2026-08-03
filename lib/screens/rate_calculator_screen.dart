@@ -287,6 +287,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   String? error;
   bool _initializing = true;
   List<HomeRateTabSpec> _homeTabs = <HomeRateTabSpec>[];
+  Map<String, RateTimerState> _homeTabTimers = <String, RateTimerState>{};
+  Timer? _activeTankTicker;
+  int _activeTankRefreshTick = 0;
 
   @override
   void initState() {
@@ -316,6 +319,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   Future<void> _initializeSession() async {
     await _sessionService.ensureInitialized();
     await _loadHomeTabsState();
+    await _refreshHomeTabTimers();
+    _startActiveTankTicker();
 
     final redirected = await _redirectToActiveCalculatorIfNeeded();
     if (redirected) {
@@ -371,10 +376,49 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       _applyPendingNotificationAction();
       _restoreTimerState();
       _loadRateLogState();
+      _refreshHomeTabTimers();
+      _startActiveTankTicker();
       if (_liveClockRunning) {
         _startLiveClockTicker();
       }
     }
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _activeTankTicker?.cancel();
+      _activeTankTicker = null;
+    }
+  }
+
+  Future<void> _refreshHomeTabTimers() async {
+    if (!widget.homeMultiMode) return;
+    final tabs = _resolvedHomeTabs();
+    final timers = <String, RateTimerState>{};
+    for (final tab in tabs) {
+      final timer = await _rateTimerService.loadActiveTimerForInstance(
+        tab.instanceId,
+      );
+      if (timer != null) {
+        timers[tab.instanceId] = timer;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _homeTabTimers = timers;
+    });
+  }
+
+  void _startActiveTankTicker() {
+    _activeTankTicker?.cancel();
+    if (!widget.homeMultiMode) return;
+    _activeTankTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      _activeTankRefreshTick++;
+      if (_activeTankRefreshTick % 5 == 0) {
+        _refreshHomeTabTimers();
+      }
+      setState(() {});
+    });
   }
 
   String get _calculatorStorageId {
@@ -758,6 +802,120 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                   ],
                 ),
               ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  String _activeTankTimerText(HomeRateTabSpec tab) {
+    final timer = _homeTabTimers[tab.instanceId];
+    if (timer == null) return 'No timer';
+    final remaining = timer.remainingSecondsAt(DateTime.now());
+    if (remaining <= 0) return 'Finished';
+    final mm = (remaining ~/ 60).toString().padLeft(2, '0');
+    final ss = (remaining % 60).toString().padLeft(2, '0');
+    return 'Running $mm:$ss';
+  }
+
+  Widget _activeTanksSection() {
+    if (!widget.homeMultiMode) return const SizedBox.shrink();
+    final tabs = _resolvedHomeTabs();
+    if (tabs.isEmpty) return const SizedBox.shrink();
+
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: Theme.of(context).cardColor,
+            border: Border.all(
+              color: scheme.outlineVariant.withValues(alpha: 0.95),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'ACTIVE CALCULATORS',
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 92,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: tabs.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final tab = tabs[index];
+                    final isCurrent = tab.instanceId == _instanceStorageId;
+                    final timerText = _activeTankTimerText(tab);
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => _openHomeTab(index),
+                      child: Container(
+                        width: 180,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: isCurrent
+                              ? scheme.primary.withValues(alpha: 0.12)
+                              : Theme.of(context).cardColor,
+                          border: Border.all(
+                            color: isCurrent
+                                ? scheme.primary
+                                : scheme.outlineVariant.withValues(alpha: 0.95),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              tab.config.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              timerText,
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              isCurrent ? 'Current' : 'Tap to open',
+                              style: TextStyle(
+                                color: isCurrent
+                                    ? scheme.primary
+                                    : scheme.onSurfaceVariant,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
             ],
           ),
         ),
@@ -2833,6 +2991,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     _saveRateLogState();
     _persistHomeTabsState();
     WidgetsBinding.instance.removeObserver(this);
+    _activeTankTicker?.cancel();
     _countdownTimer?.cancel();
     _liveClockTicker?.cancel();
     startGauge.removeListener(_handleSessionFieldChanged);
@@ -3178,6 +3337,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     }
     _homeTabs = nextTabs;
     await _persistHomeTabsState();
+    await _refreshHomeTabTimers();
 
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -3218,6 +3378,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                 padding: const EdgeInsets.all(18),
                 children: [
                   _tankSelectionSection(),
+                  _activeTanksSection(),
                   if (!widget.config.usesChart)
                     WwNumberField(
                       label: 'Tank Factor (BBL/In)',
