@@ -11,7 +11,7 @@ import 'equipment_screen.dart';
 import 'pressure_entry_screen.dart';
 import 'production_inventory_screen.dart';
 import 'production_history_screen.dart';
-import 'production_rate_calculator_menu_screen.dart';
+import 'rate_calculator_screen.dart';
 import 'report_template_screen.dart';
 import 'shift_report_screen.dart';
 import 'text_update_screen.dart';
@@ -127,68 +127,6 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
     if (diff.inHours < 1) return 'Updated ${diff.inMinutes} min ago';
     if (diff.inDays < 1) return 'Updated ${diff.inHours} hr ago';
     return 'Updated ${diff.inDays} day${diff.inDays == 1 ? '' : 's'} ago';
-  }
-
-  List<ProductionReportRow> get _activeRows => _shift.savedRows;
-
-  ProductionReportRow? get _latestRow =>
-      _activeRows.isEmpty ? null : _activeRows.last;
-
-  double _loggedHours() {
-    return _activeRows.fold<double>(
-        0, (sum, row) => sum + row.hoursSincePrevious);
-  }
-
-  double? _dailyRateFromLatest(double valuePerHour) {
-    if (valuePerHour <= 0) return null;
-    return valuePerHour * 24;
-  }
-
-  double? _parsedSandValue(ProductionReportRow? row) {
-    if (row == null) return null;
-    final value = double.tryParse(row.sandRate.trim());
-    if (value == null || value <= 0) return null;
-    return value;
-  }
-
-  Widget _statTile(String value, String label) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-          decoration: BoxDecoration(
-            color:
-                Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            children: [
-              Text(
-                value,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  height: 1.0,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
   }
 
   Widget _dashboardCard({required Widget child}) {
@@ -310,87 +248,6 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
     );
   }
 
-  Widget _overviewCard() {
-    final scheme = Theme.of(context).colorScheme;
-    final latest = _latestRow;
-    final oilDaily = _dailyRateFromLatest(latest?.oilProduction ?? 0);
-    final waterDaily = _dailyRateFromLatest(latest?.waterProduction ?? 0);
-    final sandValue = _parsedSandValue(latest);
-    final checks = _shift.hourlyChecks.length;
-
-    String fmtNumber(double? value, {int fractionDigits = 0}) {
-      if (value == null) return '--';
-      return value.toStringAsFixed(fractionDigits);
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: _dashboardCard(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 30,
-                    height: 30,
-                    decoration: BoxDecoration(
-                      color: scheme.primary.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(9),
-                    ),
-                    alignment: Alignment.center,
-                    child:
-                        Icon(Icons.bar_chart, color: scheme.primary, size: 18),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Production Overview',
-                    style: TextStyle(
-                      color: scheme.primary,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 3,
-                childAspectRatio: 1.1,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                children: [
-                  _statTile('${_activeWells.length}', 'Wells'),
-                  _statTile(fmtNumber(_loggedHours(), fractionDigits: 1),
-                      'Hrs Logged'),
-                  _statTile(
-                      '${fmtNumber(oilDaily, fractionDigits: 0)}', 'Oil bbl/d'),
-                  _statTile('${fmtNumber(waterDaily, fractionDigits: 0)}',
-                      'Water bbl/d'),
-                  _statTile(
-                      fmtNumber(sandValue, fractionDigits: 1), 'Sand tons'),
-                  _statTile('$checks', 'Checks'),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                _relativeUpdatedText(),
-                style: TextStyle(
-                  color: scheme.onSurfaceVariant,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _quickActionButton({
     required IconData icon,
     required String label,
@@ -481,7 +338,17 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
                     label: 'Rate Calculator',
                     onTap: () => _open(
                       context,
-                      const ProductionRateCalculatorMenuScreen(),
+                      const RateCalculatorScreen(
+                        config: RateCalculatorConfig.chart(
+                          'V-Bottom',
+                          'flowback500',
+                          storageId: 'production_flowback500',
+                          allowOperationsLogAutoSave: false,
+                          rateLogEnabledByDefault: true,
+                        ),
+                        homeMultiMode: true,
+                        availableConfigs: kProductionRateCalculatorConfigs,
+                      ),
                     ),
                   ),
                   _quickActionButton(
@@ -877,7 +744,6 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
               children: [
                 _activeJobBanner(),
-                _overviewCard(),
                 _quickActionsCard(),
                 _productionSectionsCard(),
                 const SizedBox(height: 84),

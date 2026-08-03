@@ -20,18 +20,8 @@ class _RateCalculatorMenuScreenState extends State<RateCalculatorMenuScreen> {
   static final _sessionService = RateCalculatorSessionService.instance;
   static final _timerService = RateTimerService();
 
-  static const List<RateCalculatorConfig> _menuConfigs = [
-    RateCalculatorConfig.chart('FS3 Tank', 'fs3'),
-    RateCalculatorConfig.chart('SandX G3', 'sandx'),
-    RateCalculatorConfig.chart('V-Bottom', 'flowback500'),
-    RateCalculatorConfig.chart('Round Bottom', 'flowback_round_bottom'),
-    RateCalculatorConfig.chart(
-      'Flowback Tank (MR 810039)',
-      'mr_810039',
-      storageId: 'mr_810039',
-    ),
-    RateCalculatorConfig.linear('Production Tank', defaultFactor: 1.67),
-  ];
+  static const List<RateCalculatorConfig> _menuConfigs =
+      kProductionRateCalculatorConfigs;
 
   final TextEditingController _productionTankFactorController =
       TextEditingController(text: '1.67');

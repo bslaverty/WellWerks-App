@@ -139,6 +139,49 @@ class HomeRateTabSpec {
   final String instanceId;
 }
 
+const List<RateCalculatorConfig> kDefaultRateCalculatorConfigs = [
+  RateCalculatorConfig.chart('FS3 Tank', 'fs3'),
+  RateCalculatorConfig.chart('SandX G3', 'sandx'),
+  RateCalculatorConfig.chart('V-Bottom', 'flowback500'),
+  RateCalculatorConfig.chart('Round Bottom', 'flowback_round_bottom'),
+  RateCalculatorConfig.chart(
+    'Flowback Tank (MR 810039)',
+    'mr_810039',
+    storageId: 'mr_810039',
+  ),
+  RateCalculatorConfig.linear('Production Tank', defaultFactor: 1.67),
+];
+
+const List<RateCalculatorConfig> kProductionRateCalculatorConfigs = [
+  RateCalculatorConfig.chart(
+    'V-Bottom',
+    'flowback500',
+    storageId: 'production_flowback500',
+    allowOperationsLogAutoSave: false,
+    rateLogEnabledByDefault: true,
+  ),
+  RateCalculatorConfig.chart(
+    'Round Bottom',
+    'flowback_round_bottom',
+    storageId: 'production_flowback_round_bottom',
+    allowOperationsLogAutoSave: false,
+    rateLogEnabledByDefault: true,
+  ),
+  RateCalculatorConfig.chart(
+    'Flowback Tank (MR 810039)',
+    'mr_810039',
+    storageId: 'mr_810039',
+    rateLogEnabledByDefault: true,
+  ),
+  RateCalculatorConfig.linear(
+    'Production Tank',
+    defaultFactor: 1.67,
+    storageId: 'production_tank_linear',
+    allowOperationsLogAutoSave: false,
+    rateLogEnabledByDefault: true,
+  ),
+];
+
 class RateCalculatorScreen extends StatefulWidget {
   final RateCalculatorConfig config;
   final String? instanceId;
@@ -654,77 +697,24 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: () => _switchCalculatorConfig(currentConfig),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .outlineVariant
-                                .withValues(alpha: 0.95),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 36,
-                              height: 36,
-                              decoration: BoxDecoration(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .primary
-                                    .withValues(alpha: 0.14),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              alignment: Alignment.center,
-                              child: Icon(
-                                currentConfig.usesChart
-                                    ? Icons.opacity_outlined
-                                    : Icons.oil_barrel_outlined,
-                                color: Theme.of(context).colorScheme.primary,
-                                size: 18,
-                              ),
+                    child: DropdownButtonFormField<RateCalculatorConfig>(
+                      value: currentConfig,
+                      decoration: const InputDecoration(labelText: 'Tank'),
+                      items: configs
+                          .map(
+                            (config) => DropdownMenuItem<RateCalculatorConfig>(
+                              value: config,
+                              child: Text(config.title),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    currentConfig.title,
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    tankSubtitle,
-                                    style: TextStyle(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Icon(
-                              Icons.expand_more,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          ],
-                        ),
-                      ),
+                          )
+                          .toList(growable: false),
+                      onChanged: (selected) {
+                        if (selected == null) return;
+                        final selectedId = _calculatorIdForConfig(selected);
+                        final currentId = _calculatorIdForConfig(currentConfig);
+                        if (selectedId == currentId) return;
+                        _switchCalculatorConfig(selected);
+                      },
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -745,6 +735,14 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                tankSubtitle,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
               ),
               if (widget.homeMultiMode) ...[
                 const SizedBox(height: 10),

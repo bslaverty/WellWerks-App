@@ -22,7 +22,6 @@ import 'rig_up_inventory_screen.dart';
 import 'rig_up_history_screen.dart';
 import 'jsa_screen.dart';
 import 'production_dashboard_screen.dart';
-import 'rate_calculator_menu_screen.dart';
 import 'production_history_screen.dart';
 import 'chart_reference_screen.dart';
 import 'tank_charts_menu_screen.dart';
@@ -358,7 +357,19 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       case 'rate':
         await open(
-            context, const RateCalculatorMenuScreen(homeMultiMode: true));
+          context,
+          const RateCalculatorScreen(
+            config: RateCalculatorConfig.chart(
+              'V-Bottom',
+              'flowback500',
+              storageId: 'production_flowback500',
+              allowOperationsLogAutoSave: false,
+              rateLogEnabledByDefault: true,
+            ),
+            homeMultiMode: true,
+            availableConfigs: kProductionRateCalculatorConfigs,
+          ),
+        );
         return;
       case 'jsa':
         await open(context, const JsaScreen());

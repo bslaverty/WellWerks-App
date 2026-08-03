@@ -13,7 +13,7 @@ import 'job_box_inventory_screen.dart';
 import 'jsa_screen.dart';
 import 'production_dashboard_screen.dart';
 import 'production_history_screen.dart';
-import 'production_rate_calculator_menu_screen.dart';
+import 'rate_calculator_screen.dart';
 
 class CompletionsDashboardScreen extends StatefulWidget {
   const CompletionsDashboardScreen({super.key});
@@ -99,23 +99,6 @@ class _CompletionsDashboardScreenState
     return wells;
   }
 
-  List<ProductionReportRow> get _rows => _shift.savedRows;
-
-  ProductionReportRow? get _latestRow => _rows.isEmpty ? null : _rows.last;
-
-  double _loggedHours() =>
-      _rows.fold<double>(0, (sum, row) => sum + row.hoursSincePrevious);
-
-  double? _rateToDaily(double valuePerHour) {
-    if (valuePerHour <= 0) return null;
-    return valuePerHour * 24;
-  }
-
-  String _fmt(double? value, {int fractionDigits = 0}) {
-    if (value == null) return '--';
-    return value.toStringAsFixed(fractionDigits);
-  }
-
   Widget _card({required Widget child}) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
@@ -126,42 +109,6 @@ class _CompletionsDashboardScreenState
             Border.all(color: scheme.outlineVariant.withValues(alpha: 0.95)),
       ),
       child: child,
-    );
-  }
-
-  Widget _metric(String value, String label) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-          decoration: BoxDecoration(
-            color:
-                Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            children: [
-              Text(
-                value,
-                style:
-                    const TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 
@@ -266,81 +213,6 @@ class _CompletionsDashboardScreenState
     );
   }
 
-  Widget _overviewCard() {
-    final latest = _latestRow;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: _card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 30,
-                    height: 30,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(9),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(Icons.dashboard,
-                        color: Theme.of(context).colorScheme.primary, size: 18),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Completions Overview',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    _relativeUpdatedText(),
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 3,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-                childAspectRatio: 1.1,
-                children: [
-                  _metric('${_wells.length}', 'Wells'),
-                  _metric(
-                      _fmt(_loggedHours(), fractionDigits: 1), 'Hours Logged'),
-                  _metric('${_drilloutEntries.length}', 'Entries Today'),
-                  _metric(_fmt(_rateToDaily(latest?.oilProduction ?? 0)),
-                      'Oil bbl/d'),
-                  _metric(_fmt(_rateToDaily(latest?.waterProduction ?? 0)),
-                      'Water bbl/d'),
-                  _metric(
-                      _fmt(double.tryParse(latest?.sandRate ?? ''),
-                          fractionDigits: 1),
-                      'Sand Tons'),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _quickAction({
     required IconData icon,
     required String label,
@@ -429,7 +301,17 @@ class _CompletionsDashboardScreenState
                     label: 'Rate Calculator',
                     onTap: () => _open(
                       context,
-                      const ProductionRateCalculatorMenuScreen(),
+                      const RateCalculatorScreen(
+                        config: RateCalculatorConfig.chart(
+                          'V-Bottom',
+                          'flowback500',
+                          storageId: 'production_flowback500',
+                          allowOperationsLogAutoSave: false,
+                          rateLogEnabledByDefault: true,
+                        ),
+                        homeMultiMode: true,
+                        availableConfigs: kProductionRateCalculatorConfigs,
+                      ),
                     ),
                   ),
                   _quickAction(
@@ -542,8 +424,20 @@ class _CompletionsDashboardScreenState
                 title: 'Calculators',
                 subtitle:
                     'Gas Accum, Bottoms Up, Multiple Choke, Conversion, and Chlorides',
-                onTap: () =>
-                    _open(context, const ProductionRateCalculatorMenuScreen()),
+                onTap: () => _open(
+                  context,
+                  const RateCalculatorScreen(
+                    config: RateCalculatorConfig.chart(
+                      'V-Bottom',
+                      'flowback500',
+                      storageId: 'production_flowback500',
+                      allowOperationsLogAutoSave: false,
+                      rateLogEnabledByDefault: true,
+                    ),
+                    homeMultiMode: true,
+                    availableConfigs: kProductionRateCalculatorConfigs,
+                  ),
+                ),
               ),
               const Divider(height: 1),
               _toolItem(
@@ -627,8 +521,20 @@ class _CompletionsDashboardScreenState
             tab(
               icon: Icons.speed_outlined,
               label: 'Calculators',
-              onTap: () =>
-                  _open(context, const ProductionRateCalculatorMenuScreen()),
+              onTap: () => _open(
+                context,
+                const RateCalculatorScreen(
+                  config: RateCalculatorConfig.chart(
+                    'V-Bottom',
+                    'flowback500',
+                    storageId: 'production_flowback500',
+                    allowOperationsLogAutoSave: false,
+                    rateLogEnabledByDefault: true,
+                  ),
+                  homeMultiMode: true,
+                  availableConfigs: kProductionRateCalculatorConfigs,
+                ),
+              ),
             ),
             tab(
               icon: Icons.fact_check_outlined,
@@ -669,7 +575,6 @@ class _CompletionsDashboardScreenState
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
               children: [
                 _activeJobBanner(),
-                _overviewCard(),
                 _quickActionsCard(),
                 _toolsCard(),
                 const SizedBox(height: 84),

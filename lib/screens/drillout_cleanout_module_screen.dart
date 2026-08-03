@@ -10,7 +10,7 @@ import 'jsa_screen.dart';
 import 'operations_log_screen.dart';
 import 'production_dashboard_screen.dart';
 import 'production_history_screen.dart';
-import 'production_rate_calculator_menu_screen.dart';
+import 'rate_calculator_screen.dart';
 
 class DrilloutCleanoutModuleScreen extends StatefulWidget {
   const DrilloutCleanoutModuleScreen({super.key});
@@ -378,7 +378,17 @@ class _DrilloutCleanoutModuleScreenState
                     title: 'Rate Calculator',
                     onTap: () => _open(
                       context,
-                      const ProductionRateCalculatorMenuScreen(),
+                      const RateCalculatorScreen(
+                        config: RateCalculatorConfig.chart(
+                          'V-Bottom',
+                          'flowback500',
+                          storageId: 'production_flowback500',
+                          allowOperationsLogAutoSave: false,
+                          rateLogEnabledByDefault: true,
+                        ),
+                        homeMultiMode: true,
+                        availableConfigs: kProductionRateCalculatorConfigs,
+                      ),
                     ),
                   ),
                   _quickAccessTile(
@@ -603,7 +613,17 @@ class _DrilloutCleanoutModuleScreenState
               label: 'Calculator',
               onTap: () => _open(
                 context,
-                const ProductionRateCalculatorMenuScreen(),
+                const RateCalculatorScreen(
+                  config: RateCalculatorConfig.chart(
+                    'V-Bottom',
+                    'flowback500',
+                    storageId: 'production_flowback500',
+                    allowOperationsLogAutoSave: false,
+                    rateLogEnabledByDefault: true,
+                  ),
+                  homeMultiMode: true,
+                  availableConfigs: kProductionRateCalculatorConfigs,
+                ),
               ),
             ),
             tab(
