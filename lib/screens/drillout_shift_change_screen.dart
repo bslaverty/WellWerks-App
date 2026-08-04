@@ -865,7 +865,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
-          Switch.adaptive(key: key, value: value, onChanged: onChanged),
+          Switch(key: key, value: value, onChanged: onChanged),
         ],
       ),
     );
@@ -1926,7 +1926,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                               suffixText: 'ft',
                             ),
                           ),
-                        SwitchListTile.adaptive(
+                        SwitchListTile(
                           key: const Key('drillout-toggle-gas'),
                           value: _showGas,
                           onChanged: (value) {
@@ -1954,7 +1954,7 @@ class _DrilloutShiftChangeScreenState extends State<DrilloutShiftChangeScreen> {
                               _saveSetup();
                             },
                           ),
-                        SwitchListTile.adaptive(
+                        SwitchListTile(
                           key: const Key('drillout-toggle-sand'),
                           value: _showSand,
                           onChanged: (value) {

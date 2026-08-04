@@ -647,7 +647,7 @@ class _JobBoxInventoryScreenState extends State<JobBoxInventoryScreen> {
           ],
         ),
         const SizedBox(height: 10),
-        SwitchListTile.adaptive(
+        SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Hide Zero Quantity Items'),
           value: _hideZeroQuantityItems,

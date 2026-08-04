@@ -386,7 +386,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SwitchListTile.adaptive(
+            SwitchListTile(
               value: _hourlyQuickRoundReminderEnabled,
               contentPadding: EdgeInsets.zero,
               title: Text(
@@ -2481,7 +2481,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         style: TextStyle(color: scheme.onSurfaceVariant),
       ),
       const SizedBox(height: 10),
-      SwitchListTile.adaptive(
+      SwitchListTile(
         value: _useStartingReadings,
         contentPadding: EdgeInsets.zero,
         title: Text(

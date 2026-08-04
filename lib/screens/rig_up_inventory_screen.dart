@@ -1736,7 +1736,7 @@ class _RigUpAssignmentSheetState extends State<_RigUpAssignmentSheet> {
                   const SizedBox(height: 8),
                   Text('Qty Per Well: ${widget.defaultQuantity}'),
                   const SizedBox(height: 8),
-                  SwitchListTile.adaptive(
+                  SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Assign by Well'),
                     subtitle: const Text(

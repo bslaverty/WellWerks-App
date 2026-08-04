@@ -585,14 +585,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required bool value,
     required ValueChanged<bool>? onChanged,
   }) {
-    return SwitchListTile.adaptive(
+    return SwitchListTile(
       contentPadding: EdgeInsets.zero,
       title: Text(title, style: TextStyle(color: _text)),
       subtitle: Text(subtitle, style: TextStyle(color: _subtle)),
       value: value,
       onChanged: onChanged,
-      activeThumbColor: _accent,
-      activeTrackColor: _accent.withValues(alpha: 0.45),
     );
   }
 

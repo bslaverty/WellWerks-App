@@ -10006,9 +10006,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                 'Keep Open',
                 style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
               ),
-              Switch.adaptive(
+              Switch(
                 value: _libraryKeepOpen,
-                activeColor: _gold,
                 onChanged: (value) {
                   setState(() => _libraryKeepOpen = value);
                 },
@@ -10536,9 +10535,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                               fontSize: 12,
                             ),
                           ),
-                          Switch.adaptive(
+                          Switch(
                             value: _libraryKeepOpen,
-                            activeColor: _gold,
                             onChanged: (value) {
                               setState(() => _libraryKeepOpen = value);
                             },

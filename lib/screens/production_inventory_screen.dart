@@ -1349,7 +1349,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
           _textField('Company', _company, enabled: false),
           _textField('Pad Name', _pad, enabled: false),
           _textField('Date', _date),
-          SwitchListTile.adaptive(
+          SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Use Job Setup Tanks'),
             subtitle: Text(

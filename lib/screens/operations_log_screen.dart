@@ -3605,7 +3605,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
                         style: TextStyle(fontSize: 13),
                       ),
                     ),
-                    Switch.adaptive(
+                    Switch(
                       key: const Key(
                           'operations-log-toggle-drillout-tank-inventory'),
                       value: _includeTankInventoryInDrilloutTextUpdate,

@@ -463,16 +463,43 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
       for (final tab in widget.homeTabs!) {
         addUnique(tab);
       }
-    }
+    } else {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_homeTabsPrefKey) ?? '';
+      if (raw.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is List) {
+            for (final item in decoded) {
+              if (item is! Map) continue;
+              final map = Map<String, dynamic>.from(item);
+              final calculatorId =
+                  (map['calculatorId'] as String? ?? '').trim();
+              final instanceId = (map['instanceId'] as String? ?? '').trim();
+              if (calculatorId.isEmpty || instanceId.isEmpty) continue;
 
-    if (!tabs.any((tab) => tab.instanceId == _instanceStorageId)) {
-      tabs.insert(
-        0,
-        HomeRateTabSpec(
-          config: widget.config,
-          instanceId: _instanceStorageId,
-        ),
-      );
+              RateCalculatorConfig? config =
+                  RateCalculatorConfig.fromStorageId(calculatorId);
+              if (config == null) {
+                final available =
+                    widget.availableConfigs ?? const <RateCalculatorConfig>[];
+                for (final candidate in available) {
+                  if (_calculatorIdForConfig(candidate) == calculatorId) {
+                    config = candidate;
+                    break;
+                  }
+                }
+              }
+              if (config == null) continue;
+              addUnique(
+                HomeRateTabSpec(config: config, instanceId: instanceId),
+              );
+            }
+          }
+        } catch (_) {
+          // Ignore malformed saved tabs.
+        }
+      }
     }
 
     _homeTabs = tabs;
@@ -495,32 +522,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
   List<HomeRateTabSpec> _resolvedHomeTabs() {
     if (!widget.homeMultiMode) return const <HomeRateTabSpec>[];
-
-    final tabs = List<HomeRateTabSpec>.from(_homeTabs);
-
-    if (tabs.isEmpty) {
-      tabs.add(
-        HomeRateTabSpec(
-          config: widget.config,
-          instanceId: _instanceStorageId,
-        ),
-      );
-      return tabs;
-    }
-
-    final hasCurrent = tabs.any((tab) => tab.instanceId == _instanceStorageId);
-    if (!hasCurrent) {
-      tabs.insert(
-        0,
-        HomeRateTabSpec(
-          config: widget.config,
-          instanceId: _instanceStorageId,
-        ),
-      );
-      _homeTabs = tabs;
-      _persistHomeTabsState();
-    }
-    return tabs;
+    return List<HomeRateTabSpec>.from(_homeTabs);
   }
 
   void _openHomeTab(int index) {
@@ -671,13 +673,11 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     if (nextTabs.isEmpty) {
       _homeTabs = nextTabs;
       await _persistHomeTabsState();
-      final replacement = await _pickTankConfig();
+      await _refreshHomeTabTimers();
       if (!mounted) return;
-      if (replacement == null) {
-        Navigator.of(context).pop();
-        return;
-      }
-      await _openTankSelection(replacement, nextTabs);
+      setState(() {
+        _activeKeypadTarget = null;
+      });
       return;
     }
 
@@ -715,7 +715,6 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   Widget _activeTanksSection() {
     if (!widget.homeMultiMode) return const SizedBox.shrink();
     final tabs = _resolvedHomeTabs();
-    if (tabs.isEmpty) return const SizedBox.shrink();
 
     final scheme = Theme.of(context).colorScheme;
     return Column(
@@ -755,80 +754,108 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                 ],
               ),
               const SizedBox(height: 10),
-              SizedBox(
-                height: 82,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: tabs.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (context, index) {
-                    final tab = tabs[index];
-                    final isCurrent = tab.instanceId == _instanceStorageId;
-                    final timerText = _activeTankTimerText(tab);
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: () => _openHomeTab(index),
-                      child: Container(
-                        width: 180,
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          color: isCurrent
-                              ? scheme.primary.withValues(alpha: 0.12)
-                              : Theme.of(context).cardColor,
-                          border: Border.all(
+              if (tabs.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerHigh
+                        .withValues(alpha: 0.35),
+                    border: Border.all(
+                      color: scheme.outlineVariant.withValues(alpha: 0.95),
+                    ),
+                  ),
+                  child: Text(
+                    'No active calculators. Tap Add Tank to start one.',
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                )
+              else
+                SizedBox(
+                  height: 82,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: tabs.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) {
+                      final tab = tabs[index];
+                      final isCurrent = tab.instanceId == _instanceStorageId;
+                      final timerText = _activeTankTimerText(tab);
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => _openHomeTab(index),
+                        child: Container(
+                          width: 180,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
                             color: isCurrent
-                                ? scheme.primary
-                                : scheme.outlineVariant.withValues(alpha: 0.95),
+                                ? scheme.primary.withValues(alpha: 0.12)
+                                : Theme.of(context).cardColor,
+                            border: Border.all(
+                              color: isCurrent
+                                  ? scheme.primary
+                                  : scheme.outlineVariant.withValues(
+                                      alpha: 0.95,
+                                    ),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      tab.config.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                  InkWell(
+                                    borderRadius: BorderRadius.circular(999),
+                                    onTap: () {
+                                      _deleteHomeTab(index);
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(4),
+                                      child: Icon(
+                                        Icons.close,
+                                        size: 16,
+                                        color: scheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                timerText,
+                                style: TextStyle(
+                                  color: scheme.onSurfaceVariant,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    tab.config.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                                InkWell(
-                                  borderRadius: BorderRadius.circular(999),
-                                  onTap: () {
-                                    _deleteHomeTab(index);
-                                  },
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(4),
-                                    child: Icon(
-                                      Icons.close,
-                                      size: 16,
-                                      color: scheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              timerText,
-                              style: TextStyle(
-                                color: scheme.onSurfaceVariant,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -3185,9 +3212,15 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
   @override
   Widget build(BuildContext context) {
+    final hasActiveCalculators =
+        !widget.homeMultiMode || _resolvedHomeTabs().isNotEmpty;
+
     if (_initializing) {
       return Scaffold(
-        appBar: AppHeader(title: widget.config.title, showBack: true),
+        appBar: AppHeader(
+          title: hasActiveCalculators ? widget.config.title : 'Rate Calculator',
+          showBack: true,
+        ),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -3200,7 +3233,10 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         _persistHomeTabsState();
       },
       child: Scaffold(
-        appBar: AppHeader(title: widget.config.title, showBack: true),
+        appBar: AppHeader(
+          title: hasActiveCalculators ? widget.config.title : 'Rate Calculator',
+          showBack: true,
+        ),
         body: Column(
           children: [
             Expanded(
@@ -3208,170 +3244,174 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                 padding: const EdgeInsets.all(18),
                 children: [
                   _activeTanksSection(),
-                  if (!widget.config.usesChart)
-                    WwNumberField(
-                      label: 'Tank Factor (BBL/In)',
-                      helperText:
-                          'Default: ${(widget.config.defaultFactor ?? 1.67).toStringAsFixed(2)}. Change it if your tank factor is different.',
-                      controller: factor,
-                      allowDecimal: true,
-                    ),
-                  const SizedBox(height: 8),
-                  WwGaugeField(
-                    label: 'Starting Gauge',
-                    controller: startGauge,
-                    autofocus: true,
-                    active: _activeKeypadTarget == _KeypadTarget.start,
-                    onTap: () => _setActiveKeypad(_KeypadTarget.start),
-                    onChanged: (_) => setState(() {}),
-                  ),
-                  WwGaugeField(
-                    label: 'Ending Gauge',
-                    controller: endGauge,
-                    active: _activeKeypadTarget == _KeypadTarget.end,
-                    onTap: () => _setActiveKeypad(_KeypadTarget.end),
-                    onChanged: (_) => setState(() {}),
-                  ),
-                  if (widget.homeMultiMode) ...[
-                    SwitchListTile.adaptive(
-                      value: _fluidHauledEnabled,
-                      onChanged: (value) {
-                        setState(() {
-                          _fluidHauledEnabled = value;
-                          if (!value) {
-                            fluidHauled.clear();
-                          }
-                        });
-                        _persistCalculatorSession();
-                      },
-                      title: const Text('Include Fluid Hauled'),
-                      subtitle: const Text(
-                        'Optionally add hauled-off volume to the total barrel change.',
-                      ),
-                    ),
-                    if (_fluidHauledEnabled)
+                  if (hasActiveCalculators) ...[
+                    if (!widget.config.usesChart)
                       WwNumberField(
-                        label: 'Fluid Hauled (BBL)',
+                        label: 'Tank Factor (BBL/In)',
                         helperText:
-                            'Optional hauled volume to add to gauge-based barrel change.',
-                        controller: fluidHauled,
+                            'Default: ${(widget.config.defaultFactor ?? 1.67).toStringAsFixed(2)}. Change it if your tank factor is different.',
+                        controller: factor,
                         allowDecimal: true,
-                        onChanged: (_) => setState(() {}),
                       ),
-                  ],
-                  if (!_useLiveClock)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 14),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: _openMinutesSelector,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
+                    const SizedBox(height: 10),
+                    WwGaugeField(
+                      label: 'Starting Gauge',
+                      controller: startGauge,
+                      autofocus: true,
+                      active: _activeKeypadTarget == _KeypadTarget.start,
+                      onTap: () => _setActiveKeypad(_KeypadTarget.start),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    WwGaugeField(
+                      label: 'Ending Gauge',
+                      controller: endGauge,
+                      active: _activeKeypadTarget == _KeypadTarget.end,
+                      onTap: () => _setActiveKeypad(_KeypadTarget.end),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    if (widget.homeMultiMode) ...[
+                      SwitchListTile(
+                        value: _fluidHauledEnabled,
+                        onChanged: (value) {
+                          setState(() {
+                            _fluidHauledEnabled = value;
+                            if (!value) {
+                              fluidHauled.clear();
+                            }
+                          });
+                          _persistCalculatorSession();
+                        },
+                        title: const Text('Include Fluid Hauled'),
+                        subtitle: const Text(
+                          'Optionally add hauled-off volume to the total barrel change.',
+                        ),
+                      ),
+                      if (_fluidHauledEnabled)
+                        WwNumberField(
+                          label: 'Fluid Hauled (BBL)',
+                          helperText:
+                              'Optional hauled volume to add to gauge-based barrel change.',
+                          controller: fluidHauled,
+                          allowDecimal: true,
+                          onChanged: (_) => setState(() {}),
+                        ),
+                    ],
+                    if (!_useLiveClock)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: _openMinutesSelector,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .outlineVariant,
+                                  width: 1.2,
+                                ),
                                 color: Theme.of(context)
                                     .colorScheme
-                                    .outlineVariant,
-                                width: 1.2,
+                                    .surfaceContainerHigh
+                                    .withValues(alpha: 0.35),
                               ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 14,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Minutes',
+                                    style: TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _minutesDisplayText,
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    _timerModeSelector(),
+                    const SizedBox(height: 10),
+                    if (_useLiveClock)
+                      _liveClockSection()
+                    else
+                      _timedRateSection(),
+                    const SizedBox(height: 10),
+                    FilledButton(
+                      style: _calculateButtonStyle(),
+                      onPressed: _canCalculate ? calculate : null,
+                      child: const Text('CALCULATE'),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: _canResetCalculator
+                            ? _resetTimedRateWorkflow
+                            : null,
+                        child: const Text('Reset Calculator'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      value: _rateLogEnabled,
+                      onChanged: (value) {
+                        setState(() => _rateLogEnabled = value);
+                        _saveRateLogState();
+                        _persistCalculatorSession();
+                      },
+                      title: const Text('Rate Log'),
+                      subtitle: const Text('Save each CALCULATE result to log'),
+                    ),
+                    if (error != null)
+                      Card(
+                        color: Theme.of(context).colorScheme.errorContainer,
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Text(
+                            error!,
+                            style: TextStyle(
                               color: Theme.of(context)
                                   .colorScheme
-                                  .surfaceContainerHigh
-                                  .withValues(alpha: 0.35),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 14,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Minutes',
-                                  style: TextStyle(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  _minutesDisplayText,
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w800,
-                                    color:
-                                        Theme.of(context).colorScheme.primary,
-                                  ),
-                                ),
-                              ],
+                                  .onErrorContainer,
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  _timerModeSelector(),
-                  const SizedBox(height: 10),
-                  if (_useLiveClock)
-                    _liveClockSection()
-                  else
-                    _timedRateSection(),
-                  const SizedBox(height: 10),
-                  FilledButton(
-                    style: _calculateButtonStyle(),
-                    onPressed: _canCalculate ? calculate : null,
-                    child: const Text('CALCULATE'),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed:
-                          _canResetCalculator ? _resetTimedRateWorkflow : null,
-                      child: const Text('Reset Calculator'),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SwitchListTile.adaptive(
-                    value: _rateLogEnabled,
-                    onChanged: (value) {
-                      setState(() => _rateLogEnabled = value);
-                      _saveRateLogState();
-                      _persistCalculatorSession();
-                    },
-                    title: const Text('Rate Log'),
-                    subtitle: const Text('Save each CALCULATE result to log'),
-                  ),
-                  if (error != null)
-                    Card(
-                      color: Theme.of(context).colorScheme.errorContainer,
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Text(
-                          error!,
-                          style: TextStyle(
-                            color:
-                                Theme.of(context).colorScheme.onErrorContainer,
-                          ),
-                        ),
-                      ),
-                    ),
-                  if (bblPerMin != null) ...[
-                    const SizedBox(height: 10),
-                    _resultsCard(),
-                    _rateLogSection(),
-                  ] else if (_rateLogEntries.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    _rateLogSection(),
+                    if (bblPerMin != null) ...[
+                      const SizedBox(height: 10),
+                      _resultsCard(),
+                      _rateLogSection(),
+                    ] else if (_rateLogEntries.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      _rateLogSection(),
+                    ],
                   ],
                 ],
               ),
             ),
-            _sharedGaugeKeypad(),
+            if (hasActiveCalculators) _sharedGaugeKeypad(),
           ],
         ),
       ),

@@ -54,6 +54,32 @@ class _JsaExportDialogResult {
   final String baseFileName;
 }
 
+class _JsaEmployeeFormRow {
+  _JsaEmployeeFormRow({
+    String name = '',
+    String company = '',
+    bool showSignature = false,
+  })  : nameController = TextEditingController(text: name),
+        companyController = TextEditingController(text: company),
+        signatureController = SignatureController(
+          penStrokeWidth: 3,
+          penColor: Colors.white,
+          exportBackgroundColor: const Color(0xFF111111),
+        ),
+        showSignature = showSignature;
+
+  final TextEditingController nameController;
+  final TextEditingController companyController;
+  final SignatureController signatureController;
+  bool showSignature;
+
+  void dispose() {
+    nameController.dispose();
+    companyController.dispose();
+    signatureController.dispose();
+  }
+}
+
 class _JsaScreenState extends State<JsaScreen>
     with SingleTickerProviderStateMixin {
   Color get gold => Theme.of(context).colorScheme.primary;
@@ -77,16 +103,7 @@ class _JsaScreenState extends State<JsaScreen>
   final _hazardsEditor = TextEditingController();
   final _recommendationsEditor = TextEditingController();
 
-  final _employeeNames = List.generate(6, (_) => TextEditingController());
-  final _employeeCompanies = List.generate(6, (_) => TextEditingController());
-  final _signatures = List.generate(
-    6,
-    (_) => SignatureController(
-      penStrokeWidth: 3,
-      penColor: Colors.white,
-      exportBackgroundColor: const Color(0xFF111111),
-    ),
-  );
+  List<_JsaEmployeeFormRow> _employees = <_JsaEmployeeFormRow>[];
 
   String _company = JobProfileDefaultsService.companyNone;
   String _selectedTemplateId = '';
@@ -116,6 +133,7 @@ class _JsaScreenState extends State<JsaScreen>
   @override
   void initState() {
     super.initState();
+    _employees = <_JsaEmployeeFormRow>[_newEmployeeRow()];
     _tabController = TabController(length: _tabs.length, vsync: this);
     _settings = const AppSettingsData(
       defaultGasUnit: AppSettingsDefaults.gasUnit,
@@ -756,6 +774,55 @@ out center tags;
   List<String> get _hazards => _linesFromEditor(_hazardsEditor);
   List<String> get _recommendations => _linesFromEditor(_recommendationsEditor);
 
+  _JsaEmployeeFormRow _newEmployeeRow({
+    String name = '',
+    String company = '',
+    bool showSignature = false,
+  }) {
+    return _JsaEmployeeFormRow(
+      name: name,
+      company: company,
+      showSignature: showSignature,
+    );
+  }
+
+  void _replaceEmployeeRows(List<_JsaEmployeeFormRow> nextRows) {
+    for (final row in _employees) {
+      row.dispose();
+    }
+    _employees =
+        nextRows.isEmpty ? <_JsaEmployeeFormRow>[_newEmployeeRow()] : nextRows;
+  }
+
+  void _addEmployeeRow() {
+    setState(() {
+      _employees = <_JsaEmployeeFormRow>[
+        ..._employees,
+        _newEmployeeRow(),
+      ];
+    });
+  }
+
+  void _removeEmployeeRow(int index) {
+    if (index < 0 || index >= _employees.length) return;
+    if (_employees.length == 1) {
+      setState(() {
+        _employees[index].nameController.clear();
+        _employees[index].companyController.clear();
+        _employees[index].signatureController.clear();
+        _employees[index].showSignature = false;
+      });
+      return;
+    }
+
+    setState(() {
+      final updated = List<_JsaEmployeeFormRow>.from(_employees);
+      final removed = updated.removeAt(index);
+      removed.dispose();
+      _employees = updated;
+    });
+  }
+
   String get _currentJsaTypeLabel {
     final selected = _selectedTemplateName.trim();
     if (selected.isNotEmpty) {
@@ -789,15 +856,7 @@ out center tags;
     _recommendationsEditor.clear();
     _selectedTemplateId = '';
     _selectedTemplateName = '';
-    for (final controller in _employeeNames) {
-      controller.clear();
-    }
-    for (final controller in _employeeCompanies) {
-      controller.clear();
-    }
-    for (final signature in _signatures) {
-      signature.clear();
-    }
+    _replaceEmployeeRows(<_JsaEmployeeFormRow>[_newEmployeeRow()]);
     final activeCompany = _activeCompanyService.activeCompany.value;
     _company = activeCompany.trim().isNotEmpty
         ? (activeCompany == JobProfileDefaultsService.companyNone
@@ -838,12 +897,15 @@ out center tags;
     if (parsedTime != null) {
       _time = parsedTime;
     }
-    for (var i = 0; i < draft.employees.length && i < 6; i++) {
-      final employee = draft.employees[i];
-      _employeeNames[i].text = employee.name;
-      _employeeCompanies[i].text = employee.company;
+    final nextRows = <_JsaEmployeeFormRow>[];
+    for (final employee in draft.employees) {
+      final row = _newEmployeeRow(
+        name: employee.name,
+        company: employee.company,
+        showSignature: employee.signaturePoints.isNotEmpty,
+      );
       if (employee.signaturePoints.isNotEmpty) {
-        _signatures[i].points = employee.signaturePoints
+        row.signatureController.points = employee.signaturePoints
             .map(
               (point) => Point(
                 Offset(point.x, point.y),
@@ -852,9 +914,11 @@ out center tags;
               ),
             )
             .toList();
-        _signatures[i].pushCurrentStateToUndoStack();
+        row.signatureController.pushCurrentStateToUndoStack();
       }
+      nextRows.add(row);
     }
+    _replaceEmployeeRows(nextRows);
   }
 
   @override
@@ -874,14 +938,8 @@ out center tags;
     _stepsEditor.dispose();
     _hazardsEditor.dispose();
     _recommendationsEditor.dispose();
-    for (final controller in _employeeNames) {
-      controller.dispose();
-    }
-    for (final controller in _employeeCompanies) {
-      controller.dispose();
-    }
-    for (final controller in _signatures) {
-      controller.dispose();
+    for (final row in _employees) {
+      row.dispose();
     }
     super.dispose();
   }
@@ -910,14 +968,20 @@ out center tags;
 
   Future<JsaDraft> _buildDraft() async {
     final employees = <JsaEmployee>[];
-    for (var i = 0; i < 6; i++) {
-      final png = await _signatures[i].toPngBytes();
+    for (final row in _employees) {
+      final name = row.nameController.text.trim();
+      final company = row.companyController.text.trim();
+      final hasSignature = row.signatureController.points.isNotEmpty;
+      if (name.isEmpty && company.isEmpty && !hasSignature) {
+        continue;
+      }
+
+      final png = await row.signatureController.toPngBytes();
       employees.add(JsaEmployee(
-        name: _employeeNames[i].text.trim(),
-        company: _employeeCompanies[i].text.trim(),
+        name: name,
+        company: company,
         signaturePngBase64: png == null ? null : base64Encode(png),
-        signaturePoints: _signatures[i]
-            .points
+        signaturePoints: row.signatureController.points
             .map(
               (point) => JsaSignaturePoint(
                 x: point.offset.dx,
@@ -1519,7 +1583,15 @@ out center tags;
         ),
         const SizedBox(height: 18),
         _section('Employees & Signatures'),
-        for (var i = 0; i < 6; i++) _employeeCard(i),
+        for (var i = 0; i < _employees.length; i++) _employeeCard(i),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _addEmployeeRow,
+            icon: const Icon(Icons.person_add_alt_1),
+            label: const Text('Add Person'),
+          ),
+        ),
         const SizedBox(height: 18),
         FilledButton.icon(
           key: const Key('jsa-save-button'),
@@ -1638,24 +1710,79 @@ out center tags;
                 color: gold, fontSize: 18, fontWeight: FontWeight.w800)),
       );
 
-  Widget _employeeCard(int index) => Card(
-        margin: const EdgeInsets.only(bottom: 16),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Employee ${index + 1}',
-                  style: TextStyle(color: gold, fontWeight: FontWeight.bold)),
+  Widget _employeeCard(int index) {
+    final employee = _employees[index];
+    final hasSignature = employee.signatureController.points.isNotEmpty;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Employee ${index + 1}',
+                    style: TextStyle(color: gold, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                if (_employees.length > 1)
+                  IconButton(
+                    tooltip: 'Remove person',
+                    onPressed: () => _removeEmployeeRow(index),
+                    icon: const Icon(Icons.person_remove_alt_1),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: employee.nameController,
+              decoration: const InputDecoration(labelText: 'Name'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: employee.companyController,
+              decoration: const InputDecoration(labelText: 'Company'),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        employee.showSignature = !employee.showSignature;
+                      });
+                    },
+                    icon: Icon(
+                      employee.showSignature ? Icons.expand_less : Icons.draw,
+                    ),
+                    label: Text(
+                      employee.showSignature
+                          ? 'Hide Signature'
+                          : (hasSignature
+                              ? 'Edit Signature'
+                              : 'Create Signature'),
+                    ),
+                  ),
+                ),
+                if (hasSignature && !employee.showSignature) ...[
+                  const SizedBox(width: 10),
+                  Text(
+                    'Signed',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            if (employee.showSignature) ...[
               const SizedBox(height: 10),
-              TextField(
-                  controller: _employeeNames[index],
-                  decoration: const InputDecoration(labelText: 'Name')),
-              const SizedBox(height: 10),
-              TextField(
-                  controller: _employeeCompanies[index],
-                  decoration: const InputDecoration(labelText: 'Company')),
-              const SizedBox(height: 12),
               Container(
                 height: 150,
                 decoration: BoxDecoration(
@@ -1665,20 +1792,27 @@ out center tags;
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: Signature(
-                      controller: _signatures[index],
-                      backgroundColor: Theme.of(context)
-                          .colorScheme
-                          .surfaceContainerHighest),
+                    controller: employee.signatureController,
+                    backgroundColor:
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
+                  ),
                 ),
               ),
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                    onPressed: () => _signatures[index].clear(),
-                    child: const Text('Clear Signature')),
+                  onPressed: () {
+                    setState(() {
+                      employee.signatureController.clear();
+                    });
+                  },
+                  child: const Text('Clear Signature'),
+                ),
               ),
             ],
-          ),
+          ],
         ),
-      );
+      ),
+    );
+  }
 }

@@ -220,7 +220,7 @@ class _ReportTemplateScreenState extends State<ReportTemplateScreen> {
                 const SizedBox(height: 12),
                 for (final section
                     in AppSettingsData.optionalReportSectionOptions)
-                  SwitchListTile.adaptive(
+                  SwitchListTile(
                     value: _optionalSections.contains(section.id),
                     onChanged: (value) {
                       setState(() {

@@ -329,7 +329,7 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
                                         ),
                                       ),
                                     ),
-                                  SwitchListTile.adaptive(
+                                  SwitchListTile(
                                     contentPadding: EdgeInsets.zero,
                                     title: const Text('Use imported entry'),
                                     value: selected,
