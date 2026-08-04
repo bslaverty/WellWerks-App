@@ -264,7 +264,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   final _rateTimerService = RateTimerService();
   final _rateTimerNotifications = RateTimerNotificationService.instance;
   final _qrTransferService = const WellWerksQrTransferService();
-  final _imagePicker = ImagePicker();
+  ficnal _imagePicker = ImagePicker();
   late final String _instanceStorageId;
 
   final startGauge = TextEditingController();
@@ -740,14 +740,96 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     );
   }
 
-  String _activeTankTimerText(HomeRateTabSpec tab) {
+  ({bool isActive, String detail}) _activeTankStatus(HomeRateTabSpec tab) {
+    String formatMmSs(int seconds) {
+      final safeSeconds = seconds < 0 ? 0 : seconds;
+      final mm = (safeSeconds ~/ 60).toString().padLeft(2, '0');
+      final ss = (safeSeconds % 60).toString().padLeft(2, '0');
+      return '$mm:$ss';
+    }
+
+    // Current tab should always reflect in-memory timer/live-clock state
+    // without waiting for periodic persistence refresh.
+    if (tab.instanceId == _instanceStorageId) {
+      if (_timerRunning) {
+        return (
+          isActive: true,
+          detail: 'Running ${formatMmSs(_remainingSeconds)}'
+        );
+      }
+      if (_useLiveClock) {
+        final elapsed = _liveClockRunning
+            ? _currentLiveClockElapsedSeconds()
+            : _liveClockElapsedSeconds;
+        if (elapsed > 0) {
+          return (
+            isActive: _liveClockRunning,
+            detail: 'Live ${formatMmSs(elapsed)}',
+          );
+        }
+        if (_liveClockRunning) {
+          return (isActive: true, detail: 'Live running');
+        }
+      }
+    }
+
     final timer = _homeTabTimers[tab.instanceId];
-    if (timer == null) return 'No timer';
-    final remaining = timer.remainingSecondsAt(DateTime.now());
-    if (remaining <= 0) return 'Finished';
-    final mm = (remaining ~/ 60).toString().padLeft(2, '0');
-    final ss = (remaining % 60).toString().padLeft(2, '0');
-    return 'Running $mm:$ss';
+    if (timer != null) {
+      final remaining = timer.remainingSecondsAt(DateTime.now());
+      if (remaining <= 0) {
+        return (isActive: false, detail: 'Finished');
+      }
+      return (isActive: true, detail: 'Running ${formatMmSs(remaining)}');
+    }
+
+    // Live clock sessions are tracked in calculator session persistence, not
+    // in RateTimerService. Read session fallback for non-current tabs.
+    final session = _sessionService.sessionForInstance(tab.instanceId);
+    if (session != null && session.useLiveClock) {
+      if (session.timerStartedAtMs != null) {
+        final startedAt = DateTime.fromMillisecondsSinceEpoch(
+          session.timerStartedAtMs!,
+        );
+        final elapsed = DateTime.now().difference(startedAt).inSeconds;
+        return (isActive: true, detail: 'Live ${formatMmSs(elapsed)}');
+      }
+      if (session.liveClockElapsedSeconds > 0) {
+        return (
+          isActive: false,
+          detail: 'Live ${formatMmSs(session.liveClockElapsedSeconds)}',
+        );
+      }
+      return (isActive: false, detail: 'Live ready');
+    }
+
+    return (isActive: false, detail: 'No timer');
+  }
+
+  Widget _activeStatusText({
+    required bool isActive,
+    required String detail,
+    required TextStyle baseStyle,
+    Color? activeColor,
+  }) {
+    final statusColor =
+        isActive ? (activeColor ?? const Color(0xFF4CD964)) : baseStyle.color;
+    return RichText(
+      text: TextSpan(
+        style: baseStyle,
+        children: [
+          TextSpan(
+            text: isActive ? 'ACTIVE' : 'INACTIVE',
+            style: baseStyle.copyWith(
+              color: statusColor,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          if (detail.trim().isNotEmpty) TextSpan(text: ' • $detail'),
+        ],
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
   }
 
   Future<void> _openCompactTabPicker(List<HomeRateTabSpec> tabs) async {
@@ -764,14 +846,18 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
             itemCount: tabs.length,
             itemBuilder: (context, index) {
               final tab = tabs[index];
-              final timerText = _activeTankTimerText(tab);
+              final status = _activeTankStatus(tab);
               final isCurrent = index == currentIndex;
               return ListTile(
                 leading: Icon(
                   isCurrent ? Icons.check_circle : Icons.speed,
                 ),
                 title: Text(tab.config.title),
-                subtitle: Text(timerText),
+                subtitle: _activeStatusText(
+                  isActive: status.isActive,
+                  detail: status.detail,
+                  baseStyle: TextStyle(color: Theme.of(context).hintColor),
+                ),
                 onTap: isCurrent
                     ? null
                     : () => Navigator.of(sheetContext).pop(index),
@@ -801,7 +887,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
             );
             final resolvedIndex = currentIndex < 0 ? 0 : currentIndex;
             final currentTab = tabs[resolvedIndex];
-            final timerText = _activeTankTimerText(currentTab);
+            final status = _activeTankStatus(currentTab);
 
             return Container(
               padding: const EdgeInsets.all(10),
@@ -847,9 +933,10 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                               ),
                             ),
                             const SizedBox(height: 1),
-                            Text(
-                              timerText,
-                              style: TextStyle(
+                            _activeStatusText(
+                              isActive: status.isActive,
+                              detail: status.detail,
+                              baseStyle: TextStyle(
                                 color: scheme.onSurfaceVariant,
                                 fontSize: 12,
                               ),
@@ -954,7 +1041,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                       itemBuilder: (context, index) {
                         final tab = tabs[index];
                         final isCurrent = tab.instanceId == _instanceStorageId;
-                        final timerText = _activeTankTimerText(tab);
+                        final status = _activeTankStatus(tab);
                         return InkWell(
                           borderRadius: BorderRadius.circular(12),
                           onTap: () => _openHomeTab(index),
@@ -1064,9 +1151,13 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                                   ],
                                 ),
                                 const SizedBox(height: 4),
-                                Text(
-                                  timerText,
-                                  style: TextStyle(
+                                _activeStatusText(
+                                  isActive: status.isActive,
+                                  detail: status.detail,
+                                  activeColor: isCurrent
+                                      ? const Color(0xFF1E7E34)
+                                      : null,
+                                  baseStyle: TextStyle(
                                     color: isCurrent
                                         ? scheme.onPrimaryContainer
                                         : scheme.onSurfaceVariant,
