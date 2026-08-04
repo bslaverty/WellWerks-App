@@ -264,7 +264,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   final _rateTimerService = RateTimerService();
   final _rateTimerNotifications = RateTimerNotificationService.instance;
   final _qrTransferService = const WellWerksQrTransferService();
-  ficnal _imagePicker = ImagePicker();
+  final _imagePicker = ImagePicker();
   late final String _instanceStorageId;
 
   final startGauge = TextEditingController();
