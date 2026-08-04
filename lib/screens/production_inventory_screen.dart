@@ -201,7 +201,8 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
 
   int get _resolvedSelectedWellIndex {
     if (_wellControllers.isEmpty) return -1;
-    if (_selectedWellIndex < 0 || _selectedWellIndex >= _wellControllers.length) {
+    if (_selectedWellIndex < 0 ||
+        _selectedWellIndex >= _wellControllers.length) {
       return 0;
     }
     return _selectedWellIndex;
@@ -1209,15 +1210,16 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                 const SizedBox(height: 10),
                 WwNumberField(
                   label: 'Beginning Oil Inventory',
-                  controller:
-                      _oilInventoryWells[selectedWellIndex].beginningOilInventory,
+                  controller: _oilInventoryWells[selectedWellIndex]
+                      .beginningOilInventory,
                   helperText: 'BBL',
                   errorText: _errorTextFor(
                     _oilInventoryWells[selectedWellIndex].beginningOilInventory,
                   ),
                   onChanged: (_) {
                     _clearFieldIssue(
-                      _oilInventoryWells[selectedWellIndex].beginningOilInventory,
+                      _oilInventoryWells[selectedWellIndex]
+                          .beginningOilInventory,
                     );
                     setState(() {});
                   },
@@ -1233,7 +1235,8 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                   onChanged: (_) {
                     setState(() {
                       _clearFieldIssue(
-                        _oilInventoryWells[selectedWellIndex].currentOilInventory,
+                        _oilInventoryWells[selectedWellIndex]
+                            .currentOilInventory,
                       );
                       _syncComputedCushion(selectedWellIndex);
                     });
@@ -1241,8 +1244,8 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                 ),
                 WwNumberField(
                   label: 'Expected Oil Inventory',
-                  controller:
-                      _oilInventoryWells[selectedWellIndex].expectedOilInventory,
+                  controller: _oilInventoryWells[selectedWellIndex]
+                      .expectedOilInventory,
                   helperText: 'BBL',
                   errorText: _errorTextFor(
                     _oilInventoryWells[selectedWellIndex].expectedOilInventory,
@@ -1250,7 +1253,8 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                   onChanged: (_) {
                     setState(() {
                       _clearFieldIssue(
-                        _oilInventoryWells[selectedWellIndex].expectedOilInventory,
+                        _oilInventoryWells[selectedWellIndex]
+                            .expectedOilInventory,
                       );
                       _syncComputedCushion(selectedWellIndex);
                     });
@@ -1494,14 +1498,13 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
         ],
         onChanged: (value) {
           if (value == null) return;
-            final selectedWellIndex = _resolvedSelectedWellIndex;
           setState(() => _gaugeEntryType = value);
         },
       ),
       const SizedBox(height: 12),
       DropdownButtonFormField<String>(
         initialValue: _gasUnit,
-              if (selectedWellIndex >= 0)
+        decoration: const InputDecoration(labelText: 'Gas Unit'),
         items: const [
           DropdownMenuItem(value: 'mcfd', child: Text('MCF/D')),
           DropdownMenuItem(value: 'mmcfd', child: Text('MMCF/D')),
@@ -1510,173 +1513,95 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
           if (value == null) return;
           setState(() => _gasUnit = value);
         },
-                          _wellControllers[selectedWellIndex].text.trim().isEmpty
+      ),
       const SizedBox(height: 12),
-                              : _wellControllers[selectedWellIndex].text.trim(),
+      DropdownButtonFormField<String>(
         initialValue: _gasCalculationMethod,
         decoration: const InputDecoration(labelText: 'Gas Calculation Method'),
         items: const [
           DropdownMenuItem(
             value: 'accumulator',
+            child: Text('Accumulator'),
           ),
           DropdownMenuItem(
-                          controller:
-                              _oilInventoryWells[selectedWellIndex].beginningOilInventory,
+            value: 'manual',
             child: Text('Manual Sales Gas Rate'),
           ),
-            decoration: const InputDecoration(labelText: 'Gas Unit'),
+        ],
         onChanged: (value) {
           if (value == null) return;
-                                _oilInventoryWells[selectedWellIndex].beginningOilInventory);
+          setState(() => _gasCalculationMethod = value);
         },
       ),
       const SizedBox(height: 12),
       DropdownButtonFormField<String>(
         initialValue: _layoutProfileId,
-          ),
-                              _oilInventoryWells[selectedWellIndex].currentOilInventory,
-          DropdownButtonFormField<String>(
-                          errorText: _errorTextFor(
-                              _oilInventoryWells[selectedWellIndex].currentOilInventory),
+        decoration: const InputDecoration(labelText: 'Layout Profile'),
+        items: [
+          for (final profile in _layoutProfiles)
+            DropdownMenuItem(
               value: profile.id,
               child: Text(profile.name),
             ),
-                                  _oilInventoryWells[selectedWellIndex].currentOilInventory);
-                              _syncComputedCushion(selectedWellIndex);
+        ],
+        onChanged: (value) {
           if (value == null) return;
-                value: 'manual',
+          setState(() => _layoutProfileId = value);
+        },
       ),
       if (widget.showManageLayoutsButton) ...[
-            ],
-                                  selectedWellIndex]
-                              .expectedOilInventory,
-              setState(() => _gasCalculationMethod = value);
-                          errorText: _errorTextFor(
-                              _oilInventoryWells[selectedWellIndex].expectedOilInventory),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
             onPressed: _manageLayouts,
             icon: const Icon(Icons.settings_outlined),
             label: const Text('Manage Report/Text Layouts'),
-            decoration: const InputDecoration(labelText: 'Layout Profile'),
+          ),
+        ),
       ],
-              for (final profile in _layoutProfiles)
-                DropdownMenuItem(
-                        _buildCurrentCushionField(selectedWellIndex),
+    ]);
+  }
+
   Widget _content() {
-                        _buildCushionStatus(selectedWellIndex),
-            ],
-            onChanged: (value) {
+    return ListView(
+      padding: const EdgeInsets.all(18),
+      children: [
         _validationCard(),
-                          controller:
-                              _oilInventoryWells[selectedWellIndex].maximumCushion,
+        _productionContextSection(),
         _inventorySettingsSection(),
-                          errorText: _errorTextFor(
-            const SizedBox(height: 8),
-                              _clearFieldIssue(
-              width: double.infinity,
-              child: OutlinedButton.icon(
+        _tankSection(
+          title: 'Starting Inventory • Water Tanks',
+          tanks: _waterTanks,
+          tankLabel: 'Water Tank',
+        ),
+        _tankSection(
           title: 'Starting Inventory • Oil Tanks',
           tanks: _oilTanks,
           tankLabel: 'Oil Tank',
-              ),
-            ),
+        ),
+        _oilInventorySection(),
         if (_gasCalculationMethod == 'accumulator')
           _section('Starting Gas', [
             WwNumberField(
-
+              label: 'Starting Gas Accum',
+              controller: _startingGasAccum,
               errorText: _errorTextFor(_startingGasAccum),
-        return ListView(
-          padding: const EdgeInsets.all(18),
-          children: [
-            _validationCard(),
-            _productionContextSection(),
-            _inventorySettingsSection(),
-            _tankSection(
-              title: 'Starting Inventory • Water Tanks',
-              tanks: _waterTanks,
-              tankLabel: 'Water Tank',
+              onChanged: (_) {
+                _clearFieldIssue(_startingGasAccum);
+                setState(() {});
+              },
             ),
-            _tankSection(
-              title: 'Starting Inventory • Oil Tanks',
-              tanks: _oilTanks,
-              tankLabel: 'Oil Tank',
-            ),
-            _oilInventorySection(),
-            if (_gasCalculationMethod == 'accumulator')
-              _section('Starting Gas', [
-                WwNumberField(
-                  label: 'Starting Gas Accum',
-                  controller: _startingGasAccum,
-                  errorText: _errorTextFor(_startingGasAccum),
-                  onChanged: (_) {
-                    _clearFieldIssue(_startingGasAccum);
-                    setState(() {});
-                  },
-                ),
-              ]),
-            _section('Pre-Round Adjustments', [
-              WwNumberField(
-                label: 'Water Hauled Before Round',
-                controller: _waterHauledBeforeRound,
-                errorText: _errorTextFor(_waterHauledBeforeRound),
-                onChanged: (_) {
-                  _clearFieldIssue(_waterHauledBeforeRound);
-                  setState(() {});
-                },
-              ),
-              WwNumberField(
-                label: 'Oil Hauled Before Round',
-                controller: _oilHauledBeforeRound,
-                errorText: _errorTextFor(_oilHauledBeforeRound),
-                onChanged: (_) {
-                  _clearFieldIssue(_oilHauledBeforeRound);
-                  setState(() {});
-                },
-              ),
-              WwNumberField(
-                label: 'Water Pumped Before Round',
-                controller: _waterPumpedBeforeRound,
-                errorText: _errorTextFor(_waterPumpedBeforeRound),
-                onChanged: (_) {
-                  _clearFieldIssue(_waterPumpedBeforeRound);
-                  setState(() {});
-                },
-              ),
-              WwNumberField(
-                label: 'Oil Pumped Before Round',
-                controller: _oilPumpedBeforeRound,
-                errorText: _errorTextFor(_oilPumpedBeforeRound),
-                onChanged: (_) {
-                  _clearFieldIssue(_oilPumpedBeforeRound);
-                  setState(() {});
-                },
-              ),
-            ]),
-            _runningTotalsSection(),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _saving ? null : _saveInventory,
-                icon: _saving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.save_outlined),
-                label: Text(_saving ? 'Saving...' : 'Save Production Inventory'),
-              ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _saving ? null : _clearInventory,
-                icon: const Icon(Icons.restart_alt),
-                label: const Text('Clear Inventory'),
-              ),
-            ),
-          ],
-        );
+          ]),
+        _section('Pre-Round Adjustments', [
+          WwNumberField(
+            label: 'Water Hauled Before Round',
+            controller: _waterHauledBeforeRound,
+            errorText: _errorTextFor(_waterHauledBeforeRound),
+            onChanged: (_) {
+              _clearFieldIssue(_waterHauledBeforeRound);
+              setState(() {});
+            },
           ),
           WwNumberField(
             label: 'Oil Hauled Before Round',
@@ -1717,35 +1642,17 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.save),
-            label: Text(_saving ? 'Saving Inventory...' : 'Save Inventory'),
+                : const Icon(Icons.save_outlined),
+            label: Text(_saving ? 'Saving...' : 'Save Production Inventory'),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
-            onPressed: _clearInventory,
-            icon: const Icon(Icons.delete_outline),
+            onPressed: _saving ? null : _clearInventory,
+            icon: const Icon(Icons.restart_alt),
             label: const Text('Clear Inventory'),
-          ),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _newDay,
-            icon: const Icon(Icons.refresh),
-            label: const Text('New Day'),
-          ),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _archiveYesterday,
-            icon: const Icon(Icons.archive_outlined),
-            label: const Text('Archive Current Job / Shift'),
           ),
         ),
       ],
