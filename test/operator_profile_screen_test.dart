@@ -14,16 +14,24 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: OperatorProfileScreen()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Company'), findsNothing);
-
-    await tester.enterText(find.byType(TextField).first, 'Jane Doe');
-    await tester.enterText(find.byType(TextField).last, 'JD');
+    await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Jane Doe');
+    await tester.enterText(find.widgetWithText(TextField, 'Initials'), 'JD');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Company'),
+      'Mach Energy',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Job Title'),
+      'Production Operator',
+    );
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
     final profile = await OperatorProfileService.instance.load();
     expect(profile.name, 'Jane Doe');
     expect(profile.initials, 'JD');
+    expect(profile.company, 'Mach Energy');
+    expect(profile.jobTitle, 'Production Operator');
     expect(profile.operatorId, isNotEmpty);
   });
 }

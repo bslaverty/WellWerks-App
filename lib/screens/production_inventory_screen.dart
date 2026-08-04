@@ -63,6 +63,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   bool _saving = false;
   ProductionShift _activeShift = ProductionShift.empty();
   JobSetup? _activeJobSetup;
+  int _selectedWellIndex = 0;
   final Set<TextEditingController> _missingControllers =
       <TextEditingController>{};
   final Set<TextEditingController> _invalidControllers =
@@ -196,6 +197,14 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
       for (int i = 0; i < _activeJobWells.length; i++)
         JobSetup.generateWellId(),
     ];
+  }
+
+  int get _resolvedSelectedWellIndex {
+    if (_wellControllers.isEmpty) return -1;
+    if (_selectedWellIndex < 0 || _selectedWellIndex >= _wellControllers.length) {
+      return 0;
+    }
+    return _selectedWellIndex;
   }
 
   String _normalizeWellName(String value) =>
@@ -419,6 +428,12 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     _oilInventoryWells
       ..clear()
       ..addAll(nextOilInventory);
+
+    if (_wellControllers.isNotEmpty) {
+      _selectedWellIndex = _resolvedSelectedWellIndex;
+    } else {
+      _selectedWellIndex = 0;
+    }
   }
 
   void _applyJobSetupDefaults(JobSetup activeJob) {
@@ -1167,13 +1182,14 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   Widget _oilInventorySection() {
+    final selectedWellIndex = _resolvedSelectedWellIndex;
     return _section('Oil Inventory Foundation', [
       const Text(
-        'Track per-well oil inventory and cushion values for the active shift.',
+        'Track starting oil inventory for the selected well on the active shift.',
         style: TextStyle(color: Colors.white70),
       ),
       const SizedBox(height: 10),
-      for (int i = 0; i < _wellControllers.length; i++)
+      if (selectedWellIndex >= 0)
         Card(
           margin: const EdgeInsets.only(bottom: 12),
           child: Padding(
@@ -1182,9 +1198,9 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _wellControllers[i].text.trim().isEmpty
+                  _wellControllers[selectedWellIndex].text.trim().isEmpty
                       ? 'Well'
-                      : _wellControllers[i].text.trim(),
+                      : _wellControllers[selectedWellIndex].text.trim(),
                   style: const TextStyle(
                     color: Color(0xFFCDA56A),
                     fontWeight: FontWeight.w700,
@@ -1193,66 +1209,79 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
                 const SizedBox(height: 10),
                 WwNumberField(
                   label: 'Beginning Oil Inventory',
-                  controller: _oilInventoryWells[i].beginningOilInventory,
+                  controller:
+                      _oilInventoryWells[selectedWellIndex].beginningOilInventory,
                   helperText: 'BBL',
                   errorText: _errorTextFor(
-                      _oilInventoryWells[i].beginningOilInventory),
+                    _oilInventoryWells[selectedWellIndex].beginningOilInventory,
+                  ),
                   onChanged: (_) {
                     _clearFieldIssue(
-                        _oilInventoryWells[i].beginningOilInventory);
+                      _oilInventoryWells[selectedWellIndex].beginningOilInventory,
+                    );
                     setState(() {});
                   },
                 ),
                 WwNumberField(
                   label: 'Current Oil Inventory',
-                  controller: _oilInventoryWells[i].currentOilInventory,
+                  controller:
+                      _oilInventoryWells[selectedWellIndex].currentOilInventory,
                   helperText: 'BBL',
-                  errorText:
-                      _errorTextFor(_oilInventoryWells[i].currentOilInventory),
+                  errorText: _errorTextFor(
+                    _oilInventoryWells[selectedWellIndex].currentOilInventory,
+                  ),
                   onChanged: (_) {
                     setState(() {
                       _clearFieldIssue(
-                          _oilInventoryWells[i].currentOilInventory);
-                      _syncComputedCushion(i);
+                        _oilInventoryWells[selectedWellIndex].currentOilInventory,
+                      );
+                      _syncComputedCushion(selectedWellIndex);
                     });
                   },
                 ),
                 WwNumberField(
                   label: 'Expected Oil Inventory',
-                  controller: _oilInventoryWells[i].expectedOilInventory,
+                  controller:
+                      _oilInventoryWells[selectedWellIndex].expectedOilInventory,
                   helperText: 'BBL',
-                  errorText:
-                      _errorTextFor(_oilInventoryWells[i].expectedOilInventory),
+                  errorText: _errorTextFor(
+                    _oilInventoryWells[selectedWellIndex].expectedOilInventory,
+                  ),
                   onChanged: (_) {
                     setState(() {
                       _clearFieldIssue(
-                          _oilInventoryWells[i].expectedOilInventory);
-                      _syncComputedCushion(i);
+                        _oilInventoryWells[selectedWellIndex].expectedOilInventory,
+                      );
+                      _syncComputedCushion(selectedWellIndex);
                     });
                   },
                 ),
-                _buildCurrentCushionField(i),
+                _buildCurrentCushionField(selectedWellIndex),
                 const SizedBox(height: 4),
-                _buildCushionStatus(i),
+                _buildCushionStatus(selectedWellIndex),
                 const SizedBox(height: 10),
                 WwNumberField(
                   label: 'Maximum Cushion',
-                  controller: _oilInventoryWells[i].maximumCushion,
+                  controller:
+                      _oilInventoryWells[selectedWellIndex].maximumCushion,
                   helperText: 'BBL',
-                  errorText:
-                      _errorTextFor(_oilInventoryWells[i].maximumCushion),
+                  errorText: _errorTextFor(
+                    _oilInventoryWells[selectedWellIndex].maximumCushion,
+                  ),
                   onChanged: (_) {
                     setState(() {
-                      _clearFieldIssue(_oilInventoryWells[i].maximumCushion);
-                      _syncComputedCushion(i);
+                      _clearFieldIssue(
+                        _oilInventoryWells[selectedWellIndex].maximumCushion,
+                      );
+                      _syncComputedCushion(selectedWellIndex);
                     });
                   },
                 ),
               ],
             ),
           ),
-        ),
-      if (_wellControllers.isEmpty)
+        )
+      else
         const Text(
           'No active wells. Start or edit a job to add well names.',
           style: TextStyle(color: Colors.white70),
@@ -1319,193 +1348,335 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     );
   }
 
-  Widget _wellChokeField(int index) {
-    final name = _wellControllers[index].text.trim();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: DropdownButtonFormField<String>(
-        initialValue: _wellChokeTypes[index],
-        decoration: InputDecoration(
-          labelText: name.isEmpty ? 'Well Choke Type' : '$name Choke Type',
-        ),
-        items: const [
-          DropdownMenuItem(value: 'ADJ', child: Text('ADJ')),
-          DropdownMenuItem(value: 'POS', child: Text('POS')),
+  Widget _contextValueTile({
+    required String label,
+    required String value,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.28),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value.trim().isEmpty ? '-' : value.trim(),
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ],
-        onChanged: (value) {
-          if (value == null) return;
-          setState(() => _wellChokeTypes[index] = value);
-        },
       ),
     );
   }
 
-  Widget _content() {
-    return ListView(
-      padding: const EdgeInsets.all(18),
-      children: [
-        _validationCard(),
-        _section('Shift Header', [
-          _textField('Company', _company, enabled: false),
-          _textField('Pad Name', _pad, enabled: false),
-          _textField('Date', _date),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Use Job Setup Tanks'),
-            subtitle: Text(
-              _useJobSetupTanks
-                  ? 'ON: tank counts sync from Job Setup automatically.'
-                  : 'OFF: use manual tank counts while keeping pad and wells from Active Job.',
+  Widget _productionContextSection() {
+    final scheme = Theme.of(context).colorScheme;
+    final selectedWellIndex = _resolvedSelectedWellIndex;
+    return _section('Production Context', [
+      Text(
+        'Inventory is tied to the active production shift and current job.',
+        style: TextStyle(color: scheme.onSurfaceVariant),
+      ),
+      const SizedBox(height: 12),
+      Row(
+        children: [
+          Expanded(
+            child: _contextValueTile(label: 'Company', value: _company.text),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _contextValueTile(label: 'Pad', value: _pad.text),
+          ),
+        ],
+      ),
+      const SizedBox(height: 10),
+      _contextValueTile(label: 'Date', value: _date.text),
+      const SizedBox(height: 12),
+      Text(
+        'Selected Well',
+        style: TextStyle(
+          color: scheme.primary,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      const SizedBox(height: 8),
+      if (_wellControllers.isEmpty)
+        Text(
+          'No active wells. Start or edit a job to add well names.',
+          style: TextStyle(color: scheme.onSurfaceVariant),
+        )
+      else
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DropdownButtonFormField<int>(
+              initialValue: selectedWellIndex,
+              decoration: const InputDecoration(labelText: 'Well'),
+              items: [
+                for (int i = 0; i < _wellControllers.length; i++)
+                  DropdownMenuItem<int>(
+                    value: i,
+                    child: Text(
+                      _wellControllers[i].text.trim().isEmpty
+                          ? 'Well ${i + 1}'
+                          : _wellControllers[i].text.trim(),
+                    ),
+                  ),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() => _selectedWellIndex = value);
+              },
             ),
-            value: _useJobSetupTanks,
-            onChanged: (value) async {
-              final activeJob = await _jobStorage.ensureActiveJobLoaded();
-              setState(() {
-                _useJobSetupTanks = value;
-                if (value && activeJob != null) {
-                  _applyJobSetupDefaults(activeJob);
-                }
-              });
-            },
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: _gaugeEntryType,
-            decoration: const InputDecoration(labelText: 'Gauge Entry Type'),
-            items: const [
-              DropdownMenuItem(value: 'inches', child: Text('Inches')),
-              DropdownMenuItem(
-                  value: 'feetInches', child: Text('Feet + Inches')),
-              DropdownMenuItem(
-                  value: 'decimalFeet', child: Text('Decimal Feet')),
-            ],
-            onChanged: (value) {
-              if (value == null) return;
-              setState(() => _gaugeEntryType = value);
-            },
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: _gasUnit,
-            decoration: const InputDecoration(labelText: 'Gas Unit'),
-            items: const [
-              DropdownMenuItem(value: 'mcfd', child: Text('MCF/D')),
-              DropdownMenuItem(value: 'mmcfd', child: Text('MMCF/D')),
-            ],
-            onChanged: (value) {
-              if (value == null) return;
-              setState(() => _gasUnit = value);
-            },
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: _gasCalculationMethod,
-            decoration:
-                const InputDecoration(labelText: 'Gas Calculation Method'),
-            items: const [
-              DropdownMenuItem(
-                value: 'accumulator',
-                child: Text('Gas Accumulator'),
-              ),
-              DropdownMenuItem(
-                value: 'manual',
-                child: Text('Manual Sales Gas Rate'),
-              ),
-            ],
-            onChanged: (value) {
-              if (value == null) return;
-              setState(() => _gasCalculationMethod = value);
-            },
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: _layoutProfileId,
-            decoration: const InputDecoration(labelText: 'Layout Profile'),
-            items: [
-              for (final profile in _layoutProfiles)
-                DropdownMenuItem(
-                  value: profile.id,
-                  child: Text(profile.name),
-                ),
-            ],
-            onChanged: (value) {
-              if (value == null) return;
-              setState(() => _layoutProfileId = value);
-            },
-          ),
-          if (widget.showManageLayoutsButton) ...[
             const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _manageLayouts,
-                icon: const Icon(Icons.settings_outlined),
-                label: const Text('Manage Report/Text Layouts'),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest.withValues(alpha: 0.28),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: scheme.outlineVariant),
+              ),
+              child: Text(
+                'Choke Type • ${_wellChokeTypes[selectedWellIndex]}',
+                style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
           ],
-          const SizedBox(height: 12),
-          const SizedBox(height: 4),
-          const Text(
-            'Wells on Location',
-            style: TextStyle(
-              color: Color(0xFFCDA56A),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (_activeJobWells.isEmpty)
-            const Text(
-              'No active wells. Start or edit a job to add well names.',
-              style: TextStyle(color: Colors.white70),
-            )
-          else
-            for (int i = 0; i < _wellControllers.length; i++)
-              Column(
-                children: [
-                  _textField(
-                    _wellControllers[i].text.trim().isEmpty
-                        ? 'Well Name'
-                        : _wellControllers[i].text.trim(),
-                    _wellControllers[i],
-                    enabled: false,
-                  ),
-                  _wellChokeField(i),
-                ],
-              ),
-        ]),
-        _tankSection(
-          title: 'Starting Inventory • Water Tanks',
-          tanks: _waterTanks,
-          tankLabel: 'Water Tank',
         ),
-        _tankSection(
+    ]);
+  }
+
+  Widget _inventorySettingsSection() {
+    return _section('Inventory Settings', [
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Sync Tank Count From Active Job'),
+        subtitle: Text(
+          _useJobSetupTanks
+              ? 'ON: water and oil tank counts follow the active job.'
+              : 'OFF: manage tank counts manually for this production shift.',
+        ),
+        value: _useJobSetupTanks,
+        onChanged: (value) async {
+          final activeJob = await _jobStorage.ensureActiveJobLoaded();
+          setState(() {
+            _useJobSetupTanks = value;
+            if (value && activeJob != null) {
+              _applyJobSetupDefaults(activeJob);
+            }
+          });
+        },
+      ),
+      const SizedBox(height: 12),
+      DropdownButtonFormField<String>(
+        initialValue: _gaugeEntryType,
+        decoration: const InputDecoration(labelText: 'Gauge Entry Type'),
+        items: const [
+          DropdownMenuItem(value: 'inches', child: Text('Inches')),
+          DropdownMenuItem(value: 'feetInches', child: Text('Feet + Inches')),
+          DropdownMenuItem(value: 'decimalFeet', child: Text('Decimal Feet')),
+        ],
+        onChanged: (value) {
+          if (value == null) return;
+            final selectedWellIndex = _resolvedSelectedWellIndex;
+          setState(() => _gaugeEntryType = value);
+        },
+      ),
+      const SizedBox(height: 12),
+      DropdownButtonFormField<String>(
+        initialValue: _gasUnit,
+              if (selectedWellIndex >= 0)
+        items: const [
+          DropdownMenuItem(value: 'mcfd', child: Text('MCF/D')),
+          DropdownMenuItem(value: 'mmcfd', child: Text('MMCF/D')),
+        ],
+        onChanged: (value) {
+          if (value == null) return;
+          setState(() => _gasUnit = value);
+        },
+                          _wellControllers[selectedWellIndex].text.trim().isEmpty
+      const SizedBox(height: 12),
+                              : _wellControllers[selectedWellIndex].text.trim(),
+        initialValue: _gasCalculationMethod,
+        decoration: const InputDecoration(labelText: 'Gas Calculation Method'),
+        items: const [
+          DropdownMenuItem(
+            value: 'accumulator',
+          ),
+          DropdownMenuItem(
+                          controller:
+                              _oilInventoryWells[selectedWellIndex].beginningOilInventory,
+            child: Text('Manual Sales Gas Rate'),
+          ),
+            decoration: const InputDecoration(labelText: 'Gas Unit'),
+        onChanged: (value) {
+          if (value == null) return;
+                                _oilInventoryWells[selectedWellIndex].beginningOilInventory);
+        },
+      ),
+      const SizedBox(height: 12),
+      DropdownButtonFormField<String>(
+        initialValue: _layoutProfileId,
+          ),
+                              _oilInventoryWells[selectedWellIndex].currentOilInventory,
+          DropdownButtonFormField<String>(
+                          errorText: _errorTextFor(
+                              _oilInventoryWells[selectedWellIndex].currentOilInventory),
+              value: profile.id,
+              child: Text(profile.name),
+            ),
+                                  _oilInventoryWells[selectedWellIndex].currentOilInventory);
+                              _syncComputedCushion(selectedWellIndex);
+          if (value == null) return;
+                value: 'manual',
+      ),
+      if (widget.showManageLayoutsButton) ...[
+            ],
+                                  selectedWellIndex]
+                              .expectedOilInventory,
+              setState(() => _gasCalculationMethod = value);
+                          errorText: _errorTextFor(
+                              _oilInventoryWells[selectedWellIndex].expectedOilInventory),
+            onPressed: _manageLayouts,
+            icon: const Icon(Icons.settings_outlined),
+            label: const Text('Manage Report/Text Layouts'),
+            decoration: const InputDecoration(labelText: 'Layout Profile'),
+      ],
+              for (final profile in _layoutProfiles)
+                DropdownMenuItem(
+                        _buildCurrentCushionField(selectedWellIndex),
+  Widget _content() {
+                        _buildCushionStatus(selectedWellIndex),
+            ],
+            onChanged: (value) {
+        _validationCard(),
+                          controller:
+                              _oilInventoryWells[selectedWellIndex].maximumCushion,
+        _inventorySettingsSection(),
+                          errorText: _errorTextFor(
+            const SizedBox(height: 8),
+                              _clearFieldIssue(
+              width: double.infinity,
+              child: OutlinedButton.icon(
           title: 'Starting Inventory • Oil Tanks',
           tanks: _oilTanks,
           tankLabel: 'Oil Tank',
-        ),
-        _oilInventorySection(),
+              ),
+            ),
         if (_gasCalculationMethod == 'accumulator')
           _section('Starting Gas', [
             WwNumberField(
-              label: 'Starting Gas Accum',
-              controller: _startingGasAccum,
+
               errorText: _errorTextFor(_startingGasAccum),
-              onChanged: (_) {
-                _clearFieldIssue(_startingGasAccum);
-                setState(() {});
-              },
+        return ListView(
+          padding: const EdgeInsets.all(18),
+          children: [
+            _validationCard(),
+            _productionContextSection(),
+            _inventorySettingsSection(),
+            _tankSection(
+              title: 'Starting Inventory • Water Tanks',
+              tanks: _waterTanks,
+              tankLabel: 'Water Tank',
             ),
-          ]),
-        _section('Pre-Round Adjustments', [
-          WwNumberField(
-            label: 'Water Hauled Before Round',
-            controller: _waterHauledBeforeRound,
-            errorText: _errorTextFor(_waterHauledBeforeRound),
-            onChanged: (_) {
-              _clearFieldIssue(_waterHauledBeforeRound);
-              setState(() {});
-            },
+            _tankSection(
+              title: 'Starting Inventory • Oil Tanks',
+              tanks: _oilTanks,
+              tankLabel: 'Oil Tank',
+            ),
+            _oilInventorySection(),
+            if (_gasCalculationMethod == 'accumulator')
+              _section('Starting Gas', [
+                WwNumberField(
+                  label: 'Starting Gas Accum',
+                  controller: _startingGasAccum,
+                  errorText: _errorTextFor(_startingGasAccum),
+                  onChanged: (_) {
+                    _clearFieldIssue(_startingGasAccum);
+                    setState(() {});
+                  },
+                ),
+              ]),
+            _section('Pre-Round Adjustments', [
+              WwNumberField(
+                label: 'Water Hauled Before Round',
+                controller: _waterHauledBeforeRound,
+                errorText: _errorTextFor(_waterHauledBeforeRound),
+                onChanged: (_) {
+                  _clearFieldIssue(_waterHauledBeforeRound);
+                  setState(() {});
+                },
+              ),
+              WwNumberField(
+                label: 'Oil Hauled Before Round',
+                controller: _oilHauledBeforeRound,
+                errorText: _errorTextFor(_oilHauledBeforeRound),
+                onChanged: (_) {
+                  _clearFieldIssue(_oilHauledBeforeRound);
+                  setState(() {});
+                },
+              ),
+              WwNumberField(
+                label: 'Water Pumped Before Round',
+                controller: _waterPumpedBeforeRound,
+                errorText: _errorTextFor(_waterPumpedBeforeRound),
+                onChanged: (_) {
+                  _clearFieldIssue(_waterPumpedBeforeRound);
+                  setState(() {});
+                },
+              ),
+              WwNumberField(
+                label: 'Oil Pumped Before Round',
+                controller: _oilPumpedBeforeRound,
+                errorText: _errorTextFor(_oilPumpedBeforeRound),
+                onChanged: (_) {
+                  _clearFieldIssue(_oilPumpedBeforeRound);
+                  setState(() {});
+                },
+              ),
+            ]),
+            _runningTotalsSection(),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _saving ? null : _saveInventory,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_outlined),
+                label: Text(_saving ? 'Saving...' : 'Save Production Inventory'),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _saving ? null : _clearInventory,
+                icon: const Icon(Icons.restart_alt),
+                label: const Text('Clear Inventory'),
+              ),
+            ),
+          ],
+        );
           ),
           WwNumberField(
             label: 'Oil Hauled Before Round',

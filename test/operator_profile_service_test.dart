@@ -14,12 +14,25 @@ void main() {
     expect(first.operatorId, isNotEmpty);
     expect(first.name, isEmpty);
 
-    await service.updateProfile(name: 'Jane Doe', initials: 'JD');
+    await service.updateProfile(
+      name: 'Jane Doe',
+      initials: 'JD',
+      company: 'Mach Energy',
+      jobTitle: 'Production Operator',
+      phone: '555-1234',
+      email: 'jane@example.com',
+      photoBase64: 'photo-data',
+    );
     final second = await service.load();
 
     expect(second.operatorId, first.operatorId);
     expect(second.name, 'Jane Doe');
     expect(second.initials, 'JD');
+    expect(second.company, 'Mach Energy');
+    expect(second.jobTitle, 'Production Operator');
+    expect(second.phone, '555-1234');
+    expect(second.email, 'jane@example.com');
+    expect(second.photoBase64, 'photo-data');
   });
 
   test('operator initials are suggested from name', () {

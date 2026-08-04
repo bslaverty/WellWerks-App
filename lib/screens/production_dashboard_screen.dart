@@ -7,7 +7,6 @@ import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../widgets/app_header.dart';
 import 'job_management_screen.dart';
-import 'equipment_screen.dart';
 import 'pressure_entry_screen.dart';
 import 'production_inventory_screen.dart';
 import 'production_history_screen.dart';
@@ -445,13 +444,6 @@ class _ProductionDashboardScreenState extends State<ProductionDashboardScreen> {
                 subtitle:
                     'Tank levels, running totals, and production inventory',
                 onTap: () => _open(context, const ProductionInventoryScreen()),
-              ),
-              const Divider(height: 1),
-              _sectionItem(
-                icon: Icons.precision_manufacturing_outlined,
-                title: 'Equipment',
-                subtitle: 'Flowback, bypass, and layout tools',
-                onTap: () => _open(context, const EquipmentScreen()),
               ),
               const Divider(height: 1),
               _sectionItem(

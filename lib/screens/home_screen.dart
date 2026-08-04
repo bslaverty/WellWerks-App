@@ -25,7 +25,10 @@ import 'tank_charts_menu_screen.dart';
 import 'settings_screen.dart';
 import 'about_support_screen.dart';
 import 'flywheel_diesel_tank_screen.dart';
+import 'job_management_screen.dart';
+import 'job_setup_screen.dart';
 import 'operations_log_screen.dart';
+import 'operator_profile_screen.dart';
 import 'rig_up_dashboard_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -869,23 +872,31 @@ class _HomeScreenState extends State<HomeScreen> {
       required IconData icon,
       required String label,
       bool active = false,
+      VoidCallback? onTap,
     }) {
       final color = active ? const Color(0xFFCDA56A) : Colors.white60;
       return Expanded(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 12,
-                fontWeight: active ? FontWeight.w800 : FontWeight.w600,
-              ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: color),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 12,
+                    fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       );
     }
@@ -901,10 +912,29 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         children: [
           navItem(icon: Icons.home, label: 'Home', active: true),
-          navItem(icon: Icons.work_outline, label: 'Jobs'),
-          navItem(icon: Icons.add_box_outlined, label: 'New Job'),
-          navItem(icon: Icons.forum_outlined, label: 'Updates'),
-          navItem(icon: Icons.person_outline, label: 'Profile'),
+          navItem(
+            icon: Icons.work_outline,
+            label: 'Jobs',
+            onTap: () => open(context, const JobManagementScreen()),
+          ),
+          navItem(
+            icon: Icons.add_box_outlined,
+            label: 'New Job',
+            onTap: () => open(
+              context,
+              const JobSetupScreen(startFreshJob: true),
+            ),
+          ),
+          navItem(
+            icon: Icons.forum_outlined,
+            label: 'Updates',
+            onTap: () => open(context, const OperationsLogScreen()),
+          ),
+          navItem(
+            icon: Icons.person_outline,
+            label: 'Profile',
+            onTap: () => open(context, const OperatorProfileScreen()),
+          ),
         ],
       ),
     );

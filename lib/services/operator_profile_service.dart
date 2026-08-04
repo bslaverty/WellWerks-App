@@ -8,11 +8,21 @@ class OperatorProfile {
     required this.operatorId,
     required this.name,
     required this.initials,
+    required this.company,
+    required this.jobTitle,
+    required this.phone,
+    required this.email,
+    required this.photoBase64,
   });
 
   final String operatorId;
   final String name;
   final String initials;
+  final String company;
+  final String jobTitle;
+  final String phone;
+  final String email;
+  final String photoBase64;
 
   bool get hasName => name.trim().isNotEmpty;
 
@@ -20,11 +30,21 @@ class OperatorProfile {
     String? operatorId,
     String? name,
     String? initials,
+    String? company,
+    String? jobTitle,
+    String? phone,
+    String? email,
+    String? photoBase64,
   }) {
     return OperatorProfile(
       operatorId: operatorId ?? this.operatorId,
       name: name ?? this.name,
       initials: initials ?? this.initials,
+      company: company ?? this.company,
+      jobTitle: jobTitle ?? this.jobTitle,
+      phone: phone ?? this.phone,
+      email: email ?? this.email,
+      photoBase64: photoBase64 ?? this.photoBase64,
     );
   }
 
@@ -32,6 +52,11 @@ class OperatorProfile {
         'operatorId': operatorId,
         'name': name,
         'initials': initials,
+        'company': company,
+        'jobTitle': jobTitle,
+        'phone': phone,
+        'email': email,
+        'photoBase64': photoBase64,
       };
 
   factory OperatorProfile.fromJson(Map<String, dynamic> json) {
@@ -39,6 +64,11 @@ class OperatorProfile {
       operatorId: (json['operatorId'] as String? ?? '').trim(),
       name: (json['name'] as String? ?? '').trim(),
       initials: (json['initials'] as String? ?? '').trim(),
+      company: (json['company'] as String? ?? '').trim(),
+      jobTitle: (json['jobTitle'] as String? ?? '').trim(),
+      phone: (json['phone'] as String? ?? '').trim(),
+      email: (json['email'] as String? ?? '').trim(),
+      photoBase64: (json['photoBase64'] as String? ?? '').trim(),
     );
   }
 }
@@ -61,6 +91,11 @@ class OperatorProfileService {
         operatorId: _generateOperatorId(),
         name: '',
         initials: '',
+        company: '',
+        jobTitle: '',
+        phone: '',
+        email: '',
+        photoBase64: '',
       );
       _cached = profile;
       await save(profile);
@@ -84,6 +119,11 @@ class OperatorProfileService {
         operatorId: _generateOperatorId(),
         name: '',
         initials: '',
+        company: '',
+        jobTitle: '',
+        phone: '',
+        email: '',
+        photoBase64: '',
       );
       _cached = profile;
       await save(profile);
@@ -100,6 +140,11 @@ class OperatorProfileService {
       initials: profile.initials.trim().isEmpty
           ? suggestInitials(profile.name)
           : profile.initials.trim().toUpperCase(),
+      company: profile.company.trim(),
+      jobTitle: profile.jobTitle.trim(),
+      phone: profile.phone.trim(),
+      email: profile.email.trim(),
+      photoBase64: profile.photoBase64.trim(),
     );
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsKey, jsonEncode(_cached!.toJson()));
@@ -108,6 +153,11 @@ class OperatorProfileService {
   Future<OperatorProfile> updateProfile({
     required String name,
     required String initials,
+    String company = '',
+    String jobTitle = '',
+    String phone = '',
+    String email = '',
+    String photoBase64 = '',
   }) async {
     final current = await load();
     final next = current.copyWith(
@@ -115,6 +165,11 @@ class OperatorProfileService {
       initials: initials.trim().isEmpty
           ? suggestInitials(name)
           : initials.trim().toUpperCase(),
+      company: company.trim(),
+      jobTitle: jobTitle.trim(),
+      phone: phone.trim(),
+      email: email.trim(),
+      photoBase64: photoBase64.trim(),
     );
     await save(next);
     return _cached!;
