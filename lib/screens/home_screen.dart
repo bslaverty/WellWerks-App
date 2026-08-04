@@ -17,9 +17,6 @@ import 'module_menu_screen.dart';
 import 'completions_dashboard_screen.dart';
 import 'conversion_calculator_screen.dart';
 import 'rate_calculator_screen.dart';
-import 'equipment_layout_screen.dart';
-import 'rig_up_inventory_screen.dart';
-import 'rig_up_history_screen.dart';
 import 'jsa_screen.dart';
 import 'production_dashboard_screen.dart';
 import 'production_history_screen.dart';
@@ -27,7 +24,6 @@ import 'chart_reference_screen.dart';
 import 'tank_charts_menu_screen.dart';
 import 'settings_screen.dart';
 import 'about_support_screen.dart';
-import 'drillout_cleanout_module_screen.dart';
 import 'flywheel_diesel_tank_screen.dart';
 import 'operations_log_screen.dart';
 import 'rig_up_dashboard_screen.dart';
@@ -852,9 +848,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const Spacer(),
-                  Text(
+                  const Text(
                     'Open',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Color(0xFFCDA56A),
                       fontWeight: FontWeight.w700,
                     ),

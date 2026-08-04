@@ -1232,7 +1232,7 @@ class _OperationsLogScreenState extends State<OperationsLogScreen> {
       final gauge = (item['gauge'] as String? ?? '').trim();
       final barrelsValue = item['barrels'];
       final barrels = barrelsValue is num ? barrelsValue.toInt() : null;
-      final gaugeText = gauge.isEmpty ? '-' : '${gauge}"';
+      final gaugeText = gauge.isEmpty ? '-' : '$gauge"';
       final bblText = barrels == null ? '-' : '$barrels bbl';
       lines.add('${label.isEmpty ? 'Tank' : label}: $gaugeText - $bblText');
       if (barrels != null) {

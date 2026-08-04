@@ -200,8 +200,9 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
         SnackBar(content: Text(message.toString())),
       );
     } finally {
-      if (!mounted) return;
-      setState(() => _gpsFilling = false);
+      if (mounted) {
+        setState(() => _gpsFilling = false);
+      }
     }
   }
 

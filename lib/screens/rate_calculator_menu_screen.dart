@@ -176,7 +176,7 @@ class _RateCalculatorMenuScreenState extends State<RateCalculatorMenuScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 DropdownButtonFormField<RateCalculatorConfig>(
-                  value: _selectedConfig,
+                  initialValue: _selectedConfig,
                   decoration: const InputDecoration(labelText: 'Tank'),
                   items: _menuConfigs
                       .map(

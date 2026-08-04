@@ -58,15 +58,14 @@ class _JsaEmployeeFormRow {
   _JsaEmployeeFormRow({
     String name = '',
     String company = '',
-    bool showSignature = false,
+    this.showSignature = false,
   })  : nameController = TextEditingController(text: name),
         companyController = TextEditingController(text: company),
         signatureController = SignatureController(
           penStrokeWidth: 3,
           penColor: Colors.white,
           exportBackgroundColor: const Color(0xFF111111),
-        ),
-        showSignature = showSignature;
+        );
 
   final TextEditingController nameController;
   final TextEditingController companyController;

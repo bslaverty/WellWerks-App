@@ -373,8 +373,8 @@ void main() {
           'Horse Pad\n'
           'Well Alpha\n\n'
           'Tank Inventory\n\n'
-          'Sand Tank: 30\" - 300 bbl\n'
-          'Water Tank 1: 28\" - 280 bbl\n\n'
+          'Sand Tank: 30" - 300 bbl\n'
+          'Water Tank 1: 28" - 280 bbl\n\n'
           'Total On Location: 580 bbl\n\n'
           'Notes: Stable conditions',
       notes: 'Stable conditions',
@@ -618,8 +618,8 @@ void main() {
           'Horse Pad\n'
           'Well Alpha\n\n'
           'Tank Inventory\n\n'
-          'Sand Tank: 30\" - 300 bbl\n'
-          'Water Tank 1: 28\" - 280 bbl\n\n'
+          'Sand Tank: 30" - 300 bbl\n'
+          'Water Tank 1: 28" - 280 bbl\n\n'
           'Total On Location: 580 bbl\n\n'
           'Notes: Stable conditions',
       notes: 'Stable conditions',

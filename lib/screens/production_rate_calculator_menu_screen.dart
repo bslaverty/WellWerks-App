@@ -178,7 +178,7 @@ class _ProductionRateCalculatorMenuScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 DropdownButtonFormField<RateCalculatorConfig>(
-                  value: _selectedConfig,
+                  initialValue: _selectedConfig,
                   decoration: const InputDecoration(labelText: 'Tank'),
                   items: _productionConfigs
                       .map(

@@ -539,14 +539,6 @@ class _OperationsLogEntryFormScreenState
     }
   }
 
-  String _fmtTrim(double value) {
-    if (value.isNaN || value.isInfinite) return '0';
-    final fixed = value.toStringAsFixed(2);
-    return fixed
-        .replaceFirst(RegExp(r'0+$'), '')
-        .replaceFirst(RegExp(r'\.$'), '');
-  }
-
   double? _parseGaugeOrNull(String value) {
     final trimmed = value.trim();
     if (trimmed.isEmpty) return null;
@@ -583,7 +575,7 @@ class _OperationsLogEntryFormScreenState
       final label = (row['label'] as String? ?? '').trim();
       final gauge = (row['gauge'] as String? ?? '').trim();
       final barrels = row['barrels'] as int?;
-      final gaugeText = gauge.isEmpty ? '-' : '${gauge}"';
+      final gaugeText = gauge.isEmpty ? '-' : '$gauge"';
       final bblText = barrels == null ? '-' : '$barrels bbl';
       lines.add('${label.isEmpty ? 'Tank' : label}: $gaugeText - $bblText');
       if (barrels != null) {

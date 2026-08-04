@@ -750,153 +750,339 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
     return 'Running $mm:$ss';
   }
 
+  Future<void> _openCompactTabPicker(List<HomeRateTabSpec> tabs) async {
+    if (!widget.homeMultiMode || tabs.length <= 1) return;
+    final currentIndex = tabs.indexWhere(
+      (tab) => tab.instanceId == _instanceStorageId,
+    );
+    final selectedIndex = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: ListView.builder(
+            itemCount: tabs.length,
+            itemBuilder: (context, index) {
+              final tab = tabs[index];
+              final timerText = _activeTankTimerText(tab);
+              final isCurrent = index == currentIndex;
+              return ListTile(
+                leading: Icon(
+                  isCurrent ? Icons.check_circle : Icons.speed,
+                ),
+                title: Text(tab.config.title),
+                subtitle: Text(timerText),
+                onTap: isCurrent
+                    ? null
+                    : () => Navigator.of(sheetContext).pop(index),
+              );
+            },
+          ),
+        );
+      },
+    );
+    if (!mounted || selectedIndex == null) return;
+    _openHomeTab(selectedIndex);
+  }
+
   Widget _activeTanksSection() {
     if (!widget.homeMultiMode) return const SizedBox.shrink();
     final tabs = _resolvedHomeTabs();
+    final compact = _isCompactVerticalLayout;
 
     final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: Theme.of(context).cardColor,
-            border: Border.all(
-              color: scheme.outlineVariant.withValues(alpha: 0.95),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        if (compact && tabs.isNotEmpty)
+          () {
+            final currentIndex = tabs.indexWhere(
+              (tab) => tab.instanceId == _instanceStorageId,
+            );
+            final resolvedIndex = currentIndex < 0 ? 0 : currentIndex;
+            final currentTab = tabs[resolvedIndex];
+            final timerText = _activeTankTimerText(currentTab);
+
+            return Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                color: Theme.of(context).cardColor,
+                border: Border.all(
+                  color: scheme.outlineVariant.withValues(alpha: 0.95),
+                ),
+              ),
+              child: Row(
                 children: [
-                  Text(
-                    'ACTIVE CALCULATORS',
-                    style: TextStyle(
-                      color: scheme.onSurfaceVariant,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.8,
+                  Expanded(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => _openCompactTabPicker(tabs),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'ACTIVE CALCULATOR',
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.7,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              currentTab.config.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: scheme.primary,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                              timerText,
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                  const Spacer(),
-                  FilledButton.icon(
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: 'Switch tank',
+                    onPressed: tabs.length > 1
+                        ? () => _openCompactTabPicker(tabs)
+                        : null,
+                    icon: const Icon(Icons.swap_horiz),
+                  ),
+                  IconButton.filledTonal(
+                    tooltip: 'Add tank',
                     onPressed: (widget.availableConfigs?.isNotEmpty ?? false)
                         ? _openAddAnotherTankPicker
                         : null,
-                    icon: const Icon(Icons.add, size: 16),
-                    label: const Text('Add Tank'),
+                    icon: const Icon(Icons.add),
                   ),
+                  if (tabs.length > 1)
+                    IconButton(
+                      tooltip: 'Delete current tank',
+                      onPressed: () => _deleteHomeTab(resolvedIndex),
+                      icon: const Icon(Icons.close),
+                    ),
                 ],
               ),
-              const SizedBox(height: 10),
-              if (tabs.isEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    color: Theme.of(context)
-                        .colorScheme
-                        .surfaceContainerHigh
-                        .withValues(alpha: 0.35),
-                    border: Border.all(
-                      color: scheme.outlineVariant.withValues(alpha: 0.95),
+            );
+          }()
+        else
+          Container(
+            padding: EdgeInsets.all(compact ? 12 : 16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              color: Theme.of(context).cardColor,
+              border: Border.all(
+                color: scheme.outlineVariant.withValues(alpha: 0.95),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'ACTIVE CALCULATORS',
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8,
+                      ),
                     ),
-                  ),
-                  child: Text(
-                    'No active calculators. Tap Add Tank to start one.',
-                    style: TextStyle(
-                      color: scheme.onSurfaceVariant,
-                      fontSize: 12,
+                    const Spacer(),
+                    FilledButton.icon(
+                      onPressed: (widget.availableConfigs?.isNotEmpty ?? false)
+                          ? _openAddAnotherTankPicker
+                          : null,
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('Add Tank'),
                     ),
-                  ),
-                )
-              else
-                SizedBox(
-                  height: 82,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: tabs.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
-                    itemBuilder: (context, index) {
-                      final tab = tabs[index];
-                      final isCurrent = tab.instanceId == _instanceStorageId;
-                      final timerText = _activeTankTimerText(tab);
-                      return InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () => _openHomeTab(index),
-                        child: Container(
-                          width: 180,
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            color: isCurrent
-                                ? scheme.primary.withValues(alpha: 0.12)
-                                : Theme.of(context).cardColor,
-                            border: Border.all(
+                  ],
+                ),
+                SizedBox(height: compact ? 8 : 10),
+                if (tabs.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHigh
+                          .withValues(alpha: 0.35),
+                      border: Border.all(
+                        color: scheme.outlineVariant.withValues(alpha: 0.95),
+                      ),
+                    ),
+                    child: Text(
+                      'No active calculators. Tap Add Tank to start one.',
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  )
+                else
+                  SizedBox(
+                    height: compact ? 80 : 94,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: tabs.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (context, index) {
+                        final tab = tabs[index];
+                        final isCurrent = tab.instanceId == _instanceStorageId;
+                        final timerText = _activeTankTimerText(tab);
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => _openHomeTab(index),
+                          child: Container(
+                            width: 196,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
                               color: isCurrent
-                                  ? scheme.primary
-                                  : scheme.outlineVariant.withValues(
-                                      alpha: 0.95,
+                                  ? scheme.primaryContainer
+                                  : Theme.of(context).cardColor,
+                              border: Border.all(
+                                color: isCurrent
+                                    ? scheme.primary
+                                    : scheme.outlineVariant.withValues(
+                                        alpha: 0.95,
+                                      ),
+                                width: isCurrent ? 2.2 : 1,
+                              ),
+                              boxShadow: isCurrent
+                                  ? [
+                                      BoxShadow(
+                                        color: scheme.primary.withValues(
+                                          alpha: 0.28,
+                                        ),
+                                        blurRadius: 14,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          if (isCurrent)
+                                            Container(
+                                              margin: const EdgeInsets.only(
+                                                  bottom: 3),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 6,
+                                                vertical: 2,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: scheme.primary,
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                              ),
+                                              child: Text(
+                                                'ACTIVE',
+                                                style: TextStyle(
+                                                  color: scheme.onPrimary,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w800,
+                                                  letterSpacing: 0.5,
+                                                ),
+                                              ),
+                                            ),
+                                          Text(
+                                            tab.config.title,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              color: isCurrent
+                                                  ? scheme.onPrimaryContainer
+                                                  : scheme.onSurface,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
+                                    if (isCurrent)
+                                      Padding(
+                                        padding:
+                                            const EdgeInsets.only(right: 2),
+                                        child: Icon(
+                                          Icons.check_circle,
+                                          size: 18,
+                                          color: scheme.primary,
+                                        ),
+                                      ),
+                                    InkWell(
+                                      borderRadius: BorderRadius.circular(999),
+                                      onTap: () {
+                                        _deleteHomeTab(index);
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(4),
+                                        child: Icon(
+                                          Icons.close,
+                                          size: 16,
+                                          color: isCurrent
+                                              ? scheme.onPrimaryContainer
+                                              : scheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  timerText,
+                                  style: TextStyle(
+                                    color: isCurrent
+                                        ? scheme.onPrimaryContainer
+                                        : scheme.onSurfaceVariant,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      tab.config.title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                  ),
-                                  InkWell(
-                                    borderRadius: BorderRadius.circular(999),
-                                    onTap: () {
-                                      _deleteHomeTab(index);
-                                    },
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(4),
-                                      child: Icon(
-                                        Icons.close,
-                                        size: 16,
-                                        color: scheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                timerText,
-                                style: TextStyle(
-                                  color: scheme.onSurfaceVariant,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
         const SizedBox(height: 12),
       ],
     );
@@ -2090,6 +2276,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   bool get _isCurrentCalculatorTimerActive =>
       _activeTimerState?.instanceId == _instanceStorageId;
 
+  bool get _isCompactVerticalLayout => MediaQuery.of(context).size.height < 900;
+
   String _timerStartedText() {
     final state = _activeTimerState;
     if (state == null || !_isCurrentCalculatorTimerActive) return '--';
@@ -2144,10 +2332,12 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   Widget _timerModeSelector() {
     if (!_liveClockAvailable) return const SizedBox.shrink();
     final scheme = Theme.of(context).colorScheme;
+    final compact = _isCompactVerticalLayout;
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        padding:
+            EdgeInsets.fromLTRB(12, compact ? 8 : 10, 12, compact ? 8 : 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2155,13 +2345,14 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
               'Timer Mode',
               style: TextStyle(
                 color: scheme.primary,
+                fontSize: compact ? 16 : null,
                 fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: compact ? 6 : 8),
             Wrap(
               spacing: 10,
-              runSpacing: 10,
+              runSpacing: compact ? 8 : 10,
               children: [
                 ChoiceChip(
                   selected: !_useLiveClock,
@@ -2183,12 +2374,13 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
   Widget _timedRateSection() {
     final scheme = Theme.of(context).colorScheme;
+    final compact = _isCompactVerticalLayout;
     final canRunTimer =
         _hasValidMinutes && !_isCurrentCalculatorTimerActive && !_timerRunning;
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: EdgeInsets.all(compact ? 10 : 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2196,18 +2388,21 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
               'Timed Rate',
               style: TextStyle(
                 color: scheme.primary,
-                fontSize: 18,
+                fontSize: compact ? 16 : 18,
                 fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: compact ? 6 : 8),
             Container(
               decoration: BoxDecoration(
                 color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: scheme.outlineVariant),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              padding: EdgeInsets.symmetric(
+                horizontal: compact ? 8 : 10,
+                vertical: compact ? 6 : 8,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -2219,7 +2414,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                       Text(
                         _timerFinished ? 'TIME' : _timerText(),
                         style: TextStyle(
-                          fontSize: 44,
+                          fontSize: compact ? 36 : 44,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 1.2,
                           color: _timerFinished
@@ -2229,12 +2424,12 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
+                  SizedBox(height: compact ? 4 : 6),
                   Text(
                     _timerStatusText,
                     style: TextStyle(color: scheme.onSurfaceVariant),
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: compact ? 6 : 8),
                   Row(
                     children: [
                       Expanded(
@@ -2252,7 +2447,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: compact ? 8 : 10),
                   if (_timerRunning)
                     SizedBox(
                       width: double.infinity,
@@ -2297,10 +2492,11 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   Widget _liveClockSection() {
     if (!_liveClockAvailable) return const SizedBox.shrink();
     final scheme = Theme.of(context).colorScheme;
+    final compact = _isCompactVerticalLayout;
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: EdgeInsets.all(compact ? 10 : 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2308,23 +2504,28 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
               'Live Clock',
               style: TextStyle(
                 color: scheme.primary,
-                fontSize: 18,
+                fontSize: compact ? 16 : 18,
                 fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Start timer, stop at stick pull, enter ending gauge, then tap CALCULATE.',
-              style: TextStyle(color: scheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: 8),
+            SizedBox(height: compact ? 6 : 8),
+            if (!compact) ...[
+              Text(
+                'Start timer, stop at stick pull, enter ending gauge, then tap CALCULATE.',
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 8),
+            ],
             Container(
               decoration: BoxDecoration(
                 color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: scheme.outlineVariant),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              padding: EdgeInsets.symmetric(
+                horizontal: compact ? 8 : 10,
+                vertical: compact ? 6 : 8,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -2335,7 +2536,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                       Text(
                         _liveClockText(),
                         style: TextStyle(
-                          fontSize: 44,
+                          fontSize: compact ? 36 : 44,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 1.2,
                           color: scheme.primary,
@@ -2343,19 +2544,19 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
+                  SizedBox(height: compact ? 4 : 6),
                   Text(
                     _liveClockRunning
                         ? 'Live clock running... stop when you pull the stick.'
                         : 'Stopped. Enter ending gauge, then tap CALCULATE.',
                     style: TextStyle(color: scheme.onSurfaceVariant),
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: compact ? 6 : 8),
                   Text(
                     'Started: ${_liveClockStartedText()}',
                     style: TextStyle(color: scheme.onSurfaceVariant),
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: compact ? 8 : 10),
                   SizedBox(
                     width: double.infinity,
                     child: Column(
@@ -2464,9 +2665,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
-                  child: const Align(
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 6, 16, 10),
+                  child: Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
                       'Select Timer Length',
@@ -3070,7 +3271,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
           if (_rateLogExpanded) ...[
             if (_rateLogEntries.isEmpty)
               Padding(
-                padding: EdgeInsets.fromLTRB(16, 0, 16, 14),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -3129,7 +3330,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
                     final compactTwoAcross = constraints.maxWidth < 520;
                     final columns = compactTwoAcross ? 2 : actions.length;
-                    final spacing = 10.0;
+                    const spacing = 10.0;
                     final itemWidth =
                         (constraints.maxWidth - ((columns - 1) * spacing)) /
                             columns;
@@ -3252,6 +3453,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   Widget build(BuildContext context) {
     final hasActiveCalculators =
         !widget.homeMultiMode || _resolvedHomeTabs().isNotEmpty;
+    final compact = _isCompactVerticalLayout;
 
     if (_initializing) {
       return Scaffold(
@@ -3279,7 +3481,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
           children: [
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.all(18),
+                padding: EdgeInsets.all(compact ? 12 : 18),
                 children: [
                   _activeTanksSection(),
                   if (hasActiveCalculators) ...[
@@ -3309,6 +3511,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                     ),
                     if (widget.homeMultiMode) ...[
                       SwitchListTile(
+                        dense: compact,
                         value: _fluidHauledEnabled,
                         onChanged: (value) {
                           setState(() {
@@ -3320,9 +3523,11 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                           _persistCalculatorSession();
                         },
                         title: const Text('Include Fluid Hauled'),
-                        subtitle: const Text(
-                          'Optionally add hauled-off volume to the total barrel change.',
-                        ),
+                        subtitle: compact
+                            ? null
+                            : const Text(
+                                'Optionally add hauled-off volume to the total barrel change.',
+                              ),
                       ),
                       if (_fluidHauledEnabled)
                         WwNumberField(
@@ -3336,7 +3541,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                     ],
                     if (!_useLiveClock)
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 14),
+                        padding: EdgeInsets.only(bottom: compact ? 8 : 14),
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
@@ -3356,9 +3561,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                                     .surfaceContainerHigh
                                     .withValues(alpha: 0.35),
                               ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 14,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: compact ? 12 : 14,
+                                vertical: compact ? 10 : 14,
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3373,11 +3578,11 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
+                                  SizedBox(height: compact ? 2 : 4),
                                   Text(
                                     _minutesDisplayText,
                                     style: TextStyle(
-                                      fontSize: 18,
+                                      fontSize: compact ? 16 : 18,
                                       fontWeight: FontWeight.w800,
                                       color:
                                           Theme.of(context).colorScheme.primary,

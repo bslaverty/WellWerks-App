@@ -70,9 +70,6 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   bool get _showVruSection =>
       _settings.isOptionalSectionEnabled('vru') &&
       _equipmentSectionSelected('VRU');
-  bool get _showFlareSection =>
-      _settings.isOptionalSectionEnabled('flare') &&
-      _equipmentSectionSelected('FLARE / ECD');
   bool get _showEcdSection =>
       _settings.isOptionalSectionEnabled('ecd') &&
       _equipmentSectionSelected('FLARE / ECD');

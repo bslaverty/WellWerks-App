@@ -3,9 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/job_box_inventory.dart';
 import '../models/job_setup.dart';
 import '../models/production_shift.dart';
-import '../models/operations_log_entry.dart';
 import '../services/job_storage_service.dart';
-import '../services/operations_log_service.dart';
 import '../services/production_shift_service.dart';
 import '../widgets/app_header.dart';
 import 'drillout_cleanout_module_screen.dart';
@@ -27,11 +25,9 @@ class _CompletionsDashboardScreenState
     extends State<CompletionsDashboardScreen> {
   final _jobStorage = JobStorageService();
   final _shiftService = ProductionShiftService();
-  final _operationsLogService = OperationsLogService();
 
   ProductionShift _shift = ProductionShift.empty();
   JobSetup? _activeJob;
-  List<OperationsLogEntry> _drilloutEntries = const [];
   bool _loading = true;
 
   @override
@@ -55,18 +51,10 @@ class _CompletionsDashboardScreenState
   Future<void> _load() async {
     final shift = await _shiftService.loadActiveShift();
     final activeJob = await _jobStorage.ensureActiveJobLoaded();
-    final jobId = activeJob?.id.trim() ?? shift.activeJobId.trim();
-    final drilloutEntries = jobId.isEmpty
-        ? const <OperationsLogEntry>[]
-        : await _operationsLogService.loadEntries(
-            workflow: OperationsLogWorkflow.drillout,
-            jobId: jobId,
-          );
     if (!mounted) return;
     setState(() {
       _shift = shift;
       _activeJob = activeJob;
-      _drilloutEntries = drilloutEntries;
       _loading = false;
     });
   }
