@@ -372,7 +372,45 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   }
 
   Future<bool> _redirectToActiveCalculatorIfNeeded() async {
-    return false;
+    if (!widget.homeMultiMode) return false;
+    if ((widget.instanceId?.trim().isNotEmpty ?? false)) return false;
+
+    final tabs = _resolvedHomeTabs();
+    if (tabs.isEmpty || !mounted) return false;
+
+    final activeInstanceKey = _sessionService.activeCalculatorId.trim();
+    HomeRateTabSpec? target;
+
+    if (activeInstanceKey.isNotEmpty) {
+      for (final tab in tabs) {
+        if (tab.instanceId == activeInstanceKey) {
+          target = tab;
+          break;
+        }
+      }
+    }
+
+    target ??= tabs.first;
+    if (target.instanceId == _instanceStorageId) return false;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder<void>(
+          transitionDuration: Duration.zero,
+          reverseTransitionDuration: Duration.zero,
+          pageBuilder: (_, __, ___) => RateCalculatorScreen(
+            config: target!.config,
+            instanceId: target.instanceId,
+            homeMultiMode: true,
+            availableConfigs: widget.availableConfigs,
+            homeTabs: tabs,
+          ),
+        ),
+      );
+    });
+
+    return true;
   }
 
   @override
