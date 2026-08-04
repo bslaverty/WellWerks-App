@@ -15,6 +15,7 @@ import '../services/active_job_share_service.dart';
 import '../services/active_workflow_mode_service.dart';
 import '../services/app_settings_service.dart';
 import '../services/job_setup_import_service.dart';
+import '../services/job_setup_qr_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/jsa_storage_service.dart';
 import '../services/operations_log_service.dart';
@@ -489,54 +490,120 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _showJobSetupShareQrDialog({
-    required String qrValue,
+    required List<String> qrValues,
   }) async {
+    var frameIndex = 0;
     await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Share Active Job Setup QR'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            QrImageView(
-              data: qrValue,
-              version: QrVersions.auto,
-              errorCorrectionLevel: QrErrorCorrectLevel.L,
-              size: 280,
-              backgroundColor: Colors.white,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Share Active Job Setup QR'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (qrValues.length > 1)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'Frame ${frameIndex + 1} of ${qrValues.length}',
+                    style: const TextStyle(
+                      color: Color(0xFFCDA56A),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              QrImageView(
+                data: qrValues[frameIndex],
+                version: QrVersions.auto,
+                errorCorrectionLevel: QrErrorCorrectLevel.L,
+                size: 320,
+                backgroundColor: Colors.white,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                qrValues.length > 1
+                    ? 'Use WellWerks Import Job Setup QR on the receiving device and scan each frame in order.'
+                    : 'Use WellWerks Import Job Setup QR on the receiving device to scan this code.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70),
+              ),
+              if (qrValues.length > 1) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: frameIndex == 0
+                            ? null
+                            : () => setDialogState(() => frameIndex -= 1),
+                        icon: const Icon(Icons.chevron_left),
+                        label: const Text('Prev'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: frameIndex >= qrValues.length - 1
+                            ? null
+                            : () => setDialogState(() => frameIndex += 1),
+                        icon: const Icon(Icons.chevron_right),
+                        label: const Text('Next'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Done'),
             ),
-            const SizedBox(height: 10),
-            const Text(
-              'Scan this QR nearby or tap Share QR to send it as an image.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white70),
+            Builder(
+              builder: (buttonContext) => FilledButton(
+                onPressed: () async {
+                  final activeJob = _activeJob;
+                  if (activeJob == null) return;
+                  final base = _qrTransferService.sanitizeFilePart(
+                    activeJob.padName.trim().isEmpty
+                        ? activeJob.company
+                        : activeJob.padName,
+                  );
+                  final stamp =
+                      DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
+                  if (qrValues.length == 1) {
+                    final result = await _qrTransferService.shareQrPng(
+                      qrValue: qrValues.first,
+                      fileName: 'WellWerks_Job_Setup_${base}_$stamp.png',
+                      shareContext: buttonContext,
+                      subject: 'WellWerks Job Setup - $base',
+                    );
+                    if (result.status == ShareResultStatus.dismissed) return;
+                    return;
+                  }
+
+                  final files = <XFile>[];
+                  for (var i = 0; i < qrValues.length; i++) {
+                    final file = await _qrTransferService.saveQrPngFile(
+                      qrValues[i],
+                      fileName:
+                          'WellWerks_Job_Setup_${base}_${i + 1}_of_${qrValues.length}_$stamp.png',
+                    );
+                    files.add(XFile(file.path, mimeType: 'image/png'));
+                  }
+                  await Share.shareXFiles(
+                    files,
+                    subject: 'WellWerks Job Setup - $base',
+                    text:
+                        'Import in WellWerks using Import Job Setup QR and scan all ${qrValues.length} frames.',
+                  );
+                },
+                child: const Text('Share QR'),
+              ),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Done'),
-          ),
-          Builder(
-            builder: (buttonContext) => FilledButton(
-              onPressed: () async {
-                final activeJob = _activeJob;
-                if (activeJob == null) return;
-                final result = await _qrTransferService.shareQrPng(
-                  qrValue: qrValue,
-                  fileName:
-                      'WellWerks_Job_Setup_${_qrTransferService.sanitizeFilePart(activeJob.padName.trim().isEmpty ? activeJob.company : activeJob.padName)}_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.png',
-                  shareContext: buttonContext,
-                  subject:
-                      'WellWerks Job Setup - ${activeJob.padName.trim().isEmpty ? activeJob.company : activeJob.padName}',
-                );
-                if (result.status == ShareResultStatus.dismissed) return;
-              },
-              child: const Text('Share QR'),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -621,12 +688,16 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final package = await _jobShareService.buildPackage(activeJob: activeJob);
       final encoded = _jobShareService.encodePackage(package);
-      final qrValue = _qrTransferService.encodeStructuredPayload(encoded);
-      _qrTransferService.ensureSingleQrCapacity(qrValue);
-      _qrTransferService.decodeStructuredPayload(qrValue);
+      final qrValues = const JobSetupQrService().encodePayloadFrames(
+        encoded,
+        maxFrameLength: JobSetupQrService.defaultMaxFrameLength,
+      );
+      if (qrValues.isEmpty) {
+        throw const FormatException('Unable to generate Job Setup QR.');
+      }
 
       if (!mounted) return;
-      await _showJobSetupShareQrDialog(qrValue: qrValue);
+      await _showJobSetupShareQrDialog(qrValues: qrValues);
     } on FormatException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -727,12 +798,42 @@ class _HomeScreenState extends State<HomeScreen> {
     if (job == null) {
       return Card(
         margin: const EdgeInsets.only(bottom: 14),
-        child: ListTile(
-          leading: const Icon(Icons.work_outline),
-          title: const Text('No Active Job'),
-          subtitle: const Text('Start a production job to see live details.'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _openHomeTool('production'),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.work_outline),
+                title: Text('No Active Job'),
+                subtitle: Text('Start a production job or import one from QR.'),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _jobSetupQrBusy
+                          ? null
+                          : () => _openHomeTool('production'),
+                      icon: const Icon(Icons.add_box_outlined),
+                      label: const Text('Start Job'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed:
+                          _jobSetupQrBusy ? null : _importJobSetupQrFromHome,
+                      icon: const Icon(Icons.qr_code_scanner_outlined),
+                      label: Text(_jobSetupQrBusy ? 'Working...' : 'Import QR'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       );
     }
