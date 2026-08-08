@@ -388,7 +388,7 @@ class _HomeScreenState extends State<HomeScreen> {
               rateLogEnabledByDefault: true,
             ),
             homeMultiMode: true,
-            availableConfigs: kProductionRateCalculatorConfigs,
+            availableConfigs: kDefaultRateCalculatorConfigs,
           ),
         );
         return;
