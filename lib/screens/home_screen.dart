@@ -36,6 +36,7 @@ import 'chart_reference_screen.dart';
 import 'tank_charts_menu_screen.dart';
 import 'settings_screen.dart';
 import 'about_support_screen.dart';
+import 'completions_calculators_screen.dart';
 import 'flywheel_diesel_tank_screen.dart';
 import 'job_management_screen.dart';
 import 'job_setup_qr_scanner_screen.dart';
@@ -377,20 +378,7 @@ class _HomeScreenState extends State<HomeScreen> {
         await open(context, const RigUpDashboardScreen());
         return;
       case 'rate':
-        await open(
-          context,
-          const RateCalculatorScreen(
-            config: RateCalculatorConfig.chart(
-              'Flowback Tank (V-Bottom)',
-              'flowback500',
-              storageId: 'production_flowback500',
-              allowOperationsLogAutoSave: false,
-              rateLogEnabledByDefault: true,
-            ),
-            homeMultiMode: true,
-            availableConfigs: kDefaultRateCalculatorConfigs,
-          ),
-        );
+        await open(context, const CompletionsCalculatorsScreen());
         return;
       case 'jsa':
         await open(context, const JsaScreen());
@@ -1150,9 +1138,9 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       (
         id: 'rate',
-        title: 'Rate Calculator',
-        subtitle: 'Run multiple tank calculators',
-        icon: Icons.speed,
+        title: 'Calculators',
+        subtitle: 'Pump Rate, Gas Accum, Bottoms Up, and more',
+        icon: Icons.calculate_outlined,
         onTap: () => _openHomeTool('rate'),
       ),
       (
