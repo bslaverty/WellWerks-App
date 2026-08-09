@@ -6,6 +6,7 @@ import 'conversion_calculator_screen.dart';
 import 'gas_accum_screen.dart';
 import 'module_menu_screen.dart';
 import 'multiple_choke_screen.dart';
+import 'pump_rate_calculator_screen.dart';
 
 class CompletionsCalculatorsScreen extends StatelessWidget {
   const CompletionsCalculatorsScreen({super.key});
@@ -61,6 +62,12 @@ class CompletionsCalculatorsScreen extends StatelessWidget {
       title: 'Calculators',
       showHomeButton: true,
       tools: [
+        const ModuleTool(
+          icon: Icons.local_shipping,
+          title: 'Pump Rate Calculator',
+          subtitle: 'Pump output from tank drawdown over time',
+          screen: PumpRateCalculatorScreen(),
+        ),
         const ModuleTool(
           icon: Icons.local_fire_department,
           title: 'Gas Accum Calculator',

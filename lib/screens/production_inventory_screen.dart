@@ -4,7 +4,6 @@ import '../models/job_setup.dart';
 import '../models/production_shift.dart';
 import '../services/active_company_service.dart';
 import '../services/app_settings_service.dart';
-import '../services/job_history_service.dart';
 import '../services/job_profile_defaults_service.dart';
 import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
@@ -29,7 +28,6 @@ class ProductionInventoryScreen extends StatefulWidget {
 
 class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   final _service = ProductionShiftService();
-  final _historyService = JobHistoryService();
   final _settingsService = AppSettingsService();
   final _layoutService = ReportProfileService();
   final _jobStorage = JobStorageService();
@@ -826,84 +824,6 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     setState(() {});
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Production Inventory cleared.')),
-    );
-  }
-
-  Future<void> _newDay() async {
-    final action = await showDialog<String>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Start New Day?'),
-            content: const Text(
-              'Choose whether to archive the current job/shift before clearing the active production shift.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop('cancel'),
-                child: const Text('Cancel'),
-              ),
-              OutlinedButton(
-                onPressed: () => Navigator.of(context).pop('clearOnly'),
-                child: const Text('Clear Without Archive'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop('archiveClear'),
-                child: const Text('Archive then Clear'),
-              ),
-            ],
-          ),
-        ) ??
-        'cancel';
-    if (action == 'cancel') return;
-
-    if (action == 'archiveClear') {
-      await _saveInventory();
-      await _historyService.archiveCurrentJobOrShift();
-    }
-
-    await _service.clearActiveShift();
-    _setFromShift(ProductionShift.empty());
-    _activeShift = ProductionShift.empty();
-    if (!mounted) return;
-    setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(action == 'archiveClear'
-            ? 'Active production shift archived and cleared.'
-            : 'Active production shift cleared.'),
-      ),
-    );
-  }
-
-  Future<void> _archiveYesterday() async {
-    final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Archive Current Job / Shift?'),
-            content: const Text(
-              'This saves the current active job and production shift into local History without clearing active data.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Archive Current Job / Shift'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-    if (!confirmed) return;
-
-    await _saveInventory();
-    await _historyService.archiveCurrentJobOrShift();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text('Current job/shift archived to local History.')),
     );
   }
 

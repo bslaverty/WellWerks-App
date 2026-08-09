@@ -6,6 +6,7 @@ import '../models/production_shift.dart';
 import '../services/job_storage_service.dart';
 import '../services/production_shift_service.dart';
 import '../widgets/app_header.dart';
+import 'completions_calculators_screen.dart';
 import 'drillout_cleanout_module_screen.dart';
 import 'job_box_inventory_screen.dart';
 import 'jsa_screen.dart';
@@ -412,20 +413,8 @@ class _CompletionsDashboardScreenState
                 title: 'Calculators',
                 subtitle:
                     'Gas Accum, Bottoms Up, Multiple Choke, Conversion, and Chlorides',
-                onTap: () => _open(
-                  context,
-                  const RateCalculatorScreen(
-                    config: RateCalculatorConfig.chart(
-                      'Flowback Tank (V-Bottom)',
-                      'flowback500',
-                      storageId: 'production_flowback500',
-                      allowOperationsLogAutoSave: false,
-                      rateLogEnabledByDefault: true,
-                    ),
-                    homeMultiMode: true,
-                    availableConfigs: kDefaultRateCalculatorConfigs,
-                  ),
-                ),
+                onTap: () =>
+                    _open(context, const CompletionsCalculatorsScreen()),
               ),
               const Divider(height: 1),
               _toolItem(
@@ -509,20 +498,7 @@ class _CompletionsDashboardScreenState
             tab(
               icon: Icons.speed_outlined,
               label: 'Calculators',
-              onTap: () => _open(
-                context,
-                const RateCalculatorScreen(
-                  config: RateCalculatorConfig.chart(
-                    'Flowback Tank (V-Bottom)',
-                    'flowback500',
-                    storageId: 'production_flowback500',
-                    allowOperationsLogAutoSave: false,
-                    rateLogEnabledByDefault: true,
-                  ),
-                  homeMultiMode: true,
-                  availableConfigs: kDefaultRateCalculatorConfigs,
-                ),
-              ),
+              onTap: () => _open(context, const CompletionsCalculatorsScreen()),
             ),
             tab(
               icon: Icons.fact_check_outlined,
