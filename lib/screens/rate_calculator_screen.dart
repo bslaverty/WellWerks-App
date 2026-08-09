@@ -61,6 +61,7 @@ class RateCalculatorConfig {
   final String? storageId;
   final bool allowOperationsLogAutoSave;
   final bool rateLogEnabledByDefault;
+  final bool reverseGaugeDelta;
 
   const RateCalculatorConfig.chart(
     this.title,
@@ -68,6 +69,7 @@ class RateCalculatorConfig {
     this.storageId,
     this.allowOperationsLogAutoSave = true,
     this.rateLogEnabledByDefault = false,
+    this.reverseGaugeDelta = false,
   }) : defaultFactor = null;
   const RateCalculatorConfig.linear(
     this.title, {
@@ -75,6 +77,7 @@ class RateCalculatorConfig {
     this.storageId,
     this.allowOperationsLogAutoSave = true,
     this.rateLogEnabledByDefault = false,
+    this.reverseGaugeDelta = false,
   }) : chartId = null;
 
   bool get usesChart => chartId != null;
@@ -125,6 +128,24 @@ class RateCalculatorConfig {
           'Production Tank',
           defaultFactor: 1.67,
           storageId: 'production_tank_linear',
+          allowOperationsLogAutoSave: false,
+          rateLogEnabledByDefault: true,
+        );
+      case 'pump_flowback500':
+        return const RateCalculatorConfig.chart(
+          'Flowback Tank (V-Bottom)',
+          'flowback500',
+          storageId: 'pump_flowback500',
+          reverseGaugeDelta: true,
+          allowOperationsLogAutoSave: false,
+          rateLogEnabledByDefault: true,
+        );
+      case 'pump_flowback_round_bottom':
+        return const RateCalculatorConfig.chart(
+          'Flowback Tank (Round Bottom)',
+          'flowback_round_bottom',
+          storageId: 'pump_flowback_round_bottom',
+          reverseGaugeDelta: true,
           allowOperationsLogAutoSave: false,
           rateLogEnabledByDefault: true,
         );
@@ -3162,12 +3183,17 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
 
     final startBbl = barrelsAt(startInches);
     final endBbl = barrelsAt(endInches);
-    final change = endBbl - startBbl;
+    final change = widget.config.reverseGaugeDelta
+        ? (startBbl - endBbl)
+        : (endBbl - startBbl);
     final adjustedChange = change + fluidHauledBarrels;
     if (adjustedChange <= 0) {
+      final gaugeDirectionHint = widget.config.reverseGaugeDelta
+          ? 'decrease ending gauge'
+          : 'increase ending gauge';
       setState(() {
         error =
-            'Adjusted barrel change must be greater than zero. Increase ending gauge or fluid hauled.';
+            'Adjusted barrel change must be greater than zero. Try to $gaugeDirectionHint or add fluid hauled.';
         bblPerMin = null;
         bblPerHr = null;
         bblPerDay = null;

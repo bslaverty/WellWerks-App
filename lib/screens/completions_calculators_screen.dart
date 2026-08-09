@@ -7,6 +7,7 @@ import 'gas_accum_screen.dart';
 import 'module_menu_screen.dart';
 import 'multiple_choke_screen.dart';
 import 'pump_rate_calculator_screen.dart';
+import 'rate_calculator_screen.dart';
 
 class CompletionsCalculatorsScreen extends StatelessWidget {
   const CompletionsCalculatorsScreen({super.key});
@@ -62,6 +63,22 @@ class CompletionsCalculatorsScreen extends StatelessWidget {
       title: 'Calculators',
       showHomeButton: true,
       tools: [
+        const ModuleTool(
+          icon: Icons.speed,
+          title: 'Rate Calculator',
+          subtitle: 'Original multi-tank rate calculator',
+          screen: RateCalculatorScreen(
+            config: RateCalculatorConfig.chart(
+              'Flowback Tank (V-Bottom)',
+              'flowback500',
+              storageId: 'production_flowback500',
+              allowOperationsLogAutoSave: false,
+              rateLogEnabledByDefault: true,
+            ),
+            homeMultiMode: true,
+            availableConfigs: kDefaultRateCalculatorConfigs,
+          ),
+        ),
         const ModuleTool(
           icon: Icons.local_shipping,
           title: 'Pump Rate Calculator',
