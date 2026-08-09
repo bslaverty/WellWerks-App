@@ -217,13 +217,15 @@ class RateCalculatorScreen extends StatefulWidget {
   final bool homeMultiMode;
   final List<RateCalculatorConfig>? availableConfigs;
   final List<HomeRateTabSpec>? homeTabs;
+  final String? homeTabsStorageKey;
   const RateCalculatorScreen(
       {super.key,
       required this.config,
       this.instanceId,
       this.homeMultiMode = false,
       this.availableConfigs,
-      this.homeTabs});
+      this.homeTabs,
+      this.homeTabsStorageKey});
 
   // Backward compatibility for old routes still passing a tank name.
   factory RateCalculatorScreen.legacy({Key? key, required String tankName}) {
@@ -277,7 +279,7 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   static const _timerMinutesPrefKey = 'wellwerks_rate_timer_minutes';
   static const _rateLogQrFileType = 'wellwerks_rate_log';
   static const _rateLogQrSchemaVersion = '1.0.0';
-  static const _homeTabsPrefKey = 'wellwerks_home_rate_tabs_v1';
+  static const _defaultHomeTabsPrefKey = 'wellwerks_home_rate_tabs_v1';
   final _settingsService = AppSettingsService();
   final _jobStorage = JobStorageService();
   final _operationsLogService = OperationsLogService();
@@ -323,6 +325,9 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
   Map<String, RateTimerState> _homeTabTimers = <String, RateTimerState>{};
   Timer? _activeTankTicker;
   int _activeTankRefreshTick = 0;
+
+  String get _homeTabsPrefKey =>
+      widget.homeTabsStorageKey ?? _defaultHomeTabsPrefKey;
 
   @override
   void initState() {

@@ -36,6 +36,7 @@ class PumpRateCalculatorScreen extends StatelessWidget {
         rateLogEnabledByDefault: true,
       ),
       homeMultiMode: true,
+      homeTabsStorageKey: 'wellwerks_pump_rate_tabs_v1',
       availableConfigs: _pumpRateConfigs,
     );
   }
