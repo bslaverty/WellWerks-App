@@ -13433,110 +13433,130 @@ class _CompletionsArtworkPainter extends CustomPainter {
 
     switch (type) {
       case _EquipmentType.sandX:
-        // Long horizontal trailer, top-down silhouette.
-        final sandXTrailer = RRect.fromRectAndRadius(
-          Rect.fromLTWH(size.width * 0.08, size.height * 0.40,
-              size.width * 0.58, size.height * 0.22),
-          const Radius.circular(6),
+        // Trailer footprint with a discharge spout nub on top.
+        final sandXLeft = size.width * 0.30;
+        final sandXRight = size.width * 0.70;
+        final sandXBodyTop = size.height * 0.30;
+        final sandXBodyRect = Rect.fromLTRB(
+            sandXLeft, sandXBodyTop, sandXRight, size.height * 0.92);
+        canvas.drawRect(sandXBodyRect, outline);
+        final sandXPillWidth = (sandXRight - sandXLeft) * 0.55;
+        final sandXPillHeight = size.height * 0.16;
+        final sandXPill = RRect.fromRectAndRadius(
+          Rect.fromLTWH(size.width / 2 - sandXPillWidth / 2,
+              sandXBodyTop - sandXPillHeight * 0.85, sandXPillWidth, sandXPillHeight),
+          Radius.circular(sandXPillWidth / 2),
         );
-        canvas.drawRRect(sandXTrailer, bodyFill);
-        canvas.drawRRect(sandXTrailer, outline);
-        // Rear sand auger exits the back at ~40 degrees.
-        final sandXAugerBase =
-            Offset(sandXTrailer.right - size.width * 0.04, sandXTrailer.top);
-        final sandXAugerTip = Offset(size.width * 0.94, size.height * 0.12);
-        canvas.drawLine(sandXAugerBase, sandXAugerTip, outline);
-        for (var i = 1; i <= 3; i++) {
-          canvas.drawCircle(
-            Offset.lerp(sandXAugerBase, sandXAugerTip, i / 4.0)!,
-            size.shortestSide * 0.028,
-            detail,
-          );
-        }
-        drawAxles(<double>[size.width * 0.22, size.width * 0.48],
-            size.height * 0.68, size.shortestSide * 0.044);
+        canvas.drawRRect(sandXPill, bodyFill);
+        canvas.drawRRect(sandXPill, outline);
         break;
       case _EquipmentType.superLoop:
-        // Trailer bed with a tall, dominant vertical separator tower.
-        final superLoopTrailer = RRect.fromRectAndRadius(
-          Rect.fromLTWH(size.width * 0.10, size.height * 0.68,
-              size.width * 0.48, size.height * 0.16),
-          const Radius.circular(5),
+        // Trailer footprint with a fed inlet and a two-stage separator vessel.
+        final loopLeft = size.width * 0.32;
+        final loopRight = size.width * 0.68;
+        final loopBodyRect = Rect.fromLTRB(
+            loopLeft, size.height * 0.06, loopRight, size.height * 0.94);
+        canvas.drawRect(loopBodyRect, outline);
+        final loopPillWidth = (loopRight - loopLeft) * 0.7;
+        final loopPillHeight = size.height * 0.12;
+        final loopPillTop = size.height * 0.16;
+        final loopPillCenterX = loopLeft + (loopRight - loopLeft) * 0.60;
+        final loopPill = RRect.fromRectAndRadius(
+          Rect.fromLTWH(loopPillCenterX - loopPillWidth / 2, loopPillTop,
+              loopPillWidth, loopPillHeight),
+          Radius.circular(loopPillWidth / 2),
         );
-        canvas.drawRRect(superLoopTrailer, bodyFill);
-        canvas.drawRRect(superLoopTrailer, outline);
-        final superLoopTower = RRect.fromRectAndRadius(
-          Rect.fromLTWH(size.width * 0.40, size.height * 0.08,
-              size.width * 0.20, size.height * 0.62),
-          const Radius.circular(8),
-        );
-        canvas.drawRRect(superLoopTower, bodyFill);
-        canvas.drawRRect(superLoopTower, outline);
-        // Sand auger exits the bottom of the separator.
-        final superLoopAugerBase =
-            Offset(superLoopTower.left, size.height * 0.60);
-        final superLoopAugerTip = Offset(size.width * 0.14, size.height * 0.74);
-        canvas.drawLine(superLoopAugerBase, superLoopAugerTip, outline);
-        for (var i = 1; i <= 2; i++) {
-          canvas.drawCircle(
-            Offset.lerp(superLoopAugerBase, superLoopAugerTip, i / 3.0)!,
-            size.shortestSide * 0.026,
-            detail,
-          );
-        }
-        drawAxles(<double>[size.width * 0.20, size.width * 0.46],
-            size.height * 0.88, size.shortestSide * 0.044);
-        break;
-      case _EquipmentType.sandXSuperLoopCombo:
-        // Two separate trailers, parallel and side by side with a small gap.
-        final comboLeft = RRect.fromRectAndRadius(
-          Rect.fromLTWH(size.width * 0.06, size.height * 0.14,
-              size.width * 0.36, size.height * 0.72),
-          const Radius.circular(8),
-        );
-        canvas.drawRRect(comboLeft, bodyFill);
-        canvas.drawRRect(comboLeft, outline);
-        final comboAugerBase =
-            Offset(comboLeft.right, comboLeft.top + comboLeft.height * 0.16);
-        final comboAugerTip = Offset(comboLeft.right + size.width * 0.06,
-            comboLeft.top - size.height * 0.02);
-        canvas.drawLine(comboAugerBase, comboAugerTip, outline);
-        for (var i = 1; i <= 2; i++) {
-          canvas.drawCircle(
-            Offset.lerp(comboAugerBase, comboAugerTip, i / 3.0)!,
-            size.shortestSide * 0.022,
-            detail,
-          );
-        }
-        drawAxles(<double>[
-          comboLeft.left + comboLeft.width * 0.28,
-          comboLeft.left + comboLeft.width * 0.72
-        ], comboLeft.bottom + size.height * 0.02, size.shortestSide * 0.036);
-
-        final comboRightTrailer = RRect.fromRectAndRadius(
-          Rect.fromLTWH(size.width * 0.56, size.height * 0.68,
-              size.width * 0.38, size.height * 0.14),
-          const Radius.circular(5),
-        );
-        canvas.drawRRect(comboRightTrailer, bodyFill);
-        canvas.drawRRect(comboRightTrailer, outline);
-        final comboTower = RRect.fromRectAndRadius(
-          Rect.fromLTWH(size.width * 0.66, size.height * 0.10,
-              size.width * 0.18, size.height * 0.60),
-          const Radius.circular(7),
-        );
-        canvas.drawRRect(comboTower, bodyFill);
-        canvas.drawRRect(comboTower, outline);
         canvas.drawLine(
-          Offset(comboTower.left, size.height * 0.60),
-          Offset(comboRightTrailer.left + 2, size.height * 0.66),
+          Offset(loopLeft - size.width * 0.10, loopPillTop + loopPillHeight * 0.5),
+          Offset(loopPillCenterX - loopPillWidth / 2, loopPillTop + loopPillHeight * 0.4),
           outline,
         );
-        drawAxles(<double>[
-          comboRightTrailer.left + comboRightTrailer.width * 0.25,
-          comboRightTrailer.left + comboRightTrailer.width * 0.75
-        ], comboRightTrailer.bottom + size.height * 0.02,
-            size.shortestSide * 0.036);
+        canvas.drawRRect(loopPill, bodyFill);
+        canvas.drawRRect(loopPill, outline);
+        final loopMidCenter =
+            Offset(loopPillCenterX, loopPillTop + loopPillHeight + size.height * 0.10);
+        final loopMidRadius = size.shortestSide * 0.09;
+        canvas.drawCircle(loopMidCenter, loopMidRadius, bodyFill);
+        canvas.drawCircle(loopMidCenter, loopMidRadius, outline);
+        final loopBigCenter = Offset(
+            loopMidCenter.dx, loopMidCenter.dy + loopMidRadius + size.height * 0.09);
+        final loopBigRadius = size.shortestSide * 0.14;
+        canvas.drawCircle(loopBigCenter, loopBigRadius, bodyFill);
+        canvas.drawCircle(loopBigCenter, loopBigRadius, outline);
+        final loopDischargeStart =
+            Offset(loopBigCenter.dx, loopBigCenter.dy + loopBigRadius * 0.8);
+        final loopDischargeEnd = Offset(loopRight + size.width * 0.06, size.height * 0.92);
+        final loopDischargePath = Path()
+          ..moveTo(loopDischargeStart.dx, loopDischargeStart.dy)
+          ..quadraticBezierTo(loopRight + size.width * 0.02, size.height * 0.90,
+              loopDischargeEnd.dx, loopDischargeEnd.dy);
+        canvas.drawPath(loopDischargePath, outline);
+        break;
+      case _EquipmentType.sandXSuperLoopCombo:
+        // Two separate footprints side by side, connected by a feed tube.
+        final comboGap = size.width * 0.03;
+        final comboLeftRect = Rect.fromLTWH(size.width * 0.08,
+            size.height * 0.24, size.width * 0.38, size.height * 0.70);
+        final comboRightRect = Rect.fromLTWH(comboLeftRect.right + comboGap,
+            size.height * 0.06, size.width * 0.42, size.height * 0.90);
+        canvas.drawRect(comboLeftRect, outline);
+        canvas.drawRect(comboRightRect, outline);
+        final comboPillWidth = comboLeftRect.width * 0.6;
+        final comboPillHeight = size.height * 0.12;
+        final comboLeftPill = RRect.fromRectAndRadius(
+          Rect.fromLTWH(comboLeftRect.center.dx - comboPillWidth / 2,
+              comboLeftRect.top - comboPillHeight * 0.85, comboPillWidth, comboPillHeight),
+          Radius.circular(comboPillWidth / 2),
+        );
+        canvas.drawRRect(comboLeftPill, bodyFill);
+        canvas.drawRRect(comboLeftPill, outline);
+        final comboConnector = RRect.fromRectAndRadius(
+          Rect.fromLTWH(
+              comboLeftRect.left + comboLeftRect.width * 0.18,
+              comboLeftRect.top + comboLeftRect.height * 0.14,
+              comboLeftRect.width * 0.55,
+              size.height * 0.14),
+          Radius.circular(size.shortestSide * 0.03),
+        );
+        canvas.drawRRect(comboConnector, bodyFill);
+        canvas.drawRRect(comboConnector, outline);
+        final comboRightPillWidth = comboRightRect.width * 0.55;
+        final comboRightPillHeight = size.height * 0.11;
+        final comboRightPillTop = comboRightRect.top + size.height * 0.12;
+        final comboRightPill = RRect.fromRectAndRadius(
+          Rect.fromLTWH(
+              comboRightRect.left + comboRightRect.width * 0.30,
+              comboRightPillTop,
+              comboRightPillWidth,
+              comboRightPillHeight),
+          Radius.circular(comboRightPillWidth / 2),
+        );
+        canvas.drawLine(
+          Offset(comboConnector.right, comboConnector.center.dy),
+          Offset(comboRightPill.left, comboRightPillTop + comboRightPillHeight * 0.4),
+          outline,
+        );
+        canvas.drawRRect(comboRightPill, bodyFill);
+        canvas.drawRRect(comboRightPill, outline);
+        final comboMidCenter = Offset(comboRightPill.center.dx,
+            comboRightPillTop + comboRightPillHeight + size.height * 0.09);
+        final comboMidRadius = size.shortestSide * 0.075;
+        canvas.drawCircle(comboMidCenter, comboMidRadius, bodyFill);
+        canvas.drawCircle(comboMidCenter, comboMidRadius, outline);
+        final comboBigCenter = Offset(
+            comboMidCenter.dx, comboMidCenter.dy + comboMidRadius + size.height * 0.08);
+        final comboBigRadius = size.shortestSide * 0.11;
+        canvas.drawCircle(comboBigCenter, comboBigRadius, bodyFill);
+        canvas.drawCircle(comboBigCenter, comboBigRadius, outline);
+        final comboDischargeStart =
+            Offset(comboBigCenter.dx, comboBigCenter.dy + comboBigRadius * 0.8);
+        final comboDischargeEnd =
+            Offset(comboRightRect.right - size.width * 0.02, size.height * 0.94);
+        final comboDischargePath = Path()
+          ..moveTo(comboDischargeStart.dx, comboDischargeStart.dy)
+          ..quadraticBezierTo(comboRightRect.right - size.width * 0.08,
+              size.height * 0.92, comboDischargeEnd.dx, comboDischargeEnd.dy);
+        canvas.drawPath(comboDischargePath, outline);
         break;
       case _EquipmentType.coilTubingUnit:
         canvas.drawLine(Offset(size.width * 0.12, size.height * 0.62),
@@ -14389,185 +14409,149 @@ class _ShapePainter extends CustomPainter {
     }
 
     if (type == _EquipmentType.sandX) {
-      // Long trailer body with a rear sand auger exiting at ~40 degrees.
-      final bodyRect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          size.width * .16,
-          size.height * .08,
-          size.width * .68,
-          size.height * .74,
-        ),
-        Radius.circular(size.shortestSide * .07),
+      // Trailer footprint with a discharge spout nub on top.
+      final bodyTop = size.height * .18;
+      final bodyRect = Rect.fromLTWH(0, bodyTop, size.width, size.height - bodyTop);
+      canvas.drawRect(bodyRect, accent);
+
+      final pillWidth = size.width * .30;
+      final pillHeight = size.height * .18;
+      final pill = RRect.fromRectAndRadius(
+        Rect.fromLTWH(size.width / 2 - pillWidth / 2,
+            bodyTop - pillHeight * .8, pillWidth, pillHeight),
+        Radius.circular(pillWidth / 2),
       );
-      canvas.drawRRect(bodyRect, bodyFill);
-      canvas.drawRRect(bodyRect, accent);
-
-      final augerPaint = Paint()
-        ..color = const Color(0xFFCDA56A)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = (size.shortestSide * .07).clamp(1.6, 2.6)
-        ..strokeCap = StrokeCap.round;
-      final augerBase = Offset(bodyRect.right - size.width * .06, bodyRect.top);
-      final augerTip = Offset(size.width * .96, size.height * .02);
-      canvas.drawLine(augerBase, augerTip, augerPaint);
-      for (var i = 1; i <= 3; i++) {
-        canvas.drawCircle(
-          Offset.lerp(augerBase, augerTip, i / 4.0)!,
-          size.shortestSide * .035,
-          augerPaint,
-        );
-      }
-
-      final wheelPaint = Paint()
-        ..color = const Color(0xFF2A2E33)
-        ..style = PaintingStyle.fill;
-      final wheelY = bodyRect.bottom - size.height * .04;
-      for (final wx in <double>[bodyRect.left - 1, bodyRect.right + 1]) {
-        canvas.drawCircle(
-            Offset(wx, wheelY), size.shortestSide * .035, wheelPaint);
-      }
+      canvas.drawRRect(pill, bodyFill);
+      canvas.drawRRect(pill, accent);
       return;
     }
 
     if (type == _EquipmentType.superLoop) {
-      // Trailer bed with a tall, dominant vertical separator tower.
-      final trailerBed = RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          size.width * .10,
-          size.height * .74,
-          size.width * .80,
-          size.height * .18,
-        ),
-        Radius.circular(size.shortestSide * .06),
-      );
-      canvas.drawRRect(trailerBed, bodyFill);
-      canvas.drawRRect(trailerBed, accent);
+      // Trailer footprint with a fed inlet and a two-stage separator vessel.
+      final bodyRect = Rect.fromLTWH(0, 0, size.width, size.height);
+      canvas.drawRect(bodyRect, accent);
 
-      final tower = RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          size.width * .30,
-          size.height * .04,
-          size.width * .40,
-          size.height * .70,
-        ),
-        Radius.circular(size.shortestSide * .09),
+      final pillWidth = size.width * .34;
+      final pillHeight = size.height * .13;
+      final pillCenterX = size.width * .58;
+      final pillTop = size.height * .16;
+      final pill = RRect.fromRectAndRadius(
+        Rect.fromLTWH(pillCenterX - pillWidth / 2, pillTop, pillWidth, pillHeight),
+        Radius.circular(pillWidth / 2),
       );
-      canvas.drawRRect(tower, bodyFill);
-      canvas.drawRRect(tower, accent);
 
-      final augerPaint = Paint()
+      final tubePaint = Paint()
         ..color = const Color(0xFFCDA56A)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = (size.shortestSide * .07).clamp(1.6, 2.6)
+        ..strokeWidth = (size.shortestSide * .08).clamp(1.6, 2.6)
         ..strokeCap = StrokeCap.round;
-      final augerBase = Offset(tower.left, size.height * .58);
-      final augerTip = Offset(size.width * .08, size.height * .70);
-      canvas.drawLine(augerBase, augerTip, augerPaint);
-      for (var i = 1; i <= 2; i++) {
-        canvas.drawCircle(
-          Offset.lerp(augerBase, augerTip, i / 3.0)!,
-          size.shortestSide * .032,
-          augerPaint,
-        );
-      }
+      canvas.drawLine(
+        Offset(0, pillTop + pillHeight * .5),
+        Offset(pillCenterX - pillWidth / 2, pillTop + pillHeight * .4),
+        tubePaint,
+      );
 
-      final wheelPaint = Paint()
-        ..color = const Color(0xFF2A2E33)
-        ..style = PaintingStyle.fill;
-      final wheelY = trailerBed.bottom - size.height * .03;
-      for (final wx in <double>[
-        trailerBed.left + size.width * .12,
-        trailerBed.right - size.width * .12
-      ]) {
-        canvas.drawCircle(
-            Offset(wx, wheelY), size.shortestSide * .035, wheelPaint);
-      }
+      canvas.drawRRect(pill, bodyFill);
+      canvas.drawRRect(pill, accent);
+
+      final midCenter =
+          Offset(pillCenterX, pillTop + pillHeight + size.height * .12);
+      final midRadius = size.shortestSide * .13;
+      canvas.drawCircle(midCenter, midRadius, bodyFill);
+      canvas.drawCircle(midCenter, midRadius, accent);
+
+      final bigCenter =
+          Offset(midCenter.dx, midCenter.dy + midRadius + size.height * .11);
+      final bigRadius = size.shortestSide * .20;
+      canvas.drawCircle(bigCenter, bigRadius, bodyFill);
+      canvas.drawCircle(bigCenter, bigRadius, accent);
+
+      final dischargeStart = Offset(bigCenter.dx, bigCenter.dy + bigRadius * .8);
+      final dischargeEnd = Offset(size.width * .92, size.height * .96);
+      final dischargePath = Path()
+        ..moveTo(dischargeStart.dx, dischargeStart.dy)
+        ..quadraticBezierTo(size.width * .78, size.height * .94,
+            dischargeEnd.dx, dischargeEnd.dy);
+      canvas.drawPath(dischargePath, tubePaint);
       return;
     }
 
     if (type == _EquipmentType.sandXSuperLoopCombo) {
-      // Two separate trailers sitting parallel, side by side with a gap.
-      final wheelPaint = Paint()
-        ..color = const Color(0xFF2A2E33)
-        ..style = PaintingStyle.fill;
-      final augerPaint = Paint()
+      // Two separate footprints side by side, connected by a feed tube.
+      final gap = size.width * .02;
+      final leftWidth = size.width * .46;
+      final rightWidth = size.width - leftWidth - gap;
+      final leftRect =
+          Rect.fromLTWH(0, size.height * .18, leftWidth, size.height * .82);
+      final rightRect =
+          Rect.fromLTWH(leftWidth + gap, 0, rightWidth, size.height);
+      canvas.drawRect(leftRect, accent);
+      canvas.drawRect(rightRect, accent);
+
+      final pillWidth = leftWidth * .55;
+      final pillHeight = size.height * .16;
+      final leftPill = RRect.fromRectAndRadius(
+        Rect.fromLTWH(leftRect.center.dx - pillWidth / 2,
+            leftRect.top - pillHeight * .8, pillWidth, pillHeight),
+        Radius.circular(pillWidth / 2),
+      );
+      canvas.drawRRect(leftPill, bodyFill);
+      canvas.drawRRect(leftPill, accent);
+
+      final connectorBox = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+            leftRect.left + leftWidth * .18,
+            size.height * .24,
+            leftWidth * .5,
+            size.height * .16),
+        Radius.circular(size.shortestSide * .04),
+      );
+      canvas.drawRRect(connectorBox, bodyFill);
+      canvas.drawRRect(connectorBox, accent);
+
+      final rightPillWidth = rightWidth * .5;
+      final rightPillHeight = size.height * .13;
+      final rightPillTop = size.height * .20;
+      final rightPill = RRect.fromRectAndRadius(
+        Rect.fromLTWH(rightRect.left + rightWidth * .30, rightPillTop,
+            rightPillWidth, rightPillHeight),
+        Radius.circular(rightPillWidth / 2),
+      );
+
+      final tubePaint = Paint()
         ..color = const Color(0xFFCDA56A)
         ..style = PaintingStyle.stroke
         ..strokeWidth = (size.shortestSide * .06).clamp(1.4, 2.3)
         ..strokeCap = StrokeCap.round;
+      canvas.drawLine(
+        Offset(connectorBox.right, connectorBox.center.dy),
+        Offset(rightPill.left, rightPillTop + rightPillHeight * .4),
+        tubePaint,
+      );
 
-      // Left: SandX trailer.
-      final leftBody = RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          size.width * .05,
-          size.height * .10,
-          size.width * .40,
-          size.height * .74,
-        ),
-        Radius.circular(size.shortestSide * .06),
-      );
-      canvas.drawRRect(leftBody, bodyFill);
-      canvas.drawRRect(leftBody, accent);
-      final leftAugerBase =
-          Offset(leftBody.right - size.width * .04, leftBody.top);
-      final leftAugerTip =
-          Offset(leftBody.right + size.width * .06, size.height * .02);
-      canvas.drawLine(leftAugerBase, leftAugerTip, augerPaint);
-      for (var i = 1; i <= 2; i++) {
-        canvas.drawCircle(
-          Offset.lerp(leftAugerBase, leftAugerTip, i / 3.0)!,
-          size.shortestSide * .026,
-          augerPaint,
-        );
-      }
-      final leftWheelY = leftBody.bottom - size.height * .03;
-      for (final wx in <double>[leftBody.left - 1, leftBody.right + 1]) {
-        canvas.drawCircle(
-            Offset(wx, leftWheelY), size.shortestSide * .026, wheelPaint);
-      }
+      canvas.drawRRect(rightPill, bodyFill);
+      canvas.drawRRect(rightPill, accent);
 
-      // Right: Super Loop trailer, parallel with a small gap from the SandX.
-      final rightBed = RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          size.width * .54,
-          size.height * .76,
-          size.width * .42,
-          size.height * .14,
-        ),
-        Radius.circular(size.shortestSide * .05),
-      );
-      canvas.drawRRect(rightBed, bodyFill);
-      canvas.drawRRect(rightBed, accent);
-      final rightTower = RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          size.width * .66,
-          size.height * .08,
-          size.width * .22,
-          size.height * .70,
-        ),
-        Radius.circular(size.shortestSide * .07),
-      );
-      canvas.drawRRect(rightTower, bodyFill);
-      canvas.drawRRect(rightTower, accent);
-      final rightAugerBase = Offset(rightTower.left, size.height * .62);
-      final rightAugerTip =
-          Offset(rightBed.left + size.width * .02, size.height * .74);
-      canvas.drawLine(rightAugerBase, rightAugerTip, augerPaint);
-      for (var i = 1; i <= 2; i++) {
-        canvas.drawCircle(
-          Offset.lerp(rightAugerBase, rightAugerTip, i / 3.0)!,
-          size.shortestSide * .022,
-          augerPaint,
-        );
-      }
-      final rightWheelY = rightBed.bottom - size.height * .025;
-      for (final wx in <double>[
-        rightBed.left + size.width * .08,
-        rightBed.right - size.width * .08
-      ]) {
-        canvas.drawCircle(
-            Offset(wx, rightWheelY), size.shortestSide * .026, wheelPaint);
-      }
+      final midCenter = Offset(
+          rightPill.center.dx, rightPillTop + rightPillHeight + size.height * .11);
+      final midRadius = size.shortestSide * .11;
+      canvas.drawCircle(midCenter, midRadius, bodyFill);
+      canvas.drawCircle(midCenter, midRadius, accent);
+
+      final bigCenter =
+          Offset(midCenter.dx, midCenter.dy + midRadius + size.height * .10);
+      final bigRadius = size.shortestSide * .17;
+      canvas.drawCircle(bigCenter, bigRadius, bodyFill);
+      canvas.drawCircle(bigCenter, bigRadius, accent);
+
+      final dischargeStart = Offset(bigCenter.dx, bigCenter.dy + bigRadius * .8);
+      final dischargeEnd =
+          Offset(rightRect.right - size.width * .02, size.height * .95);
+      final dischargePath = Path()
+        ..moveTo(dischargeStart.dx, dischargeStart.dy)
+        ..quadraticBezierTo(rightRect.right - size.width * .1,
+            size.height * .93, dischargeEnd.dx, dischargeEnd.dy);
+      canvas.drawPath(dischargePath, tubePaint);
       return;
     }
 
