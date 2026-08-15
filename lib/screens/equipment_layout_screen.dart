@@ -13443,8 +13443,11 @@ class _CompletionsArtworkPainter extends CustomPainter {
         final sandXPillWidth = (sandXRight - sandXLeft) * 0.55;
         final sandXPillHeight = size.height * 0.16;
         final sandXPill = RRect.fromRectAndRadius(
-          Rect.fromLTWH(size.width / 2 - sandXPillWidth / 2,
-              sandXBodyTop - sandXPillHeight * 0.85, sandXPillWidth, sandXPillHeight),
+          Rect.fromLTWH(
+              size.width / 2 - sandXPillWidth / 2,
+              sandXBodyTop - sandXPillHeight * 0.85,
+              sandXPillWidth,
+              sandXPillHeight),
           Radius.circular(sandXPillWidth / 2),
         );
         canvas.drawRRect(sandXPill, bodyFill);
@@ -13467,25 +13470,28 @@ class _CompletionsArtworkPainter extends CustomPainter {
           Radius.circular(loopPillWidth / 2),
         );
         canvas.drawLine(
-          Offset(loopLeft - size.width * 0.10, loopPillTop + loopPillHeight * 0.5),
-          Offset(loopPillCenterX - loopPillWidth / 2, loopPillTop + loopPillHeight * 0.4),
+          Offset(
+              loopLeft - size.width * 0.10, loopPillTop + loopPillHeight * 0.5),
+          Offset(loopPillCenterX - loopPillWidth / 2,
+              loopPillTop + loopPillHeight * 0.4),
           outline,
         );
         canvas.drawRRect(loopPill, bodyFill);
         canvas.drawRRect(loopPill, outline);
-        final loopMidCenter =
-            Offset(loopPillCenterX, loopPillTop + loopPillHeight + size.height * 0.10);
+        final loopMidCenter = Offset(
+            loopPillCenterX, loopPillTop + loopPillHeight + size.height * 0.10);
         final loopMidRadius = size.shortestSide * 0.09;
         canvas.drawCircle(loopMidCenter, loopMidRadius, bodyFill);
         canvas.drawCircle(loopMidCenter, loopMidRadius, outline);
-        final loopBigCenter = Offset(
-            loopMidCenter.dx, loopMidCenter.dy + loopMidRadius + size.height * 0.09);
+        final loopBigCenter = Offset(loopMidCenter.dx,
+            loopMidCenter.dy + loopMidRadius + size.height * 0.09);
         final loopBigRadius = size.shortestSide * 0.14;
         canvas.drawCircle(loopBigCenter, loopBigRadius, bodyFill);
         canvas.drawCircle(loopBigCenter, loopBigRadius, outline);
         final loopDischargeStart =
             Offset(loopBigCenter.dx, loopBigCenter.dy + loopBigRadius * 0.8);
-        final loopDischargeEnd = Offset(loopRight + size.width * 0.06, size.height * 0.92);
+        final loopDischargeEnd =
+            Offset(loopRight + size.width * 0.06, size.height * 0.92);
         final loopDischargePath = Path()
           ..moveTo(loopDischargeStart.dx, loopDischargeStart.dy)
           ..quadraticBezierTo(loopRight + size.width * 0.02, size.height * 0.90,
@@ -13504,8 +13510,11 @@ class _CompletionsArtworkPainter extends CustomPainter {
         final comboPillWidth = comboLeftRect.width * 0.6;
         final comboPillHeight = size.height * 0.12;
         final comboLeftPill = RRect.fromRectAndRadius(
-          Rect.fromLTWH(comboLeftRect.center.dx - comboPillWidth / 2,
-              comboLeftRect.top - comboPillHeight * 0.85, comboPillWidth, comboPillHeight),
+          Rect.fromLTWH(
+              comboLeftRect.center.dx - comboPillWidth / 2,
+              comboLeftRect.top - comboPillHeight * 0.85,
+              comboPillWidth,
+              comboPillHeight),
           Radius.circular(comboPillWidth / 2),
         );
         canvas.drawRRect(comboLeftPill, bodyFill);
@@ -13524,16 +13533,14 @@ class _CompletionsArtworkPainter extends CustomPainter {
         final comboRightPillHeight = size.height * 0.11;
         final comboRightPillTop = comboRightRect.top + size.height * 0.12;
         final comboRightPill = RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-              comboRightRect.left + comboRightRect.width * 0.30,
-              comboRightPillTop,
-              comboRightPillWidth,
-              comboRightPillHeight),
+          Rect.fromLTWH(comboRightRect.left + comboRightRect.width * 0.30,
+              comboRightPillTop, comboRightPillWidth, comboRightPillHeight),
           Radius.circular(comboRightPillWidth / 2),
         );
         canvas.drawLine(
           Offset(comboConnector.right, comboConnector.center.dy),
-          Offset(comboRightPill.left, comboRightPillTop + comboRightPillHeight * 0.4),
+          Offset(comboRightPill.left,
+              comboRightPillTop + comboRightPillHeight * 0.4),
           outline,
         );
         canvas.drawRRect(comboRightPill, bodyFill);
@@ -13543,15 +13550,15 @@ class _CompletionsArtworkPainter extends CustomPainter {
         final comboMidRadius = size.shortestSide * 0.075;
         canvas.drawCircle(comboMidCenter, comboMidRadius, bodyFill);
         canvas.drawCircle(comboMidCenter, comboMidRadius, outline);
-        final comboBigCenter = Offset(
-            comboMidCenter.dx, comboMidCenter.dy + comboMidRadius + size.height * 0.08);
+        final comboBigCenter = Offset(comboMidCenter.dx,
+            comboMidCenter.dy + comboMidRadius + size.height * 0.08);
         final comboBigRadius = size.shortestSide * 0.11;
         canvas.drawCircle(comboBigCenter, comboBigRadius, bodyFill);
         canvas.drawCircle(comboBigCenter, comboBigRadius, outline);
         final comboDischargeStart =
             Offset(comboBigCenter.dx, comboBigCenter.dy + comboBigRadius * 0.8);
-        final comboDischargeEnd =
-            Offset(comboRightRect.right - size.width * 0.02, size.height * 0.94);
+        final comboDischargeEnd = Offset(
+            comboRightRect.right - size.width * 0.02, size.height * 0.94);
         final comboDischargePath = Path()
           ..moveTo(comboDischargeStart.dx, comboDischargeStart.dy)
           ..quadraticBezierTo(comboRightRect.right - size.width * 0.08,
@@ -14411,14 +14418,15 @@ class _ShapePainter extends CustomPainter {
     if (type == _EquipmentType.sandX) {
       // Trailer footprint with a discharge spout nub on top.
       final bodyTop = size.height * .18;
-      final bodyRect = Rect.fromLTWH(0, bodyTop, size.width, size.height - bodyTop);
+      final bodyRect =
+          Rect.fromLTWH(0, bodyTop, size.width, size.height - bodyTop);
       canvas.drawRect(bodyRect, accent);
 
       final pillWidth = size.width * .30;
       final pillHeight = size.height * .18;
       final pill = RRect.fromRectAndRadius(
-        Rect.fromLTWH(size.width / 2 - pillWidth / 2,
-            bodyTop - pillHeight * .8, pillWidth, pillHeight),
+        Rect.fromLTWH(size.width / 2 - pillWidth / 2, bodyTop - pillHeight * .8,
+            pillWidth, pillHeight),
         Radius.circular(pillWidth / 2),
       );
       canvas.drawRRect(pill, bodyFill);
@@ -14436,7 +14444,8 @@ class _ShapePainter extends CustomPainter {
       final pillCenterX = size.width * .58;
       final pillTop = size.height * .16;
       final pill = RRect.fromRectAndRadius(
-        Rect.fromLTWH(pillCenterX - pillWidth / 2, pillTop, pillWidth, pillHeight),
+        Rect.fromLTWH(
+            pillCenterX - pillWidth / 2, pillTop, pillWidth, pillHeight),
         Radius.circular(pillWidth / 2),
       );
 
@@ -14466,7 +14475,8 @@ class _ShapePainter extends CustomPainter {
       canvas.drawCircle(bigCenter, bigRadius, bodyFill);
       canvas.drawCircle(bigCenter, bigRadius, accent);
 
-      final dischargeStart = Offset(bigCenter.dx, bigCenter.dy + bigRadius * .8);
+      final dischargeStart =
+          Offset(bigCenter.dx, bigCenter.dy + bigRadius * .8);
       final dischargeEnd = Offset(size.width * .92, size.height * .96);
       final dischargePath = Path()
         ..moveTo(dischargeStart.dx, dischargeStart.dy)
@@ -14499,11 +14509,8 @@ class _ShapePainter extends CustomPainter {
       canvas.drawRRect(leftPill, accent);
 
       final connectorBox = RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-            leftRect.left + leftWidth * .18,
-            size.height * .24,
-            leftWidth * .5,
-            size.height * .16),
+        Rect.fromLTWH(leftRect.left + leftWidth * .18, size.height * .24,
+            leftWidth * .5, size.height * .16),
         Radius.circular(size.shortestSide * .04),
       );
       canvas.drawRRect(connectorBox, bodyFill);
@@ -14532,8 +14539,8 @@ class _ShapePainter extends CustomPainter {
       canvas.drawRRect(rightPill, bodyFill);
       canvas.drawRRect(rightPill, accent);
 
-      final midCenter = Offset(
-          rightPill.center.dx, rightPillTop + rightPillHeight + size.height * .11);
+      final midCenter = Offset(rightPill.center.dx,
+          rightPillTop + rightPillHeight + size.height * .11);
       final midRadius = size.shortestSide * .11;
       canvas.drawCircle(midCenter, midRadius, bodyFill);
       canvas.drawCircle(midCenter, midRadius, accent);
@@ -14544,7 +14551,8 @@ class _ShapePainter extends CustomPainter {
       canvas.drawCircle(bigCenter, bigRadius, bodyFill);
       canvas.drawCircle(bigCenter, bigRadius, accent);
 
-      final dischargeStart = Offset(bigCenter.dx, bigCenter.dy + bigRadius * .8);
+      final dischargeStart =
+          Offset(bigCenter.dx, bigCenter.dy + bigRadius * .8);
       final dischargeEnd =
           Offset(rightRect.right - size.width * .02, size.height * .95);
       final dischargePath = Path()
