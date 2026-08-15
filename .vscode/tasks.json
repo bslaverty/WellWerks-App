@@ -1872,6 +1872,67 @@
 				"expanded"
 			],
 			"isBackground": false
+		},
+		{
+			"label": "build236-commit",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"Build 236: fix MR chart mapping for rate calculator and bump version"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "build236-push",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"feature/equipment-bypass"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "build237-git-add-targeted",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"lib/screens/home_screen.dart",
+				"lib/screens/production_dashboard_screen.dart",
+				"lib/screens/production_rate_calculator_menu_screen.dart",
+				"lib/screens/rate_calculator_menu_screen.dart",
+				"lib/screens/tank_charts_menu_screen.dart",
+				"pubspec.yaml",
+				"test/app_icon_build120_test.dart",
+				"test/layout_designer_build110_test.dart"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "build237-git-commit",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"Build 237: polish tab dashboards and bump version"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "build237-git-push",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"feature/equipment-bypass"
+			],
+			"isBackground": false
 		}
 	]
 }

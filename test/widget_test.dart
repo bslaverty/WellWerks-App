@@ -493,6 +493,30 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   }, skip: true);
 
+  testWidgets('SandX is available in completions and renders on canvas', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1500));
+    await tester.pumpWidget(const MaterialApp(home: EquipmentLayoutScreen()));
+    await tester.pumpAndSettle();
+
+    await ensureEquipmentLibraryOpen(tester);
+
+    await tester
+        .tap(find.byKey(const ValueKey<String>('library-tab-completions')));
+    await tester.pumpAndSettle();
+
+    final libraryButton = find.widgetWithText(FilledButton, 'SandX').first;
+    expect(libraryButton, findsOneWidget);
+
+    await tester.tap(libraryButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('SandX'), findsWidgets);
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
   testWidgets('Layout designer saves under the current active job', (
     WidgetTester tester,
   ) async {
