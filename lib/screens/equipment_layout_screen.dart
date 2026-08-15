@@ -13431,139 +13431,87 @@ class _CompletionsArtworkPainter extends CustomPainter {
       return;
     }
 
+    void drawSandXArt(Rect bounds) {
+      // Trailer footprint with a discharge spout nub on top.
+      final left = bounds.left + bounds.width * 0.30;
+      final right = bounds.left + bounds.width * 0.70;
+      final bodyTop = bounds.top + bounds.height * 0.30;
+      final bodyRect = Rect.fromLTRB(
+          left, bodyTop, right, bounds.top + bounds.height * 0.92);
+      canvas.drawRect(bodyRect, outline);
+      final pillWidth = (right - left) * 0.55;
+      final pillHeight = bounds.height * 0.16;
+      final pill = RRect.fromRectAndRadius(
+        Rect.fromLTWH(bounds.center.dx - pillWidth / 2,
+            bodyTop - pillHeight * 0.85, pillWidth, pillHeight),
+        Radius.circular(pillWidth / 2),
+      );
+      canvas.drawRRect(pill, bodyFill);
+      canvas.drawRRect(pill, outline);
+    }
+
+    void drawSuperLoopArt(Rect bounds) {
+      // Trailer footprint with a fed inlet and a two-stage separator vessel.
+      final left = bounds.left + bounds.width * 0.32;
+      final right = bounds.left + bounds.width * 0.68;
+      final bodyRect = Rect.fromLTRB(left, bounds.top + bounds.height * 0.06,
+          right, bounds.top + bounds.height * 0.94);
+      canvas.drawRect(bodyRect, outline);
+      final pillWidth = (right - left) * 0.7;
+      final pillHeight = bounds.height * 0.12;
+      final pillTop = bounds.top + bounds.height * 0.16;
+      final pillCenterX = left + (right - left) * 0.60;
+      final pill = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+            pillCenterX - pillWidth / 2, pillTop, pillWidth, pillHeight),
+        Radius.circular(pillWidth / 2),
+      );
+      canvas.drawLine(
+        Offset(left - bounds.width * 0.10, pillTop + pillHeight * 0.5),
+        Offset(pillCenterX - pillWidth / 2, pillTop + pillHeight * 0.4),
+        outline,
+      );
+      canvas.drawRRect(pill, bodyFill);
+      canvas.drawRRect(pill, outline);
+      final midCenter =
+          Offset(pillCenterX, pillTop + pillHeight + bounds.height * 0.10);
+      final midRadius = bounds.shortestSide * 0.09;
+      canvas.drawCircle(midCenter, midRadius, bodyFill);
+      canvas.drawCircle(midCenter, midRadius, outline);
+      final bigCenter =
+          Offset(midCenter.dx, midCenter.dy + midRadius + bounds.height * 0.09);
+      final bigRadius = bounds.shortestSide * 0.14;
+      canvas.drawCircle(bigCenter, bigRadius, bodyFill);
+      canvas.drawCircle(bigCenter, bigRadius, outline);
+      final dischargeStart =
+          Offset(bigCenter.dx, bigCenter.dy + bigRadius * 0.8);
+      final dischargeEnd = Offset(
+          right + bounds.width * 0.06, bounds.top + bounds.height * 0.92);
+      final dischargePath = Path()
+        ..moveTo(dischargeStart.dx, dischargeStart.dy)
+        ..quadraticBezierTo(
+            right + bounds.width * 0.02,
+            bounds.top + bounds.height * 0.90,
+            dischargeEnd.dx,
+            dischargeEnd.dy);
+      canvas.drawPath(dischargePath, outline);
+    }
+
     switch (type) {
       case _EquipmentType.sandX:
-        // Trailer footprint with a discharge spout nub on top.
-        final sandXLeft = size.width * 0.30;
-        final sandXRight = size.width * 0.70;
-        final sandXBodyTop = size.height * 0.30;
-        final sandXBodyRect = Rect.fromLTRB(
-            sandXLeft, sandXBodyTop, sandXRight, size.height * 0.92);
-        canvas.drawRect(sandXBodyRect, outline);
-        final sandXPillWidth = (sandXRight - sandXLeft) * 0.55;
-        final sandXPillHeight = size.height * 0.16;
-        final sandXPill = RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-              size.width / 2 - sandXPillWidth / 2,
-              sandXBodyTop - sandXPillHeight * 0.85,
-              sandXPillWidth,
-              sandXPillHeight),
-          Radius.circular(sandXPillWidth / 2),
-        );
-        canvas.drawRRect(sandXPill, bodyFill);
-        canvas.drawRRect(sandXPill, outline);
+        drawSandXArt(Rect.fromLTWH(0, 0, size.width, size.height));
         break;
       case _EquipmentType.superLoop:
-        // Trailer footprint with a fed inlet and a two-stage separator vessel.
-        final loopLeft = size.width * 0.32;
-        final loopRight = size.width * 0.68;
-        final loopBodyRect = Rect.fromLTRB(
-            loopLeft, size.height * 0.06, loopRight, size.height * 0.94);
-        canvas.drawRect(loopBodyRect, outline);
-        final loopPillWidth = (loopRight - loopLeft) * 0.7;
-        final loopPillHeight = size.height * 0.12;
-        final loopPillTop = size.height * 0.16;
-        final loopPillCenterX = loopLeft + (loopRight - loopLeft) * 0.60;
-        final loopPill = RRect.fromRectAndRadius(
-          Rect.fromLTWH(loopPillCenterX - loopPillWidth / 2, loopPillTop,
-              loopPillWidth, loopPillHeight),
-          Radius.circular(loopPillWidth / 2),
-        );
-        canvas.drawLine(
-          Offset(
-              loopLeft - size.width * 0.10, loopPillTop + loopPillHeight * 0.5),
-          Offset(loopPillCenterX - loopPillWidth / 2,
-              loopPillTop + loopPillHeight * 0.4),
-          outline,
-        );
-        canvas.drawRRect(loopPill, bodyFill);
-        canvas.drawRRect(loopPill, outline);
-        final loopMidCenter = Offset(
-            loopPillCenterX, loopPillTop + loopPillHeight + size.height * 0.10);
-        final loopMidRadius = size.shortestSide * 0.09;
-        canvas.drawCircle(loopMidCenter, loopMidRadius, bodyFill);
-        canvas.drawCircle(loopMidCenter, loopMidRadius, outline);
-        final loopBigCenter = Offset(loopMidCenter.dx,
-            loopMidCenter.dy + loopMidRadius + size.height * 0.09);
-        final loopBigRadius = size.shortestSide * 0.14;
-        canvas.drawCircle(loopBigCenter, loopBigRadius, bodyFill);
-        canvas.drawCircle(loopBigCenter, loopBigRadius, outline);
-        final loopDischargeStart =
-            Offset(loopBigCenter.dx, loopBigCenter.dy + loopBigRadius * 0.8);
-        final loopDischargeEnd =
-            Offset(loopRight + size.width * 0.06, size.height * 0.92);
-        final loopDischargePath = Path()
-          ..moveTo(loopDischargeStart.dx, loopDischargeStart.dy)
-          ..quadraticBezierTo(loopRight + size.width * 0.02, size.height * 0.90,
-              loopDischargeEnd.dx, loopDischargeEnd.dy);
-        canvas.drawPath(loopDischargePath, outline);
+        drawSuperLoopArt(Rect.fromLTWH(0, 0, size.width, size.height));
         break;
       case _EquipmentType.sandXSuperLoopCombo:
-        // Two separate footprints side by side, connected by a feed tube.
-        final comboGap = size.width * 0.03;
-        final comboLeftRect = Rect.fromLTWH(size.width * 0.08,
-            size.height * 0.24, size.width * 0.38, size.height * 0.70);
-        final comboRightRect = Rect.fromLTWH(comboLeftRect.right + comboGap,
-            size.height * 0.06, size.width * 0.42, size.height * 0.90);
-        canvas.drawRect(comboLeftRect, outline);
-        canvas.drawRect(comboRightRect, outline);
-        final comboPillWidth = comboLeftRect.width * 0.6;
-        final comboPillHeight = size.height * 0.12;
-        final comboLeftPill = RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-              comboLeftRect.center.dx - comboPillWidth / 2,
-              comboLeftRect.top - comboPillHeight * 0.85,
-              comboPillWidth,
-              comboPillHeight),
-          Radius.circular(comboPillWidth / 2),
-        );
-        canvas.drawRRect(comboLeftPill, bodyFill);
-        canvas.drawRRect(comboLeftPill, outline);
-        final comboConnector = RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-              comboLeftRect.left + comboLeftRect.width * 0.18,
-              comboLeftRect.top + comboLeftRect.height * 0.14,
-              comboLeftRect.width * 0.55,
-              size.height * 0.14),
-          Radius.circular(size.shortestSide * 0.03),
-        );
-        canvas.drawRRect(comboConnector, bodyFill);
-        canvas.drawRRect(comboConnector, outline);
-        final comboRightPillWidth = comboRightRect.width * 0.55;
-        final comboRightPillHeight = size.height * 0.11;
-        final comboRightPillTop = comboRightRect.top + size.height * 0.12;
-        final comboRightPill = RRect.fromRectAndRadius(
-          Rect.fromLTWH(comboRightRect.left + comboRightRect.width * 0.30,
-              comboRightPillTop, comboRightPillWidth, comboRightPillHeight),
-          Radius.circular(comboRightPillWidth / 2),
-        );
-        canvas.drawLine(
-          Offset(comboConnector.right, comboConnector.center.dy),
-          Offset(comboRightPill.left,
-              comboRightPillTop + comboRightPillHeight * 0.4),
-          outline,
-        );
-        canvas.drawRRect(comboRightPill, bodyFill);
-        canvas.drawRRect(comboRightPill, outline);
-        final comboMidCenter = Offset(comboRightPill.center.dx,
-            comboRightPillTop + comboRightPillHeight + size.height * 0.09);
-        final comboMidRadius = size.shortestSide * 0.075;
-        canvas.drawCircle(comboMidCenter, comboMidRadius, bodyFill);
-        canvas.drawCircle(comboMidCenter, comboMidRadius, outline);
-        final comboBigCenter = Offset(comboMidCenter.dx,
-            comboMidCenter.dy + comboMidRadius + size.height * 0.08);
-        final comboBigRadius = size.shortestSide * 0.11;
-        canvas.drawCircle(comboBigCenter, comboBigRadius, bodyFill);
-        canvas.drawCircle(comboBigCenter, comboBigRadius, outline);
-        final comboDischargeStart =
-            Offset(comboBigCenter.dx, comboBigCenter.dy + comboBigRadius * 0.8);
-        final comboDischargeEnd = Offset(
-            comboRightRect.right - size.width * 0.02, size.height * 0.94);
-        final comboDischargePath = Path()
-          ..moveTo(comboDischargeStart.dx, comboDischargeStart.dy)
-          ..quadraticBezierTo(comboRightRect.right - size.width * 0.08,
-              size.height * 0.92, comboDischargeEnd.dx, comboDischargeEnd.dy);
-        canvas.drawPath(comboDischargePath, outline);
+        // Two separate footprints side by side, identical to their standalone artwork.
+        final comboGap = size.width * 0.04;
+        final comboLeftWidth = size.width * 0.46;
+        final comboRightWidth = size.width - comboLeftWidth - comboGap;
+        drawSandXArt(Rect.fromLTWH(0, 0, comboLeftWidth, size.height));
+        drawSuperLoopArt(Rect.fromLTWH(
+            comboLeftWidth + comboGap, 0, comboRightWidth, size.height));
         break;
       case _EquipmentType.coilTubingUnit:
         canvas.drawLine(Offset(size.width * 0.12, size.height * 0.62),
@@ -14415,34 +14363,32 @@ class _ShapePainter extends CustomPainter {
       return;
     }
 
-    if (type == _EquipmentType.sandX) {
+    void drawSandXArt(Rect bounds) {
       // Trailer footprint with a discharge spout nub on top.
-      final bodyTop = size.height * .18;
-      final bodyRect =
-          Rect.fromLTWH(0, bodyTop, size.width, size.height - bodyTop);
+      final bodyTop = bounds.top + bounds.height * .18;
+      final bodyRect = Rect.fromLTWH(
+          bounds.left, bodyTop, bounds.width, bounds.height * .82);
       canvas.drawRect(bodyRect, accent);
 
-      final pillWidth = size.width * .30;
-      final pillHeight = size.height * .18;
+      final pillWidth = bounds.width * .30;
+      final pillHeight = bounds.height * .18;
       final pill = RRect.fromRectAndRadius(
-        Rect.fromLTWH(size.width / 2 - pillWidth / 2, bodyTop - pillHeight * .8,
-            pillWidth, pillHeight),
+        Rect.fromLTWH(bounds.center.dx - pillWidth / 2,
+            bodyTop - pillHeight * .8, pillWidth, pillHeight),
         Radius.circular(pillWidth / 2),
       );
       canvas.drawRRect(pill, bodyFill);
       canvas.drawRRect(pill, accent);
-      return;
     }
 
-    if (type == _EquipmentType.superLoop) {
+    void drawSuperLoopArt(Rect bounds) {
       // Trailer footprint with a fed inlet and a two-stage separator vessel.
-      final bodyRect = Rect.fromLTWH(0, 0, size.width, size.height);
-      canvas.drawRect(bodyRect, accent);
+      canvas.drawRect(bounds, accent);
 
-      final pillWidth = size.width * .34;
-      final pillHeight = size.height * .13;
-      final pillCenterX = size.width * .58;
-      final pillTop = size.height * .16;
+      final pillWidth = bounds.width * .34;
+      final pillHeight = bounds.height * .13;
+      final pillCenterX = bounds.left + bounds.width * .58;
+      final pillTop = bounds.top + bounds.height * .16;
       final pill = RRect.fromRectAndRadius(
         Rect.fromLTWH(
             pillCenterX - pillWidth / 2, pillTop, pillWidth, pillHeight),
@@ -14452,10 +14398,10 @@ class _ShapePainter extends CustomPainter {
       final tubePaint = Paint()
         ..color = const Color(0xFFCDA56A)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = (size.shortestSide * .08).clamp(1.6, 2.6)
+        ..strokeWidth = (bounds.shortestSide * .08).clamp(1.6, 2.6)
         ..strokeCap = StrokeCap.round;
       canvas.drawLine(
-        Offset(0, pillTop + pillHeight * .5),
+        Offset(bounds.left, pillTop + pillHeight * .5),
         Offset(pillCenterX - pillWidth / 2, pillTop + pillHeight * .4),
         tubePaint,
       );
@@ -14464,102 +14410,46 @@ class _ShapePainter extends CustomPainter {
       canvas.drawRRect(pill, accent);
 
       final midCenter =
-          Offset(pillCenterX, pillTop + pillHeight + size.height * .12);
-      final midRadius = size.shortestSide * .13;
+          Offset(pillCenterX, pillTop + pillHeight + bounds.height * .12);
+      final midRadius = bounds.shortestSide * .13;
       canvas.drawCircle(midCenter, midRadius, bodyFill);
       canvas.drawCircle(midCenter, midRadius, accent);
 
       final bigCenter =
-          Offset(midCenter.dx, midCenter.dy + midRadius + size.height * .11);
-      final bigRadius = size.shortestSide * .20;
+          Offset(midCenter.dx, midCenter.dy + midRadius + bounds.height * .11);
+      final bigRadius = bounds.shortestSide * .20;
       canvas.drawCircle(bigCenter, bigRadius, bodyFill);
       canvas.drawCircle(bigCenter, bigRadius, accent);
 
       final dischargeStart =
           Offset(bigCenter.dx, bigCenter.dy + bigRadius * .8);
-      final dischargeEnd = Offset(size.width * .92, size.height * .96);
+      final dischargeEnd = Offset(
+          bounds.left + bounds.width * .92, bounds.top + bounds.height * .96);
       final dischargePath = Path()
         ..moveTo(dischargeStart.dx, dischargeStart.dy)
-        ..quadraticBezierTo(size.width * .78, size.height * .94,
-            dischargeEnd.dx, dischargeEnd.dy);
+        ..quadraticBezierTo(bounds.left + bounds.width * .78,
+            bounds.top + bounds.height * .94, dischargeEnd.dx, dischargeEnd.dy);
       canvas.drawPath(dischargePath, tubePaint);
+    }
+
+    if (type == _EquipmentType.sandX) {
+      drawSandXArt(Rect.fromLTWH(0, 0, size.width, size.height));
+      return;
+    }
+
+    if (type == _EquipmentType.superLoop) {
+      drawSuperLoopArt(Rect.fromLTWH(0, 0, size.width, size.height));
       return;
     }
 
     if (type == _EquipmentType.sandXSuperLoopCombo) {
-      // Two separate footprints side by side, connected by a feed tube.
-      final gap = size.width * .02;
+      // Two separate footprints side by side, identical to their standalone artwork.
+      final gap = size.width * .04;
       final leftWidth = size.width * .46;
       final rightWidth = size.width - leftWidth - gap;
-      final leftRect =
-          Rect.fromLTWH(0, size.height * .18, leftWidth, size.height * .82);
-      final rightRect =
-          Rect.fromLTWH(leftWidth + gap, 0, rightWidth, size.height);
-      canvas.drawRect(leftRect, accent);
-      canvas.drawRect(rightRect, accent);
-
-      final pillWidth = leftWidth * .55;
-      final pillHeight = size.height * .16;
-      final leftPill = RRect.fromRectAndRadius(
-        Rect.fromLTWH(leftRect.center.dx - pillWidth / 2,
-            leftRect.top - pillHeight * .8, pillWidth, pillHeight),
-        Radius.circular(pillWidth / 2),
-      );
-      canvas.drawRRect(leftPill, bodyFill);
-      canvas.drawRRect(leftPill, accent);
-
-      final connectorBox = RRect.fromRectAndRadius(
-        Rect.fromLTWH(leftRect.left + leftWidth * .18, size.height * .24,
-            leftWidth * .5, size.height * .16),
-        Radius.circular(size.shortestSide * .04),
-      );
-      canvas.drawRRect(connectorBox, bodyFill);
-      canvas.drawRRect(connectorBox, accent);
-
-      final rightPillWidth = rightWidth * .5;
-      final rightPillHeight = size.height * .13;
-      final rightPillTop = size.height * .20;
-      final rightPill = RRect.fromRectAndRadius(
-        Rect.fromLTWH(rightRect.left + rightWidth * .30, rightPillTop,
-            rightPillWidth, rightPillHeight),
-        Radius.circular(rightPillWidth / 2),
-      );
-
-      final tubePaint = Paint()
-        ..color = const Color(0xFFCDA56A)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = (size.shortestSide * .06).clamp(1.4, 2.3)
-        ..strokeCap = StrokeCap.round;
-      canvas.drawLine(
-        Offset(connectorBox.right, connectorBox.center.dy),
-        Offset(rightPill.left, rightPillTop + rightPillHeight * .4),
-        tubePaint,
-      );
-
-      canvas.drawRRect(rightPill, bodyFill);
-      canvas.drawRRect(rightPill, accent);
-
-      final midCenter = Offset(rightPill.center.dx,
-          rightPillTop + rightPillHeight + size.height * .11);
-      final midRadius = size.shortestSide * .11;
-      canvas.drawCircle(midCenter, midRadius, bodyFill);
-      canvas.drawCircle(midCenter, midRadius, accent);
-
-      final bigCenter =
-          Offset(midCenter.dx, midCenter.dy + midRadius + size.height * .10);
-      final bigRadius = size.shortestSide * .17;
-      canvas.drawCircle(bigCenter, bigRadius, bodyFill);
-      canvas.drawCircle(bigCenter, bigRadius, accent);
-
-      final dischargeStart =
-          Offset(bigCenter.dx, bigCenter.dy + bigRadius * .8);
-      final dischargeEnd =
-          Offset(rightRect.right - size.width * .02, size.height * .95);
-      final dischargePath = Path()
-        ..moveTo(dischargeStart.dx, dischargeStart.dy)
-        ..quadraticBezierTo(rightRect.right - size.width * .1,
-            size.height * .93, dischargeEnd.dx, dischargeEnd.dy);
-      canvas.drawPath(dischargePath, tubePaint);
+      drawSandXArt(Rect.fromLTWH(0, 0, leftWidth, size.height));
+      drawSuperLoopArt(
+          Rect.fromLTWH(leftWidth + gap, 0, rightWidth, size.height));
       return;
     }
 
