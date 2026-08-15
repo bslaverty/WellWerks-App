@@ -14365,7 +14365,9 @@ class _ShapePainter extends CustomPainter {
 
     void drawSandXArt(Rect bounds) {
       // Trailer footprint with a discharge spout nub on top.
-      final bodyTop = bounds.top + bounds.height * .18;
+      // bodyTop is tuned so the rect + pill are balanced around the
+      // rotation pivot (bounds center) to avoid an off-axis wobble.
+      final bodyTop = bounds.top + bounds.height * .162;
       final bodyRect = Rect.fromLTWH(
           bounds.left, bodyTop, bounds.width, bounds.height * .82);
       canvas.drawRect(bodyRect, accent);
@@ -14385,9 +14387,14 @@ class _ShapePainter extends CustomPainter {
       // Trailer footprint with a fed inlet and a two-stage separator vessel.
       canvas.drawRect(bounds, accent);
 
+      // The inlet/vessel/discharge stack is recentered on the rotation
+      // pivot (bounds center) so it spins in place instead of orbiting.
+      canvas.save();
+      canvas.translate(bounds.width * .04, -bounds.height * .06);
+
       final pillWidth = bounds.width * .34;
       final pillHeight = bounds.height * .13;
-      final pillCenterX = bounds.left + bounds.width * .58;
+      final pillCenterX = bounds.left + bounds.width * .5;
       final pillTop = bounds.top + bounds.height * .16;
       final pill = RRect.fromRectAndRadius(
         Rect.fromLTWH(
@@ -14430,6 +14437,8 @@ class _ShapePainter extends CustomPainter {
         ..quadraticBezierTo(bounds.left + bounds.width * .78,
             bounds.top + bounds.height * .94, dischargeEnd.dx, dischargeEnd.dy);
       canvas.drawPath(dischargePath, tubePaint);
+
+      canvas.restore();
     }
 
     if (type == _EquipmentType.sandX) {
