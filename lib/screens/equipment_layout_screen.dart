@@ -6932,6 +6932,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         _EquipmentType.wireline,
         _EquipmentType.dateVan,
         _EquipmentType.nitrogen,
+        _EquipmentType.sandX,
+        _EquipmentType.superLoop,
+        _EquipmentType.sandXSuperLoopCombo,
       ];
 
   double _dialogWidth(BuildContext context, {double max = 460}) {
@@ -12713,6 +12716,9 @@ enum _EquipmentType {
   sphericalSandSep,
   chokeManifold,
   flowbackTank,
+  sandX,
+  superLoop,
+  sandXSuperLoopCombo,
   productionTank,
   testSeparator,
   flare,
@@ -12760,7 +12766,10 @@ extension _EquipmentTypeInfo on _EquipmentType {
       this == _EquipmentType.fuelTrailer ||
       this == _EquipmentType.chemicalTrailer ||
       this == _EquipmentType.nitrogen ||
-      this == _EquipmentType.generator;
+      this == _EquipmentType.generator ||
+      this == _EquipmentType.sandX ||
+      this == _EquipmentType.superLoop ||
+      this == _EquipmentType.sandXSuperLoopCombo;
 
   bool get usesCompactEquipmentFootprint =>
       !isIron && !isCompletions && this != _EquipmentType.facilities;
@@ -12783,6 +12792,12 @@ extension _EquipmentTypeInfo on _EquipmentType {
         return 'Choke Manifold';
       case _EquipmentType.flowbackTank:
         return 'Flowback Tank';
+      case _EquipmentType.sandX:
+        return 'SandX';
+      case _EquipmentType.superLoop:
+        return 'Super Loop';
+      case _EquipmentType.sandXSuperLoopCombo:
+        return 'SandX + Super Loop';
       case _EquipmentType.productionTank:
         return 'Production Tank';
       case _EquipmentType.testSeparator:
@@ -12857,6 +12872,9 @@ extension _EquipmentTypeInfo on _EquipmentType {
       case _EquipmentType.chokeManifold:
         return Icons.tune;
       case _EquipmentType.flowbackTank:
+      case _EquipmentType.sandX:
+      case _EquipmentType.superLoop:
+      case _EquipmentType.sandXSuperLoopCombo:
       case _EquipmentType.productionTank:
         return Icons.oil_barrel;
       case _EquipmentType.testSeparator:
@@ -12917,7 +12935,10 @@ extension _EquipmentTypeInfo on _EquipmentType {
     if (this == _EquipmentType.cyclonicSandSep) return 34;
     if (this == _EquipmentType.esdValve) return 30;
     if (this == _EquipmentType.chokeManifold) return 38;
-    if (this == _EquipmentType.flowbackTank) return 48;
+    if (this == _EquipmentType.flowbackTank || this == _EquipmentType.sandX)
+      return 48;
+    if (this == _EquipmentType.superLoop) return 46;
+    if (this == _EquipmentType.sandXSuperLoopCombo) return 96;
     if (this == _EquipmentType.productionTank) return 38;
     if (this == _EquipmentType.testSeparator) return 36;
     if (this == _EquipmentType.flare) return 32;
@@ -12951,7 +12972,10 @@ extension _EquipmentTypeInfo on _EquipmentType {
     if (this == _EquipmentType.cyclonicSandSep) return 32;
     if (this == _EquipmentType.esdValve) return 24;
     if (this == _EquipmentType.chokeManifold) return 24;
-    if (this == _EquipmentType.flowbackTank) return 96;
+    if (this == _EquipmentType.flowbackTank || this == _EquipmentType.sandX)
+      return 96;
+    if (this == _EquipmentType.superLoop) return 110;
+    if (this == _EquipmentType.sandXSuperLoopCombo) return 100;
     if (this == _EquipmentType.productionTank) return 28;
     if (this == _EquipmentType.testSeparator) return 28;
     if (this == _EquipmentType.flare) return 28;
@@ -13216,6 +13240,9 @@ extension _LayoutItemProperties on _LayoutItem {
       }
       return custom.trim();
     }
+    if (type == _EquipmentType.sandX) {
+      return 'SandX';
+    }
     if (type == _EquipmentType.chokeManifold) {
       final chokeSize = properties['chokeSize']?.trim();
       if (chokeSize == '2' || chokeSize == '3') {
@@ -13405,6 +13432,146 @@ class _CompletionsArtworkPainter extends CustomPainter {
     }
 
     switch (type) {
+      case _EquipmentType.sandX:
+        final tank = RRect.fromRectAndRadius(
+          Rect.fromLTWH(size.width * 0.18, size.height * 0.18,
+              size.width * 0.42, size.height * 0.54),
+          const Radius.circular(16),
+        );
+        canvas.drawRRect(tank, bodyFill);
+        canvas.drawRRect(tank, outline);
+        final augerY = size.height * 0.46;
+        final shaftStart = Offset(size.width * 0.60, augerY);
+        final shaftEnd = Offset(size.width * 0.88, augerY);
+        canvas.drawLine(shaftStart, shaftEnd, outline);
+        for (var i = 0; i < 4; i++) {
+          final left = shaftStart.dx + 8 + (i * 10.0);
+          final top = augerY - 14.0 - (i * 2.0);
+          final right = left + 14.0;
+          final bottom = augerY + 14.0 + (i * 2.0);
+          canvas.drawArc(
+            Rect.fromLTRB(left, top, right, bottom),
+            -math.pi / 2,
+            math.pi,
+            false,
+            outline,
+          );
+        }
+        drawAxles(<double>[size.width * 0.30, size.width * 0.48],
+            size.height * 0.78, size.shortestSide * 0.048);
+        break;
+      case _EquipmentType.superLoop:
+        // Tall vertical separator tank
+        final separatorTank = RRect.fromRectAndRadius(
+          Rect.fromLTWH(size.width * 0.36, size.height * 0.10,
+              size.width * 0.28, size.height * 0.70),
+          const Radius.circular(12),
+        );
+        canvas.drawRRect(separatorTank, bodyFill);
+        canvas.drawRRect(separatorTank, outline);
+        // Auger feed on the left
+        final augerX = size.width * 0.18;
+        final augerYStart = size.height * 0.28;
+        final augerYEnd = size.height * 0.48;
+        canvas.drawLine(
+          Offset(augerX, augerYStart),
+          Offset(size.width * 0.36, augerYEnd),
+          outline,
+        );
+        // Auger spiral/flights
+        for (var i = 0; i < 3; i++) {
+          final progress = (i + 1) / 4.0;
+          final arcX = augerX + (size.width * 0.18 * progress);
+          final arcY = augerYStart + ((augerYEnd - augerYStart) * progress);
+          final arcSize = 8.0 + (i * 2.0);
+          canvas.drawArc(
+            Rect.fromCircle(center: Offset(arcX, arcY), radius: arcSize),
+            -math.pi / 2,
+            math.pi,
+            false,
+            outline,
+          );
+        }
+        // Bottom connection to separator
+        canvas.drawLine(
+          Offset(size.width * 0.36, augerYEnd),
+          Offset(size.width * 0.36, augerYEnd + 4),
+          outline,
+        );
+        // Wheels
+        drawAxles(<double>[size.width * 0.28, size.width * 0.56],
+            size.height * 0.85, size.shortestSide * 0.05);
+        break;
+      case _EquipmentType.sandXSuperLoopCombo:
+        // Left side: SandX-style flowback tank
+        final leftTank = RRect.fromRectAndRadius(
+          Rect.fromLTWH(size.width * 0.08, size.height * 0.18,
+              size.width * 0.32, size.height * 0.54),
+          const Radius.circular(12),
+        );
+        canvas.drawRRect(leftTank, bodyFill);
+        canvas.drawRRect(leftTank, outline);
+        // Left auger
+        final leftAugerY = size.height * 0.46;
+        final leftShaftStart = Offset(size.width * 0.40, leftAugerY);
+        final leftShaftEnd = Offset(size.width * 0.48, leftAugerY);
+        canvas.drawLine(leftShaftStart, leftShaftEnd, outline);
+        for (var i = 0; i < 3; i++) {
+          final left = leftShaftStart.dx + 4 + (i * 6.0);
+          final top = leftAugerY - 10.0 - (i * 1.5);
+          final right = left + 10.0;
+          final bottom = leftAugerY + 10.0 + (i * 1.5);
+          canvas.drawArc(
+            Rect.fromLTRB(left, top, right, bottom),
+            -math.pi / 2,
+            math.pi,
+            false,
+            outline,
+          );
+        }
+        // Right side: Super Loop-style vertical separator
+        final rightTank = RRect.fromRectAndRadius(
+          Rect.fromLTWH(size.width * 0.56, size.height * 0.12,
+              size.width * 0.28, size.height * 0.68),
+          const Radius.circular(12),
+        );
+        canvas.drawRRect(rightTank, bodyFill);
+        canvas.drawRRect(rightTank, outline);
+        // Right auger feed
+        final rightAugerX = size.width * 0.50;
+        final rightAugerYStart = size.height * 0.28;
+        final rightAugerYEnd = size.height * 0.45;
+        canvas.drawLine(
+          Offset(rightAugerX, rightAugerYStart),
+          Offset(size.width * 0.56, rightAugerYEnd),
+          outline,
+        );
+        for (var i = 0; i < 2; i++) {
+          final progress = (i + 1) / 3.0;
+          final arcX = rightAugerX + (size.width * 0.06 * progress);
+          final arcY = rightAugerYStart +
+              ((rightAugerYEnd - rightAugerYStart) * progress);
+          final arcSize = 6.0 + (i * 1.5);
+          canvas.drawArc(
+            Rect.fromCircle(center: Offset(arcX, arcY), radius: arcSize),
+            -math.pi / 2,
+            math.pi,
+            false,
+            outline,
+          );
+        }
+        // Connection line
+        canvas.drawLine(
+          Offset(size.width * 0.56, rightAugerYEnd),
+          Offset(size.width * 0.56, rightAugerYEnd + 3),
+          outline,
+        );
+        // Wheels at base
+        drawAxles(
+            <double>[size.width * 0.22, size.width * 0.42, size.width * 0.70],
+            size.height * 0.82,
+            size.shortestSide * 0.052);
+        break;
       case _EquipmentType.coilTubingUnit:
         canvas.drawLine(Offset(size.width * 0.12, size.height * 0.62),
             Offset(size.width * 0.88, size.height * 0.62), outline);
@@ -13718,6 +13885,7 @@ class _LayoutTile extends StatelessWidget {
     return item.type == _EquipmentType.chokeManifold ||
         item.type == _EquipmentType.plugCatcher ||
         item.type == _EquipmentType.flowbackTank ||
+        item.type == _EquipmentType.sandX ||
         item.type == _EquipmentType.testSeparator ||
         item.type == _EquipmentType.facilities ||
         item.type.isCompletions;
@@ -14218,8 +14386,10 @@ class _ShapePainter extends CustomPainter {
       var bodyWidth = 0.84;
       if (v == 'flowbackHalf') {
         bodyWidth = 0.44;
+        bodyStart = 0.28;
       } else if (v == 'flowbackQuarter') {
         bodyWidth = 0.30;
+        bodyStart = 0.35;
       }
       final bodyRect = RRect.fromRectAndRadius(
         Rect.fromLTWH(
@@ -14248,6 +14418,164 @@ class _ShapePainter extends CustomPainter {
             math.min(bodyRect.bottom - 4.0, yCenter + barHalfLength);
         canvas.drawLine(Offset(x1, yTop), Offset(x1, yBottom), barPaint);
         canvas.drawLine(Offset(x2, yTop), Offset(x2, yBottom), barPaint);
+      }
+      return;
+    }
+
+    if (type == _EquipmentType.sandX) {
+      final bodyRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          size.width * .14,
+          size.height * .12,
+          size.width * .54,
+          size.height * .76,
+        ),
+        Radius.circular(size.shortestSide * .09),
+      );
+      canvas.drawRRect(bodyRect, bodyFill);
+      canvas.drawRRect(bodyRect, accent);
+
+      final augerPaint = Paint()
+        ..color = const Color(0xFFCDA56A)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = (size.shortestSide * .08).clamp(1.7, 2.8)
+        ..strokeCap = StrokeCap.round;
+      final shaftStart = Offset(bodyRect.right + 2, bodyRect.center.dy);
+      final shaftEnd = Offset(size.width * .88, bodyRect.center.dy);
+      canvas.drawLine(shaftStart, shaftEnd, augerPaint);
+
+      for (var i = 0; i < 4; i++) {
+        final arcLeft = shaftStart.dx + 10 + (i * 12.0);
+        final arcTop = bodyRect.center.dy - 22.0 - (i * 3.0);
+        final arcRight = arcLeft + 16.0;
+        final arcBottom = bodyRect.center.dy + 22.0 + (i * 3.0);
+        canvas.drawArc(
+          Rect.fromLTRB(arcLeft, arcTop, arcRight, arcBottom),
+          -math.pi / 2,
+          math.pi,
+          false,
+          augerPaint,
+        );
+      }
+      return;
+    }
+
+    if (type == _EquipmentType.superLoop) {
+      final augerPaint = Paint()
+        ..color = const Color(0xFFCDA56A)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = (size.shortestSide * .08).clamp(1.7, 2.8)
+        ..strokeCap = StrokeCap.round;
+      // Tall vertical separator tank
+      final separatorTank = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          size.width * .28,
+          size.height * .08,
+          size.width * .44,
+          size.height * .80,
+        ),
+        Radius.circular(size.shortestSide * .09),
+      );
+      canvas.drawRRect(separatorTank, bodyFill);
+      canvas.drawRRect(separatorTank, accent);
+      // Auger feed on the left
+      final augerXStart = size.width * .12;
+      final augerYStart = size.height * .24;
+      final augerYEnd = size.height * .52;
+      canvas.drawLine(
+        Offset(augerXStart, augerYStart),
+        Offset(separatorTank.left, augerYEnd),
+        augerPaint,
+      );
+      // Auger spiral/flights
+      for (var i = 0; i < 3; i++) {
+        final progress = (i + 1) / 4.0;
+        final arcX =
+            augerXStart + (separatorTank.left - augerXStart) * progress;
+        final arcY = augerYStart + ((augerYEnd - augerYStart) * progress);
+        final arcSize = 8.0 + (i * 2.0);
+        canvas.drawArc(
+          Rect.fromCircle(center: Offset(arcX, arcY), radius: arcSize),
+          -math.pi / 2,
+          math.pi,
+          false,
+          augerPaint,
+        );
+      }
+      return;
+    }
+
+    if (type == _EquipmentType.sandXSuperLoopCombo) {
+      final augerPaint = Paint()
+        ..color = const Color(0xFFCDA56A)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = (size.shortestSide * .07).clamp(1.5, 2.6)
+        ..strokeCap = StrokeCap.round;
+      // Left side: SandX-style flowback tank
+      final leftTank = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          size.width * .06,
+          size.height * .12,
+          size.width * .38,
+          size.height * .76,
+        ),
+        Radius.circular(size.shortestSide * .08),
+      );
+      canvas.drawRRect(leftTank, bodyFill);
+      canvas.drawRRect(leftTank, accent);
+      // Left auger
+      final leftAugerY = size.height * .50;
+      final leftShaftStart = Offset(leftTank.right + 2, leftAugerY);
+      final leftShaftEnd = Offset(size.width * .46, leftAugerY);
+      canvas.drawLine(leftShaftStart, leftShaftEnd, augerPaint);
+      for (var i = 0; i < 3; i++) {
+        final arcLeft = leftShaftStart.dx + 6 + (i * 8.0);
+        final arcTop = leftAugerY - 16.0 - (i * 2.0);
+        final arcRight = arcLeft + 12.0;
+        final arcBottom = leftAugerY + 16.0 + (i * 2.0);
+        canvas.drawArc(
+          Rect.fromLTRB(arcLeft, arcTop, arcRight, arcBottom),
+          -math.pi / 2,
+          math.pi,
+          false,
+          augerPaint,
+        );
+      }
+      // Right side: Super Loop-style vertical separator
+      final rightTank = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          size.width * .50,
+          size.height * .08,
+          size.width * .44,
+          size.height * .84,
+        ),
+        Radius.circular(size.shortestSide * .08),
+      );
+      canvas.drawRRect(rightTank, bodyFill);
+      canvas.drawRRect(rightTank, accent);
+      // Right auger feed
+      final rightAugerXStart = size.width * .48;
+      final rightAugerYStart = size.height * .24;
+      final rightAugerYEnd = size.height * .48;
+      canvas.drawLine(
+        Offset(rightAugerXStart, rightAugerYStart),
+        Offset(rightTank.left, rightAugerYEnd),
+        augerPaint,
+      );
+      for (var i = 0; i < 2; i++) {
+        final progress = (i + 1) / 3.0;
+        final arcX =
+            rightAugerXStart + (rightTank.left - rightAugerXStart) * progress;
+        final arcY =
+            rightAugerYStart + ((rightAugerYEnd - rightAugerYStart) * progress);
+        final arcSize = 6.0 + (i * 1.5);
+        canvas.drawArc(
+          Rect.fromCircle(center: Offset(arcX, arcY), radius: arcSize),
+          -math.pi / 2,
+          math.pi,
+          false,
+          augerPaint,
+        );
       }
       return;
     }
