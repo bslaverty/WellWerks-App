@@ -13431,8 +13431,8 @@ class _CompletionsArtworkPainter extends CustomPainter {
       return;
     }
 
-    void drawSandXArt(Rect bounds) {
-      // Trailer footprint with a discharge spout nub on top.
+    Rect drawSandXArt(Rect bounds) {
+      // Trailer footprint with a discharge spout nub on top and a control box.
       final left = bounds.left + bounds.width * 0.30;
       final right = bounds.left + bounds.width * 0.70;
       final bodyTop = bounds.top + bounds.height * 0.30;
@@ -13448,9 +13448,19 @@ class _CompletionsArtworkPainter extends CustomPainter {
       );
       canvas.drawRRect(pill, bodyFill);
       canvas.drawRRect(pill, outline);
+
+      final squareWidth = (right - left) * 0.62;
+      final squareHeight = bounds.height * 0.14;
+      final squareRect = Rect.fromLTWH(bounds.center.dx - squareWidth / 2,
+          bodyTop + bounds.height * 0.10, squareWidth, squareHeight);
+      final square = RRect.fromRectAndRadius(
+          squareRect, Radius.circular(bounds.shortestSide * 0.04));
+      canvas.drawRRect(square, bodyFill);
+      canvas.drawRRect(square, outline);
+      return squareRect;
     }
 
-    void drawSuperLoopArt(Rect bounds) {
+    Rect drawSuperLoopArt(Rect bounds) {
       // Trailer footprint with a fed inlet and a two-stage separator vessel.
       final left = bounds.left + bounds.width * 0.32;
       final right = bounds.left + bounds.width * 0.68;
@@ -13461,9 +13471,10 @@ class _CompletionsArtworkPainter extends CustomPainter {
       final pillHeight = bounds.height * 0.12;
       final pillTop = bounds.top + bounds.height * 0.16;
       final pillCenterX = left + (right - left) * 0.60;
+      final pillRect = Rect.fromLTWH(
+          pillCenterX - pillWidth / 2, pillTop, pillWidth, pillHeight);
       final pill = RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-            pillCenterX - pillWidth / 2, pillTop, pillWidth, pillHeight),
+        pillRect,
         Radius.circular(pillWidth / 2),
       );
       canvas.drawLine(
@@ -13495,6 +13506,7 @@ class _CompletionsArtworkPainter extends CustomPainter {
             dischargeEnd.dx,
             dischargeEnd.dy);
       canvas.drawPath(dischargePath, outline);
+      return pillRect;
     }
 
     switch (type) {
@@ -13505,13 +13517,21 @@ class _CompletionsArtworkPainter extends CustomPainter {
         drawSuperLoopArt(Rect.fromLTWH(0, 0, size.width, size.height));
         break;
       case _EquipmentType.sandXSuperLoopCombo:
-        // Two separate footprints side by side, identical to their standalone artwork.
+        // Two separate footprints side by side, connected by a feed tube.
         final comboGap = size.width * 0.04;
         final comboLeftWidth = size.width * 0.46;
         final comboRightWidth = size.width - comboLeftWidth - comboGap;
-        drawSandXArt(Rect.fromLTWH(0, 0, comboLeftWidth, size.height));
-        drawSuperLoopArt(Rect.fromLTWH(
-            comboLeftWidth + comboGap, 0, comboRightWidth, size.height));
+        final comboLeftBounds =
+            Rect.fromLTWH(0, 0, comboLeftWidth, size.height);
+        final comboRightBounds = Rect.fromLTWH(
+            comboLeftWidth + comboGap, 0, comboRightWidth, size.height);
+        final comboSquare = drawSandXArt(comboLeftBounds);
+        final comboPill = drawSuperLoopArt(comboRightBounds);
+        canvas.drawLine(
+          Offset(comboSquare.right, comboSquare.top + comboSquare.height * 0.4),
+          Offset(comboPill.left, comboPill.top + comboPill.height * 0.4),
+          outline,
+        );
         break;
       case _EquipmentType.coilTubingUnit:
         canvas.drawLine(Offset(size.width * 0.12, size.height * 0.62),
@@ -14363,8 +14383,8 @@ class _ShapePainter extends CustomPainter {
       return;
     }
 
-    void drawSandXArt(Rect bounds) {
-      // Trailer footprint with a discharge spout nub on top.
+    Rect drawSandXArt(Rect bounds) {
+      // Trailer footprint with a discharge spout nub on top and a control box.
       // bodyTop is tuned so the rect + pill are balanced around the
       // rotation pivot (bounds center) to avoid an off-axis wobble.
       final bodyTop = bounds.top + bounds.height * .162;
@@ -14381,24 +14401,36 @@ class _ShapePainter extends CustomPainter {
       );
       canvas.drawRRect(pill, bodyFill);
       canvas.drawRRect(pill, accent);
+
+      final squareWidth = bounds.width * .34;
+      final squareHeight = bounds.height * .16;
+      final squareRect = Rect.fromLTWH(
+          bounds.center.dx - squareWidth / 2,
+          bodyTop + bounds.height * .10,
+          squareWidth,
+          squareHeight);
+      final square = RRect.fromRectAndRadius(
+          squareRect, Radius.circular(bounds.shortestSide * .04));
+      canvas.drawRRect(square, bodyFill);
+      canvas.drawRRect(square, accent);
+      return squareRect;
     }
 
-    void drawSuperLoopArt(Rect bounds) {
+    Rect drawSuperLoopArt(Rect bounds) {
       // Trailer footprint with a fed inlet and a two-stage separator vessel.
+      // Every offset below is chosen so the stack is balanced around the
+      // rotation pivot (bounds center), keeping it in sync with the
+      // footprint while rotating instead of orbiting off-axis.
       canvas.drawRect(bounds, accent);
-
-      // The inlet/vessel/discharge stack is recentered on the rotation
-      // pivot (bounds center) so it spins in place instead of orbiting.
-      canvas.save();
-      canvas.translate(bounds.width * .04, -bounds.height * .06);
 
       final pillWidth = bounds.width * .34;
       final pillHeight = bounds.height * .13;
       final pillCenterX = bounds.left + bounds.width * .5;
-      final pillTop = bounds.top + bounds.height * .16;
+      final pillTop = bounds.top + bounds.height * .10;
+      final pillRect = Rect.fromLTWH(
+          pillCenterX - pillWidth / 2, pillTop, pillWidth, pillHeight);
       final pill = RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-            pillCenterX - pillWidth / 2, pillTop, pillWidth, pillHeight),
+        pillRect,
         Radius.circular(pillWidth / 2),
       );
 
@@ -14408,7 +14440,7 @@ class _ShapePainter extends CustomPainter {
         ..strokeWidth = (bounds.shortestSide * .08).clamp(1.6, 2.6)
         ..strokeCap = StrokeCap.round;
       canvas.drawLine(
-        Offset(bounds.left, pillTop + pillHeight * .5),
+        Offset(bounds.left + bounds.width * .04, pillTop + pillHeight * .5),
         Offset(pillCenterX - pillWidth / 2, pillTop + pillHeight * .4),
         tubePaint,
       );
@@ -14431,14 +14463,14 @@ class _ShapePainter extends CustomPainter {
       final dischargeStart =
           Offset(bigCenter.dx, bigCenter.dy + bigRadius * .8);
       final dischargeEnd = Offset(
-          bounds.left + bounds.width * .92, bounds.top + bounds.height * .96);
+          bounds.left + bounds.width * .96, bounds.top + bounds.height * .90);
       final dischargePath = Path()
         ..moveTo(dischargeStart.dx, dischargeStart.dy)
-        ..quadraticBezierTo(bounds.left + bounds.width * .78,
-            bounds.top + bounds.height * .94, dischargeEnd.dx, dischargeEnd.dy);
+        ..quadraticBezierTo(bounds.left + bounds.width * .82,
+            bounds.top + bounds.height * .88, dischargeEnd.dx, dischargeEnd.dy);
       canvas.drawPath(dischargePath, tubePaint);
 
-      canvas.restore();
+      return pillRect;
     }
 
     if (type == _EquipmentType.sandX) {
@@ -14452,13 +14484,26 @@ class _ShapePainter extends CustomPainter {
     }
 
     if (type == _EquipmentType.sandXSuperLoopCombo) {
-      // Two separate footprints side by side, identical to their standalone artwork.
+      // Two separate footprints side by side, connected by a feed tube.
       final gap = size.width * .04;
       final leftWidth = size.width * .46;
       final rightWidth = size.width - leftWidth - gap;
-      drawSandXArt(Rect.fromLTWH(0, 0, leftWidth, size.height));
-      drawSuperLoopArt(
-          Rect.fromLTWH(leftWidth + gap, 0, rightWidth, size.height));
+      final leftBounds = Rect.fromLTWH(0, 0, leftWidth, size.height);
+      final rightBounds =
+          Rect.fromLTWH(leftWidth + gap, 0, rightWidth, size.height);
+      final square = drawSandXArt(leftBounds);
+      final pill = drawSuperLoopArt(rightBounds);
+
+      final tubePaint = Paint()
+        ..color = const Color(0xFFCDA56A)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = (size.shortestSide * .06).clamp(1.4, 2.3)
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(
+        Offset(square.right, square.top + square.height * .4),
+        Offset(pill.left, pill.top + pill.height * .4),
+        tubePaint,
+      );
       return;
     }
 
