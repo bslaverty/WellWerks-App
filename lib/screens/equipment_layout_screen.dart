@@ -3877,6 +3877,7 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       }
 
       if (_isFittingEndpointConnectableType(item.type)) {
+        var repositioned = false;
         for (final side in _fittingEndpointSides(item)) {
           final anchorItemId =
               int.tryParse(item.properties[_fittingAnchorItemKey(side)] ?? '');
@@ -3927,11 +3928,17 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
               anchorSide: normalizedSide,
             );
           }
+          // Only reposition from the first resolvable anchor. Correcting
+          // for every connected side in sequence would shift the item once
+          // per side, silently undoing the alignment of any side handled
+          // just before it.
+          if (repositioned) continue;
           final currentPoint = _equipmentAnchorPointOrNull(item, side);
           if (currentPoint == null) continue;
           final delta = anchorPoint - currentPoint;
           item.x += delta.dx;
           item.y += delta.dy;
+          repositioned = true;
         }
       }
     }
@@ -6087,6 +6094,11 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         }
 
         if (_isFittingEndpointConnectableType(item.type)) {
+          // Only reposition from the first resolvable anchor. Correcting
+          // for every connected side in sequence would shift the item once
+          // per side, silently undoing the alignment of any side handled
+          // just before it (visible as connections detaching after undo).
+          var repositioned = false;
           for (final side in _fittingEndpointSides(item)) {
             final anchorItemId = int.tryParse(
                 item.properties[_fittingAnchorItemKey(side)] ?? '');
@@ -6105,11 +6117,13 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
                   anchorItemId: null, anchorSide: null);
               continue;
             }
+            if (repositioned) continue;
             final currentPoint = _equipmentAnchorPointOrNull(item, side);
             if (currentPoint == null) continue;
             final delta = anchorPoint - currentPoint;
             item.x += delta.dx;
             item.y += delta.dy;
+            repositioned = true;
           }
         }
       }
@@ -14404,11 +14418,8 @@ class _ShapePainter extends CustomPainter {
 
       final squareWidth = bounds.width * .34;
       final squareHeight = bounds.height * .16;
-      final squareRect = Rect.fromLTWH(
-          bounds.center.dx - squareWidth / 2,
-          bodyTop + bounds.height * .10,
-          squareWidth,
-          squareHeight);
+      final squareRect = Rect.fromLTWH(bounds.center.dx - squareWidth / 2,
+          bodyTop + bounds.height * .10, squareWidth, squareHeight);
       final square = RRect.fromRectAndRadius(
           squareRect, Radius.circular(bounds.shortestSide * .04));
       canvas.drawRRect(square, bodyFill);
