@@ -5154,7 +5154,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final current = _snapshot();
     final previous = _undoStack.removeLast();
     _redoStack.add(current);
-    _applyPayload(jsonDecode(previous) as Map<String, dynamic>);
+    _applyPayload(jsonDecode(previous) as Map<String, dynamic>,
+        normalizeConnections: false);
   }
 
   void _redoLayoutChange() {
@@ -5162,7 +5163,8 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
     final current = _snapshot();
     final next = _redoStack.removeLast();
     _undoStack.add(current);
-    _applyPayload(jsonDecode(next) as Map<String, dynamic>);
+    _applyPayload(jsonDecode(next) as Map<String, dynamic>,
+        normalizeConnections: false);
   }
 
   void _handleCanvasTap(Offset point) {
@@ -6027,7 +6029,10 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
         },
       };
 
-  void _applyPayload(Map<String, dynamic> data) {
+  void _applyPayload(
+    Map<String, dynamic> data, {
+    bool normalizeConnections = true,
+  }) {
     final items = (data['items'] as List<dynamic>? ?? [])
         .map((item) => _LayoutItem.fromJson(item as Map<String, dynamic>))
         .toList();
@@ -6044,98 +6049,100 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _items
         ..clear()
         ..addAll(items);
-      for (final item in _items) {
-        if (_isStraightIronType(item.type)) {
-          final start = _storedIronEndpoint(item, true);
-          final end = _storedIronEndpoint(item, false);
-          _storeIronEndpoints(item, start, end);
-        }
-        if (item.type == _EquipmentType.bypass) {
-          _ensureBypassLeadData(item);
-        }
-        if (_isElbowFittingType(item.type)) {
-          _clearInlineParentAttachment(item);
-        }
-        if (_isInlineFittingType(item.type)) {
-          final parentIron = _inlineParentIron(item);
-          final parentT = _inlineParentT(item);
-          if (parentIron == null || parentT == null) {
+      if (normalizeConnections) {
+        for (final item in _items) {
+          if (_isStraightIronType(item.type)) {
+            final start = _storedIronEndpoint(item, true);
+            final end = _storedIronEndpoint(item, false);
+            _storeIronEndpoints(item, start, end);
+          }
+          if (item.type == _EquipmentType.bypass) {
+            _ensureBypassLeadData(item);
+          }
+          if (_isElbowFittingType(item.type)) {
             _clearInlineParentAttachment(item);
-          } else {
-            _setInlineParentAttachment(
-              item,
-              parentIron,
-              parentT,
-              segmentId: _inlineAttachedSegmentId(item),
-            );
           }
-        }
-        for (final leading in <bool>[true, false]) {
-          final anchorItemId = int.tryParse(
-              item.properties[_endpointAnchorItemKey(leading)] ?? '');
-          final anchorSide = item.properties[_endpointAnchorSideKey(leading)];
-          if (anchorItemId == null ||
-              anchorSide == null ||
-              anchorSide.isEmpty) {
-            continue;
-          }
-          final anchorItem = _findItemById(anchorItemId);
-          if (anchorItem == null) {
-            item.properties.remove(_endpointAnchorItemKey(leading));
-            item.properties.remove(_endpointAnchorSideKey(leading));
-            continue;
-          }
-          if (anchorItem.type == _EquipmentType.bypass) {
-            final canonical = _normalizedBypassPortId(anchorSide);
-            if (canonical == null ||
-                _equipmentAnchorPointOrNull(anchorItem, canonical) == null) {
-              item.properties.remove(_endpointAnchorItemKey(leading));
-              item.properties.remove(_endpointAnchorSideKey(leading));
+          if (_isInlineFittingType(item.type)) {
+            final parentIron = _inlineParentIron(item);
+            final parentT = _inlineParentT(item);
+            if (parentIron == null || parentT == null) {
+              _clearInlineParentAttachment(item);
             } else {
-              item.properties[_endpointAnchorSideKey(leading)] = canonical;
-            }
-          } else {
-            final canonical = _normalizedAnchorSide(anchorItem, anchorSide);
-            if (_equipmentAnchorPointOrNull(anchorItem, canonical) == null) {
-              item.properties.remove(_endpointAnchorItemKey(leading));
-              item.properties.remove(_endpointAnchorSideKey(leading));
-            } else {
-              item.properties[_endpointAnchorSideKey(leading)] = canonical;
+              _setInlineParentAttachment(
+                item,
+                parentIron,
+                parentT,
+                segmentId: _inlineAttachedSegmentId(item),
+              );
             }
           }
-        }
-
-        if (_isFittingEndpointConnectableType(item.type)) {
-          // Only reposition from the first resolvable anchor. Correcting
-          // for every connected side in sequence would shift the item once
-          // per side, silently undoing the alignment of any side handled
-          // just before it (visible as connections detaching after undo).
-          var repositioned = false;
-          for (final side in _fittingEndpointSides(item)) {
+          for (final leading in <bool>[true, false]) {
             final anchorItemId = int.tryParse(
-                item.properties[_fittingAnchorItemKey(side)] ?? '');
-            final anchorSide = item.properties[_fittingAnchorSideKey(side)];
+                item.properties[_endpointAnchorItemKey(leading)] ?? '');
+            final anchorSide = item.properties[_endpointAnchorSideKey(leading)];
             if (anchorItemId == null ||
                 anchorSide == null ||
                 anchorSide.isEmpty) {
               continue;
             }
             final anchorItem = _findItemById(anchorItemId);
-            final anchorPoint = anchorItem == null
-                ? null
-                : _equipmentAnchorPointOrNull(anchorItem, anchorSide);
-            if (anchorPoint == null) {
-              _setFittingAnchor(item, side,
-                  anchorItemId: null, anchorSide: null);
+            if (anchorItem == null) {
+              item.properties.remove(_endpointAnchorItemKey(leading));
+              item.properties.remove(_endpointAnchorSideKey(leading));
               continue;
             }
-            if (repositioned) continue;
-            final currentPoint = _equipmentAnchorPointOrNull(item, side);
-            if (currentPoint == null) continue;
-            final delta = anchorPoint - currentPoint;
-            item.x += delta.dx;
-            item.y += delta.dy;
-            repositioned = true;
+            if (anchorItem.type == _EquipmentType.bypass) {
+              final canonical = _normalizedBypassPortId(anchorSide);
+              if (canonical == null ||
+                  _equipmentAnchorPointOrNull(anchorItem, canonical) == null) {
+                item.properties.remove(_endpointAnchorItemKey(leading));
+                item.properties.remove(_endpointAnchorSideKey(leading));
+              } else {
+                item.properties[_endpointAnchorSideKey(leading)] = canonical;
+              }
+            } else {
+              final canonical = _normalizedAnchorSide(anchorItem, anchorSide);
+              if (_equipmentAnchorPointOrNull(anchorItem, canonical) == null) {
+                item.properties.remove(_endpointAnchorItemKey(leading));
+                item.properties.remove(_endpointAnchorSideKey(leading));
+              } else {
+                item.properties[_endpointAnchorSideKey(leading)] = canonical;
+              }
+            }
+          }
+
+          if (_isFittingEndpointConnectableType(item.type)) {
+            // Only reposition from the first resolvable anchor. Correcting
+            // for every connected side in sequence would shift the item once
+            // per side, silently undoing the alignment of any side handled
+            // just before it (visible as connections detaching after undo).
+            var repositioned = false;
+            for (final side in _fittingEndpointSides(item)) {
+              final anchorItemId = int.tryParse(
+                  item.properties[_fittingAnchorItemKey(side)] ?? '');
+              final anchorSide = item.properties[_fittingAnchorSideKey(side)];
+              if (anchorItemId == null ||
+                  anchorSide == null ||
+                  anchorSide.isEmpty) {
+                continue;
+              }
+              final anchorItem = _findItemById(anchorItemId);
+              final anchorPoint = anchorItem == null
+                  ? null
+                  : _equipmentAnchorPointOrNull(anchorItem, anchorSide);
+              if (anchorPoint == null) {
+                _setFittingAnchor(item, side,
+                    anchorItemId: null, anchorSide: null);
+                continue;
+              }
+              if (repositioned) continue;
+              final currentPoint = _equipmentAnchorPointOrNull(item, side);
+              if (currentPoint == null) continue;
+              final delta = anchorPoint - currentPoint;
+              item.x += delta.dx;
+              item.y += delta.dy;
+              repositioned = true;
+            }
           }
         }
       }
@@ -6167,7 +6174,9 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
       _autoConnectMode = false;
       _autoConnectDestinationItemId = null;
       _pendingConnectIronSourceTarget = null;
-      _reflowSnappedFittings();
+      if (normalizeConnections) {
+        _reflowSnappedFittings();
+      }
     });
   }
 
