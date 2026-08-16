@@ -3737,6 +3737,18 @@ class _EquipmentLayoutScreenState extends State<EquipmentLayoutScreen>
   }
 
   void _reflowSnappedFittings() {
+    // A single pass can leave stale positions when one connected item's
+    // anchor point depends on another item that is resolved later in the
+    // same pass (e.g. an iron segment anchored to an elbow whose own
+    // position is corrected further down this loop). Repeating the pass
+    // lets those corrections propagate until the layout is stable, instead
+    // of leaving iron/fittings misaligned after a single sweep.
+    for (var pass = 0; pass < 3; pass++) {
+      _reflowSnappedFittingsPass();
+    }
+  }
+
+  void _reflowSnappedFittingsPass() {
     final jointIds = <String>{};
     final occupiedEquipmentPorts = <String>{};
     final occupiedSingleInletItems = <int>{};
