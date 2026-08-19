@@ -39,7 +39,7 @@ class ChartReferenceScreen extends StatefulWidget {
           rows: chart.points
               .map((point) => [
                     point.inches.toStringAsFixed(0),
-                    point.barrels.toStringAsFixed(1),
+                    point.barrels.toStringAsFixed(2),
                   ])
               .toList(),
         ),
