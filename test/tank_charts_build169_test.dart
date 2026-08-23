@@ -1,7 +1,86 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wellwerks/data/tank_charts.dart';
+import 'package:wellwerks/utils/gauge_parser.dart';
 
 void main() {
+  test('Build 275 SandX G3 uses only confirmed strap-chart anchors', () {
+    final anchors = <double, double>{
+      10: 43.0,
+      20: 86.0,
+      30: 129.0,
+      40: 173.0,
+      50: 220.9,
+      60: 267.9,
+      70: 313.9,
+      80: 359.1,
+      90: 404.1,
+      92: 413.4,
+    };
+
+    expect(sandXChart.points, hasLength(anchors.length));
+    for (final anchor in anchors.entries) {
+      expect(sandXChart.barrelsAt(anchor.key), anchor.value);
+    }
+  });
+
+  test('Build 275 SandX G3 interpolates without rounded intermediate data', () {
+    expect(sandXChart.barrelsAt(35), closeTo(151.0, 0.000001));
+    expect(sandXChart.barrelsAt(36), closeTo(155.4, 0.000001));
+    expect(sandXChart.barrelsAt(36.5), closeTo(157.6, 0.000001));
+    expect(sandXChart.barrelsAt(45), closeTo(196.95, 0.000001));
+    expect(sandXChart.barrelsAtOrNull(9.99), isNull);
+    expect(sandXChart.barrelsAtOrNull(92.01), isNull);
+  });
+
+  test('Build 275 SandX rate calculation retains full chart precision', () {
+    final startBarrels = sandXChart.barrelsAt(36);
+    final endBarrels = sandXChart.barrelsAt(40);
+    final barrelChange = endBarrels - startBarrels;
+    final bblPerMinute = barrelChange / 5;
+
+    expect(startBarrels, closeTo(155.4, 0.000001));
+    expect(endBarrels, closeTo(173.0, 0.000001));
+    expect(barrelChange, closeTo(17.6, 0.000001));
+    expect(bblPerMinute, closeTo(3.52, 0.000001));
+    expect(bblPerMinute * 60, closeTo(211.2, 0.000001));
+  });
+
+  test('Build 275 gauge fractions preserve their decimal values', () {
+    expect(parseGaugeInput('36.5'), 36.5);
+    expect(parseGaugeInput('36 1/2'), 36.5);
+    expect(parseGaugeInput('36.25'), 36.25);
+    expect(parseGaugeInput('36 1/4'), 36.25);
+    expect(sandXChart.barrelsAt(parseGaugeInput('36 1/2')),
+        closeTo(sandXChart.barrelsAt(36.5), 0.000001));
+  });
+
+  test('Build 275 chart-backed calculators retain source data and precision',
+      () {
+    // FS3: supplied inch-by-inch chart data.
+    expect(fs3Chart.barrelsAt(0), 36.7);
+    expect(fs3Chart.barrelsAt(34), 187.6);
+    expect(fs3Chart.barrelsAt(68), 364.2);
+    expect(fs3Chart.barrelsAt(34.5), closeTo(190.15, 0.000001));
+
+    // SandX Cyclone: supplied inch-by-inch chart data.
+    expect(sandXCycloneChart.barrelsAt(1), 78.34);
+    expect(sandXCycloneChart.barrelsAt(45), 149.57);
+    expect(sandXCycloneChart.barrelsAt(90), 222.19);
+    expect(sandXCycloneChart.barrelsAt(45.5), closeTo(150.395, 0.000001));
+
+    // V-bottom: supplied three-inch chart data.
+    expect(flowback500Chart.barrelsAt(3), 3.4);
+    expect(flowback500Chart.barrelsAt(60), 266.2);
+    expect(flowback500Chart.barrelsAt(120), 532.5);
+    expect(flowback500Chart.barrelsAt(61.5), closeTo(274.75, 0.000001));
+
+    // MR 810039: supplied inch-by-inch chart data.
+    expect(mr810039FlowbackChart.barrelsAt(1), 4.6);
+    expect(mr810039FlowbackChart.barrelsAt(52), 246.4);
+    expect(mr810039FlowbackChart.barrelsAt(104), 516.0);
+    expect(mr810039FlowbackChart.barrelsAt(52.5), closeTo(249.1, 0.000001));
+  });
+
   test('Build 169 Flowback round-bottom uses Wichita 500 profile values', () {
     expect(flowbackRoundBottomChart.barrelsAt(0), 0);
     expect(flowbackRoundBottomChart.barrelsAt(1), 4.5);
@@ -73,6 +152,7 @@ void main() {
 
   test('Build 171 production tank remains 1.67 bbl per inch', () {
     const factor = 1.67;
+    expect(1 * factor, 1.67);
     expect(10 * factor, 16.7);
     expect(100 * factor, 167.0);
   });
