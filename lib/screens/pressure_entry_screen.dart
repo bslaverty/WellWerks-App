@@ -744,7 +744,17 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   bool _isHourSaved(int hourIndex) {
-    return _storedRows.any((row) => row.hourIndex == hourIndex);
+    return _activeWells.every(
+      (well) => _storedRows.any(
+        (row) => row.hourIndex == hourIndex && row.well == well,
+      ),
+    );
+  }
+
+  bool _isWellSaved(int hourIndex, String well) {
+    return _storedRows.any(
+      (row) => row.hourIndex == hourIndex && row.well == well,
+    );
   }
 
   Future<void> _refreshActiveJobReference() async {
@@ -1963,9 +1973,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   Future<void> _saveActiveHour() async {
     final hourIndex = _activeHourIndex;
     final current = _controllers[hourIndex];
-    final saveWells = List<String>.from(_activeWells);
+    final saveWell = current.well;
+    final saveWells = <String>[saveWell];
     final enteredWells =
-        saveWells.where((well) => _isWellEntered(hourIndex, well)).toList();
+        _isWellEntered(hourIndex, saveWell) ? <String>[saveWell] : <String>[];
 
     final invalidControllers = <TextEditingController>{};
     void disallowNegative(TextEditingController controller) {
@@ -2041,22 +2052,6 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       return;
     }
 
-    final missingWells =
-        saveWells.where((well) => !enteredWells.contains(well)).toList();
-    if (missingWells.isNotEmpty) {
-      final message = missingWells.length == 1
-          ? 'Enter values for ${missingWells.first} before saving this round.'
-          : 'Enter values for all wells before saving this round. Missing: ${missingWells.join(', ')}.';
-      setState(() {
-        _hourValidationMessage = message;
-      });
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
-      return;
-    }
-
     if (invalidControllers.isNotEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2080,8 +2075,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
     await _persistShift();
     final rows = <ProductionReportRow>[
-      for (final well in saveWells)
-        _buildRowForWell(hourIndex, well, _wellDataForHour(hourIndex, well)),
+      _buildRowForWell(
+          hourIndex, saveWell, _wellDataForHour(hourIndex, saveWell)),
     ];
 
     final warnings = <String>[];
@@ -2276,10 +2271,22 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     setState(() {
       _savingHour = false;
     });
+    final nextWell = _activeWells.cast<String?>().firstWhere(
+          (well) => well != null && !_isWellSaved(hourIndex, well),
+          orElse: () => null,
+        );
+    if (nextWell != null) {
+      _controllers[hourIndex].selectWell(
+        nextWell,
+        _selectedChokeTypeForWell(nextWell),
+      );
+      setState(() {});
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content:
-            Text('${_controllers[hourIndex].time} Round saved successfully.'),
+        content: Text(nextWell == null
+            ? '${_controllers[hourIndex].time} Round saved successfully.'
+            : '${_controllers[hourIndex].time} saved for $saveWell. Enter $nextWell next.'),
       ),
     );
   }
@@ -3012,6 +3019,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     final time = _controllers[hourIndex].time;
     final hasNextHour = hourIndex < _controllers.length - 1;
     final hourSaved = _isHourSaved(hourIndex);
+    final nextWell = _activeWells.cast<String?>().firstWhere(
+          (well) => well != null && !_isWellSaved(hourIndex, well),
+          orElse: () => null,
+        );
 
     if (hourSaved && hasNextHour) {
       final nextTime = _controllers[hourIndex + 1].time;
@@ -3032,6 +3043,25 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           onPressed: null,
           icon: const Icon(Icons.check_circle_outline),
           label: const Text('All Hours Saved'),
+        ),
+      );
+    }
+
+    if (nextWell != null &&
+        _storedRows
+            .any((row) => row.hourIndex == hourIndex && row.well != nextWell)) {
+      return SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: () {
+            _controllers[hourIndex].selectWell(
+              nextWell,
+              _selectedChokeTypeForWell(nextWell),
+            );
+            setState(() {});
+          },
+          icon: const Icon(Icons.arrow_forward),
+          label: Text('Next Well ($nextWell)'),
         ),
       );
     }
