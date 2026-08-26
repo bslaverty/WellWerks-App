@@ -3017,35 +3017,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
     final hourIndex = _activeHourIndex;
     final time = _controllers[hourIndex].time;
-    final hasNextHour = hourIndex < _controllers.length - 1;
-    final hourSaved = _isHourSaved(hourIndex);
     final nextWell = _activeWells.cast<String?>().firstWhere(
           (well) => well != null && !_isWellSaved(hourIndex, well),
           orElse: () => null,
         );
-
-    if (hourSaved && hasNextHour) {
-      final nextTime = _controllers[hourIndex + 1].time;
-      return SizedBox(
-        width: double.infinity,
-        child: FilledButton.icon(
-          onPressed: _goToNextHour,
-          icon: const Icon(Icons.arrow_forward),
-          label: Text('Next Hour ($nextTime)'),
-        ),
-      );
-    }
-
-    if (hourSaved && !hasNextHour) {
-      return SizedBox(
-        width: double.infinity,
-        child: FilledButton.icon(
-          onPressed: null,
-          icon: const Icon(Icons.check_circle_outline),
-          label: const Text('All Hours Saved'),
-        ),
-      );
-    }
 
     if (nextWell != null &&
         _storedRows
