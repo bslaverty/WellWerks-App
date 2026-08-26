@@ -721,8 +721,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (_showCompressorSection) data.compressorInjection,
       if (_showVruSection) data.vruSuction,
       if (_showVruSection) data.vruDischarge,
-      if (_showInventorySection && _useWaterHauled) data.waterHauled,
-      if (_showInventorySection && _useOilHauled) data.oilHauled,
+      if (_useWaterHauled) data.waterHauled,
+      if (_useOilHauled) data.oilHauled,
       if (_showInventorySection) data.waterPumped,
       if (_showInventorySection) data.oilPumped,
       data.sandRate,
@@ -1922,8 +1922,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       oilMeasurementMethod: oilMethod,
       currentGasAccum: currentGasAccum,
       hoursSincePrevious: intervalHours.isNaN ? 0 : intervalHours,
-      waterHauled: _showInventorySection ? _n(data.waterHauled) : 0,
-      oilHauled: _showInventorySection ? _n(data.oilHauled) : 0,
+      waterHauled: _useWaterHauled ? _n(data.waterHauled) : 0,
+      oilHauled: _useOilHauled ? _n(data.oilHauled) : 0,
       waterPumped: _showInventorySection ? _n(data.waterPumped) : 0,
       oilPumped: _showInventorySection ? _n(data.oilPumped) : 0,
       notes: _showNotesSection ? data.notes.trim() : '',
@@ -1999,8 +1999,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (_showCompressorSection) current.compressorInjection,
       if (_showVruSection) current.vruSuction,
       if (_showVruSection) current.vruDischarge,
-      if (_showInventorySection && _useWaterHauled) current.waterHauled,
-      if (_showInventorySection && _useOilHauled) current.oilHauled,
+      if (_useWaterHauled) current.waterHauled,
+      if (_useOilHauled) current.oilHauled,
       if (_showInventorySection) current.waterPumped,
       if (_showInventorySection) current.oilPumped,
       current.sandRate,
@@ -2850,10 +2850,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         ),
         _field('Current Oil Meter Reading', controller.oilMeterReading),
       ],
-      if (_showInventorySection && _useWaterHauled)
+      if (_useWaterHauled)
         _field('Water Hauled This Hour (Selected Well)', controller.waterHauled,
             suffix: 'BBL'),
-      if (_showInventorySection && _useOilHauled)
+      if (_useOilHauled)
         _field('Oil Hauled This Hour (Selected Well)', controller.oilHauled,
             suffix: 'BBL'),
       if (_showInventorySection)
