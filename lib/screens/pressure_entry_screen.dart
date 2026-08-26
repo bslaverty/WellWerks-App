@@ -92,6 +92,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       _settings.isOptionalSectionEnabled('inventory');
   bool get _useOilHauled => _shift.inventory.useOilHauled;
   bool get _useWaterHauled => _shift.inventory.useWaterHauled;
+  bool get _useWaterPumped => _shift.inventory.useWaterPumped;
   bool get _useWaterMeter => _shift.inventory.useWaterMeter;
   bool get _showNotesSection {
     final raw = _activeJob?.drilloutSetup['includeNotesSection'];
@@ -723,7 +724,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (_showVruSection) data.vruDischarge,
       if (_useWaterHauled) data.waterHauled,
       if (_useOilHauled) data.oilHauled,
-      if (_showInventorySection) data.waterPumped,
+      if (_useWaterPumped) data.waterPumped,
       if (_showInventorySection) data.oilPumped,
       data.sandRate,
       data.sandOptionalRate,
@@ -1433,7 +1434,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       currentWaterBbl: current,
       previousWaterBbl: previous,
       waterHauled: _n(check.waterHauled.text),
-      waterPumped: _n(check.waterPumped.text),
+      waterPumped: _useWaterPumped ? _n(check.waterPumped.text) : 0,
       preRoundWaterHauled: 0,
       preRoundWaterPumped: 0,
       isFirstHour: false,
@@ -1762,7 +1763,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       currentWaterBbl: current,
       previousWaterBbl: previous,
       waterHauled: _n(data.waterHauled),
-      waterPumped: _n(data.waterPumped),
+      waterPumped: _useWaterPumped ? _n(data.waterPumped) : 0,
       preRoundWaterHauled: 0,
       preRoundWaterPumped: 0,
       isFirstHour: false,
@@ -1924,7 +1925,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       hoursSincePrevious: intervalHours.isNaN ? 0 : intervalHours,
       waterHauled: _useWaterHauled ? _n(data.waterHauled) : 0,
       oilHauled: _useOilHauled ? _n(data.oilHauled) : 0,
-      waterPumped: _showInventorySection ? _n(data.waterPumped) : 0,
+      waterPumped: _useWaterPumped ? _n(data.waterPumped) : 0,
       oilPumped: _showInventorySection ? _n(data.oilPumped) : 0,
       notes: _showNotesSection ? data.notes.trim() : '',
     );
@@ -2001,7 +2002,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (_showVruSection) current.vruDischarge,
       if (_useWaterHauled) current.waterHauled,
       if (_useOilHauled) current.oilHauled,
-      if (_showInventorySection) current.waterPumped,
+      if (_useWaterPumped) current.waterPumped,
       if (_showInventorySection) current.oilPumped,
       current.sandRate,
       current.sandOptionalRate,
@@ -2856,7 +2857,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (_useOilHauled)
         _field('Oil Hauled This Hour (Selected Well)', controller.oilHauled,
             suffix: 'BBL'),
-      if (_showInventorySection)
+      if (_useWaterPumped)
         _field('Water Pumped This Hour (Selected Well)', controller.waterPumped,
             suffix: 'BBL'),
       if (_showInventorySection)

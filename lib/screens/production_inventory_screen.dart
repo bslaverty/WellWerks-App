@@ -39,6 +39,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   String _gaugeEntryType = 'decimalFeet';
   bool _useOilHauled = false;
   bool _useWaterHauled = false;
+  bool _useWaterPumped = false;
   bool _useWaterMeter = false;
   String _gasUnit = 'mcfd';
   String _gasCalculationMethod = 'accumulator';
@@ -229,6 +230,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     _gaugeEntryType = shift.inventory.gaugeEntryType;
     _useOilHauled = shift.inventory.useOilHauled;
     _useWaterHauled = shift.inventory.useWaterHauled;
+    _useWaterPumped = shift.inventory.useWaterPumped;
     _useWaterMeter = shift.inventory.useWaterMeter;
     _gasUnit = shift.inventory.gasUnit;
     _gasCalculationMethod = shift.inventory.gasCalculationMethod;
@@ -561,6 +563,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
       gaugeEntryType: _gaugeEntryType,
       useOilHauled: _useOilHauled,
       useWaterHauled: _useWaterHauled,
+      useWaterPumped: _useWaterPumped,
       useWaterMeter: _useWaterMeter,
       useJobSetupTanks: _useJobSetupTanks,
       productionRows: _productionRows,
@@ -1445,6 +1448,12 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
         title: const Text('Water Hauled'),
         value: _useWaterHauled,
         onChanged: (value) => setState(() => _useWaterHauled = value),
+      ),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Water Pumped'),
+        value: _useWaterPumped,
+        onChanged: (value) => setState(() => _useWaterPumped = value),
       ),
       SwitchListTile(
         contentPadding: EdgeInsets.zero,

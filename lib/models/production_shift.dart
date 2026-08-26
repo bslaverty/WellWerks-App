@@ -332,6 +332,7 @@ class ProductionInventoryBaseline {
     this.gaugeEntryType = 'decimalFeet',
     this.useOilHauled = false,
     this.useWaterHauled = false,
+    this.useWaterPumped = false,
     this.useWaterMeter = false,
     this.gasUnit = 'mcfd',
     this.gasCalculationMethod = 'accumulator',
@@ -387,6 +388,7 @@ class ProductionInventoryBaseline {
       ),
       useOilHauled: json['useOilHauled'] as bool? ?? false,
       useWaterHauled: json['useWaterHauled'] as bool? ?? false,
+      useWaterPumped: json['useWaterPumped'] as bool? ?? false,
       useWaterMeter: json['useWaterMeter'] as bool? ?? false,
       gasUnit: _normalizeGasUnit(json['gasUnit'] as String?),
       gasCalculationMethod: _normalizeGasCalculationMethod(
@@ -409,6 +411,7 @@ class ProductionInventoryBaseline {
   final String gaugeEntryType;
   final bool useOilHauled;
   final bool useWaterHauled;
+  final bool useWaterPumped;
   final bool useWaterMeter;
   final String gasUnit;
   final String gasCalculationMethod;
@@ -428,6 +431,7 @@ class ProductionInventoryBaseline {
     String? gaugeEntryType,
     bool? useOilHauled,
     bool? useWaterHauled,
+    bool? useWaterPumped,
     bool? useWaterMeter,
     String? gasUnit,
     String? gasCalculationMethod,
@@ -449,6 +453,7 @@ class ProductionInventoryBaseline {
       ),
       useOilHauled: useOilHauled ?? this.useOilHauled,
       useWaterHauled: useWaterHauled ?? this.useWaterHauled,
+      useWaterPumped: useWaterPumped ?? this.useWaterPumped,
       useWaterMeter: useWaterMeter ?? this.useWaterMeter,
       gasUnit: _normalizeGasUnit(gasUnit ?? this.gasUnit),
       gasCalculationMethod: _normalizeGasCalculationMethod(
@@ -476,6 +481,7 @@ class ProductionInventoryBaseline {
       'gaugeEntryType': gaugeEntryType,
       'useOilHauled': useOilHauled,
       'useWaterHauled': useWaterHauled,
+      'useWaterPumped': useWaterPumped,
       'useWaterMeter': useWaterMeter,
       'gasUnit': gasUnit,
       'gasCalculationMethod': gasCalculationMethod,
