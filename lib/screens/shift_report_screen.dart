@@ -344,6 +344,10 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     return true;
   }
 
+  bool get _useOilHauled => _shift.inventory.useOilHauled;
+  bool get _useWaterHauled => _shift.inventory.useWaterHauled;
+  bool get _useWaterMeter => _shift.inventory.useWaterMeter;
+
   List<String> get _activeChemicals {
     return _activeJob?.selectedChemicals ?? const <String>[];
   }
@@ -423,6 +427,10 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     'waterGaugeText',
     'bwph',
     'oilGaugeText',
+    'waterHauled',
+    'oilHauled',
+    'waterMeterReading',
+    'waterMeterIncrease',
     'boph',
     'gasCoolerInTemp',
     'gasCoolerOutTemp',
@@ -481,6 +489,13 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         return _chemicalEnabled('Scale Inhibitor');
       case 'notes':
         return _showNotesSection;
+      case 'waterHauled':
+        return _useWaterHauled;
+      case 'oilHauled':
+        return _useOilHauled;
+      case 'waterMeterReading':
+      case 'waterMeterIncrease':
+        return _useWaterMeter;
       default:
         return true;
     }
@@ -517,6 +532,14 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         return 'WATER TANKS';
       case 'oilGaugeText':
         return 'OIL TANKS';
+      case 'waterHauled':
+        return 'WATER HAULED';
+      case 'oilHauled':
+        return 'OIL HAULED';
+      case 'waterMeterReading':
+        return 'WATER METER READING';
+      case 'waterMeterIncrease':
+        return 'WATER METER INCREASE';
       case 'gasCoolerInTemp':
         return 'GAS IN TEMP';
       case 'gasCoolerOutTemp':
@@ -585,6 +608,21 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         return row.waterGaugeText;
       case 'oilGaugeText':
         return row.oilGaugeText;
+      case 'waterHauled':
+        return _fmt(row.waterHauled);
+      case 'oilHauled':
+        return _fmt(row.oilHauled);
+      case 'waterMeterReading':
+        return _fmt(row.currentWaterMeter);
+      case 'waterMeterIncrease':
+        final previous = _previousRowForWell(
+          row,
+          (item) =>
+              item.waterMeasurementMethod ==
+              ProductionWellCheckData.measurementMeter,
+        );
+        if (previous == null || row.currentWaterMeter < 0) return '--';
+        return _fmt(row.currentWaterMeter - previous.currentWaterMeter);
       case 'gasCoolerInTemp':
         return _showGasCoolerSection ? row.gasCoolerInTemp : '';
       case 'gasCoolerOutTemp':

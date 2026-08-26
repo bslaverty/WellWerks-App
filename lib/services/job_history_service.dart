@@ -451,6 +451,20 @@ class JobHistoryService {
         return row.vruDischarge;
       case 'notes':
         return row.notes;
+      case 'waterHauled':
+        return _fmt(row.waterHauled);
+      case 'oilHauled':
+        return _fmt(row.oilHauled);
+      case 'waterMeterReading':
+        return row.currentWaterMeter < 0 ? '' : _fmt(row.currentWaterMeter);
+      case 'waterMeterIncrease':
+        final previous = shift.savedRows
+            .where((item) =>
+                item.well == row.well && item.hourIndex < row.hourIndex)
+            .toList()
+          ..sort((a, b) => a.hourIndex.compareTo(b.hourIndex));
+        if (previous.isEmpty || row.currentWaterMeter < 0) return '';
+        return _fmt(row.currentWaterMeter - previous.last.currentWaterMeter);
       default:
         return '';
     }
@@ -542,6 +556,14 @@ class JobHistoryService {
         return 'DISCHARGE - ${row.vruDischarge.isEmpty ? '-' : row.vruDischarge}';
       case 'notes':
         return row.notes.isEmpty ? '-' : row.notes;
+      case 'waterHauled':
+        return 'WATER HAULED - ${_fmt(row.waterHauled)} BBL';
+      case 'oilHauled':
+        return 'OIL HAULED - ${_fmt(row.oilHauled)} BBL';
+      case 'waterMeterReading':
+        return 'WATER METER READING - ${row.currentWaterMeter < 0 ? '-' : _fmt(row.currentWaterMeter)}';
+      case 'waterMeterIncrease':
+        return 'WATER METER INCREASE - ${_valueFor(shift, row, key)}';
       default:
         return '';
     }
@@ -588,6 +610,16 @@ class JobHistoryService {
           lines.add('Notes');
           lines.add(_textLine(shift, row, 'notes'));
         }
+      }
+      final extraKeys = <String>[
+        if (shift.inventory.useWaterHauled) 'waterHauled',
+        if (shift.inventory.useOilHauled) 'oilHauled',
+        if (shift.inventory.useWaterMeter) 'waterMeterReading',
+        if (shift.inventory.useWaterMeter) 'waterMeterIncrease',
+      ];
+      for (final key in extraKeys) {
+        final line = _textLine(shift, row, key);
+        if (line.isNotEmpty) lines.add(line);
       }
       return ArchivedTextUpdate(
         hourIndex: row.hourIndex,

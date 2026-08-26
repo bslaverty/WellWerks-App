@@ -90,6 +90,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   bool get _showWaterCoolerSection => _equipmentSectionSelected('Water Cooler');
   bool get _showInventorySection =>
       _settings.isOptionalSectionEnabled('inventory');
+  bool get _useOilHauled => _shift.inventory.useOilHauled;
+  bool get _useWaterHauled => _shift.inventory.useWaterHauled;
+  bool get _useWaterMeter => _shift.inventory.useWaterMeter;
   bool get _showNotesSection {
     final raw = _activeJob?.drilloutSetup['includeNotesSection'];
     if (raw is bool) return raw;
@@ -709,15 +712,14 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (_showCompressorSection) data.compressorInjection,
       if (_showVruSection) data.vruSuction,
       if (_showVruSection) data.vruDischarge,
-      if (_showInventorySection) data.waterHauled,
-      if (_showInventorySection) data.oilHauled,
+      if (_showInventorySection && _useWaterHauled) data.waterHauled,
+      if (_showInventorySection && _useOilHauled) data.oilHauled,
       if (_showInventorySection) data.waterPumped,
       if (_showInventorySection) data.oilPumped,
       data.sandRate,
       data.sandOptionalRate,
       if (_showNotesSection) data.notes,
-      if (waterMethod == ProductionWellCheckData.measurementMeter)
-        data.waterMeterReading,
+      if (_isWaterMeterMode(data)) data.waterMeterReading,
       if (oilMethod == ProductionWellCheckData.measurementMeter)
         data.oilMeterReading,
     ].any((value) => value.trim().isNotEmpty);
@@ -752,8 +754,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   bool _isWaterMeterMode(ProductionWellCheckData data) {
-    return _normalizedMeasurementMethod(data.waterMeasurementMethod) ==
-        ProductionWellCheckData.measurementMeter;
+    return _useWaterMeter ||
+        _normalizedMeasurementMethod(data.waterMeasurementMethod) ==
+            ProductionWellCheckData.measurementMeter;
   }
 
   bool _isOilMeterMode(ProductionWellCheckData data) {
@@ -1903,7 +1906,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       currentOilBbl: currentOilBbl,
       currentWaterMeter: currentWaterMeter,
       currentOilMeter: currentOilMeter,
-      waterMeasurementMethod: waterMethod,
+      gaugeEntryType: _shift.inventory.gaugeEntryType,
+      waterMeasurementMethod: _useWaterMeter
+          ? ProductionWellCheckData.measurementMeter
+          : waterMethod,
       oilMeasurementMethod: oilMethod,
       currentGasAccum: currentGasAccum,
       hoursSincePrevious: intervalHours.isNaN ? 0 : intervalHours,
@@ -1984,8 +1990,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (_showCompressorSection) current.compressorInjection,
       if (_showVruSection) current.vruSuction,
       if (_showVruSection) current.vruDischarge,
-      if (_showInventorySection) current.waterHauled,
-      if (_showInventorySection) current.oilHauled,
+      if (_showInventorySection && _useWaterHauled) current.waterHauled,
+      if (_showInventorySection && _useOilHauled) current.oilHauled,
       if (_showInventorySection) current.waterPumped,
       if (_showInventorySection) current.oilPumped,
       current.sandRate,
@@ -2788,11 +2794,13 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           entries: controller.waterTankGaugeEntries,
         ),
       if (waterMeterMode) ...[
-        _field(
-          'Starting Water Meter (Optional)',
-          controller.startingWaterMeter,
-          helperText: 'Used only when no previous water meter reading exists.',
-        ),
+        if (!_useWaterMeter)
+          _field(
+            'Starting Water Meter (Optional)',
+            controller.startingWaterMeter,
+            helperText:
+                'Used only when no previous water meter reading exists.',
+          ),
         _field('Current Water Meter Reading', controller.waterMeterReading),
       ],
       DropdownButtonFormField<String>(
@@ -2833,10 +2841,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         ),
         _field('Current Oil Meter Reading', controller.oilMeterReading),
       ],
-      if (_showInventorySection)
+      if (_showInventorySection && _useWaterHauled)
         _field('Water Hauled This Hour (Selected Well)', controller.waterHauled,
             suffix: 'BBL'),
-      if (_showInventorySection)
+      if (_showInventorySection && _useOilHauled)
         _field('Oil Hauled This Hour (Selected Well)', controller.oilHauled,
             suffix: 'BBL'),
       if (_showInventorySection)

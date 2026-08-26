@@ -329,7 +329,10 @@ class ProductionInventoryBaseline {
     this.useStartingReadings = false,
     this.useJobSetupTanks = true,
     this.productionRows = const [],
-    this.gaugeEntryType = 'inches',
+    this.gaugeEntryType = 'decimalFeet',
+    this.useOilHauled = false,
+    this.useWaterHauled = false,
+    this.useWaterMeter = false,
     this.gasUnit = 'mcfd',
     this.gasCalculationMethod = 'accumulator',
     this.startingGasAccum = '',
@@ -365,7 +368,9 @@ class ProductionInventoryBaseline {
         .toList();
     final inferredGaugeType = waterTanks.isNotEmpty
         ? waterTanks.first.gaugeEntry.mode
-        : (oilTanks.isNotEmpty ? oilTanks.first.gaugeEntry.mode : 'inches');
+        : (oilTanks.isNotEmpty
+            ? oilTanks.first.gaugeEntry.mode
+            : 'decimalFeet');
     return ProductionInventoryBaseline(
       waterTanks: waterTanks.isEmpty
           ? const [ProductionTank(name: 'Water Tank 1')]
@@ -380,6 +385,9 @@ class ProductionInventoryBaseline {
       gaugeEntryType: ProductionGaugeEntry._normalizeMode(
         (json['gaugeEntryType'] as String?) ?? inferredGaugeType,
       ),
+      useOilHauled: json['useOilHauled'] as bool? ?? false,
+      useWaterHauled: json['useWaterHauled'] as bool? ?? false,
+      useWaterMeter: json['useWaterMeter'] as bool? ?? false,
       gasUnit: _normalizeGasUnit(json['gasUnit'] as String?),
       gasCalculationMethod: _normalizeGasCalculationMethod(
         json['gasCalculationMethod'] as String?,
@@ -399,6 +407,9 @@ class ProductionInventoryBaseline {
   final bool useJobSetupTanks;
   final List<ProductionReportRow> productionRows;
   final String gaugeEntryType;
+  final bool useOilHauled;
+  final bool useWaterHauled;
+  final bool useWaterMeter;
   final String gasUnit;
   final String gasCalculationMethod;
   final String startingGasAccum;
@@ -415,6 +426,9 @@ class ProductionInventoryBaseline {
     bool? useJobSetupTanks,
     List<ProductionReportRow>? productionRows,
     String? gaugeEntryType,
+    bool? useOilHauled,
+    bool? useWaterHauled,
+    bool? useWaterMeter,
     String? gasUnit,
     String? gasCalculationMethod,
     String? startingGasAccum,
@@ -433,6 +447,9 @@ class ProductionInventoryBaseline {
       gaugeEntryType: ProductionGaugeEntry._normalizeMode(
         gaugeEntryType ?? this.gaugeEntryType,
       ),
+      useOilHauled: useOilHauled ?? this.useOilHauled,
+      useWaterHauled: useWaterHauled ?? this.useWaterHauled,
+      useWaterMeter: useWaterMeter ?? this.useWaterMeter,
       gasUnit: _normalizeGasUnit(gasUnit ?? this.gasUnit),
       gasCalculationMethod: _normalizeGasCalculationMethod(
         gasCalculationMethod ?? this.gasCalculationMethod,
@@ -457,6 +474,9 @@ class ProductionInventoryBaseline {
       'useJobSetupTanks': useJobSetupTanks,
       'productionRows': productionRows.map((item) => item.toJson()).toList(),
       'gaugeEntryType': gaugeEntryType,
+      'useOilHauled': useOilHauled,
+      'useWaterHauled': useWaterHauled,
+      'useWaterMeter': useWaterMeter,
       'gasUnit': gasUnit,
       'gasCalculationMethod': gasCalculationMethod,
       'startingGasAccum': startingGasAccum,
@@ -1321,6 +1341,7 @@ class ProductionReportRow {
     required this.currentOilBbl,
     this.currentWaterMeter = -1,
     this.currentOilMeter = -1,
+    this.gaugeEntryType = 'decimalFeet',
     this.waterMeasurementMethod = ProductionWellCheckData.measurementTank,
     this.oilMeasurementMethod = ProductionWellCheckData.measurementTank,
     required this.currentGasAccum,
@@ -1393,6 +1414,7 @@ class ProductionReportRow {
       currentOilBbl: asDouble(json['currentOilBbl']),
       currentWaterMeter: asDouble(json['currentWaterMeter']),
       currentOilMeter: asDouble(json['currentOilMeter']),
+      gaugeEntryType: json['gaugeEntryType'] as String? ?? 'inches',
       waterMeasurementMethod:
           ProductionWellCheckData.normalizeMeasurementMethod(
         json['waterMeasurementMethod'],
@@ -1462,6 +1484,7 @@ class ProductionReportRow {
   final double currentOilBbl;
   final double currentWaterMeter;
   final double currentOilMeter;
+  final String gaugeEntryType;
   final String waterMeasurementMethod;
   final String oilMeasurementMethod;
   final double currentGasAccum;
@@ -1536,6 +1559,7 @@ class ProductionReportRow {
       currentOilBbl: currentOilBbl,
       currentWaterMeter: currentWaterMeter,
       currentOilMeter: currentOilMeter,
+      gaugeEntryType: gaugeEntryType,
       waterMeasurementMethod: waterMeasurementMethod,
       oilMeasurementMethod: oilMeasurementMethod,
       currentGasAccum: currentGasAccum,
@@ -1602,6 +1626,7 @@ class ProductionReportRow {
       'currentOilBbl': currentOilBbl,
       'currentWaterMeter': currentWaterMeter,
       'currentOilMeter': currentOilMeter,
+      'gaugeEntryType': gaugeEntryType,
       'waterMeasurementMethod':
           ProductionWellCheckData.normalizeMeasurementMethod(
         waterMeasurementMethod,

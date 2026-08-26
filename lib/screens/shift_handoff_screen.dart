@@ -463,6 +463,28 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
           'Gas Differential: ${row.gasDifferential.isEmpty ? '-' : row.gasDifferential} PSI');
       lines.add('Gas Temperature: ${row.gasTemp.isEmpty ? '-' : row.gasTemp}°');
       lines.add('Gas Rate: ${row.hourlyGas.toStringAsFixed(1)}');
+      if (_shift.inventory.useWaterHauled) {
+        lines.add('Water Hauled: ${row.waterHauled.toStringAsFixed(2)} BBL');
+      }
+      if (_shift.inventory.useOilHauled) {
+        lines.add('Oil Hauled: ${row.oilHauled.toStringAsFixed(2)} BBL');
+      }
+      if (_shift.inventory.useWaterMeter) {
+        final previous = _rows
+            .where((item) =>
+                item.well == row.well && item.hourIndex < row.hourIndex)
+            .toList()
+          ..sort((a, b) => a.hourIndex.compareTo(b.hourIndex));
+        final previousMeter =
+            previous.isEmpty ? null : previous.last.currentWaterMeter;
+        final increase = previousMeter == null || row.currentWaterMeter < 0
+            ? null
+            : row.currentWaterMeter - previousMeter;
+        lines.add(
+            'Water Meter Reading: ${row.currentWaterMeter < 0 ? '-' : row.currentWaterMeter.toStringAsFixed(2)}');
+        lines.add(
+            'Water Meter Increase: ${increase == null ? '-' : increase.toStringAsFixed(2)}');
+      }
       if (row.gasCoolerInTemp.trim().isNotEmpty ||
           row.gasCoolerOutTemp.trim().isNotEmpty) {
         lines.add(

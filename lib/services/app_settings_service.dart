@@ -10,7 +10,7 @@ import '../services/production_shift_service.dart';
 
 class AppSettingsDefaults {
   static const gasUnit = 'mcfd';
-  static const gaugeType = 'inches';
+  static const gaugeType = 'decimalFeet';
   static const bblPerInch = '1.67';
   static const gasCalculationMethod = 'accumulator';
   static const chokeDisplay = 'ADJ';

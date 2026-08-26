@@ -36,7 +36,10 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   final _company = TextEditingController();
   final _pad = TextEditingController();
   final _date = TextEditingController();
-  String _gaugeEntryType = 'inches';
+  String _gaugeEntryType = 'decimalFeet';
+  bool _useOilHauled = false;
+  bool _useWaterHauled = false;
+  bool _useWaterMeter = false;
   String _gasUnit = 'mcfd';
   String _gasCalculationMethod = 'accumulator';
   String _layoutProfileId = 'default';
@@ -221,6 +224,9 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     _date.text =
         shift.header.date.trim().isEmpty ? _todayDateText() : shift.header.date;
     _gaugeEntryType = shift.inventory.gaugeEntryType;
+    _useOilHauled = shift.inventory.useOilHauled;
+    _useWaterHauled = shift.inventory.useWaterHauled;
+    _useWaterMeter = shift.inventory.useWaterMeter;
     _gasUnit = shift.inventory.gasUnit;
     _gasCalculationMethod = shift.inventory.gasCalculationMethod;
     final requestedLayout = shift.header.layoutProfileId;
@@ -550,6 +556,9 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
           ),
       ],
       gaugeEntryType: _gaugeEntryType,
+      useOilHauled: _useOilHauled,
+      useWaterHauled: _useWaterHauled,
+      useWaterMeter: _useWaterMeter,
       useJobSetupTanks: _useJobSetupTanks,
       productionRows: _productionRows,
       gasUnit: _gasUnit,
@@ -1412,7 +1421,7 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
         initialValue: _gaugeEntryType,
         decoration: const InputDecoration(labelText: 'Gauge Entry Type'),
         items: const [
-          DropdownMenuItem(value: 'inches', child: Text('Inches')),
+          DropdownMenuItem(value: 'inches', child: Text('Inches (Legacy)')),
           DropdownMenuItem(value: 'feetInches', child: Text('Feet + Inches')),
           DropdownMenuItem(value: 'decimalFeet', child: Text('Decimal Feet')),
         ],
@@ -1420,6 +1429,25 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
           if (value == null) return;
           setState(() => _gaugeEntryType = value);
         },
+      ),
+      const SizedBox(height: 12),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Oil Hauled'),
+        value: _useOilHauled,
+        onChanged: (value) => setState(() => _useOilHauled = value),
+      ),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Water Hauled'),
+        value: _useWaterHauled,
+        onChanged: (value) => setState(() => _useWaterHauled = value),
+      ),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Water Meter'),
+        value: _useWaterMeter,
+        onChanged: (value) => setState(() => _useWaterMeter = value),
       ),
       const SizedBox(height: 12),
       DropdownButtonFormField<String>(
