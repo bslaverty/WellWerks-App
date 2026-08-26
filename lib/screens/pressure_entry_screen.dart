@@ -166,6 +166,15 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     }
     final activeJob = await _jobStorage.ensureActiveJobLoaded();
     final settings = await _settingsService.load();
+    if (activeJob != null &&
+        shift.inventory.gaugeEntryType != activeJob.productionGaugeType) {
+      shift = shift.copyWith(
+        inventory: shift.inventory.copyWith(
+          gaugeEntryType: activeJob.productionGaugeType,
+        ),
+      );
+      await _service.saveActiveShift(shift);
+    }
     if (activeJob != null && shift.activeJobId != activeJob.id) {
       shift = shift.copyWith(activeJobId: activeJob.id);
       await _service.saveActiveShift(shift);

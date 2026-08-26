@@ -15,6 +15,17 @@ Future<void> _pumpSetup(WidgetTester tester) async {
 }
 
 void main() {
+  test('Build 276 production tank gauge format defaults to Decimal Feet', () {
+    final setup = JobSetup.fromJson(const <String, dynamic>{});
+    expect(setup.productionGaugeType, 'decimalFeet');
+
+    final restored = JobSetup.fromJson({
+      ...setup.toJson(),
+      'productionGaugeType': 'feetInches',
+    });
+    expect(restored.productionGaugeType, 'feetInches');
+  });
+
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     ActiveCompanyService.instance.resetForTest();

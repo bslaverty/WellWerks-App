@@ -104,6 +104,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   final waterTanks = TextEditingController(text: '6');
   final waterTankCapacity = TextEditingController(text: '400');
   final productionTankFactor = TextEditingController(text: '1.67');
+  String productionGaugeType = 'decimalFeet';
 
   final _drilloutWellName = TextEditingController();
   final _drilloutManifoldPsi = TextEditingController();
@@ -1148,6 +1149,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     waterTanks.text = job.waterTanks.toString();
     waterTankCapacity.text = job.waterTankCapacity;
     productionTankFactor.text = job.productionTankFactor;
+    productionGaugeType = job.productionGaugeType;
   }
 
   void _resetFormForNewJob() {
@@ -1192,6 +1194,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     waterTanks.text = '6';
     waterTankCapacity.text = '400';
     productionTankFactor.text = '1.67';
+    productionGaugeType = 'decimalFeet';
   }
 
   JobSetup _buildJobFromForm() {
@@ -1348,6 +1351,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       productionTankFactor: productionTankFactor.text.trim().isEmpty
           ? '1.67'
           : productionTankFactor.text.trim(),
+      productionGaugeType: productionGaugeType,
       selectedChemicals: List<String>.from(selectedChemicals),
       drilloutSetup: mergedSetup,
     );
@@ -2102,6 +2106,26 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           controller: productionTankFactor,
           allowDecimal: true,
           onChanged: (_) => _scheduleAutoSave(),
+        ),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<String>(
+          initialValue: productionGaugeType,
+          decoration: const InputDecoration(labelText: 'Tank Gauge Format'),
+          items: const [
+            DropdownMenuItem(
+              value: 'decimalFeet',
+              child: Text('Decimal Feet'),
+            ),
+            DropdownMenuItem(
+              value: 'feetInches',
+              child: Text('Feet & Inches'),
+            ),
+          ],
+          onChanged: (value) {
+            if (value == null) return;
+            setState(() => productionGaugeType = value);
+            _scheduleAutoSave();
+          },
         ),
         const SizedBox(height: 24),
         _navButtons(),

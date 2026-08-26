@@ -56,6 +56,7 @@ class JobSetup {
     this.waterTanks = 0,
     this.waterTankCapacity = '400',
     this.productionTankFactor = '1.67',
+    this.productionGaugeType = 'decimalFeet',
     this.selectedChemicals = const [],
     this.reportTimes = const [
       '6:00 AM',
@@ -102,6 +103,7 @@ class JobSetup {
   final int waterTanks;
   final String waterTankCapacity;
   final String productionTankFactor;
+  final String productionGaugeType;
   final List<String> selectedChemicals;
   final List<String> reportTimes;
 
@@ -295,6 +297,7 @@ class JobSetup {
     int? waterTanks,
     String? waterTankCapacity,
     String? productionTankFactor,
+    String? productionGaugeType,
     List<String>? selectedChemicals,
     List<String>? reportTimes,
   }) {
@@ -336,6 +339,7 @@ class JobSetup {
       waterTanks: waterTanks ?? this.waterTanks,
       waterTankCapacity: waterTankCapacity ?? this.waterTankCapacity,
       productionTankFactor: productionTankFactor ?? this.productionTankFactor,
+      productionGaugeType: productionGaugeType ?? this.productionGaugeType,
       selectedChemicals: selectedChemicals ?? this.selectedChemicals,
       reportTimes: reportTimes ?? this.reportTimes,
     );
@@ -378,6 +382,7 @@ class JobSetup {
         'waterTanks': waterTanks,
         'waterTankCapacity': waterTankCapacity,
         'productionTankFactor': productionTankFactor,
+        'productionGaugeType': productionGaugeType,
         'selectedChemicals': selectedChemicals,
         'reportTimes': reportTimes,
       };
@@ -424,6 +429,8 @@ class JobSetup {
         waterTanks: json['waterTanks'] as int? ?? 0,
         waterTankCapacity: json['waterTankCapacity'] as String? ?? '500',
         productionTankFactor: json['productionTankFactor'] as String? ?? '1.67',
+        productionGaugeType:
+            json['productionGaugeType'] as String? ?? 'decimalFeet',
         selectedChemicals: _normalizeSelectedChemicals(
           (json['selectedChemicals'] as List?)
                   ?.map((item) => item?.toString() ?? '')

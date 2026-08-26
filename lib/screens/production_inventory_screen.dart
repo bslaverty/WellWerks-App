@@ -131,6 +131,9 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     final activeLayoutId = await _layoutService.loadActiveProfileId();
     _setFromShift(shift);
     _activeShift = shift;
+    if (activeJob != null && _gaugeEntryType != activeJob.productionGaugeType) {
+      _gaugeEntryType = activeJob.productionGaugeType;
+    }
     _useJobSetupTanks = shift.inventory.useJobSetupTanks;
     if (_useJobSetupTanks && activeJob != null) {
       _applyJobSetupDefaults(activeJob);
