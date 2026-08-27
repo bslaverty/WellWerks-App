@@ -375,29 +375,9 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     return previous.last;
   }
 
-  double? _startingGasBaseline() {
-    if (!_shift.inventory.useStartingReadings) {
-      return null;
-    }
-    final text = _shift.inventory.startingGasAccum.trim();
-    if (text.isEmpty) return null;
-    final value = double.tryParse(text);
-    if (value == null) return null;
-    return value >= 0 ? value : null;
-  }
-
   String _gasSpotForRow(ProductionReportRow row) {
-    final current = row.currentGasAccum;
-    if (current.isNaN || current < 0) return '--';
-    final previous = _previousRowForWell(
-      row,
-      (item) => !item.currentGasAccum.isNaN && item.currentGasAccum > 0,
-    );
-    final baseline = previous?.currentGasAccum ?? _startingGasBaseline();
-    if (baseline == null) return '--';
-    final delta = current - baseline;
-    if (delta < 0) return '--';
-    return _fmt(_baseGasToDisplay(delta));
+    if (row.gas24HourRate.isNaN || row.gas24HourRate < 0) return '--';
+    return _fmt(_baseGasToDisplay(row.gas24HourRate));
   }
 
   String _chk(ProductionReportRow row) {
@@ -517,7 +497,7 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
       case 'tbg':
         return 'Tbg';
       case 'gasSpotRt':
-        return 'GAS RATE';
+        return '24 HR GAS RATE';
       case 'diff':
         return 'DIFF';
       case 'stat':
