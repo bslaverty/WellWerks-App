@@ -2161,11 +2161,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   void _applySavedScalarDefaultsToHour(int hourIndex) {
     if (hourIndex < 0 || hourIndex >= _controllers.length) return;
-    final controller = _controllers[hourIndex];
     for (final well in _activeWells) {
       final latest = _latestSavedWellData(hourIndex, well);
       if (latest == null) continue;
-      controller.applyScalarDefaultsForWell(
+      _editorForWell(hourIndex, well).applyScalarDefaultsForWell(
         well,
         icpDefault: latest.icp,
         wellheadTempDefault: latest.wellheadTemp,
@@ -2178,12 +2177,11 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   void _applySavedChokeDefaultsToHour(int hourIndex) {
     if (hourIndex < 0 || hourIndex >= _controllers.length) return;
-    final controller = _controllers[hourIndex];
     for (final well in _activeWells) {
       final savedChoke = _selectedChokeForWell(well).trim();
       if (savedChoke.isEmpty) continue;
       final savedType = _selectedChokeTypeForWell(well);
-      controller.applyChokeDefaultForWell(
+      _editorForWell(hourIndex, well).applyChokeDefaultForWell(
         well,
         chokeValue: savedChoke,
         chokeTypeValue: savedType,
@@ -2193,11 +2191,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   void _applySavedTankGaugeDefaultsToHour(int hourIndex) {
     if (hourIndex < 0 || hourIndex >= _controllers.length) return;
-    final controller = _controllers[hourIndex];
     for (final well in _activeWells) {
       final latest = _latestSavedWellData(hourIndex, well);
       if (latest == null) continue;
-      controller.applyTankGaugeDefaultsForWell(
+      _editorForWell(hourIndex, well).applyTankGaugeDefaultsForWell(
         well,
         waterDefaults: latest.waterTankGaugeEntries,
         oilDefaults: latest.oilTankGaugeEntries,

@@ -27,6 +27,16 @@ Finder _labeledDropdownField(String label) {
   );
 }
 
+Finder _gaugeField() {
+  return find.byWidgetPredicate(
+    (widget) =>
+        widget is TextField &&
+        const {'Current Gauge (in)', 'Decimal Feet', 'Inches'}
+            .contains(widget.decoration?.labelText),
+    description: 'Production tank gauge field',
+  );
+}
+
 Future<void> _seedJobAndShift({
   required List<String> wells,
   Map<String, String> selectedChokes = const {},
@@ -122,10 +132,8 @@ Future<void> _saveCurrentHour(WidgetTester tester, String hourLabel,
   await tester.enterText(_labeledTextField('CSG').first, csg);
   await tester.enterText(
       _labeledTextField('Current Gas Accum').first, gasAccum);
-  await tester.enterText(
-      _labeledTextField('Current Gauge (in)').at(0), waterGauge);
-  await tester.enterText(
-      _labeledTextField('Current Gauge (in)').at(1), oilGauge);
+  await tester.enterText(_gaugeField().at(0), waterGauge);
+  await tester.enterText(_gaugeField().at(1), oilGauge);
   await tester.ensureVisible(
       find.widgetWithText(FilledButton, 'Save $hourLabel Round').first);
   await tester
@@ -135,6 +143,11 @@ Future<void> _saveCurrentHour(WidgetTester tester, String hourLabel,
 
 Future<void> _openChokeSelector(WidgetTester tester) async {
   await tester.tap(find.widgetWithText(FilledButton, 'Select').first);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _goToNextHour(WidgetTester tester) async {
+  await tester.tap(find.widgetWithText(OutlinedButton, 'Next Hour').first);
   await tester.pumpAndSettle();
 }
 
@@ -191,9 +204,7 @@ void main() {
       oilGauge: '40',
     );
 
-    await tester
-        .tap(find.widgetWithText(FilledButton, 'Next Hour (7 AM)').first);
-    await tester.pumpAndSettle();
+    await _goToNextHour(tester);
 
     await _saveCurrentHour(
       tester,
@@ -227,9 +238,7 @@ void main() {
       waterGauge: '70',
       oilGauge: '40',
     );
-    await tester
-        .tap(find.widgetWithText(FilledButton, 'Next Hour (7 AM)').first);
-    await tester.pumpAndSettle();
+    await _goToNextHour(tester);
 
     expect(find.textContaining('32/64"'), findsWidgets);
 
@@ -249,14 +258,10 @@ void main() {
       oilGauge: '40',
     );
 
-    await tester
-        .tap(find.widgetWithText(FilledButton, 'Next Hour (7 AM)').first);
-    await tester.pumpAndSettle();
+    await _goToNextHour(tester);
 
-    final waterField =
-        tester.widget<TextField>(_labeledTextField('Current Gauge (in)').at(0));
-    final oilField =
-        tester.widget<TextField>(_labeledTextField('Current Gauge (in)').at(1));
+    final waterField = tester.widget<TextField>(_gaugeField().at(0));
+    final oilField = tester.widget<TextField>(_gaugeField().at(1));
 
     expect(waterField.controller?.text, '70');
     expect(oilField.controller?.text, '40');
@@ -298,9 +303,7 @@ void main() {
       oilGauge: '40',
     );
 
-    await tester
-        .tap(find.widgetWithText(FilledButton, 'Next Hour (7 AM)').first);
-    await tester.pumpAndSettle();
+    await _goToNextHour(tester);
 
     final icpField = tester.widget<TextField>(_labeledTextField('ICP').first);
     final sgField = tester
@@ -538,8 +541,8 @@ void main() {
       _labeledTextField('Current Gas Accum').first,
       '8003',
     );
-    await tester.enterText(_labeledTextField('Current Gauge (in)').at(0), '70');
-    await tester.enterText(_labeledTextField('Current Gauge (in)').at(1), '40');
+    await tester.enterText(_gaugeField().at(0), '70');
+    await tester.enterText(_gaugeField().at(1), '40');
     await tester
         .tap(find.widgetWithText(FilledButton, 'Save 6 AM Round').first);
     await tester.pumpAndSettle();
@@ -550,8 +553,8 @@ void main() {
       _labeledTextField('Current Gas Accum').first,
       '8010',
     );
-    await tester.enterText(_labeledTextField('Current Gauge (in)').at(0), '69');
-    await tester.enterText(_labeledTextField('Current Gauge (in)').at(1), '39');
+    await tester.enterText(_gaugeField().at(0), '69');
+    await tester.enterText(_gaugeField().at(1), '39');
 
     await tester
         .tap(find.widgetWithText(FilledButton, 'Save 6 AM Round').first);
