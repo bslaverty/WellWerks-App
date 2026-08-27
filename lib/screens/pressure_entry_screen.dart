@@ -673,6 +673,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   Future<void> _persistShift() async {
+    for (var index = 0; index < _controllers.length; index++) {
+      _syncWellEditors(index);
+    }
     await _refreshActiveJobReference();
     final checks = _controllers.map((item) => item.toCheck()).toList();
     _shift = _shift.copyWith(hourlyChecks: checks);
