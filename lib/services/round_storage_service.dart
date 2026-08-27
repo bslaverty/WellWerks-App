@@ -21,6 +21,7 @@ class RoundStorageService {
 
   Future<void> saveReading(RoundReading reading) async {
     final readings = await loadReadings();
+    readings.removeWhere((item) => item.id == reading.id);
     readings.insert(0, reading);
     await _saveAll(readings.take(200).toList());
   }

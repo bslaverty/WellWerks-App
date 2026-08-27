@@ -233,7 +233,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   _HourlyCheckControllers _editorForWell(int hourIndex, String well) {
     final key = '$hourIndex:$well';
     return _wellEditors.putIfAbsent(key, () {
-      final sourceData = _controllers[hourIndex].dataForWell(
+      final sourceData = _controllers[hourIndex].peekDataForWell(
         well,
         _selectedChokeTypeForWell(well),
       );
@@ -754,7 +754,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       return editor._snapshotCurrentWellData();
     }
     return _controllers[hourIndex]
-        .dataForWell(well, _selectedChokeTypeForWell(well));
+        .peekDataForWell(well, _selectedChokeTypeForWell(well));
   }
 
   List<String> get _activeChemicals {
@@ -1427,10 +1427,12 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   Widget _oilCushionSection(int index) {
-    final data = _controllers[index].dataForWell(
-      _controllers[index].well,
-      _selectedChokeTypeForWell(_controllers[index].well),
-    );
+    final data = _wellEditors['$index:${_controllers[index].well}']
+            ?._snapshotCurrentWellData() ??
+        _controllers[index].peekDataForWell(
+          _controllers[index].well,
+          _selectedChokeTypeForWell(_controllers[index].well),
+        );
     final current = _currentOilBblForData(data);
     final expected = _expectedOilInventoryForData(data);
     final maximum = _maximumCushionForData(data);
@@ -2092,10 +2094,11 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     await _service.saveActiveShift(_shift);
 
     final saveTimestamp = DateTime.now();
+    final jobKey = (_activeJob?.id ?? _shift.activeJobId).trim();
     for (final row in rows) {
       await _roundStorage.saveReading(
         RoundReading(
-          id: '${saveTimestamp.microsecondsSinceEpoch}-${row.well}',
+          id: 'quick-round-$jobKey-${row.time}-${row.well}',
           timestamp: saveTimestamp,
           roundLabel: row.time,
           oilRate: _fmt(row.oilProduction),
@@ -2126,7 +2129,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   ProductionWellCheckData? _latestSavedWellData(int hourIndex, String well) {
     for (var index = hourIndex - 1; index >= 0; index--) {
       final data = _controllers[index]
-          .dataForWell(well, _selectedChokeTypeForWell(well));
+          .peekDataForWell(well, _selectedChokeTypeForWell(well));
       if (_isWellEntered(index, well)) return data;
     }
     return null;
@@ -3844,6 +3847,14 @@ class _HourlyCheckControllers {
     if (targetWell == well) {
       _wellDataByName[well] = _snapshotCurrentWellData();
     }
+    return _wellDataByName[targetWell] ??
+        ProductionWellCheckData(chokeType: chokeType);
+  }
+
+  ProductionWellCheckData peekDataForWell(
+    String targetWell,
+    String chokeType,
+  ) {
     return _wellDataByName[targetWell] ??
         ProductionWellCheckData(chokeType: chokeType);
   }
