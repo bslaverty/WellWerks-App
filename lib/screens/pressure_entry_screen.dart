@@ -55,6 +55,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   late ProductionShift _shift;
   JobSetup? _activeJob;
   final List<_HourlyCheckControllers> _controllers = [];
+  final Map<String, _HourlyCheckControllers> _wellEditors = {};
 
   bool _equipmentSectionSelected(String sectionName) {
     final activeJob = _activeJob;
@@ -153,6 +154,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     for (final controller in _controllers) {
       controller.dispose();
     }
+    for (final editor in _wellEditors.values) {
+      editor.dispose();
+    }
     super.dispose();
   }
 
@@ -223,6 +227,31 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       _quickRoundReminderMinute = savedReminderMinute;
       _loading = false;
     });
+  }
+
+  _HourlyCheckControllers _editorForWell(int hourIndex, String well) {
+    final key = '$hourIndex:$well';
+    return _wellEditors.putIfAbsent(key, () {
+      final source = _controllers[hourIndex].toCheck();
+      return _HourlyCheckControllers.fromCheck(
+        check: source.copyWith(well: well),
+        wells: [well],
+        waterTankCount: _shift.inventory.waterTanks.length,
+        oilTankCount: _shift.inventory.oilTanks.length,
+        gaugeEntryType: _shift.inventory.gaugeEntryType,
+        chokeTypeForWell: _chokeTypeForWell,
+        selectedChokeForWell: _selectedChokeForWell,
+        selectedChokeTypeForWell: _selectedChokeTypeForWell,
+      );
+    });
+  }
+
+  void _syncWellEditors(int hourIndex) {
+    final combined = _controllers[hourIndex];
+    for (final well in _activeWells) {
+      final editor = _editorForWell(hourIndex, well);
+      combined.setWellData(well, editor._snapshotCurrentWellData());
+    }
   }
 
   Future<void> _saveQuickRoundReminderSettings() async {
@@ -551,6 +580,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   void _rebuildControllers() {
+    for (final editor in _wellEditors.values) {
+      editor.dispose();
+    }
+    _wellEditors.clear();
     final wells = _fallbackWells();
     if (wells.isEmpty) {
       _controllers
@@ -748,12 +781,6 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       (well) => _storedRows.any(
         (row) => row.hourIndex == hourIndex && row.well == well,
       ),
-    );
-  }
-
-  bool _isWellSaved(int hourIndex, String well) {
-    return _storedRows.any(
-      (row) => row.hourIndex == hourIndex && row.well == well,
     );
   }
 
@@ -1973,10 +2000,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   Future<void> _saveActiveHour() async {
     final hourIndex = _activeHourIndex;
     final current = _controllers[hourIndex];
-    final saveWell = current.well;
-    final saveWells = <String>[saveWell];
+    final saveWells = List<String>.from(_activeWells);
+    _syncWellEditors(hourIndex);
     final enteredWells =
-        _isWellEntered(hourIndex, saveWell) ? <String>[saveWell] : <String>[];
+        saveWells.where((well) => _isWellEntered(hourIndex, well)).toList();
 
     final invalidControllers = <TextEditingController>{};
     void disallowNegative(TextEditingController controller) {
@@ -2075,8 +2102,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
     await _persistShift();
     final rows = <ProductionReportRow>[
-      _buildRowForWell(
-          hourIndex, saveWell, _wellDataForHour(hourIndex, saveWell)),
+      for (final well in saveWells)
+        _buildRowForWell(hourIndex, well, _wellDataForHour(hourIndex, well)),
     ];
 
     final warnings = <String>[];
@@ -2271,22 +2298,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     setState(() {
       _savingHour = false;
     });
-    final nextWell = _activeWells.cast<String?>().firstWhere(
-          (well) => well != null && !_isWellSaved(hourIndex, well),
-          orElse: () => null,
-        );
-    if (nextWell != null) {
-      _controllers[hourIndex].selectWell(
-        nextWell,
-        _selectedChokeTypeForWell(nextWell),
-      );
-      setState(() {});
-    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(nextWell == null
-            ? '${_controllers[hourIndex].time} Round saved successfully.'
-            : '${_controllers[hourIndex].time} saved for $saveWell. Enter $nextWell next.'),
+        content:
+            Text('${_controllers[hourIndex].time} Round saved successfully.'),
       ),
     );
   }
@@ -2668,7 +2683,6 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   Widget _hourlyCard(int index) {
-    final controller = _controllers[index];
     final wells = _activeWells;
     if (wells.isEmpty) {
       return _section('Active Hour', [
@@ -2679,29 +2693,21 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         ),
       ]);
     }
-    final data = _wellDataForHour(index, controller.well);
+    return Column(
+      children: [
+        for (final well in wells) _hourlyWellCard(index, well),
+      ],
+    );
+  }
+
+  Widget _hourlyWellCard(int index, String well) {
+    final controller = _editorForWell(index, well);
+    final data = controller._snapshotCurrentWellData();
     final waterMeterMode = _isWaterMeterMode(data);
     final oilMeterMode = _isOilMeterMode(data);
-    return _section('Active Hour • ${controller.time}', [
-      DropdownButtonFormField<String>(
-        initialValue:
-            wells.contains(controller.well) ? controller.well : wells.first,
-        decoration: const InputDecoration(labelText: 'Well'),
-        items: [
-          for (final well in wells)
-            DropdownMenuItem(value: well, child: Text(well)),
-        ],
-        onChanged: (value) {
-          if (value == null) return;
-          setState(() {
-            controller.selectWell(value, _selectedChokeTypeForWell(value));
-          });
-          _persistShift();
-        },
-      ),
-      const SizedBox(height: 8),
+    return _section('Active Hour • ${controller.time} • $well', [
       Text(
-        'All quick-round values below are for the selected well only.',
+        'All quick-round values below are for $well.',
         style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
       const SizedBox(height: 12),
@@ -3017,43 +3023,37 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
     final hourIndex = _activeHourIndex;
     final time = _controllers[hourIndex].time;
-    final nextWell = _activeWells.cast<String?>().firstWhere(
-          (well) => well != null && !_isWellSaved(hourIndex, well),
-          orElse: () => null,
-        );
+    final canGoNextHour =
+        _isHourSaved(hourIndex) && hourIndex < _controllers.length - 1;
 
-    if (nextWell != null &&
-        _storedRows
-            .any((row) => row.hourIndex == hourIndex && row.well != nextWell)) {
-      return SizedBox(
-        width: double.infinity,
-        child: FilledButton.icon(
-          onPressed: () {
-            _controllers[hourIndex].selectWell(
-              nextWell,
-              _selectedChokeTypeForWell(nextWell),
-            );
-            setState(() {});
-          },
-          icon: const Icon(Icons.arrow_forward),
-          label: Text('Next Well ($nextWell)'),
+    return Column(
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _savingHour ? null : _saveActiveHour,
+            icon: _savingHour
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.save),
+            label: Text(_savingHour ? 'Saving Round...' : 'Save $time Round'),
+          ),
         ),
-      );
-    }
-
-    return SizedBox(
-      width: double.infinity,
-      child: FilledButton.icon(
-        onPressed: _savingHour ? null : _saveActiveHour,
-        icon: _savingHour
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.save),
-        label: Text(_savingHour ? 'Saving Round...' : 'Save $time Round'),
-      ),
+        if (canGoNextHour) ...[
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _goToNextHour,
+              icon: const Icon(Icons.arrow_forward),
+              label: Text('Next Hour (${_controllers[hourIndex + 1].time})'),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -4021,6 +4021,10 @@ class _HourlyCheckControllers {
     _wellDataByName[well] = _snapshotCurrentWellData();
     return _wellDataByName[targetWell] ??
         ProductionWellCheckData(chokeType: chokeType);
+  }
+
+  void setWellData(String targetWell, ProductionWellCheckData data) {
+    _wellDataByName[targetWell] = data;
   }
 
   ProductionHourlyCheck toCheck() {
