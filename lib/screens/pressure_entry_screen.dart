@@ -232,9 +232,43 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   _HourlyCheckControllers _editorForWell(int hourIndex, String well) {
     final key = '$hourIndex:$well';
     return _wellEditors.putIfAbsent(key, () {
+      final sourceData = _controllers[hourIndex].dataForWell(
+        well,
+        _selectedChokeTypeForWell(well),
+      );
+      final previousData = _latestSavedWellData(hourIndex, well);
+      List<ProductionGaugeEntry> carryForward(
+        List<ProductionGaugeEntry> current,
+        List<ProductionGaugeEntry> previous,
+      ) {
+        return [
+          for (var index = 0; index < current.length; index++)
+            _gaugeEntryHasValue(current[index])
+                ? current[index]
+                : (index < previous.length ? previous[index] : current[index]),
+        ];
+      }
+
+      final initialData = previousData == null
+          ? sourceData
+          : ProductionWellCheckData.fromJson({
+              ...sourceData.toJson(),
+              'waterTankGaugeEntries': carryForward(
+                sourceData.waterTankGaugeEntries,
+                previousData.waterTankGaugeEntries,
+              ).map((entry) => entry.toJson()).toList(),
+              'oilTankGaugeEntries': carryForward(
+                sourceData.oilTankGaugeEntries,
+                previousData.oilTankGaugeEntries,
+              ).map((entry) => entry.toJson()).toList(),
+            });
       final source = _controllers[hourIndex].toCheck();
+      final initialCheck = source.copyWith(
+        well: well,
+        wellChecks: {well: initialData},
+      );
       return _HourlyCheckControllers.fromCheck(
-        check: source.copyWith(well: well),
+        check: initialCheck,
         wells: [well],
         waterTankCount: _shift.inventory.waterTanks.length,
         oilTankCount: _shift.inventory.oilTanks.length,
@@ -875,34 +909,6 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     return value >= 0 ? value : double.nan;
   }
 
-  bool _canUseWaterBaseline(int index, String well) {
-    if (index == 0) {
-      return _useStartingReadings && _hasStartingWaterReading();
-    }
-    return _latestSavedBefore(index, well) != null;
-  }
-
-  bool _canUseOilBaseline(int index, String well) {
-    if (index == 0) {
-      return _useStartingReadings && _hasStartingOilReading();
-    }
-    return _latestSavedBefore(index, well) != null;
-  }
-
-  bool _canUseGasBaseline(int index, String well) {
-    if (!_useGasAccumulator) {
-      return _controllers[index].salesGasRate.text.trim().isNotEmpty;
-    }
-    if (_controllers[index].currentGasAccum.text.trim().isEmpty) {
-      return false;
-    }
-    if (index == 0) {
-      return _useStartingReadings &&
-          _shift.inventory.startingGasAccum.trim().isNotEmpty;
-    }
-    return _latestSavedBefore(index, well) != null;
-  }
-
   void _setUseStartingReadings(bool enabled) {
     setState(() {
       _shift = _shift.copyWith(
@@ -1322,214 +1328,6 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       return _missingCalcValue;
     }
     return parsed;
-  }
-
-  double _currentWaterBbl(int index) {
-    final well = _controllers[index].well;
-    final data = _wellDataForHour(index, well);
-    if (_isWaterMeterMode(data) ||
-        !_hasCompleteDataGaugeEntries(data.waterTankGaugeEntries)) {
-      return double.nan;
-    }
-    return ProductionMath.totalTankBbl(
-      _shift.inventory.waterTanks,
-      data.waterTankGaugeEntries
-          .map((item) => item.asInches().toString())
-          .toList(),
-    );
-  }
-
-  double _currentOilBbl(int index) {
-    final well = _controllers[index].well;
-    final data = _wellDataForHour(index, well);
-    if (_isOilMeterMode(data) ||
-        !_hasCompleteDataGaugeEntries(data.oilTankGaugeEntries)) {
-      return double.nan;
-    }
-    return ProductionMath.totalTankBbl(
-      _shift.inventory.oilTanks,
-      data.oilTankGaugeEntries
-          .map((item) => item.asInches().toString())
-          .toList(),
-    );
-  }
-
-  double _previousWaterBbl(int index) {
-    final well = _controllers[index].well;
-    final previous = _latestSavedBeforeWith(
-      index,
-      well,
-      (row) =>
-          _normalizedMeasurementMethod(row.waterMeasurementMethod) ==
-              ProductionWellCheckData.measurementTank &&
-          !_isMissingCalc(row.currentWaterBbl) &&
-          row.currentWaterBbl >= 0,
-    );
-    if (previous == null) {
-      if (_canUseWaterBaseline(index, well)) {
-        return _startingWaterBbl();
-      }
-      return double.nan;
-    }
-    return previous.currentWaterBbl;
-  }
-
-  double _previousOilBbl(int index) {
-    final well = _controllers[index].well;
-    final previous = _latestSavedBeforeWith(
-      index,
-      well,
-      (row) =>
-          _normalizedMeasurementMethod(row.oilMeasurementMethod) ==
-              ProductionWellCheckData.measurementTank &&
-          !_isMissingCalc(row.currentOilBbl) &&
-          row.currentOilBbl >= 0,
-    );
-    if (previous == null) {
-      if (_canUseOilBaseline(index, well)) {
-        return _startingOilBbl();
-      }
-      return double.nan;
-    }
-    return previous.currentOilBbl;
-  }
-
-  double _previousGasAccum(int index) {
-    final previous = _latestSavedBefore(index, _controllers[index].well);
-    if (previous == null) {
-      if (_canUseGasBaseline(index, _controllers[index].well)) {
-        return _startingGasAccum();
-      }
-      return double.nan;
-    }
-    return previous.currentGasAccum;
-  }
-
-  double _hourlyGas(int index) {
-    final currentWell = _controllers[index].well;
-    final intervalHours = _intervalHoursForWell(index, currentWell);
-    if (intervalHours.isNaN || intervalHours <= 0) {
-      return double.nan;
-    }
-
-    if (!_useGasAccumulator) {
-      if (_controllers[index].salesGasRate.text.trim().isEmpty) {
-        return double.nan;
-      }
-      final gasRate = _displayGasToBase(_controllers[index].salesGasRate.text);
-      return gasRate / 24;
-    }
-    final previous = _previousGasAccum(index);
-    if (previous.isNaN) {
-      return double.nan;
-    }
-    final intervalGas = ProductionMath.hourlyGas(
-      currentGasAccum: _n(_controllers[index].currentGasAccum.text),
-      previousGasAccum: previous,
-    );
-    return intervalGas / intervalHours;
-  }
-
-  double _gas24Hour(int index) {
-    final hourly = _hourlyGas(index);
-    if (hourly.isNaN) {
-      return double.nan;
-    }
-    if (!_useGasAccumulator) {
-      return _displayGasToBase(_controllers[index].salesGasRate.text);
-    }
-    return ProductionMath.gas24Hour(hourly);
-  }
-
-  double _waterProduction(int index) {
-    final check = _controllers[index];
-    final currentWell = check.well;
-    final data = _wellDataForHour(index, currentWell);
-    final intervalHours = _intervalHoursForWell(index, currentWell);
-    if (intervalHours.isNaN || intervalHours <= 0) {
-      return double.nan;
-    }
-
-    if (_isWaterMeterMode(data)) {
-      final currentMeter = _currentWaterMeterForData(data);
-      final previousMeter =
-          _previousWaterMeterForData(index, currentWell, data);
-      if (_isMissingCalc(currentMeter) || previousMeter == null) {
-        return double.nan;
-      }
-      if (currentMeter < previousMeter) {
-        return double.nan;
-      }
-      return ((currentMeter - previousMeter) / intervalHours)
-          .clamp(0, double.infinity)
-          .toDouble();
-    }
-
-    final current = _currentWaterBbl(index);
-    final previous = _previousWaterBbl(index);
-    if (current.isNaN || previous.isNaN) {
-      return double.nan;
-    }
-    final intervalVolume = ProductionMath.waterProduction(
-      currentWaterBbl: current,
-      previousWaterBbl: previous,
-      waterHauled: _n(check.waterHauled.text),
-      waterPumped: _useWaterPumped ? _n(check.waterPumped.text) : 0,
-      preRoundWaterHauled: 0,
-      preRoundWaterPumped: 0,
-      isFirstHour: false,
-    );
-    if (intervalVolume < 0) {
-      return double.nan;
-    }
-    return (intervalVolume / intervalHours)
-        .clamp(0, double.infinity)
-        .toDouble();
-  }
-
-  double _oilProduction(int index) {
-    final check = _controllers[index];
-    final currentWell = check.well;
-    final data = _wellDataForHour(index, currentWell);
-    final intervalHours = _intervalHoursForWell(index, currentWell);
-    if (intervalHours.isNaN || intervalHours <= 0) {
-      return double.nan;
-    }
-
-    if (_isOilMeterMode(data)) {
-      final currentMeter = _currentOilMeterForData(data);
-      final previousMeter = _previousOilMeterForData(index, currentWell, data);
-      if (_isMissingCalc(currentMeter) || previousMeter == null) {
-        return double.nan;
-      }
-      if (currentMeter < previousMeter) {
-        return double.nan;
-      }
-      return ((currentMeter - previousMeter) / intervalHours)
-          .clamp(0, double.infinity)
-          .toDouble();
-    }
-
-    final current = _currentOilBbl(index);
-    final previous = _previousOilBbl(index);
-    if (current.isNaN || previous.isNaN) {
-      return double.nan;
-    }
-    final intervalVolume = ProductionMath.oilProduction(
-      currentOilBbl: current,
-      previousOilBbl: previous,
-      oilHauled: _n(check.oilHauled.text),
-      oilPumped: _n(check.oilPumped.text),
-      preRoundOilHauled: 0,
-      preRoundOilPumped: 0,
-      isFirstHour: false,
-    );
-    if (intervalVolume < 0) {
-      return double.nan;
-    }
-    return (intervalVolume / intervalHours)
-        .clamp(0, double.infinity)
-        .toDouble();
   }
 
   String _gaugeText(
@@ -2895,7 +2693,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
             _currentWaterMeterForData(data),
             suffix: '',
           ),
-        _calcLine('Current Water BBL', _currentWaterBbl(index)),
+        _calcLine('Current Water BBL', _currentWaterBblForData(data)),
         if (oilMeterMode)
           _calcLine(
             'Previous Oil Meter',
@@ -2909,17 +2707,23 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
             _currentOilMeterForData(data),
             suffix: '',
           ),
-        _calcLine('Current Oil BBL', _currentOilBbl(index)),
-        _calcLine('Hourly Water Production', _waterProduction(index)),
-        _calcLine('Hourly Oil Production', _oilProduction(index)),
+        _calcLine('Current Oil BBL', _currentOilBblForData(data)),
+        _calcLine(
+          'Hourly Water Production',
+          _waterProductionForData(index, data, well),
+        ),
+        _calcLine(
+          'Hourly Oil Production',
+          _oilProductionForData(index, data, well),
+        ),
         _calcLine(
           _useGasAccumulator ? 'Hourly Gas' : 'Hourly Gas (Derived)',
-          _baseGasToDisplay(_hourlyGas(index)),
+          _baseGasToDisplay(_hourlyGasForData(index, data, well)),
           suffix: _gasUnitLabel,
         ),
         _calcLine(
           '24 Hour Gas Rate',
-          _baseGasToDisplay(_gas24Hour(index)),
+          _baseGasToDisplay(_gas24HourForData(index, data, well)),
           suffix: _gasUnitLabel,
         ),
         _sandClassificationLine(controller.sandRate.text),
