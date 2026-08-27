@@ -56,6 +56,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   JobSetup? _activeJob;
   final List<_HourlyCheckControllers> _controllers = [];
   final Map<String, _HourlyCheckControllers> _wellEditors = {};
+  Future<void> _persistQueue = Future<void>.value();
 
   bool _equipmentSectionSelected(String sectionName) {
     final activeJob = _activeJob;
@@ -262,7 +263,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
                 previousData.oilTankGaugeEntries,
               ).map((entry) => entry.toJson()).toList(),
             });
-      final source = _controllers[hourIndex].toCheck();
+      final source = _controllers[hourIndex].toCheck(captureCurrent: false);
       final initialCheck = source.copyWith(
         well: well,
         wellChecks: {well: initialData},
@@ -707,13 +708,18 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   Future<void> _persistShift() async {
-    for (var index = 0; index < _controllers.length; index++) {
-      _syncWellEditors(index);
-    }
-    await _refreshActiveJobReference();
-    final checks = _controllers.map((item) => item.toCheck()).toList();
-    _shift = _shift.copyWith(hourlyChecks: checks);
-    await _service.saveActiveShift(_shift);
+    _persistQueue = _persistQueue.then((_) async {
+      for (var index = 0; index < _controllers.length; index++) {
+        _syncWellEditors(index);
+      }
+      await _refreshActiveJobReference();
+      final checks = _controllers
+          .map((item) => item.toCheck(captureCurrent: false))
+          .toList();
+      _shift = _shift.copyWith(hourlyChecks: checks);
+      await _service.saveActiveShift(_shift);
+    });
+    await _persistQueue;
   }
 
   int _firstIncompleteHourIndex() {
@@ -743,6 +749,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   ProductionWellCheckData _wellDataForHour(int hourIndex, String well) {
+    final editor = _wellEditors['$hourIndex:$well'];
+    if (editor != null) {
+      return editor._snapshotCurrentWellData();
+    }
     return _controllers[hourIndex]
         .dataForWell(well, _selectedChokeTypeForWell(well));
   }
@@ -2027,11 +2037,15 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       _hourValidationMessage = null;
     });
 
-    final updatedRows = List<ProductionReportRow>.from(_storedRows)
-      ..removeWhere(
-        (item) => item.hourIndex == hourIndex && saveWells.contains(item.well),
-      )
-      ..addAll(rows)
+    final rowsByHourAndWell = <String, ProductionReportRow>{
+      for (final item in _storedRows)
+        '${item.hourIndex}:${item.well.trim().toLowerCase()}': item,
+    };
+    for (final row in rows) {
+      rowsByHourAndWell['${row.hourIndex}:${row.well.trim().toLowerCase()}'] =
+          row;
+    }
+    final updatedRows = rowsByHourAndWell.values.toList()
       ..sort((a, b) {
         final hourCompare = a.hourIndex.compareTo(b.hourIndex);
         if (hourCompare != 0) return hourCompare;
@@ -2057,7 +2071,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
     final shiftWithRows = _shift.copyWith(
       activeJobId: _activeJob?.id ?? _shift.activeJobId,
-      hourlyChecks: _controllers.map((item) => item.toCheck()).toList(),
+      hourlyChecks: _controllers
+          .map((item) => item.toCheck(captureCurrent: false))
+          .toList(),
       savedRows: updatedRows,
       inventory: _shift.inventory.copyWith(productionRows: updatedRows),
       wellSelectedChokes: nextSelectedChokes,
@@ -2109,9 +2125,9 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   ProductionWellCheckData? _latestSavedWellData(int hourIndex, String well) {
     for (var index = hourIndex - 1; index >= 0; index--) {
-      if (!_isHourSaved(index)) continue;
-      return _controllers[index]
+      final data = _controllers[index]
           .dataForWell(well, _selectedChokeTypeForWell(well));
+      if (_isWellEntered(index, well)) return data;
     }
     return null;
   }
@@ -3825,7 +3841,9 @@ class _HourlyCheckControllers {
   }
 
   ProductionWellCheckData dataForWell(String targetWell, String chokeType) {
-    _wellDataByName[well] = _snapshotCurrentWellData();
+    if (targetWell == well) {
+      _wellDataByName[well] = _snapshotCurrentWellData();
+    }
     return _wellDataByName[targetWell] ??
         ProductionWellCheckData(chokeType: chokeType);
   }
@@ -3834,8 +3852,10 @@ class _HourlyCheckControllers {
     _wellDataByName[targetWell] = data;
   }
 
-  ProductionHourlyCheck toCheck() {
-    _wellDataByName[well] = _snapshotCurrentWellData();
+  ProductionHourlyCheck toCheck({bool captureCurrent = true}) {
+    if (captureCurrent) {
+      _wellDataByName[well] = _snapshotCurrentWellData();
+    }
     final current = _wellDataByName[well] ?? const ProductionWellCheckData();
     return ProductionHourlyCheck(
       time: time,
