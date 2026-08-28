@@ -42,6 +42,31 @@ class SharedNumericKeypad extends StatelessWidget {
           children: [
             Row(
               children: [
+                Expanded(
+                  child: Text(
+                    'Keypad • $activeFieldLabel',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: scheme.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                FilledButton(onPressed: onDone, child: const Text('Done')),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _keypadRow(context, ['7', '8', '9']),
+            const SizedBox(height: 6),
+            _keypadRow(context, ['4', '5', '6']),
+            const SizedBox(height: 6),
+            _keypadRow(context, ['1', '2', '3']),
+            const SizedBox(height: 6),
+            _keypadRow(context, ['±', '0', '.']),
+            const SizedBox(height: 8),
+            Row(
+              children: [
                 if (onBack != null || onNext != null) ...[
                   IconButton(
                     tooltip: 'Previous field',
@@ -63,46 +88,25 @@ class SharedNumericKeypad extends StatelessWidget {
                     ),
                     visualDensity: VisualDensity.compact,
                   ),
+                  const SizedBox(width: 6),
                 ],
                 Expanded(
-                  child: Text(
-                    'Keypad • $activeFieldLabel',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w800,
+                  child: OutlinedButton.icon(
+                    onPressed: onBackspace,
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: scheme.primary),
+                      foregroundColor: scheme.onSurface,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
+                    icon: const Icon(Icons.backspace_outlined, size: 18),
+                    label: const Text('Backspace'),
                   ),
                 ),
-                TextButton(onPressed: onClear, child: const Text('CLR')),
                 const SizedBox(width: 6),
-                FilledButton(onPressed: onDone, child: const Text('Done')),
+                TextButton(onPressed: onClear, child: const Text('CLR')),
               ],
-            ),
-            const SizedBox(height: 8),
-            _keypadRow(context, ['7', '8', '9']),
-            const SizedBox(height: 6),
-            _keypadRow(context, ['4', '5', '6']),
-            const SizedBox(height: 6),
-            _keypadRow(context, ['1', '2', '3']),
-            const SizedBox(height: 6),
-            _keypadRow(context, ['±', '0', '.']),
-            const SizedBox(height: 6),
-            SizedBox(
-              height: 42,
-              child: OutlinedButton.icon(
-                onPressed: onBackspace,
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: scheme.primary),
-                  foregroundColor: scheme.onSurface,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                icon: const Icon(Icons.backspace_outlined, size: 18),
-                label: const Text('Backspace'),
-              ),
             ),
           ],
         ),

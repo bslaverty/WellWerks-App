@@ -46,28 +46,6 @@ class SharedGaugeKeypad extends StatelessWidget {
           children: [
             Row(
               children: [
-                if (onBack != null || onNext != null) ...[
-                  IconButton(
-                    tooltip: 'Previous field',
-                    onPressed: onBack,
-                    icon: const Icon(Icons.chevron_left_rounded),
-                    color: scheme.primary,
-                    disabledColor: scheme.onSurfaceVariant.withValues(
-                      alpha: 0.35,
-                    ),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  IconButton(
-                    tooltip: 'Next field',
-                    onPressed: onNext,
-                    icon: const Icon(Icons.chevron_right_rounded),
-                    color: scheme.primary,
-                    disabledColor: scheme.onSurfaceVariant.withValues(
-                      alpha: 0.35,
-                    ),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
                 Expanded(
                   child: Text(
                     'Gauge Keypad • $activeFieldLabel',
@@ -79,8 +57,6 @@ class SharedGaugeKeypad extends StatelessWidget {
                     ),
                   ),
                 ),
-                TextButton(onPressed: onClear, child: const Text('CLR')),
-                const SizedBox(width: 6),
                 FilledButton(onPressed: onDone, child: const Text('Done')),
               ],
             ),
@@ -124,6 +100,50 @@ class SharedGaugeKeypad extends StatelessWidget {
                 const Spacer(),
                 Expanded(child: _numberButton(context, '0')),
                 const Spacer(),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                if (onBack != null || onNext != null) ...[
+                  IconButton(
+                    tooltip: 'Previous field',
+                    onPressed: onBack,
+                    icon: const Icon(Icons.chevron_left_rounded),
+                    color: scheme.primary,
+                    disabledColor: scheme.onSurfaceVariant.withValues(
+                      alpha: 0.35,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  IconButton(
+                    tooltip: 'Next field',
+                    onPressed: onNext,
+                    icon: const Icon(Icons.chevron_right_rounded),
+                    color: scheme.primary,
+                    disabledColor: scheme.onSurfaceVariant.withValues(
+                      alpha: 0.35,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onBackspace,
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: scheme.primary),
+                      foregroundColor: scheme.onSurface,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    icon: const Icon(Icons.backspace_outlined, size: 18),
+                    label: const Text('Backspace'),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                TextButton(onPressed: onClear, child: const Text('CLR')),
               ],
             ),
             if (showPrimaryAction) ...[
