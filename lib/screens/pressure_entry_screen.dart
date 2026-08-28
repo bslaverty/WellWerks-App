@@ -2128,9 +2128,11 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
   ProductionWellCheckData? _latestSavedWellData(int hourIndex, String well) {
     for (var index = hourIndex - 1; index >= 0; index--) {
-      final data = _controllers[index]
-          .peekDataForWell(well, _selectedChokeTypeForWell(well));
-      if (_isWellEntered(index, well)) return data;
+      // Read from the same live source _isWellEntered checks (the visible
+      // per-well editor when it exists) so carry-forward never falls back
+      // to the stale combined controller and skips past the true previous
+      // hour's gauge values.
+      if (_isWellEntered(index, well)) return _wellDataForHour(index, well);
     }
     return null;
   }

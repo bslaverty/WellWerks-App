@@ -84,13 +84,24 @@ Future<void> _seedJobAndShift({
           ),
       },
     ),
+    ProductionHourlyCheck(
+      time: '8 AM',
+      well: wells.first,
+      wellChecks: {
+        for (final well in wells)
+          well: ProductionWellCheckData(
+            choke: selectedChokes[well] ?? '',
+            chokeType: selectedChokeTypes[well] ?? 'ADJ',
+          ),
+      },
+    ),
   ];
 
   await service.saveActiveShift(
     base.copyWith(
       activeJobId: activeJob.id,
       roundStartTime: '6 AM',
-      checkCount: 2,
+      checkCount: 3,
       header: ProductionShiftHeader(
         company: 'Mach Energy',
         pad: 'Horse Pad',
@@ -265,6 +276,45 @@ void main() {
 
     expect(waterField.controller?.text, '70');
     expect(oilField.controller?.text, '40');
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'Tank gauges carry forward across multiple hours using the true previous hour',
+      (WidgetTester tester) async {
+    await _seedJobAndShift(wells: const ['Horse 16-2H']);
+    await _openQuickRound(tester);
+
+    // Hour 1 (6 AM): initial gauges.
+    await _saveCurrentHour(
+      tester,
+      '6 AM',
+      gasAccum: '8003',
+      waterGauge: '70',
+      oilGauge: '40',
+    );
+
+    await _goToNextHour(tester);
+
+    // Hour 2 (7 AM): leave gauges carried forward from hour 1, but change
+    // them before saving so hour 3 should carry hour 2's values, not hour
+    // 1's.
+    await _saveCurrentHour(
+      tester,
+      '7 AM',
+      gasAccum: '8100',
+      waterGauge: '65',
+      oilGauge: '38',
+    );
+
+    await _goToNextHour(tester);
+
+    final waterField = tester.widget<TextField>(_gaugeField().at(0));
+    final oilField = tester.widget<TextField>(_gaugeField().at(1));
+
+    expect(waterField.controller?.text, '65');
+    expect(oilField.controller?.text, '38');
 
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
