@@ -2905,7 +2905,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
                     children: [
                       const SizedBox(width: 4),
                       TextButton.icon(
-                        onPressed: () => FocusScope.of(context).previousFocus(),
+                        onPressed: () => _focusAdjacentTextField(false),
                         icon: const Icon(Icons.chevron_left),
                         label: const Text('Back'),
                       ),
@@ -2915,7 +2915,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
                         color: scheme.outlineVariant,
                       ),
                       TextButton.icon(
-                        onPressed: () => FocusScope.of(context).nextFocus(),
+                        onPressed: () => _focusAdjacentTextField(true),
                         icon: const Icon(Icons.chevron_right),
                         label: const Text('Next'),
                       ),
@@ -2931,6 +2931,37 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
               ),
             ),
     );
+  }
+
+  // Whether a focus node belongs to an actual text input (as opposed to a
+  // dropdown or button), so Back/Next only ever land on typeable fields.
+  bool _isTextEntryFocusNode(FocusNode? node) {
+    final ctx = node?.context;
+    if (ctx == null) return false;
+    return ctx.findAncestorWidgetOfExactType<EditableText>() != null;
+  }
+
+  // Moves focus to the next/previous text field, hopping over any
+  // dropdowns or buttons in between so navigation never dead-ends, then
+  // scrolls the new field to the center of the screen.
+  void _focusAdjacentTextField(bool forward) {
+    final focusScope = FocusScope.of(context);
+    for (var attempts = 0; attempts < 60; attempts++) {
+      final moved =
+          forward ? focusScope.nextFocus() : focusScope.previousFocus();
+      if (!moved) return;
+      final node = FocusManager.instance.primaryFocus;
+      if (_isTextEntryFocusNode(node)) {
+        final ctx = node!.context!;
+        Scrollable.ensureVisible(
+          ctx,
+          alignment: 0.5,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+        return;
+      }
+    }
   }
 
   Widget _field(
