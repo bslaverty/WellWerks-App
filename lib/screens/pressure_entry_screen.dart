@@ -2882,6 +2882,57 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     );
   }
 
+  /// Sits just above the keyboard so operators can jump between fields
+  /// without reaching down to tap the next input by hand.
+  Widget _keyboardAccessoryBar() {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final visible = bottomInset > 0;
+    final scheme = Theme.of(context).colorScheme;
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      alignment: Alignment.bottomCenter,
+      child: !visible
+          ? const SizedBox(width: double.infinity)
+          : Material(
+              elevation: 8,
+              color: scheme.surfaceContainerHighest,
+              child: SafeArea(
+                top: false,
+                child: SizedBox(
+                  height: 48,
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 4),
+                      TextButton.icon(
+                        onPressed: () => FocusScope.of(context).previousFocus(),
+                        icon: const Icon(Icons.chevron_left),
+                        label: const Text('Back'),
+                      ),
+                      Container(
+                        width: 1,
+                        height: 24,
+                        color: scheme.outlineVariant,
+                      ),
+                      TextButton.icon(
+                        onPressed: () => FocusScope.of(context).nextFocus(),
+                        icon: const Icon(Icons.chevron_right),
+                        label: const Text('Next'),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => FocusScope.of(context).unfocus(),
+                        child: const Text('Done'),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+    );
+  }
+
   Widget _field(
     String label,
     TextEditingController controller, {
@@ -2890,15 +2941,21 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     TextInputType? keyboardType,
     int lines = 1,
   }) {
+    final resolvedKeyboardType = keyboardType ??
+        (lines > 1
+            ? TextInputType.multiline
+            : const TextInputType.numberWithOptions(decimal: true));
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
         controller: controller,
         maxLines: lines,
-        keyboardType: keyboardType ??
-            (lines > 1
-                ? TextInputType.multiline
-                : const TextInputType.numberWithOptions(decimal: true)),
+        keyboardType: resolvedKeyboardType,
+        textInputAction: lines > 1
+            ? (resolvedKeyboardType == TextInputType.multiline
+                ? TextInputAction.newline
+                : null)
+            : TextInputAction.next,
         decoration: InputDecoration(
           labelText: label,
           suffixText: suffix,
@@ -3085,95 +3142,105 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
 
     return Scaffold(
       appBar: const AppHeader(title: 'Quick Round', showBack: true),
-      body: ListView(
-        padding: const EdgeInsets.all(18),
+      body: Column(
         children: [
-          _activeJobBanner(),
-          _hourValidationCard(),
-          _section('Round Setup', [
-            DropdownButtonFormField<String>(
-              initialValue: _shift.roundStartTime,
-              decoration: const InputDecoration(labelText: 'Start Time'),
-              items: _roundTimes
-                  .map((time) =>
-                      DropdownMenuItem(value: time, child: Text(time)))
-                  .toList(),
-              onChanged: (value) {
-                if (value == null) return;
-                setState(() => _shift = _shift.copyWith(roundStartTime: value));
-                _service.saveActiveShift(_shift);
-              },
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<int>(
-              initialValue: _shift.checkCount,
-              decoration:
-                  const InputDecoration(labelText: 'Number of hourly checks'),
-              items: [
-                for (int i = 1; i <= 24; i++)
-                  DropdownMenuItem(value: i, child: Text('$i')),
-              ],
-              onChanged: (value) {
-                if (value == null) return;
-                setState(() => _shift = _shift.copyWith(checkCount: value));
-                _service.saveActiveShift(_shift);
-              },
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _buildRound,
-                icon: const Icon(Icons.construction),
-                label: const Text('Build Round'),
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _clearRoundWithConfirm,
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('Clear Round'),
-              ),
-            ),
-            _quickRoundReminderSetupCard(),
-          ]),
-          _inventorySummary(),
-          if (_shift.hourlyChecks.isEmpty)
-            _section('Hourly Checks', [
-              Text(
-                'Build a round after saving Production Inventory. Quick Round is the only place hourly field data is entered.',
-                style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant),
-              ),
-            ]),
-          if (_shift.hourlyChecks.isNotEmpty) ...[
-            _hourNavigationControls(),
-            _hourProgressSection(),
-            _hourlyCard(_activeHourIndex),
-            SizedBox(
-              width: double.infinity,
-              child: _hourActionButton(),
-            ),
-            if (_isHourSaved(_activeHourIndex)) ...[
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const ShiftReportScreen(),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(18),
+              children: [
+                _activeJobBanner(),
+                _hourValidationCard(),
+                _section('Round Setup', [
+                  DropdownButtonFormField<String>(
+                    initialValue: _shift.roundStartTime,
+                    decoration: const InputDecoration(labelText: 'Start Time'),
+                    items: _roundTimes
+                        .map((time) =>
+                            DropdownMenuItem(value: time, child: Text(time)))
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() =>
+                          _shift = _shift.copyWith(roundStartTime: value));
+                      _service.saveActiveShift(_shift);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    initialValue: _shift.checkCount,
+                    decoration: const InputDecoration(
+                        labelText: 'Number of hourly checks'),
+                    items: [
+                      for (int i = 1; i <= 24; i++)
+                        DropdownMenuItem(value: i, child: Text('$i')),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(
+                          () => _shift = _shift.copyWith(checkCount: value));
+                      _service.saveActiveShift(_shift);
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _buildRound,
+                      icon: const Icon(Icons.construction),
+                      label: const Text('Build Round'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _clearRoundWithConfirm,
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Clear Round'),
+                    ),
+                  ),
+                  _quickRoundReminderSetupCard(),
+                ]),
+                _inventorySummary(),
+                if (_shift.hourlyChecks.isEmpty)
+                  _section('Hourly Checks', [
+                    Text(
+                      'Build a round after saving Production Inventory. Quick Round is the only place hourly field data is entered.',
+                      style: TextStyle(
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant),
+                    ),
+                  ]),
+                if (_shift.hourlyChecks.isNotEmpty) ...[
+                  _hourNavigationControls(),
+                  _hourProgressSection(),
+                  _hourlyCard(_activeHourIndex),
+                  SizedBox(
+                    width: double.infinity,
+                    child: _hourActionButton(),
+                  ),
+                  if (_isHourSaved(_activeHourIndex)) ...[
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const ShiftReportScreen(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.table_chart_outlined),
+                        label: const Text('View Production Report'),
                       ),
-                    );
-                  },
-                  icon: const Icon(Icons.table_chart_outlined),
-                  label: const Text('View Production Report'),
-                ),
-              ),
-            ],
-          ],
+                    ),
+                  ],
+                ],
+              ],
+            ),
+          ),
+          _keyboardAccessoryBar(),
         ],
       ),
     );
