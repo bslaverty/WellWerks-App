@@ -2894,42 +2894,88 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       alignment: Alignment.bottomCenter,
       child: !visible
           ? const SizedBox(width: double.infinity)
-          : Material(
-              elevation: 8,
-              color: scheme.surfaceContainerHighest,
-              child: SafeArea(
-                top: false,
-                child: SizedBox(
-                  height: 48,
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 4),
-                      TextButton.icon(
-                        onPressed: () => _focusAdjacentTextField(false),
-                        icon: const Icon(Icons.chevron_left),
-                        label: const Text('Back'),
+          : ClipRRect(
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(16)),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest,
+                  border: Border(
+                    top: BorderSide(color: scheme.outlineVariant, width: 1.2),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.28),
+                      blurRadius: 12,
+                      offset: const Offset(0, -3),
+                    ),
+                  ],
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    child: SizedBox(
+                      height: 42,
+                      child: Row(
+                        children: [
+                          _keyboardNavButton(
+                            icon: Icons.chevron_left_rounded,
+                            label: 'Back',
+                            onPressed: () => _focusAdjacentTextField(false),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 22,
+                            margin: const EdgeInsets.symmetric(horizontal: 2),
+                            color: scheme.outlineVariant,
+                          ),
+                          _keyboardNavButton(
+                            icon: Icons.chevron_right_rounded,
+                            label: 'Next',
+                            onPressed: () => _focusAdjacentTextField(true),
+                          ),
+                          const Spacer(),
+                          FilledButton(
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size(0, 38),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 18),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
+                            onPressed: () => FocusScope.of(context).unfocus(),
+                            child: const Text(
+                              'Done',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
                       ),
-                      Container(
-                        width: 1,
-                        height: 24,
-                        color: scheme.outlineVariant,
-                      ),
-                      TextButton.icon(
-                        onPressed: () => _focusAdjacentTextField(true),
-                        icon: const Icon(Icons.chevron_right),
-                        label: const Text('Next'),
-                      ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () => FocusScope.of(context).unfocus(),
-                        child: const Text('Done'),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
+                    ),
                   ),
                 ),
               ),
             ),
+    );
+  }
+
+  Widget _keyboardNavButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return TextButton.icon(
+      style: TextButton.styleFrom(
+        foregroundColor: accent,
+        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+      onPressed: onPressed,
+      icon: Icon(icon, color: accent),
+      label: Text(label),
     );
   }
 
