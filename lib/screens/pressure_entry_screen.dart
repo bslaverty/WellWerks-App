@@ -12,10 +12,13 @@ import '../services/rate_timer_notification_service.dart';
 import '../services/recovery_state_service.dart';
 import '../services/round_storage_service.dart';
 import '../utils/choke_parsing.dart';
+import '../utils/gauge_keypad_input.dart';
 import '../utils/quick_round_reminder_utils.dart';
 import 'shift_report_screen.dart';
 import '../widgets/app_header.dart';
 import '../widgets/choke_selector_sheet.dart';
+import '../widgets/shared_gauge_keypad.dart';
+import '../widgets/shared_numeric_keypad.dart';
 import '../widgets/ww_number_field.dart';
 
 class PressureEntryScreen extends StatefulWidget {
@@ -41,6 +44,13 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   final Set<TextEditingController> _invalidHourControllers =
       <TextEditingController>{};
   String? _hourValidationMessage;
+  // Drives the themed on-screen numeric keypad (replaces the OS keyboard)
+  // for every hourly entry field.
+  TextEditingController? _activeKeypadController;
+  String _activeKeypadLabel = '';
+  bool _activeKeypadIsGauge = false;
+  final Map<TextEditingController, GlobalKey> _keypadFieldKeys = {};
+  List<_KeypadFieldRef> _keypadFieldOrder = [];
   bool _hourlyQuickRoundReminderEnabled = false;
   int _quickRoundReminderMinute = 0;
   AppSettingsData _settings = const AppSettingsData(
@@ -2882,132 +2892,124 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     );
   }
 
-  /// Sits just above the keyboard so operators can jump between fields
-  /// without reaching down to tap the next input by hand.
-  Widget _keyboardAccessoryBar() {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    final visible = bottomInset > 0;
-    final scheme = Theme.of(context).colorScheme;
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-      alignment: Alignment.bottomCenter,
-      child: !visible
-          ? const SizedBox(width: double.infinity)
-          : ClipRRect(
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(16)),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: scheme.surfaceContainerHighest,
-                  border: Border(
-                    top: BorderSide(color: scheme.outlineVariant, width: 1.2),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.28),
-                      blurRadius: 12,
-                      offset: const Offset(0, -3),
-                    ),
-                  ],
-                ),
-                child: SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    child: SizedBox(
-                      height: 42,
-                      child: Row(
-                        children: [
-                          _keyboardNavButton(
-                            icon: Icons.chevron_left_rounded,
-                            label: 'Back',
-                            onPressed: () => _focusAdjacentTextField(false),
-                          ),
-                          Container(
-                            width: 1,
-                            height: 22,
-                            margin: const EdgeInsets.symmetric(horizontal: 2),
-                            color: scheme.outlineVariant,
-                          ),
-                          _keyboardNavButton(
-                            icon: Icons.chevron_right_rounded,
-                            label: 'Next',
-                            onPressed: () => _focusAdjacentTextField(true),
-                          ),
-                          const Spacer(),
-                          FilledButton(
-                            style: FilledButton.styleFrom(
-                              minimumSize: const Size(0, 38),
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 18),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                            ),
-                            onPressed: () => FocusScope.of(context).unfocus(),
-                            child: const Text(
-                              'Done',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-    );
-  }
-
-  Widget _keyboardNavButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onPressed,
-  }) {
-    final accent = Theme.of(context).colorScheme.primary;
-    return TextButton.icon(
-      style: TextButton.styleFrom(
-        foregroundColor: accent,
-        textStyle: const TextStyle(fontWeight: FontWeight.w700),
-      ),
-      onPressed: onPressed,
-      icon: Icon(icon, color: accent),
-      label: Text(label),
-    );
-  }
-
-  // Whether a focus node belongs to an actual text input (as opposed to a
-  // dropdown or button), so Back/Next only ever land on typeable fields.
-  bool _isTextEntryFocusNode(FocusNode? node) {
-    final ctx = node?.context;
-    if (ctx == null) return false;
-    return ctx.findAncestorWidgetOfExactType<EditableText>() != null;
-  }
-
-  // Moves focus to the next/previous text field, hopping over any
-  // dropdowns or buttons in between so navigation never dead-ends, then
-  // scrolls the new field to the center of the screen.
-  void _focusAdjacentTextField(bool forward) {
-    final focusScope = FocusScope.of(context);
-    for (var attempts = 0; attempts < 60; attempts++) {
-      final moved =
-          forward ? focusScope.nextFocus() : focusScope.previousFocus();
-      if (!moved) return;
-      final node = FocusManager.instance.primaryFocus;
-      if (_isTextEntryFocusNode(node)) {
-        final ctx = node!.context!;
-        Scrollable.ensureVisible(
-          ctx,
-          alignment: 0.5,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-        return;
-      }
+  /// Replaces the OS keyboard with the app-themed numeric keypad whenever
+  /// an hourly entry field is tapped.
+  Widget _numericKeypadPanel() {
+    final activeController = _activeKeypadController;
+    if (activeController == null) return const SizedBox.shrink();
+    final index = _keypadFieldOrder
+        .indexWhere((ref) => ref.controller == activeController);
+    final canBack = index > 0;
+    final canNext = index >= 0 && index < _keypadFieldOrder.length - 1;
+    if (_activeKeypadIsGauge) {
+      return SharedGaugeKeypad(
+        activeFieldLabel: _activeKeypadLabel,
+        onInsert: _insertKeypadText,
+        onBackspace: _backspaceKeypadText,
+        onClear: _clearActiveKeypadField,
+        onDone: _closeKeypad,
+        onBack: canBack ? () => _moveKeypadField(false) : null,
+        onNext: canNext ? () => _moveKeypadField(true) : null,
+      );
     }
+    return SharedNumericKeypad(
+      activeFieldLabel: _activeKeypadLabel,
+      onInsert: _insertKeypadText,
+      onBackspace: _backspaceKeypadText,
+      onClear: _clearActiveKeypadField,
+      onDone: _closeKeypad,
+      onBack: canBack ? () => _moveKeypadField(false) : null,
+      onNext: canNext ? () => _moveKeypadField(true) : null,
+    );
+  }
+
+  // Reuses one GlobalKey per controller across rebuilds so Back/Next can
+  // scroll to a field without remounting it every frame.
+  GlobalKey _keyFor(TextEditingController controller) {
+    return _keypadFieldKeys.putIfAbsent(controller, () => GlobalKey());
+  }
+
+  void _registerKeypadField(
+    TextEditingController controller,
+    String label, {
+    bool isGauge = false,
+  }) {
+    _keypadFieldOrder.add(_KeypadFieldRef(controller, label, isGauge: isGauge));
+  }
+
+  void _openKeypadFor(
+    TextEditingController controller,
+    String label, {
+    bool isGauge = false,
+  }) {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _activeKeypadController = controller;
+      _activeKeypadLabel = label;
+      _activeKeypadIsGauge = isGauge;
+    });
+  }
+
+  void _closeKeypad() {
+    setState(() => _activeKeypadController = null);
+  }
+
+  void _insertKeypadText(String raw) {
+    final controller = _activeKeypadController;
+    if (controller == null) return;
+    setState(() {
+      controller.value = GaugeKeypadInput.insert(controller.value, raw);
+      _invalidHourControllers.remove(controller);
+      if (_invalidHourControllers.isEmpty) {
+        _hourValidationMessage = null;
+      }
+    });
+    _persistShift();
+  }
+
+  void _backspaceKeypadText() {
+    final controller = _activeKeypadController;
+    if (controller == null || controller.text.isEmpty) return;
+    setState(() {
+      controller.value = GaugeKeypadInput.backspace(controller.value);
+    });
+    _persistShift();
+  }
+
+  void _clearActiveKeypadField() {
+    final controller = _activeKeypadController;
+    if (controller == null) return;
+    setState(controller.clear);
+    _persistShift();
+  }
+
+  // Moves the keypad to the next/previous registered field (in on-screen
+  // order) and centers it, so operators never have to reach for a field.
+  void _moveKeypadField(bool forward) {
+    final activeController = _activeKeypadController;
+    if (activeController == null) return;
+    final index = _keypadFieldOrder
+        .indexWhere((ref) => ref.controller == activeController);
+    if (index == -1) return;
+    final nextIndex = forward ? index + 1 : index - 1;
+    if (nextIndex < 0 || nextIndex >= _keypadFieldOrder.length) return;
+    final target = _keypadFieldOrder[nextIndex];
+    setState(() {
+      _activeKeypadController = target.controller;
+      _activeKeypadLabel = target.label;
+      _activeKeypadIsGauge = target.isGauge;
+    });
+    final key = _keypadFieldKeys[target.controller];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = key?.currentContext;
+      if (ctx == null || !ctx.mounted) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.5,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   Widget _field(
@@ -3018,41 +3020,74 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     TextInputType? keyboardType,
     int lines = 1,
   }) {
-    final resolvedKeyboardType = keyboardType ??
-        (lines > 1
-            ? TextInputType.multiline
-            : const TextInputType.numberWithOptions(decimal: true));
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: TextField(
-        controller: controller,
-        maxLines: lines,
-        keyboardType: resolvedKeyboardType,
-        textInputAction: lines > 1
-            ? (resolvedKeyboardType == TextInputType.multiline
-                ? TextInputAction.newline
-                : null)
-            : TextInputAction.next,
-        decoration: InputDecoration(
-          labelText: label,
-          suffixText: suffix,
-          helperText: helperText,
-          errorText: _invalidHourControllers.contains(controller)
-              ? 'Cannot be negative'
+    if (lines > 1) {
+      // Free-form text (Notes) keeps the native keyboard.
+      final resolvedKeyboardType = keyboardType ?? TextInputType.multiline;
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: TextField(
+          controller: controller,
+          maxLines: lines,
+          keyboardType: resolvedKeyboardType,
+          textInputAction: resolvedKeyboardType == TextInputType.multiline
+              ? TextInputAction.newline
               : null,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+          decoration: InputDecoration(
+            labelText: label,
+            suffixText: suffix,
+            helperText: helperText,
+            errorText: _invalidHourControllers.contains(controller)
+                ? 'Cannot be negative'
+                : null,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+          ),
+          onChanged: (_) {
+            setState(() {
+              _invalidHourControllers.remove(controller);
+              if (_invalidHourControllers.isEmpty) {
+                _hourValidationMessage = null;
+              }
+            });
+            _persistShift();
+          },
         ),
-        onChanged: (_) {
-          setState(() {
-            _invalidHourControllers.remove(controller);
-            if (_invalidHourControllers.isEmpty) {
-              _hourValidationMessage = null;
-            }
-          });
-          _persistShift();
-        },
-      ),
+      );
+    }
+
+    _registerKeypadField(controller, label);
+    return WwGaugeField(
+      key: _keyFor(controller),
+      label: label,
+      controller: controller,
+      helperText: helperText,
+      hintText: '',
+      suffixText: suffix,
+      active: _activeKeypadController == controller,
+      errorText: _invalidHourControllers.contains(controller)
+          ? 'Cannot be negative'
+          : null,
+      onTap: () => _openKeypadFor(controller, label),
+    );
+  }
+
+  Widget _keypadGaugeField(
+    String label,
+    TextEditingController controller, {
+    String? hintText,
+    bool isGauge = false,
+  }) {
+    _registerKeypadField(controller, label, isGauge: isGauge);
+    return WwGaugeField(
+      key: _keyFor(controller),
+      label: label,
+      controller: controller,
+      hintText: hintText ?? '',
+      active: _activeKeypadController == controller,
+      errorText: _invalidHourControllers.contains(controller)
+          ? 'Cannot be negative'
+          : null,
+      onTap: () => _openKeypadFor(controller, label, isGauge: isGauge),
     );
   }
 
@@ -3060,77 +3095,19 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     final gaugeMode = _shift.inventory.gaugeEntryType;
     if (gaugeMode == 'feetInches') {
       return [
-        WwNumberField(
-          label: 'Feet',
-          controller: controller.feet,
-          errorText: _invalidHourControllers.contains(controller.feet)
-              ? 'Cannot be negative'
-              : null,
-          onChanged: (_) {
-            setState(() {
-              _invalidHourControllers.remove(controller.feet);
-              if (_invalidHourControllers.isEmpty) {
-                _hourValidationMessage = null;
-              }
-            });
-            _persistShift();
-          },
-        ),
-        WwNumberField(
-          label: 'Inches',
-          controller: controller.inchesPart,
-          errorText: _invalidHourControllers.contains(controller.inchesPart)
-              ? 'Cannot be negative'
-              : null,
-          onChanged: (_) {
-            setState(() {
-              _invalidHourControllers.remove(controller.inchesPart);
-              if (_invalidHourControllers.isEmpty) {
-                _hourValidationMessage = null;
-              }
-            });
-            _persistShift();
-          },
-        ),
+        _keypadGaugeField('Feet', controller.feet, hintText: 'e.g. 12'),
+        _keypadGaugeField('Inches', controller.inchesPart,
+            hintText: 'e.g. 6.5'),
       ];
     }
     if (gaugeMode == 'decimalFeet') {
       return [
-        WwNumberField(
-          label: 'Decimal Feet',
-          controller: controller.decimalFeet,
-          errorText: _invalidHourControllers.contains(controller.decimalFeet)
-              ? 'Cannot be negative'
-              : null,
-          onChanged: (_) {
-            setState(() {
-              _invalidHourControllers.remove(controller.decimalFeet);
-              if (_invalidHourControllers.isEmpty) {
-                _hourValidationMessage = null;
-              }
-            });
-            _persistShift();
-          },
-        ),
+        _keypadGaugeField('Decimal Feet', controller.decimalFeet,
+            hintText: 'e.g. 12.45'),
       ];
     }
     return [
-      WwNumberField(
-        label: 'Current Gauge (in)',
-        controller: controller.inches,
-        errorText: _invalidHourControllers.contains(controller.inches)
-            ? 'Cannot be negative'
-            : null,
-        onChanged: (_) {
-          setState(() {
-            _invalidHourControllers.remove(controller.inches);
-            if (_invalidHourControllers.isEmpty) {
-              _hourValidationMessage = null;
-            }
-          });
-          _persistShift();
-        },
-      ),
+      _keypadGaugeField('Current Gauge (in)', controller.inches, isGauge: true),
     ];
   }
 
@@ -3216,6 +3193,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         body: Center(child: CircularProgressIndicator()),
       );
     }
+
+    // Rebuilt as fields register themselves below, in visual order, so
+    // the keypad's Back/Next buttons can hop between them.
+    _keypadFieldOrder = [];
 
     return Scaffold(
       appBar: const AppHeader(title: 'Quick Round', showBack: true),
@@ -3317,11 +3298,18 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
               ],
             ),
           ),
-          _keyboardAccessoryBar(),
+          _numericKeypadPanel(),
         ],
       ),
     );
   }
+}
+
+class _KeypadFieldRef {
+  const _KeypadFieldRef(this.controller, this.label, {this.isGauge = false});
+  final TextEditingController controller;
+  final String label;
+  final bool isGauge;
 }
 
 class _HourlyCheckControllers {

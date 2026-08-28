@@ -10,6 +10,8 @@ import 'package:wellwerks/services/active_company_service.dart';
 import 'package:wellwerks/services/job_storage_service.dart';
 import 'package:wellwerks/services/production_shift_service.dart';
 import 'package:wellwerks/services/round_storage_service.dart';
+import 'package:wellwerks/widgets/shared_gauge_keypad.dart';
+import 'package:wellwerks/widgets/shared_numeric_keypad.dart';
 
 Finder _labeledTextField(String label) {
   return find.byWidgetPredicate(
@@ -35,6 +37,34 @@ Finder _gaugeField() {
             .contains(widget.decoration?.labelText),
     description: 'Production tank gauge field',
   );
+}
+
+// Quick Round fields are now driven by the themed on-screen keypad instead
+// of the OS keyboard (they're read-only TextFields under the hood), so
+// tests open the field then tap the keypad's own buttons for each
+// character, exercising the same insert/sync/persist path a real operator
+// would trigger.
+Future<void> _enterKeypadValue(
+  WidgetTester tester,
+  Finder finder,
+  String value,
+) async {
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
+  final keypad = find.byWidgetPredicate(
+    (widget) => widget is SharedGaugeKeypad || widget is SharedNumericKeypad,
+  );
+  final clearButton =
+      find.descendant(of: keypad, matching: find.text('CLR')).first;
+  await tester.tap(clearButton);
+  await tester.pump();
+  for (final char in value.split('')) {
+    await tester.tap(
+      find.descendant(of: keypad, matching: find.text(char)).first,
+    );
+    await tester.pump();
+  }
+  await tester.pumpAndSettle();
 }
 
 Future<void> _seedJobAndShift({
@@ -139,12 +169,12 @@ Future<void> _saveCurrentHour(WidgetTester tester, String hourLabel,
     required String oilGauge,
     String tbg = '1200',
     String csg = '900'}) async {
-  await tester.enterText(_labeledTextField('TBG').first, tbg);
-  await tester.enterText(_labeledTextField('CSG').first, csg);
-  await tester.enterText(
-      _labeledTextField('Current Gas Accum').first, gasAccum);
-  await tester.enterText(_gaugeField().at(0), waterGauge);
-  await tester.enterText(_gaugeField().at(1), oilGauge);
+  await _enterKeypadValue(tester, _labeledTextField('TBG').first, tbg);
+  await _enterKeypadValue(tester, _labeledTextField('CSG').first, csg);
+  await _enterKeypadValue(
+      tester, _labeledTextField('Current Gas Accum').first, gasAccum);
+  await _enterKeypadValue(tester, _gaugeField().at(0), waterGauge);
+  await _enterKeypadValue(tester, _gaugeField().at(1), oilGauge);
   await tester.ensureVisible(
       find.widgetWithText(FilledButton, 'Save $hourLabel Round').first);
   await tester
@@ -325,12 +355,14 @@ void main() {
     await _seedJobAndShift(wells: const ['Horse 16-2H']);
     await _openQuickRound(tester);
 
-    await tester.enterText(_labeledTextField('ICP').first, '1150');
-    await tester.enterText(
+    await _enterKeypadValue(tester, _labeledTextField('ICP').first, '1150');
+    await _enterKeypadValue(
+      tester,
       _labeledTextField('Water Specific Gravity').first,
       '1.08',
     );
-    await tester.enterText(
+    await _enterKeypadValue(
+      tester,
       _labeledTextField('Wellhead Temperature').first,
       '92',
     );
@@ -340,7 +372,8 @@ void main() {
     await tester.tap(find.text('Heavy').last);
     await tester.pumpAndSettle();
 
-    await tester.enterText(
+    await _enterKeypadValue(
+      tester,
       _labeledTextField('Prop / Sand Optional Rate').first,
       '2.5',
     );
@@ -585,26 +618,28 @@ void main() {
     expect(find.textContaining('Horse 16-2H'), findsWidgets);
     expect(find.textContaining('Horse 16-3H'), findsWidgets);
 
-    await tester.enterText(_labeledTextField('TBG').at(0), '1200');
-    await tester.enterText(_labeledTextField('CSG').at(0), '900');
-    await tester.enterText(
+    await _enterKeypadValue(tester, _labeledTextField('TBG').at(0), '1200');
+    await _enterKeypadValue(tester, _labeledTextField('CSG').at(0), '900');
+    await _enterKeypadValue(
+      tester,
       _labeledTextField('Current Gas Accum').first,
       '8003',
     );
-    await tester.enterText(_gaugeField().at(0), '70');
-    await tester.enterText(_gaugeField().at(1), '40');
+    await _enterKeypadValue(tester, _gaugeField().at(0), '70');
+    await _enterKeypadValue(tester, _gaugeField().at(1), '40');
     await tester
         .tap(find.widgetWithText(FilledButton, 'Save 6 AM Round').first);
     await tester.pumpAndSettle();
 
-    await tester.enterText(_labeledTextField('TBG').at(1), '1210');
-    await tester.enterText(_labeledTextField('CSG').at(1), '910');
-    await tester.enterText(
+    await _enterKeypadValue(tester, _labeledTextField('TBG').at(1), '1210');
+    await _enterKeypadValue(tester, _labeledTextField('CSG').at(1), '910');
+    await _enterKeypadValue(
+      tester,
       _labeledTextField('Current Gas Accum').first,
       '8010',
     );
-    await tester.enterText(_gaugeField().at(0), '69');
-    await tester.enterText(_gaugeField().at(1), '39');
+    await _enterKeypadValue(tester, _gaugeField().at(0), '69');
+    await _enterKeypadValue(tester, _gaugeField().at(1), '39');
 
     await tester
         .tap(find.widgetWithText(FilledButton, 'Save 6 AM Round').first);

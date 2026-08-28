@@ -71,6 +71,8 @@ class WwGaugeField extends StatelessWidget {
   final TextEditingController controller;
   final String? helperText;
   final String? hintText;
+  final String? suffixText;
+  final String? errorText;
   final TextInputAction textInputAction;
   final ValueChanged<String>? onChanged;
   final bool autofocus;
@@ -84,6 +86,8 @@ class WwGaugeField extends StatelessWidget {
     required this.controller,
     this.helperText,
     this.hintText,
+    this.suffixText,
+    this.errorText,
     this.textInputAction = TextInputAction.next,
     this.onChanged,
     this.autofocus = false,
@@ -118,6 +122,8 @@ class WwGaugeField extends StatelessWidget {
           labelText: label,
           hintText: hintText ?? 'Example: 12 3/8',
           helperText: helperText,
+          errorText: errorText,
+          suffixText: suffixText,
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           suffixIcon: controller.text.isEmpty

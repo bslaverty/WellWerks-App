@@ -8,6 +8,8 @@ class SharedGaugeKeypad extends StatelessWidget {
     required this.onBackspace,
     required this.onClear,
     required this.onDone,
+    this.onBack,
+    this.onNext,
     this.showPrimaryAction = false,
     this.primaryActionEnabled = false,
     this.primaryActionLabel = 'Calculate Rate',
@@ -19,6 +21,8 @@ class SharedGaugeKeypad extends StatelessWidget {
   final VoidCallback onBackspace;
   final VoidCallback onClear;
   final VoidCallback onDone;
+  final VoidCallback? onBack;
+  final VoidCallback? onNext;
   final bool showPrimaryAction;
   final bool primaryActionEnabled;
   final String primaryActionLabel;
@@ -42,6 +46,28 @@ class SharedGaugeKeypad extends StatelessWidget {
           children: [
             Row(
               children: [
+                if (onBack != null || onNext != null) ...[
+                  IconButton(
+                    tooltip: 'Previous field',
+                    onPressed: onBack,
+                    icon: const Icon(Icons.chevron_left_rounded),
+                    color: scheme.primary,
+                    disabledColor: scheme.onSurfaceVariant.withValues(
+                      alpha: 0.35,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  IconButton(
+                    tooltip: 'Next field',
+                    onPressed: onNext,
+                    icon: const Icon(Icons.chevron_right_rounded),
+                    color: scheme.primary,
+                    disabledColor: scheme.onSurfaceVariant.withValues(
+                      alpha: 0.35,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
                 Expanded(
                   child: Text(
                     'Gauge Keypad • $activeFieldLabel',

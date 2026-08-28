@@ -36,12 +36,40 @@ import 'package:wellwerks/services/rig_up_inventory_service.dart';
 import 'package:wellwerks/utils/jsa_time_format.dart';
 import 'package:wellwerks/widgets/tool_card.dart';
 import 'package:wellwerks/widgets/time_wheel_picker_sheet.dart';
+import 'package:wellwerks/widgets/shared_gauge_keypad.dart';
+import 'package:wellwerks/widgets/shared_numeric_keypad.dart';
 
 Finder labeledTextField(String label) {
   return find.byWidgetPredicate(
     (widget) => widget is TextField && widget.decoration?.labelText == label,
     description: 'TextField with label $label',
   );
+}
+
+// Quick Round's numeric fields are read-only and driven by the themed
+// on-screen keypad instead of the OS keyboard, so tests open the field and
+// tap the keypad's own buttons for each character.
+Future<void> enterKeypadValue(
+  WidgetTester tester,
+  Finder finder,
+  String value,
+) async {
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
+  final keypad = find.byWidgetPredicate(
+    (widget) => widget is SharedGaugeKeypad || widget is SharedNumericKeypad,
+  );
+  final clearButton =
+      find.descendant(of: keypad, matching: find.text('CLR')).first;
+  await tester.tap(clearButton);
+  await tester.pump();
+  for (final char in value.split('')) {
+    await tester.tap(
+      find.descendant(of: keypad, matching: find.text(char)).first,
+    );
+    await tester.pump();
+  }
+  await tester.pumpAndSettle();
 }
 
 Future<void> ensureEquipmentLibraryOpen(WidgetTester tester) async {
@@ -611,12 +639,15 @@ void main() {
     expect(labeledTextField('Well Name'), findsNothing);
     expect(find.textContaining('Bow 21-3'), findsWidgets);
 
-    await tester.enterText(labeledTextField('TBG').first, '1200');
-    await tester.enterText(labeledTextField('CSG').first, '2888');
-    await tester.enterText(labeledTextField('Current Gas Accum').first, '8003');
-    await tester.enterText(labeledTextField('Gas Static').first, '300');
-    await tester.enterText(labeledTextField('Gas Differential').first, '20');
-    await tester.enterText(labeledTextField('Gas Temperature').first, '88');
+    await enterKeypadValue(tester, labeledTextField('TBG').first, '1200');
+    await enterKeypadValue(tester, labeledTextField('CSG').first, '2888');
+    await enterKeypadValue(
+        tester, labeledTextField('Current Gas Accum').first, '8003');
+    await enterKeypadValue(tester, labeledTextField('Gas Static').first, '300');
+    await enterKeypadValue(
+        tester, labeledTextField('Gas Differential').first, '20');
+    await enterKeypadValue(
+        tester, labeledTextField('Gas Temperature').first, '88');
 
     await tester.scrollUntilVisible(
       find.text('Current Water Tank Gauges (Selected Well)').first,
@@ -625,17 +656,20 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.enterText(labeledTextField('Current Gauge (in)').at(0), '70');
-    await tester.enterText(labeledTextField('Current Gauge (in)').at(1), '40');
+    await enterKeypadValue(
+        tester, labeledTextField('Current Gauge (in)').at(0), '70');
+    await enterKeypadValue(
+        tester, labeledTextField('Current Gauge (in)').at(1), '40');
 
-    await tester.enterText(
+    await enterKeypadValue(
+        tester,
         labeledTextField('Water Hauled This Hour (Selected Well)').first,
         '120');
-    await tester.enterText(
+    await enterKeypadValue(tester,
         labeledTextField('Oil Hauled This Hour (Selected Well)').first, '0');
-    await tester.enterText(
+    await enterKeypadValue(tester,
         labeledTextField('Water Pumped This Hour (Selected Well)').first, '35');
-    await tester.enterText(
+    await enterKeypadValue(tester,
         labeledTextField('Oil Pumped This Hour (Selected Well)').first, '0');
     await tester.enterText(labeledTextField('Notes').first, 'Flowing steady.');
 
@@ -655,13 +689,17 @@ void main() {
 
     expect(find.textContaining('Active Hour • 7 AM'), findsOneWidget);
 
-    await tester.enterText(labeledTextField('Current Gas Accum').first, '8100');
-    await tester.enterText(labeledTextField('Current Gauge (in)').at(0), '60');
-    await tester.enterText(labeledTextField('Current Gauge (in)').at(1), '35');
-    await tester.enterText(
+    await enterKeypadValue(
+        tester, labeledTextField('Current Gas Accum').first, '8100');
+    await enterKeypadValue(
+        tester, labeledTextField('Current Gauge (in)').at(0), '60');
+    await enterKeypadValue(
+        tester, labeledTextField('Current Gauge (in)').at(1), '35');
+    await enterKeypadValue(
+        tester,
         labeledTextField('Water Hauled This Hour (Selected Well)').first,
         '120');
-    await tester.enterText(
+    await enterKeypadValue(tester,
         labeledTextField('Water Pumped This Hour (Selected Well)').first, '35');
     await tester.ensureVisible(
         find.widgetWithText(FilledButton, 'Save 7 AM Round').first);
