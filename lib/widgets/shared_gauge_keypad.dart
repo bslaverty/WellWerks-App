@@ -46,17 +46,7 @@ class SharedGaugeKeypad extends StatelessWidget {
           children: [
             Row(
               children: [
-                Expanded(
-                  child: Text(
-                    'Gauge Keypad • $activeFieldLabel',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
+                const Spacer(),
                 TextButton(onPressed: onClear, child: const Text('CLR')),
                 const SizedBox(width: 6),
                 FilledButton(onPressed: onDone, child: const Text('Done')),
@@ -105,6 +95,7 @@ class SharedGaugeKeypad extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 if (onBack != null || onNext != null)
                   Column(

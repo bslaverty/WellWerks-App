@@ -42,17 +42,7 @@ class SharedNumericKeypad extends StatelessWidget {
           children: [
             Row(
               children: [
-                Expanded(
-                  child: Text(
-                    'Keypad • $activeFieldLabel',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
+                const Spacer(),
                 TextButton(onPressed: onClear, child: const Text('CLR')),
                 const SizedBox(width: 6),
                 FilledButton(onPressed: onDone, child: const Text('Done')),
@@ -67,17 +57,14 @@ class SharedNumericKeypad extends StatelessWidget {
             const SizedBox(height: 6),
             Row(
               children: [
-                Expanded(
-                  child: _keyButton(context, '0'),
-                ),
+                Expanded(child: _keyButton(context, '0')),
                 const SizedBox(width: 6),
-                Expanded(
-                  child: _keyButton(context, '.'),
-                ),
+                Expanded(child: _keyButton(context, '.')),
               ],
             ),
             const SizedBox(height: 8),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 if (onBack != null || onNext != null)
                   Column(
