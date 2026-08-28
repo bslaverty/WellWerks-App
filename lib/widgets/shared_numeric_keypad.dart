@@ -81,6 +81,10 @@ class SharedNumericKeypad extends StatelessWidget {
                               alpha: 0.35,
                             ),
                             visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints(
+                              minWidth: 40,
+                              minHeight: 32,
+                            ),
                           ),
                           IconButton(
                             tooltip: 'Next field',
@@ -91,15 +95,22 @@ class SharedNumericKeypad extends StatelessWidget {
                               alpha: 0.35,
                             ),
                             visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints(
+                              minWidth: 40,
+                              minHeight: 32,
+                            ),
                           ),
                         ],
                       ),
-                      Text(
-                        'Keypad • $activeFieldLabel',
-                        style: TextStyle(
-                          color: scheme.onSurfaceVariant,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4),
+                        child: Text(
+                          'Keypad • $activeFieldLabel',
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],
@@ -107,17 +118,20 @@ class SharedNumericKeypad extends StatelessWidget {
                 else
                   const SizedBox.shrink(),
                 const Spacer(),
-                OutlinedButton.icon(
-                  onPressed: onBackspace,
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: scheme.primary),
-                    foregroundColor: scheme.onSurface,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onBackspace,
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: scheme.primary),
+                      foregroundColor: scheme.onSurface,
+                      minimumSize: const Size.fromHeight(42),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
+                    icon: const Icon(Icons.backspace_outlined, size: 18),
+                    label: const Text('Backspace'),
                   ),
-                  icon: const Icon(Icons.backspace_outlined, size: 18),
-                  label: const Text('Backspace'),
                 ),
               ],
             ),
