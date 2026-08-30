@@ -51,6 +51,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   bool _activeKeypadIsGauge = false;
   final Map<TextEditingController, GlobalKey> _keypadFieldKeys = {};
   List<_KeypadFieldRef> _keypadFieldOrder = [];
+  final ScrollController _scrollController = ScrollController();
   bool _hourlyQuickRoundReminderEnabled = false;
   int _quickRoundReminderMinute = 0;
   AppSettingsData _settings = const AppSettingsData(
@@ -2137,14 +2138,21 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   ProductionWellCheckData? _latestSavedWellData(int hourIndex, String well) {
+    ProductionWellCheckData? fallback;
     for (var index = hourIndex - 1; index >= 0; index--) {
-      // Read from the same live source _isWellEntered checks (the visible
-      // per-well editor when it exists) so carry-forward never falls back
-      // to the stale combined controller and skips past the true previous
-      // hour's gauge values.
-      if (_isWellEntered(index, well)) return _wellDataForHour(index, well);
+      final previousData = _wellDataForHour(index, well);
+      final hasTankGaugeEntry =
+          previousData.waterTankGaugeEntries.any(_gaugeEntryHasValue) ||
+              previousData.oilTankGaugeEntries.any(_gaugeEntryHasValue);
+      if (!_isWellEntered(index, well)) {
+        continue;
+      }
+      if (hasTankGaugeEntry) {
+        return previousData;
+      }
+      fallback ??= previousData;
     }
-    return null;
+    return fallback;
   }
 
   void _goToNextHour() {
@@ -2154,6 +2162,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     final nextIndex = _activeHourIndex + 1;
     _applySavedDefaultsToHour(nextIndex);
     setState(() => _activeHourIndex = nextIndex);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _scrollController.jumpTo(0.0);
+    });
   }
 
   void _goToPreviousHour() {
@@ -2163,6 +2175,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
     final previousIndex = _activeHourIndex - 1;
     _applySavedDefaultsToHour(previousIndex);
     setState(() => _activeHourIndex = previousIndex);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _scrollController.jumpTo(0.0);
+    });
   }
 
   void _applySavedDefaultsToHour(int hourIndex) {
@@ -3204,6 +3220,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         children: [
           Expanded(
             child: ListView(
+              controller: _scrollController,
               padding: const EdgeInsets.all(18),
               children: [
                 _activeJobBanner(),

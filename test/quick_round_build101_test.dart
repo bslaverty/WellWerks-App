@@ -311,6 +311,40 @@ void main() {
   });
 
   testWidgets(
+      'Tank gauges carry forward from the last hour that actually had gauge values',
+      (WidgetTester tester) async {
+    await _seedJobAndShift(wells: const ['Horse 16-2H']);
+    await _openQuickRound(tester);
+
+    await _saveCurrentHour(
+      tester,
+      '6 AM',
+      gasAccum: '8003',
+      waterGauge: '70',
+      oilGauge: '40',
+    );
+
+    await _goToNextHour(tester);
+    await _saveCurrentHour(
+      tester,
+      '7 AM',
+      gasAccum: '8100',
+      waterGauge: '',
+      oilGauge: '',
+    );
+
+    await _goToNextHour(tester);
+
+    final waterField = tester.widget<TextField>(_gaugeField().at(0));
+    final oilField = tester.widget<TextField>(_gaugeField().at(1));
+
+    expect(waterField.controller?.text, '70');
+    expect(oilField.controller?.text, '40');
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
       'Tank gauges carry forward across multiple hours using the true previous hour',
       (WidgetTester tester) async {
     await _seedJobAndShift(wells: const ['Horse 16-2H']);
