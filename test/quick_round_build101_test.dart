@@ -310,6 +310,32 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
+  testWidgets('Tank gauges carry forward without a tank measurement method',
+      (WidgetTester tester) async {
+    await _seedJobAndShift(wells: const ['Horse 16-2H']);
+    await _openQuickRound(tester);
+
+    await _saveCurrentHour(
+      tester,
+      '6 AM',
+      gasAccum: '',
+      waterGauge: '70',
+      oilGauge: '40',
+      tbg: '',
+      csg: '',
+    );
+
+    await _goToNextHour(tester);
+
+    final waterField = tester.widget<TextField>(_gaugeField().at(0));
+    final oilField = tester.widget<TextField>(_gaugeField().at(1));
+
+    expect(waterField.controller?.text, '70');
+    expect(oilField.controller?.text, '40');
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
   testWidgets(
       'Tank gauges carry forward from the last hour that actually had gauge values',
       (WidgetTester tester) async {

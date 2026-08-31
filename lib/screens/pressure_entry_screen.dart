@@ -2144,13 +2144,12 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       final hasTankGaugeEntry =
           previousData.waterTankGaugeEntries.any(_gaugeEntryHasValue) ||
               previousData.oilTankGaugeEntries.any(_gaugeEntryHasValue);
-      if (!_isWellEntered(index, well)) {
-        continue;
-      }
       if (hasTankGaugeEntry) {
         return previousData;
       }
-      fallback ??= previousData;
+      if (_isWellEntered(index, well)) {
+        fallback ??= previousData;
+      }
     }
     return fallback;
   }
