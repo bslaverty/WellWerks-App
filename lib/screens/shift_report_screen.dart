@@ -411,6 +411,8 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
     'oilHauled',
     'waterMeterReading',
     'waterMeterIncrease',
+    'oilMeterReading',
+    'oilMeterIncrease',
     'boph',
     'gasCoolerInTemp',
     'gasCoolerOutTemp',
@@ -438,6 +440,12 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
   }
 
   bool _fieldVisible(String key) {
+    final isCtb = _activeJob?.usesCentralTankBattery ?? false;
+    if (isCtb &&
+        const {'waterGaugeText', 'oilGaugeText', 'waterHauled', 'oilHauled'}
+            .contains(key)) {
+      return false;
+    }
     switch (key) {
       case 'gasCoolerInTemp':
       case 'gasCoolerOutTemp':
@@ -475,7 +483,9 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         return _useOilHauled;
       case 'waterMeterReading':
       case 'waterMeterIncrease':
-        return _useWaterMeter;
+      case 'oilMeterReading':
+      case 'oilMeterIncrease':
+        return isCtb || _useWaterMeter;
       default:
         return true;
     }
@@ -520,6 +530,10 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         return 'WATER METER READING';
       case 'waterMeterIncrease':
         return 'WATER METER INCREASE';
+      case 'oilMeterReading':
+        return 'OIL METER READING';
+      case 'oilMeterIncrease':
+        return 'OIL PRODUCED';
       case 'gasCoolerInTemp':
         return 'GAS IN TEMP';
       case 'gasCoolerOutTemp':
@@ -603,6 +617,17 @@ class _ShiftReportScreenState extends State<ShiftReportScreen> {
         );
         if (previous == null || row.currentWaterMeter < 0) return '--';
         return _fmt(row.currentWaterMeter - previous.currentWaterMeter);
+      case 'oilMeterReading':
+        return _fmt(row.currentOilMeter);
+      case 'oilMeterIncrease':
+        final previous = _previousRowForWell(
+          row,
+          (item) =>
+              item.oilMeasurementMethod ==
+              ProductionWellCheckData.measurementMeter,
+        );
+        if (previous == null || row.currentOilMeter < 0) return '--';
+        return _fmt(row.currentOilMeter - previous.currentOilMeter);
       case 'gasCoolerInTemp':
         return _showGasCoolerSection ? row.gasCoolerInTemp : '';
       case 'gasCoolerOutTemp':

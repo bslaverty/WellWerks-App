@@ -76,6 +76,7 @@ class JobProfileDefaultsService {
   static const String companyContinental = 'Continental Resources';
   static const String companyMach = 'Mach Energy';
   static const String companyFlywheel = 'Flywheel Energy';
+  static const String companyValidus = 'Validus Production';
   static const String companyDevon = 'Devon';
   static const String companyXto = 'XTO';
 
@@ -83,6 +84,7 @@ class JobProfileDefaultsService {
     companyMach,
     companyContinental,
     companyFlywheel,
+    companyValidus,
   ];
 
   static const List<String> sharedCompanyOptions = <String>[
@@ -91,6 +93,7 @@ class JobProfileDefaultsService {
     companyContinental,
     companyDevon,
     companyFlywheel,
+    companyValidus,
     companyXto,
   ];
 
@@ -100,6 +103,7 @@ class JobProfileDefaultsService {
     companyDevon,
     companyFlywheel,
     companyMach,
+    companyValidus,
     companyXto,
   ];
 
@@ -380,6 +384,9 @@ class JobProfileDefaultsService {
     if (lower == 'flywheel energy' || lower == 'flywheel') {
       return companyFlywheel;
     }
+    if (lower == 'validus production' || lower == 'validus') {
+      return companyValidus;
+    }
     final custom = _customProfilesByLower[lower];
     if (custom != null) {
       return custom.name;
@@ -454,6 +461,18 @@ class JobProfileDefaultsService {
         reportLabels: _flywheelReportLabels,
         textLabels: _flywheelTextLabels,
         equipmentSectionFields: _flywheelEquipmentFields,
+      );
+    }
+
+    if (normalized == companyValidus) {
+      return const JobProfileDefaults(
+        company: companyValidus,
+        wellFieldKeys: _continentalWellFields,
+        optionalSections: _defaultSections,
+        defaultActiveSections: <String>[],
+        reportLabels: _continentalReportLabels,
+        textLabels: _continentalTextLabels,
+        equipmentSectionFields: _continentalEquipmentFields,
       );
     }
 

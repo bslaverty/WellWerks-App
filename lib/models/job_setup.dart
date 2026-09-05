@@ -1,6 +1,8 @@
 import 'drillout_tank_configuration.dart';
 
 class JobSetup {
+  static const String productionMeasurementTankGauging = 'tankGauging';
+  static const String productionMeasurementCtbMetered = 'ctbMetered';
   static const String wellStatusNotStarted = 'notStarted';
   static const String wellStatusActive = 'active';
   static const String wellStatusComplete = 'complete';
@@ -57,6 +59,7 @@ class JobSetup {
     this.waterTankCapacity = '400',
     this.productionTankFactor = '1.67',
     this.productionGaugeType = 'decimalFeet',
+    this.productionMeasurementMethod = productionMeasurementTankGauging,
     this.selectedChemicals = const [],
     this.reportTimes = const [
       '6:00 AM',
@@ -104,6 +107,7 @@ class JobSetup {
   final String waterTankCapacity;
   final String productionTankFactor;
   final String productionGaugeType;
+  final String productionMeasurementMethod;
   final List<String> selectedChemicals;
   final List<String> reportTimes;
 
@@ -259,6 +263,14 @@ class JobSetup {
   bool get isMultiWellJob => jobType == 'multiWellPad';
   bool get isActive => status == 'active';
   bool get isEnded => status == 'ended';
+  bool get usesCentralTankBattery =>
+      productionMeasurementMethod == productionMeasurementCtbMetered;
+
+  static String normalizeProductionMeasurementMethod(String? value) {
+    return value?.trim() == productionMeasurementCtbMetered
+        ? productionMeasurementCtbMetered
+        : productionMeasurementTankGauging;
+  }
 
   JobSetup copyWith({
     String? id,
@@ -298,6 +310,7 @@ class JobSetup {
     String? waterTankCapacity,
     String? productionTankFactor,
     String? productionGaugeType,
+    String? productionMeasurementMethod,
     List<String>? selectedChemicals,
     List<String>? reportTimes,
   }) {
@@ -340,6 +353,9 @@ class JobSetup {
       waterTankCapacity: waterTankCapacity ?? this.waterTankCapacity,
       productionTankFactor: productionTankFactor ?? this.productionTankFactor,
       productionGaugeType: productionGaugeType ?? this.productionGaugeType,
+      productionMeasurementMethod: normalizeProductionMeasurementMethod(
+        productionMeasurementMethod ?? this.productionMeasurementMethod,
+      ),
       selectedChemicals: selectedChemicals ?? this.selectedChemicals,
       reportTimes: reportTimes ?? this.reportTimes,
     );
@@ -383,6 +399,7 @@ class JobSetup {
         'waterTankCapacity': waterTankCapacity,
         'productionTankFactor': productionTankFactor,
         'productionGaugeType': productionGaugeType,
+        'productionMeasurementMethod': productionMeasurementMethod,
         'selectedChemicals': selectedChemicals,
         'reportTimes': reportTimes,
       };
@@ -431,6 +448,9 @@ class JobSetup {
         productionTankFactor: json['productionTankFactor'] as String? ?? '1.67',
         productionGaugeType:
             json['productionGaugeType'] as String? ?? 'decimalFeet',
+        productionMeasurementMethod: normalizeProductionMeasurementMethod(
+          json['productionMeasurementMethod'] as String?,
+        ),
         selectedChemicals: _normalizeSelectedChemicals(
           (json['selectedChemicals'] as List?)
                   ?.map((item) => item?.toString() ?? '')

@@ -213,6 +213,8 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
     return _selectedWellIndex;
   }
 
+  bool get _isCtbMode => _activeJobSetup?.usesCentralTankBattery ?? false;
+
   String _normalizeWellName(String value) =>
       value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
@@ -1402,6 +1404,14 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
   }
 
   Widget _inventorySettingsSection() {
+    if (_isCtbMode) {
+      return _section('Inventory Settings', const [
+        Text(
+          'Central Tank Battery metering is configured for this job. Tank setup and hauled-volume inputs are not used.',
+          style: TextStyle(color: Colors.white70),
+        ),
+      ]);
+    }
     return _section('Inventory Settings', [
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
@@ -1530,17 +1540,19 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
         _validationCard(),
         _productionContextSection(),
         _inventorySettingsSection(),
-        _tankSection(
-          title: 'Starting Inventory • Water Tanks',
-          tanks: _waterTanks,
-          tankLabel: 'Water Tank',
-        ),
-        _tankSection(
-          title: 'Starting Inventory • Oil Tanks',
-          tanks: _oilTanks,
-          tankLabel: 'Oil Tank',
-        ),
-        _oilInventorySection(),
+        if (!_isCtbMode) ...[
+          _tankSection(
+            title: 'Starting Inventory • Water Tanks',
+            tanks: _waterTanks,
+            tankLabel: 'Water Tank',
+          ),
+          _tankSection(
+            title: 'Starting Inventory • Oil Tanks',
+            tanks: _oilTanks,
+            tankLabel: 'Oil Tank',
+          ),
+          _oilInventorySection(),
+        ],
         if (_gasCalculationMethod == 'accumulator')
           _section('Starting Gas', [
             WwNumberField(
@@ -1553,44 +1565,45 @@ class _ProductionInventoryScreenState extends State<ProductionInventoryScreen> {
               },
             ),
           ]),
-        _section('Pre-Round Adjustments', [
-          WwNumberField(
-            label: 'Water Hauled Before Round',
-            controller: _waterHauledBeforeRound,
-            errorText: _errorTextFor(_waterHauledBeforeRound),
-            onChanged: (_) {
-              _clearFieldIssue(_waterHauledBeforeRound);
-              setState(() {});
-            },
-          ),
-          WwNumberField(
-            label: 'Oil Hauled Before Round',
-            controller: _oilHauledBeforeRound,
-            errorText: _errorTextFor(_oilHauledBeforeRound),
-            onChanged: (_) {
-              _clearFieldIssue(_oilHauledBeforeRound);
-              setState(() {});
-            },
-          ),
-          WwNumberField(
-            label: 'Water Pumped Before Round',
-            controller: _waterPumpedBeforeRound,
-            errorText: _errorTextFor(_waterPumpedBeforeRound),
-            onChanged: (_) {
-              _clearFieldIssue(_waterPumpedBeforeRound);
-              setState(() {});
-            },
-          ),
-          WwNumberField(
-            label: 'Oil Pumped Before Round',
-            controller: _oilPumpedBeforeRound,
-            errorText: _errorTextFor(_oilPumpedBeforeRound),
-            onChanged: (_) {
-              _clearFieldIssue(_oilPumpedBeforeRound);
-              setState(() {});
-            },
-          ),
-        ]),
+        if (!_isCtbMode)
+          _section('Pre-Round Adjustments', [
+            WwNumberField(
+              label: 'Water Hauled Before Round',
+              controller: _waterHauledBeforeRound,
+              errorText: _errorTextFor(_waterHauledBeforeRound),
+              onChanged: (_) {
+                _clearFieldIssue(_waterHauledBeforeRound);
+                setState(() {});
+              },
+            ),
+            WwNumberField(
+              label: 'Oil Hauled Before Round',
+              controller: _oilHauledBeforeRound,
+              errorText: _errorTextFor(_oilHauledBeforeRound),
+              onChanged: (_) {
+                _clearFieldIssue(_oilHauledBeforeRound);
+                setState(() {});
+              },
+            ),
+            WwNumberField(
+              label: 'Water Pumped Before Round',
+              controller: _waterPumpedBeforeRound,
+              errorText: _errorTextFor(_waterPumpedBeforeRound),
+              onChanged: (_) {
+                _clearFieldIssue(_waterPumpedBeforeRound);
+                setState(() {});
+              },
+            ),
+            WwNumberField(
+              label: 'Oil Pumped Before Round',
+              controller: _oilPumpedBeforeRound,
+              errorText: _errorTextFor(_oilPumpedBeforeRound),
+              onChanged: (_) {
+                _clearFieldIssue(_oilPumpedBeforeRound);
+                setState(() {});
+              },
+            ),
+          ]),
         _runningTotalsSection(),
         SizedBox(
           width: double.infinity,

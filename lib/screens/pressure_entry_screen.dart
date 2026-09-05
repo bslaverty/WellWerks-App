@@ -107,6 +107,7 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   bool get _useWaterHauled => _shift.inventory.useWaterHauled;
   bool get _useWaterPumped => _shift.inventory.useWaterPumped;
   bool get _useWaterMeter => _shift.inventory.useWaterMeter;
+  bool get _isCtbMode => _activeJob?.usesCentralTankBattery ?? false;
   bool get _showNotesSection {
     final raw = _activeJob?.drilloutSetup['includeNotesSection'];
     if (raw is bool) return raw;
@@ -859,14 +860,16 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
   }
 
   bool _isWaterMeterMode(ProductionWellCheckData data) {
-    return _useWaterMeter ||
+    return _isCtbMode ||
+        _useWaterMeter ||
         _normalizedMeasurementMethod(data.waterMeasurementMethod) ==
             ProductionWellCheckData.measurementMeter;
   }
 
   bool _isOilMeterMode(ProductionWellCheckData data) {
-    return _normalizedMeasurementMethod(data.oilMeasurementMethod) ==
-        ProductionWellCheckData.measurementMeter;
+    return _isCtbMode ||
+        _normalizedMeasurementMethod(data.oilMeasurementMethod) ==
+            ProductionWellCheckData.measurementMeter;
   }
 
   bool get _useGasAccumulator =>
@@ -1603,7 +1606,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (currentMeter < previousMeter) {
         return _missingCalcValue;
       }
-      return (currentMeter - previousMeter) / intervalHours;
+      final produced = currentMeter - previousMeter;
+      return _isCtbMode ? produced : produced / intervalHours;
     }
 
     final previous = _latestSavedBeforeWith(
@@ -1651,7 +1655,8 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (currentMeter < previousMeter) {
         return _missingCalcValue;
       }
-      return (currentMeter - previousMeter) / intervalHours;
+      final produced = currentMeter - previousMeter;
+      return _isCtbMode ? produced : produced / intervalHours;
     }
 
     final previous = _latestSavedBeforeWith(
@@ -1778,14 +1783,15 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       currentWaterMeter: currentWaterMeter,
       currentOilMeter: currentOilMeter,
       gaugeEntryType: _shift.inventory.gaugeEntryType,
-      waterMeasurementMethod: _useWaterMeter
+      waterMeasurementMethod: (_isCtbMode || _useWaterMeter)
           ? ProductionWellCheckData.measurementMeter
           : waterMethod,
-      oilMeasurementMethod: oilMethod,
+      oilMeasurementMethod:
+          _isCtbMode ? ProductionWellCheckData.measurementMeter : oilMethod,
       currentGasAccum: currentGasAccum,
       hoursSincePrevious: intervalHours.isNaN ? 0 : intervalHours,
-      waterHauled: _useWaterHauled ? _n(data.waterHauled) : 0,
-      oilHauled: _useOilHauled ? _n(data.oilHauled) : 0,
+      waterHauled: !_isCtbMode && _useWaterHauled ? _n(data.waterHauled) : 0,
+      oilHauled: !_isCtbMode && _useOilHauled ? _n(data.oilHauled) : 0,
       waterPumped: _useWaterPumped ? _n(data.waterPumped) : 0,
       oilPumped: _showInventorySection ? _n(data.oilPumped) : 0,
       notes: _showNotesSection ? data.notes.trim() : '',
@@ -2630,30 +2636,31 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
       if (_showVruSection) _field('VRU Suction', controller.vruSuction),
       if (_showVruSection) _field('VRU Discharge', controller.vruDischarge),
       if (_showEcdSection) _oilCushionSection(index),
-      DropdownButtonFormField<String>(
-        initialValue: _normalizedMeasurementMethod(
-          controller.waterMeasurementMethod.text,
+      if (!_isCtbMode)
+        DropdownButtonFormField<String>(
+          initialValue: _normalizedMeasurementMethod(
+            controller.waterMeasurementMethod.text,
+          ),
+          decoration: const InputDecoration(labelText: 'Water Measurement'),
+          items: const [
+            DropdownMenuItem(
+              value: ProductionWellCheckData.measurementTank,
+              child: Text('Tank'),
+            ),
+            DropdownMenuItem(
+              value: ProductionWellCheckData.measurementMeter,
+              child: Text('Meter'),
+            ),
+          ],
+          onChanged: (value) {
+            if (value == null) return;
+            setState(() {
+              controller.waterMeasurementMethod.text = value;
+            });
+            _persistShift();
+          },
         ),
-        decoration: const InputDecoration(labelText: 'Water Measurement'),
-        items: const [
-          DropdownMenuItem(
-            value: ProductionWellCheckData.measurementTank,
-            child: Text('Tank'),
-          ),
-          DropdownMenuItem(
-            value: ProductionWellCheckData.measurementMeter,
-            child: Text('Meter'),
-          ),
-        ],
-        onChanged: (value) {
-          if (value == null) return;
-          setState(() {
-            controller.waterMeasurementMethod.text = value;
-          });
-          _persistShift();
-        },
-      ),
-      const SizedBox(height: 10),
+      if (!_isCtbMode) const SizedBox(height: 10),
       if (!waterMeterMode)
         _tankGaugeInputs(
           title: 'Current Water Tank Gauges (Selected Well)',
@@ -2670,30 +2677,31 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           ),
         _field('Current Water Meter Reading', controller.waterMeterReading),
       ],
-      DropdownButtonFormField<String>(
-        initialValue: _normalizedMeasurementMethod(
-          controller.oilMeasurementMethod.text,
+      if (!_isCtbMode)
+        DropdownButtonFormField<String>(
+          initialValue: _normalizedMeasurementMethod(
+            controller.oilMeasurementMethod.text,
+          ),
+          decoration: const InputDecoration(labelText: 'Oil Measurement'),
+          items: const [
+            DropdownMenuItem(
+              value: ProductionWellCheckData.measurementTank,
+              child: Text('Tank'),
+            ),
+            DropdownMenuItem(
+              value: ProductionWellCheckData.measurementMeter,
+              child: Text('Meter'),
+            ),
+          ],
+          onChanged: (value) {
+            if (value == null) return;
+            setState(() {
+              controller.oilMeasurementMethod.text = value;
+            });
+            _persistShift();
+          },
         ),
-        decoration: const InputDecoration(labelText: 'Oil Measurement'),
-        items: const [
-          DropdownMenuItem(
-            value: ProductionWellCheckData.measurementTank,
-            child: Text('Tank'),
-          ),
-          DropdownMenuItem(
-            value: ProductionWellCheckData.measurementMeter,
-            child: Text('Meter'),
-          ),
-        ],
-        onChanged: (value) {
-          if (value == null) return;
-          setState(() {
-            controller.oilMeasurementMethod.text = value;
-          });
-          _persistShift();
-        },
-      ),
-      const SizedBox(height: 10),
+      if (!_isCtbMode) const SizedBox(height: 10),
       if (!oilMeterMode)
         _tankGaugeInputs(
           title: 'Current Oil Tank Gauges (Selected Well)',
@@ -2708,10 +2716,10 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
         ),
         _field('Current Oil Meter Reading', controller.oilMeterReading),
       ],
-      if (_useWaterHauled)
+      if (!_isCtbMode && _useWaterHauled)
         _field('Water Hauled This Hour (Selected Well)', controller.waterHauled,
             suffix: 'BBL'),
-      if (_useOilHauled)
+      if (!_isCtbMode && _useOilHauled)
         _field('Oil Hauled This Hour (Selected Well)', controller.oilHauled,
             suffix: 'BBL'),
       if (_useWaterPumped)
@@ -2752,11 +2760,11 @@ class _PressureEntryScreenState extends State<PressureEntryScreen> {
           ),
         _calcLine('Current Oil BBL', _currentOilBblForData(data)),
         _calcLine(
-          'Hourly Water Production',
+          _isCtbMode ? 'Water Produced' : 'Hourly Water Production',
           _waterProductionForData(index, data, well),
         ),
         _calcLine(
-          'Hourly Oil Production',
+          _isCtbMode ? 'Oil Produced' : 'Hourly Oil Production',
           _oilProductionForData(index, data, well),
         ),
         _calcLine(

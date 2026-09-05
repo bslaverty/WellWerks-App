@@ -105,6 +105,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   final waterTankCapacity = TextEditingController(text: '400');
   final productionTankFactor = TextEditingController(text: '1.67');
   String productionGaugeType = 'decimalFeet';
+  String productionMeasurementMethod =
+      JobSetup.productionMeasurementTankGauging;
 
   final _drilloutWellName = TextEditingController();
   final _drilloutManifoldPsi = TextEditingController();
@@ -1150,6 +1152,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     waterTankCapacity.text = job.waterTankCapacity;
     productionTankFactor.text = job.productionTankFactor;
     productionGaugeType = job.productionGaugeType;
+    productionMeasurementMethod = job.productionMeasurementMethod;
   }
 
   void _resetFormForNewJob() {
@@ -1195,6 +1198,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     waterTankCapacity.text = '400';
     productionTankFactor.text = '1.67';
     productionGaugeType = 'decimalFeet';
+    productionMeasurementMethod = JobSetup.productionMeasurementTankGauging;
   }
 
   JobSetup _buildJobFromForm() {
@@ -1352,6 +1356,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           ? '1.67'
           : productionTankFactor.text.trim(),
       productionGaugeType: productionGaugeType,
+      productionMeasurementMethod: productionMeasurementMethod,
       selectedChemicals: List<String>.from(selectedChemicals),
       drilloutSetup: mergedSetup,
     );
@@ -2087,46 +2092,73 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           decoration: const InputDecoration(labelText: 'Notes'),
         ),
         const SizedBox(height: 12),
-        _countField('Oil Tanks', oilTanks),
-        WwNumberField(
-          label: 'Oil Tank Capacity (per well)',
-          controller: oilTankCapacity,
-          onChanged: (_) => _scheduleAutoSave(),
-        ),
-        const SizedBox(height: 10),
-        _countField('Water Tanks', waterTanks),
-        WwNumberField(
-          label: 'Water Tank Capacity (per well)',
-          controller: waterTankCapacity,
-          onChanged: (_) => _scheduleAutoSave(),
-        ),
-        const SizedBox(height: 10),
-        WwNumberField(
-          label: 'Production Tank Factor (BBL/In)',
-          controller: productionTankFactor,
-          allowDecimal: true,
-          onChanged: (_) => _scheduleAutoSave(),
-        ),
-        const SizedBox(height: 10),
-        DropdownButtonFormField<String>(
-          initialValue: productionGaugeType,
-          decoration: const InputDecoration(labelText: 'Tank Gauge Format'),
-          items: const [
-            DropdownMenuItem(
-              value: 'decimalFeet',
-              child: Text('Decimal Feet'),
-            ),
-            DropdownMenuItem(
-              value: 'feetInches',
-              child: Text('Feet & Inches'),
-            ),
-          ],
+        const Text('Production Measurement Method',
+            style: TextStyle(fontWeight: FontWeight.w700)),
+        RadioGroup<String>(
+          groupValue: productionMeasurementMethod,
           onChanged: (value) {
             if (value == null) return;
-            setState(() => productionGaugeType = value);
+            setState(() => productionMeasurementMethod = value);
             _scheduleAutoSave();
           },
+          child: const Column(
+            children: [
+              RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                title: Text('Tank Gauging'),
+                value: JobSetup.productionMeasurementTankGauging,
+              ),
+              RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                title: Text('Central Tank Battery (Metered)'),
+                value: JobSetup.productionMeasurementCtbMetered,
+              ),
+            ],
+          ),
         ),
+        if (productionMeasurementMethod ==
+            JobSetup.productionMeasurementTankGauging) ...[
+          _countField('Oil Tanks', oilTanks),
+          WwNumberField(
+            label: 'Oil Tank Capacity (per well)',
+            controller: oilTankCapacity,
+            onChanged: (_) => _scheduleAutoSave(),
+          ),
+          const SizedBox(height: 10),
+          _countField('Water Tanks', waterTanks),
+          WwNumberField(
+            label: 'Water Tank Capacity (per well)',
+            controller: waterTankCapacity,
+            onChanged: (_) => _scheduleAutoSave(),
+          ),
+          const SizedBox(height: 10),
+          WwNumberField(
+            label: 'Production Tank Factor (BBL/In)',
+            controller: productionTankFactor,
+            allowDecimal: true,
+            onChanged: (_) => _scheduleAutoSave(),
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            initialValue: productionGaugeType,
+            decoration: const InputDecoration(labelText: 'Tank Gauge Format'),
+            items: const [
+              DropdownMenuItem(
+                value: 'decimalFeet',
+                child: Text('Decimal Feet'),
+              ),
+              DropdownMenuItem(
+                value: 'feetInches',
+                child: Text('Feet & Inches'),
+              ),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() => productionGaugeType = value);
+              _scheduleAutoSave();
+            },
+          ),
+        ],
         const SizedBox(height: 24),
         _navButtons(),
       ]),

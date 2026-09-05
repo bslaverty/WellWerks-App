@@ -88,7 +88,9 @@ class ProductionTextUpdateBuilder {
       for (final field in included) {
         if (field.key == 'time' ||
             vruKeys.contains(field.key) ||
-            field.key == 'notes') {
+            field.key == 'notes' ||
+            (activeJob?.usesCentralTankBattery ?? false) &&
+                const {'waterGaugeText', 'oilGaugeText'}.contains(field.key)) {
           continue;
         }
         final line = _lineFor(previewRow, field.key);

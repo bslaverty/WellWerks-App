@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wellwerks/models/production_shift.dart';
+import 'package:wellwerks/models/job_setup.dart';
+import 'package:wellwerks/services/job_profile_defaults_service.dart';
 
 void main() {
   test('Build 104 defaults measurement methods to tank for legacy data', () {
@@ -57,5 +59,27 @@ void main() {
     expect(row.oilMeasurementMethod, ProductionWellCheckData.measurementMeter);
     expect(row.currentWaterMeter, 1234);
     expect(row.currentOilMeter, 4321);
+  });
+
+  test('Build 300 defaults legacy jobs to tank gauging and persists CTB', () {
+    final legacy = JobSetup.fromJson(const <String, dynamic>{});
+    expect(legacy.productionMeasurementMethod,
+        JobSetup.productionMeasurementTankGauging);
+
+    final ctb = legacy.copyWith(
+      productionMeasurementMethod: JobSetup.productionMeasurementCtbMetered,
+    );
+    expect(ctb.usesCentralTankBattery, isTrue);
+    expect(JobSetup.fromJson(ctb.toJson()).usesCentralTankBattery, isTrue);
+  });
+
+  test('Build 300 includes Validus in the shared Production profile list', () {
+    final defaults = JobProfileDefaultsService();
+    expect(defaults.companyOptions,
+        contains(JobProfileDefaultsService.companyValidus));
+    expect(defaults.normalizeCompany('validus'),
+        JobProfileDefaultsService.companyValidus);
+    expect(defaults.profileForCompany('Validus').company,
+        JobProfileDefaultsService.companyValidus);
   });
 }

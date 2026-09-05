@@ -293,6 +293,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           value: JobProfileDefaultsService.companyFlywheel,
                           child: Text('Flywheel Energy'),
                         ),
+                        DropdownMenuItem(
+                          value: JobProfileDefaultsService.companyValidus,
+                          child: Text('Validus Production'),
+                        ),
                       ],
                       onChanged: (value) {
                         if (value == null) return;
