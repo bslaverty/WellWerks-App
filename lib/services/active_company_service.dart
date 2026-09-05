@@ -32,14 +32,15 @@ class ActiveCompanyService {
   List<String> get companyOptions => _defaults.companyOptions;
 
   String normalize(String value) {
-    final normalized = _defaults.normalizeCompany(value.trim());
+    final entered = value.trim();
+    final normalized = _defaults.normalizeCompany(entered);
     if (companyOptions.contains(normalized)) {
       return normalized;
     }
-    return JobProfileDefaultsService.companyNone;
+    return entered.isEmpty ? JobProfileDefaultsService.companyNone : entered;
   }
 
-  bool isValid(String value) => companyOptions.contains(normalize(value));
+  bool isValid(String value) => !isNone(value);
 
   bool isNone(String value) =>
       normalize(value) == JobProfileDefaultsService.companyNone;
@@ -116,7 +117,7 @@ class ActiveCompanyService {
 
   Future<void> setIfValidCandidate(String candidate) async {
     final normalized = normalize(candidate);
-    if (normalized == JobProfileDefaultsService.companyNone) return;
+    if (!companyOptions.contains(normalized)) return;
     await setActiveCompany(normalized);
   }
 

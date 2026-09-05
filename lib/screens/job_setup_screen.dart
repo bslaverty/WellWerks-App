@@ -62,6 +62,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   ActiveWorkflowMode _activeWorkflowMode = ActiveWorkflowMode.production;
 
   String company = 'Mach Energy';
+  final _companyController = TextEditingController(text: 'Mach Energy');
+  final _companyFocusNode = FocusNode();
   String jobType = JobProfileDefaultsService.jobTypeSingleWell;
   List<String> wellFieldKeys = const [];
   List<String> activeEquipmentSections = const [];
@@ -138,10 +140,17 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   void _setCompany(String value) {
-    final normalized = _profileDefaults.normalizeCompany(value);
+    final entered = value.trim();
+    final normalized = _profileDefaults.normalizeCompany(entered);
+    final isProfile = normalized != JobProfileDefaultsService.companyNone &&
+        _profileDefaults.companyOptions.any(
+          (option) => option.toLowerCase() == normalized.toLowerCase(),
+        );
     setState(() {
-      company = normalized;
-      final defaults = _profileDefaults.profileForCompany(company);
+      company = isProfile ? normalized : entered;
+      final defaults = _profileDefaults.profileForCompany(
+        isProfile ? normalized : JobProfileDefaultsService.companyNone,
+      );
       wellFieldKeys = List<String>.from(defaults.wellFieldKeys);
       activeEquipmentSections = activeEquipmentSections
           .where(defaults.optionalSections.contains)
@@ -152,6 +161,71 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       }
     });
     _scheduleAutoSave();
+  }
+
+  Widget _companyField() {
+    return RawAutocomplete<String>(
+      textEditingController: _companyController,
+      focusNode: _companyFocusNode,
+      displayStringForOption: (option) => option,
+      optionsBuilder: (value) {
+        final query = value.text.trim().toLowerCase();
+        final selectingCurrentValue = value.selection.isValid &&
+            value.selection.start == 0 &&
+            value.selection.end == value.text.length;
+        return _companyOptions().where(
+          (option) =>
+              selectingCurrentValue ||
+              query.isEmpty ||
+              option.toLowerCase().contains(query),
+        );
+      },
+      onSelected: _setCompany,
+      fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+        return TextFormField(
+          key: const Key('job-info-company-field'),
+          controller: controller,
+          focusNode: focusNode,
+          decoration: const InputDecoration(
+            labelText: 'Company',
+            hintText: 'Select a profile or enter a company',
+          ),
+          textInputAction: TextInputAction.next,
+          onTap: () {
+            if (controller.selection.start == 0 &&
+                controller.selection.end == controller.text.length) {
+              return;
+            }
+            controller.clear();
+          },
+          onChanged: _setCompany,
+          onFieldSubmitted: _setCompany,
+        );
+      },
+      optionsViewBuilder: (context, onSelected, options) {
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 4,
+            child: SizedBox(
+              width: 320,
+              height: 220,
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                itemCount: options.length,
+                itemBuilder: (context, index) {
+                  final option = options.elementAt(index);
+                  return ListTile(
+                    title: Text(option),
+                    onTap: () => onSelected(option),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   int _i(TextEditingController controller) {
@@ -432,6 +506,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
       }
       _resetDrilloutSetupForNewJob();
     }
+    _companyController.text = company;
 
     if (!mounted) return;
     setState(() {
@@ -1019,7 +1094,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   }
 
   void _applyJobToForm(JobSetup job) {
-    company = _profileDefaults.normalizeCompany(job.company);
+    company = job.company.trim();
     jobType = _profileDefaults.normalizeJobType(job.jobType);
     final defaults = _profileDefaults.profileForCompany(company);
     wellFieldKeys = job.wellFieldKeys.isEmpty
@@ -1153,11 +1228,13 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
     productionTankFactor.text = job.productionTankFactor;
     productionGaugeType = job.productionGaugeType;
     productionMeasurementMethod = job.productionMeasurementMethod;
+    _companyController.text = company;
   }
 
   void _resetFormForNewJob() {
     final globalCompany = _activeCompanyService.activeCompany.value.trim();
     company = globalCompany.isEmpty ? 'Mach Energy' : globalCompany;
+    _companyController.text = company;
     jobType = JobProfileDefaultsService.jobTypeSingleWell;
     final defaults = _profileDefaults.profileForCompany(company);
     wellFieldKeys = List<String>.from(defaults.wellFieldKeys);
@@ -1666,6 +1743,12 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
         ? await _storage.saveActiveJob(job)
         : await _storage.updateActiveJob(job);
 
+    await _activeCompanyService.setActiveCompany(
+      saved.company,
+      syncActiveJob: false,
+      syncActiveShift: false,
+    );
+
     if (_activeWorkflowMode != ActiveWorkflowMode.production) {
       await _workflowModeService.setMode(_activeWorkflowMode);
     }
@@ -1914,24 +1997,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   List<Widget> _buildProductionSetupPages() {
     return [
       _StepPage(title: '1. Job Information', children: [
-        DropdownButtonFormField<String>(
-          key: const Key('job-info-company-field'),
-          initialValue:
-              _companyOptions().contains(company) ? company.trim() : null,
-          decoration: const InputDecoration(labelText: 'Company'),
-          items: _companyOptions()
-              .map(
-                (option) => DropdownMenuItem<String>(
-                  value: option,
-                  child: Text(option),
-                ),
-              )
-              .toList(growable: false),
-          onChanged: (value) {
-            if (value == null) return;
-            _setCompany(value);
-          },
-        ),
+        _companyField(),
         const SizedBox(height: 12),
         CheckboxListTile(
           value: _isMultiWellPad,
@@ -2574,6 +2640,8 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
   void dispose() {
     _autoSaveTimer?.cancel();
     _page.dispose();
+    _companyController.dispose();
+    _companyFocusNode.dispose();
     for (final controller in _autoSaveControllers) {
       controller.removeListener(_scheduleAutoSave);
     }
@@ -2679,24 +2747,7 @@ class _JobSetupScreenState extends State<JobSetupScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        DropdownButtonFormField<String>(
-          key: const Key('job-info-company-field'),
-          initialValue:
-              _companyOptions().contains(company) ? company.trim() : null,
-          decoration: const InputDecoration(labelText: 'Company'),
-          items: _companyOptions()
-              .map(
-                (option) => DropdownMenuItem<String>(
-                  value: option,
-                  child: Text(option),
-                ),
-              )
-              .toList(growable: false),
-          onChanged: (value) {
-            if (value == null) return;
-            _setCompany(value);
-          },
-        ),
+        _companyField(),
         const SizedBox(height: 12),
         TextField(
           controller: padName,

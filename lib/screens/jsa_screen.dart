@@ -199,10 +199,9 @@ class _JsaScreenState extends State<JsaScreen>
         _applyActiveJobDefaults(targetJob, workflow);
       }
       if (targetJob != null) {
-        final normalized =
-            JobProfileDefaultsService().normalizeCompany(targetJob.company);
-        if (normalized != JobProfileDefaultsService.companyNone) {
-          _company = normalized;
+        final company = targetJob.company.trim();
+        if (company.isNotEmpty) {
+          _company = company;
         }
       }
     });
@@ -213,10 +212,9 @@ class _JsaScreenState extends State<JsaScreen>
     ActiveWorkflowMode workflow,
   ) {
     if (targetJob != null) {
-      final normalizedCompany =
-          JobProfileDefaultsService().normalizeCompany(targetJob.company);
-      if (normalizedCompany != JobProfileDefaultsService.companyNone) {
-        _company = normalizedCompany;
+      final company = targetJob.company.trim();
+      if (company.isNotEmpty) {
+        _company = company;
       }
       final pad = targetJob.padName.trim();
       if (pad.isNotEmpty) {
@@ -321,9 +319,11 @@ class _JsaScreenState extends State<JsaScreen>
     if (!mounted) return;
     setState(() {
       _settings = loaded;
-      _company = activeCompany == JobProfileDefaultsService.companyNone
-          ? ''
-          : activeCompany;
+      if (_activeJob == null) {
+        _company = activeCompany == JobProfileDefaultsService.companyNone
+            ? ''
+            : activeCompany;
+      }
       if (loaded.jsaAutoDate) {
         _date = DateTime.now();
       }

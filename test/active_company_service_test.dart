@@ -36,8 +36,7 @@ void main() {
     expect(service.activeCompany.value, 'Flywheel Energy');
   });
 
-  test('invalid saved active company falls back safely to no selection',
-      () async {
+  test('manual active company survives app settings persistence', () async {
     const data = AppSettingsData(
       defaultGasUnit: AppSettingsDefaults.gasUnit,
       defaultGaugeType: AppSettingsDefaults.gaugeType,
@@ -50,8 +49,17 @@ void main() {
     await settingsService.save(data);
 
     final loaded = await service.ensureLoaded();
-    expect(loaded, JobProfileDefaultsService.companyNone);
-    expect(service.activeCompany.value, JobProfileDefaultsService.companyNone);
+    expect(loaded, 'Invalid Company');
+    expect(service.activeCompany.value, 'Invalid Company');
+  });
+
+  test('manual company can be set without creating a profile', () async {
+    await service.setActiveCompany('ABC Operating',
+        syncActiveJob: false, syncActiveShift: false);
+
+    final loadedSettings = await settingsService.load();
+    expect(service.activeCompany.value, 'ABC Operating');
+    expect(loadedSettings.activeCompany, 'ABC Operating');
   });
 
   test('setIfValidCandidate updates only for valid shared companies', () async {

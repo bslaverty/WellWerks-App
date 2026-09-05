@@ -330,9 +330,7 @@ class JobProfileDefaultsService {
         options.add(name);
       }
     }
-    final result = options.toList(growable: false);
-    result.sort();
-    return result;
+    return options.toList(growable: false);
   }
 
   static void _setCustomProfiles(List<CompanyProfileSettings> profiles) {

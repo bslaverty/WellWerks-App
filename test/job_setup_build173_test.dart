@@ -71,6 +71,24 @@ void main() {
     expect(find.text('Devon'), findsOneWidget);
   });
 
+  testWidgets('Build 301 Production setup accepts a manual company name',
+      (WidgetTester tester) async {
+    await ActiveWorkflowModeService.instance
+        .setMode(ActiveWorkflowMode.production);
+    await _pumpSetup(tester);
+
+    await tester.tap(find.text('Start Job').first);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('job-info-company-field')),
+      'ABC Operating',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('ABC Operating'), findsOneWidget);
+  });
+
   testWidgets('Build 212 Add Well appends rows and preserves names',
       (WidgetTester tester) async {
     await ActiveWorkflowModeService.instance
