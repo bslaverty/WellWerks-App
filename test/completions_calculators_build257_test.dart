@@ -20,7 +20,7 @@ void main() {
     final gasY = tester.getTopLeft(gasFinder).dy;
     expect(pumpY < gasY, isTrue);
 
-    expect(find.text('Bottoms Up Calculator'), findsOneWidget);
+    expect(find.text('BTS Calculator'), findsOneWidget);
     expect(find.text('Multiple Choke Calculator'), findsOneWidget);
 
     final scrollable = find.byType(Scrollable).first;

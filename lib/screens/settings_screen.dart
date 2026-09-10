@@ -754,7 +754,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onChanged: (_) {},
               ),
               _switchTile(
-                title: 'Bottoms Up Calculator',
+                title: 'BTS Calculator',
                 subtitle: 'Keep clipboard update behavior enabled.',
                 value: true,
                 onChanged: (_) {},

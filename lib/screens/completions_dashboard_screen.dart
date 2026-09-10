@@ -412,7 +412,7 @@ class _CompletionsDashboardScreenState
                 icon: Icons.calculate_outlined,
                 title: 'Calculators',
                 subtitle:
-                    'Gas Accum, Bottoms Up, Multiple Choke, Conversion, and Chlorides',
+                    'Gas Accum, BTS, Multiple Choke, Conversion, and Chlorides',
                 onTap: () =>
                     _open(context, const CompletionsCalculatorsScreen()),
               ),

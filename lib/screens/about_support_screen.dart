@@ -163,7 +163,7 @@ class _AboutScreenState extends State<AboutScreen> {
                   _FeatureBullet('Text Updates'),
                   _FeatureBullet('Layout Designer'),
                   _FeatureBullet('Rate Calculator'),
-                  _FeatureBullet('Bottoms Up Calculator'),
+                  _FeatureBullet('BTS Calculator'),
                   _FeatureBullet('Gas Accum Calculator'),
                   _FeatureBullet('Multiple Choke Calculator'),
                   _FeatureBullet('Tank Charts'),

@@ -11,7 +11,7 @@ import 'package:wellwerks/models/job_setup.dart';
 import 'package:wellwerks/models/jsa_draft.dart';
 import 'package:wellwerks/models/jsa_template.dart';
 import 'package:wellwerks/screens/chart_reference_screen.dart';
-import 'package:wellwerks/screens/bottoms_up_screen.dart';
+import 'package:wellwerks/screens/bts_calculator_screen.dart';
 import 'package:wellwerks/screens/equipment_layout_screen.dart';
 import 'package:wellwerks/screens/job_box_inventory_screen.dart';
 import 'package:wellwerks/screens/jsa_screen.dart';
@@ -348,14 +348,14 @@ void main() {
     expect(notifiedWells, contains('Horse 16-3H'));
   });
 
-  testWidgets('Bottoms Up shows tubing and casing selectors', (
+  testWidgets('BTS Calculator shows tubing and casing selectors', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const MaterialApp(home: BottomsUpScreen()));
+    await tester.pumpWidget(const MaterialApp(home: BtsCalculatorScreen()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Tubing Size'), findsOneWidget);
-    expect(find.text('Casing Size'), findsOneWidget);
+    expect(find.text('Tubing OD'), findsOneWidget);
+    expect(find.text('Casing OD'), findsOneWidget);
   });
 
   testWidgets('Wide layout shows persistent equipment library', (

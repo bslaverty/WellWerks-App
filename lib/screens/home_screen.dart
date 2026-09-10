@@ -1139,7 +1139,7 @@ class _HomeScreenState extends State<HomeScreen> {
       (
         id: 'rate',
         title: 'Calculators',
-        subtitle: 'Pump Rate, Gas Accum, Bottoms Up, and more',
+        subtitle: 'Pump Rate, Gas Accum, BTS, and more',
         icon: Icons.calculate_outlined,
         onTap: () => _openHomeTool('rate'),
       ),

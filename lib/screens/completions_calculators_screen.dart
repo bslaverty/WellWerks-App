@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'bottoms_up_screen.dart';
+import 'bts_calculator_screen.dart';
 import 'chart_reference_screen.dart';
 import 'conversion_calculator_screen.dart';
 import 'gas_accum_screen.dart';
@@ -93,9 +93,9 @@ class CompletionsCalculatorsScreen extends StatelessWidget {
         ),
         const ModuleTool(
           icon: Icons.arrow_downward,
-          title: 'Bottoms Up Calculator',
-          subtitle: 'Pipe volume, lag time, and ETA',
-          screen: BottomsUpScreen(),
+          title: 'BTS Calculator',
+          subtitle: 'Bit to Surface time, annular volume, and live timer',
+          screen: BtsCalculatorScreen(),
         ),
         const ModuleTool(
           icon: Icons.tune,
