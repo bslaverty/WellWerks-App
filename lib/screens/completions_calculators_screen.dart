@@ -8,6 +8,7 @@ import 'module_menu_screen.dart';
 import 'multiple_choke_screen.dart';
 import 'pump_rate_calculator_screen.dart';
 import 'rate_calculator_screen.dart';
+import 'sts_calculator_screen.dart';
 
 class CompletionsCalculatorsScreen extends StatelessWidget {
   const CompletionsCalculatorsScreen({super.key});
@@ -96,6 +97,12 @@ class CompletionsCalculatorsScreen extends StatelessWidget {
           title: 'BTS Calculator',
           subtitle: 'Bit to Surface time, annular volume, and live timer',
           screen: BtsCalculatorScreen(),
+        ),
+        const ModuleTool(
+          icon: Icons.swap_vert,
+          title: 'STS Calculator',
+          subtitle: 'Surface to Surface circulation time and live timer',
+          screen: StsCalculatorScreen(),
         ),
         const ModuleTool(
           icon: Icons.tune,
