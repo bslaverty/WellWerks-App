@@ -6,7 +6,9 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/casing_database.dart';
+import '../services/app_settings_service.dart';
 import '../services/rate_timer_service.dart';
+import '../services/rate_timer_notification_service.dart';
 import '../widgets/app_header.dart';
 import '../widgets/ww_number_field.dart';
 
@@ -39,6 +41,8 @@ class _BtsCalculatorScreenState extends State<BtsCalculatorScreen>
   static const _totalDurationKey = 'wellwerks_bts_timer_total_duration_v1';
 
   final _rateTimerService = RateTimerService();
+  final _settingsService = AppSettingsService();
+  final _notificationService = RateTimerNotificationService.instance;
 
   Color get _gold => Theme.of(context).colorScheme.primary;
 
@@ -75,6 +79,9 @@ class _BtsCalculatorScreenState extends State<BtsCalculatorScreen>
   DateTime? _timerEndsAt;
   int _remainingSeconds = 0;
   int _totalDurationSeconds = 0;
+  bool _notifyAtArrival = true;
+  bool _earlyNotification = true;
+  int _earlyWarningMinutes = 5;
 
   double get _tubingOd => double.tryParse(tubingOd.text.trim()) ?? 0;
   double get _bitDepth => double.tryParse(bitDepth.text.trim()) ?? 0;
@@ -133,6 +140,17 @@ class _BtsCalculatorScreenState extends State<BtsCalculatorScreen>
       controller.addListener(_handleInputChanged);
     }
     _restoreTimerState();
+    _loadNotificationDefaults();
+  }
+
+  Future<void> _loadNotificationDefaults() async {
+    final settings = await _settingsService.load();
+    if (!mounted) return;
+    setState(() {
+      _notifyAtArrival = settings.calculatorArrivalNotificationsEnabled;
+      _earlyNotification = settings.calculatorEarlyNotificationsEnabled;
+      _earlyWarningMinutes = settings.calculatorEarlyWarningMinutes;
+    });
   }
 
   void _handleInputChanged() {
@@ -171,6 +189,24 @@ class _BtsCalculatorScreenState extends State<BtsCalculatorScreen>
     FocusScope.of(context).unfocus();
     if (btsMinutes == null) return;
     setState(() => _calculated = true);
+    _scheduleNotifications();
+  }
+
+  Future<void> _scheduleNotifications() async {
+    final mins = btsMinutes;
+    if (mins == null) return;
+    final settings = await _settingsService.load();
+    try {
+      await _notificationService.scheduleCalculatorArrivalNotifications(
+        calculator: 'BTS',
+        arrivalAt: DateTime.now().add(Duration(seconds: (mins * 60).round())),
+        arrivalEnabled: _notifyAtArrival && settings.appNotifications,
+        earlyEnabled: _earlyNotification && settings.appNotifications,
+        earlyWarningMinutes: _earlyWarningMinutes,
+      );
+    } catch (_) {
+      // Notification plugins are unavailable in some widget-test environments.
+    }
   }
 
   void clearAll() {
@@ -652,6 +688,8 @@ Estimated Arrival: $arrivalTime''';
             const SizedBox(height: 16),
             _timerSection(),
             const SizedBox(height: 16),
+            _notificationSection(),
+            const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: copyResults,
               icon: const Icon(Icons.copy),
@@ -762,6 +800,80 @@ Estimated Arrival: $arrivalTime''';
         ),
       ),
     );
+  }
+
+  Widget _notificationSection() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Estimated Arrival',
+                style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text(arrivalTime,
+                style: TextStyle(
+                    color: _gold, fontSize: 20, fontWeight: FontWeight.bold)),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Notify at Arrival'),
+              value: _notifyAtArrival,
+              onChanged: (value) {
+                setState(() => _notifyAtArrival = value ?? false);
+                if (_calculated) _scheduleNotifications();
+              },
+            ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Early Notification'),
+              value: _earlyNotification,
+              onChanged: (value) {
+                setState(() => _earlyNotification = value ?? false);
+                if (_calculated) _scheduleNotifications();
+              },
+            ),
+            if (_earlyNotification)
+              Row(
+                children: [
+                  const Expanded(child: Text('Early Warning')),
+                  IconButton(
+                    onPressed: _earlyWarningMinutes <= 1
+                        ? null
+                        : () {
+                            setState(() => _earlyWarningMinutes =
+                                _previousWarning(_earlyWarningMinutes));
+                            if (_calculated) _scheduleNotifications();
+                          },
+                    icon: const Icon(Icons.remove),
+                  ),
+                  Text('$_earlyWarningMinutes minutes'),
+                  IconButton(
+                    onPressed: _earlyWarningMinutes >= 30
+                        ? null
+                        : () {
+                            setState(() => _earlyWarningMinutes =
+                                _nextWarning(_earlyWarningMinutes));
+                            if (_calculated) _scheduleNotifications();
+                          },
+                    icon: const Icon(Icons.add),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  int _previousWarning(int value) {
+    const values = [1, 2, 3, 5, 10, 15, 20, 30];
+    return values.lastWhere((item) => item < value, orElse: () => 1);
+  }
+
+  int _nextWarning(int value) {
+    const values = [1, 2, 3, 5, 10, 15, 20, 30];
+    return values.firstWhere((item) => item > value, orElse: () => 30);
   }
 }
 

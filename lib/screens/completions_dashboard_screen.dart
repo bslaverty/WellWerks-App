@@ -13,6 +13,7 @@ import 'jsa_screen.dart';
 import 'production_dashboard_screen.dart';
 import 'production_history_screen.dart';
 import 'rate_calculator_screen.dart';
+import 'tank_charts_menu_screen.dart';
 
 class CompletionsDashboardScreen extends StatefulWidget {
   const CompletionsDashboardScreen({super.key});
@@ -415,6 +416,13 @@ class _CompletionsDashboardScreenState
                     'Gas Accum, BTS, Multiple Choke, Conversion, and Chlorides',
                 onTap: () =>
                     _open(context, const CompletionsCalculatorsScreen()),
+              ),
+              const Divider(height: 1),
+              _toolItem(
+                icon: Icons.table_chart_outlined,
+                title: 'Charts',
+                subtitle: 'FS3, SandX, and SandX Beast tank charts',
+                onTap: () => _open(context, const TankChartsMenuScreen()),
               ),
               const Divider(height: 1),
               _toolItem(

@@ -38,6 +38,9 @@ class AppSettingsDefaults {
   static const rateTimerSoundEnabled = true;
   static const estimatedStsReminderEnabled = true;
   static const estimatedStsReminderLeadMinutes = 10;
+  static const calculatorArrivalNotificationsEnabled = true;
+  static const calculatorEarlyNotificationsEnabled = true;
+  static const calculatorEarlyWarningMinutes = 5;
   static const autoSaveRateCalculationsToOperationsLog = true;
   static const appTheme = 'wellwerks_default';
   static const activeCompany = JobProfileDefaultsService.companyNone;
@@ -97,6 +100,12 @@ class AppSettingsData {
         AppSettingsDefaults.estimatedStsReminderEnabled,
     this.estimatedStsReminderLeadMinutes =
         AppSettingsDefaults.estimatedStsReminderLeadMinutes,
+    this.calculatorArrivalNotificationsEnabled =
+        AppSettingsDefaults.calculatorArrivalNotificationsEnabled,
+    this.calculatorEarlyNotificationsEnabled =
+        AppSettingsDefaults.calculatorEarlyNotificationsEnabled,
+    this.calculatorEarlyWarningMinutes =
+        AppSettingsDefaults.calculatorEarlyWarningMinutes,
     this.autoSaveRateCalculationsToOperationsLog =
         AppSettingsDefaults.autoSaveRateCalculationsToOperationsLog,
     this.appTheme = AppSettingsDefaults.appTheme,
@@ -133,6 +142,9 @@ class AppSettingsData {
   final bool rateTimerSoundEnabled;
   final bool estimatedStsReminderEnabled;
   final int estimatedStsReminderLeadMinutes;
+  final bool calculatorArrivalNotificationsEnabled;
+  final bool calculatorEarlyNotificationsEnabled;
+  final int calculatorEarlyWarningMinutes;
   final bool autoSaveRateCalculationsToOperationsLog;
   final String appTheme;
   final String activeCompany;
@@ -179,6 +191,9 @@ class AppSettingsData {
     bool? rateTimerSoundEnabled,
     bool? estimatedStsReminderEnabled,
     int? estimatedStsReminderLeadMinutes,
+    bool? calculatorArrivalNotificationsEnabled,
+    bool? calculatorEarlyNotificationsEnabled,
+    int? calculatorEarlyWarningMinutes,
     bool? autoSaveRateCalculationsToOperationsLog,
     String? appTheme,
     String? activeCompany,
@@ -229,6 +244,14 @@ class AppSettingsData {
           estimatedStsReminderEnabled ?? this.estimatedStsReminderEnabled,
       estimatedStsReminderLeadMinutes: estimatedStsReminderLeadMinutes ??
           this.estimatedStsReminderLeadMinutes,
+      calculatorArrivalNotificationsEnabled:
+          calculatorArrivalNotificationsEnabled ??
+              this.calculatorArrivalNotificationsEnabled,
+      calculatorEarlyNotificationsEnabled:
+          calculatorEarlyNotificationsEnabled ??
+              this.calculatorEarlyNotificationsEnabled,
+      calculatorEarlyWarningMinutes:
+          calculatorEarlyWarningMinutes ?? this.calculatorEarlyWarningMinutes,
       autoSaveRateCalculationsToOperationsLog:
           autoSaveRateCalculationsToOperationsLog ??
               this.autoSaveRateCalculationsToOperationsLog,
@@ -268,6 +291,11 @@ class AppSettingsData {
         'rateTimerSoundEnabled': rateTimerSoundEnabled,
         'estimatedStsReminderEnabled': estimatedStsReminderEnabled,
         'estimatedStsReminderLeadMinutes': estimatedStsReminderLeadMinutes,
+        'calculatorArrivalNotificationsEnabled':
+            calculatorArrivalNotificationsEnabled,
+        'calculatorEarlyNotificationsEnabled':
+            calculatorEarlyNotificationsEnabled,
+        'calculatorEarlyWarningMinutes': calculatorEarlyWarningMinutes,
         'autoSaveRateCalculationsToOperationsLog':
             autoSaveRateCalculationsToOperationsLog,
         'appTheme': appTheme,
@@ -344,6 +372,15 @@ class AppSettingsData {
       estimatedStsReminderLeadMinutes:
           _normalizeEstimatedStsReminderLeadMinutes(
         json['estimatedStsReminderLeadMinutes'],
+      ),
+      calculatorArrivalNotificationsEnabled:
+          json['calculatorArrivalNotificationsEnabled'] as bool? ??
+              AppSettingsDefaults.calculatorArrivalNotificationsEnabled,
+      calculatorEarlyNotificationsEnabled:
+          json['calculatorEarlyNotificationsEnabled'] as bool? ??
+              AppSettingsDefaults.calculatorEarlyNotificationsEnabled,
+      calculatorEarlyWarningMinutes: _normalizeCalculatorEarlyWarningMinutes(
+        json['calculatorEarlyWarningMinutes'],
       ),
       autoSaveRateCalculationsToOperationsLog:
           json['autoSaveRateCalculationsToOperationsLog'] as bool? ??
@@ -503,6 +540,16 @@ class AppSettingsData {
     }
   }
 
+  static int _normalizeCalculatorEarlyWarningMinutes(dynamic value) {
+    final parsed = (value is num)
+        ? value.toInt()
+        : int.tryParse((value ?? '').toString().trim());
+    const allowed = <int>{1, 2, 3, 5, 10, 15, 20, 30};
+    return allowed.contains(parsed)
+        ? parsed!
+        : AppSettingsDefaults.calculatorEarlyWarningMinutes;
+  }
+
   static String _normalizeActiveCompany(String? value) {
     final normalized =
         JobProfileDefaultsService().normalizeCompany((value ?? '').trim());
@@ -596,6 +643,12 @@ class AppSettingsService {
           AppSettingsDefaults.estimatedStsReminderEnabled,
       estimatedStsReminderLeadMinutes:
           AppSettingsDefaults.estimatedStsReminderLeadMinutes,
+      calculatorArrivalNotificationsEnabled:
+          AppSettingsDefaults.calculatorArrivalNotificationsEnabled,
+      calculatorEarlyNotificationsEnabled:
+          AppSettingsDefaults.calculatorEarlyNotificationsEnabled,
+      calculatorEarlyWarningMinutes:
+          AppSettingsDefaults.calculatorEarlyWarningMinutes,
       autoSaveRateCalculationsToOperationsLog:
           AppSettingsDefaults.autoSaveRateCalculationsToOperationsLog,
       appTheme: AppSettingsDefaults.appTheme,

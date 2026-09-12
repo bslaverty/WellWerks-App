@@ -24,6 +24,11 @@ const String _stsChannelName = 'Estimated STS Reminders';
 const String _stsChannelDescription =
     'Reminders before estimated sweep-to-surface times.';
 const String _stsPayloadType = 'estimated_sts';
+const String _calculatorNotificationChannelId =
+    'wellwerks_calculator_arrivals_v1';
+const String _calculatorNotificationChannelName = 'Calculator Arrivals';
+const String _calculatorNotificationChannelDescription =
+    'BTS and STS estimated arrival notifications.';
 
 @pragma('vm:entry-point')
 void rateTimerNotificationTapBackground(NotificationResponse response) async {
@@ -293,6 +298,70 @@ class RateTimerNotificationService {
   Future<void> cancelEstimatedStsReminder(int notificationId) async {
     await ensureInitialized();
     await _plugin.cancel(notificationId);
+  }
+
+  Future<void> scheduleCalculatorArrivalNotifications({
+    required String calculator,
+    required DateTime arrivalAt,
+    required bool arrivalEnabled,
+    required bool earlyEnabled,
+    required int earlyWarningMinutes,
+  }) async {
+    await ensureInitialized();
+    final baseId = calculator.trim().toLowerCase() == 'sts' ? 835000 : 834000;
+    await _plugin.cancel(baseId);
+    await _plugin.cancel(baseId + 1);
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _calculatorNotificationChannelId,
+        _calculatorNotificationChannelName,
+        channelDescription: _calculatorNotificationChannelDescription,
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+      ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBanner: true,
+        presentBadge: true,
+        presentSound: true,
+        interruptionLevel: InterruptionLevel.timeSensitive,
+      ),
+    );
+    final arrival = tz.TZDateTime.from(arrivalAt, tz.local);
+    if (arrivalEnabled && arrival.isAfter(tz.TZDateTime.now(tz.local))) {
+      await _plugin.zonedSchedule(
+        baseId,
+        'WellWerks Toolbox',
+        '✅ $calculator Estimated Arrival\nEstimated arrival time has been reached.',
+        arrival,
+        details,
+        payload: 'calculator_arrival:$calculator',
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      );
+    }
+    final earlyAt = arrival.subtract(Duration(minutes: earlyWarningMinutes));
+    if (earlyEnabled && earlyAt.isAfter(tz.TZDateTime.now(tz.local))) {
+      await _plugin.zonedSchedule(
+        baseId + 1,
+        'WellWerks Toolbox',
+        '⚠️ $calculator Expected in $earlyWarningMinutes Minutes\nETA: ${_formatNotificationTime(arrivalAt)}',
+        earlyAt,
+        details,
+        payload: 'calculator_early:$calculator',
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      );
+    }
+  }
+
+  String _formatNotificationTime(DateTime value) {
+    final hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '$hour:$minute ${value.hour >= 12 ? 'PM' : 'AM'}';
   }
 
   Future<void> cancelEstimatedStsReminders(

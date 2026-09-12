@@ -88,6 +88,8 @@ class RateCalculatorConfig {
         return const RateCalculatorConfig.chart('FS3 Tank', 'fs3');
       case 'sandx':
         return const RateCalculatorConfig.chart('SandX G3', 'sandx');
+      case 'sandx_beast':
+        return const RateCalculatorConfig.chart('SandX Beast', 'sandx_beast');
       case 'sandx_cyclone':
         return const RateCalculatorConfig.chart(
           'SandX Cyclone',
@@ -173,6 +175,7 @@ class HomeRateTabSpec {
 const List<RateCalculatorConfig> kDefaultRateCalculatorConfigs = [
   RateCalculatorConfig.chart('FS3 Tank', 'fs3'),
   RateCalculatorConfig.chart('SandX G3', 'sandx'),
+  RateCalculatorConfig.chart('SandX Beast', 'sandx_beast'),
   RateCalculatorConfig.chart('SandX Cyclone', 'sandx_cyclone'),
   RateCalculatorConfig.chart('Flowback Tank (V-Bottom)', 'flowback500'),
   RateCalculatorConfig.chart(
@@ -2932,6 +2935,8 @@ class _RateCalculatorScreenState extends State<RateCalculatorScreen>
         return fs3Chart;
       case 'sandx':
         return sandXChart;
+      case 'sandx_beast':
+        return sandXBeastChart;
       case 'sandx_cyclone':
         return sandXCycloneChart;
       case 'flowback500':

@@ -1070,6 +1070,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _save(s.copyWith(rateTimerNotificationsEnabled: value)),
               ),
               _switchTile(
+                title: 'Enable Arrival Notifications',
+                subtitle: 'Notify when BTS or STS reaches the surface.',
+                value: s.calculatorArrivalNotificationsEnabled,
+                onChanged: (value) => _save(
+                  s.copyWith(calculatorArrivalNotificationsEnabled: value),
+                ),
+              ),
+              _switchTile(
+                title: 'Enable Early Notifications',
+                subtitle: 'Notify before BTS or STS reaches the surface.',
+                value: s.calculatorEarlyNotificationsEnabled,
+                onChanged: (value) => _save(
+                  s.copyWith(calculatorEarlyNotificationsEnabled: value),
+                ),
+              ),
+              _dropdownTile(
+                title: 'Default Early Warning',
+                subtitle: 'Default warning lead time for BTS and STS.',
+                value: s.calculatorEarlyWarningMinutes.toString(),
+                items: const [
+                  DropdownMenuItem(value: '1', child: Text('1 minute')),
+                  DropdownMenuItem(value: '2', child: Text('2 minutes')),
+                  DropdownMenuItem(value: '3', child: Text('3 minutes')),
+                  DropdownMenuItem(value: '5', child: Text('5 minutes')),
+                  DropdownMenuItem(value: '10', child: Text('10 minutes')),
+                  DropdownMenuItem(value: '15', child: Text('15 minutes')),
+                  DropdownMenuItem(value: '20', child: Text('20 minutes')),
+                  DropdownMenuItem(value: '30', child: Text('30 minutes')),
+                ],
+                onChanged: (value) {
+                  final minutes = int.tryParse(value ?? '');
+                  if (minutes == null) return;
+                  _save(s.copyWith(calculatorEarlyWarningMinutes: minutes));
+                },
+              ),
+              _switchTile(
                 title: 'Estimated STS Reminder',
                 subtitle: 'Notify before an estimated sweep reaches surface.',
                 value: s.estimatedStsReminderEnabled,

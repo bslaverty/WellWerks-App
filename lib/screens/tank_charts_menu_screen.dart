@@ -116,6 +116,14 @@ class TankChartsMenuScreen extends StatelessWidget {
           const SizedBox(height: 8),
           ToolCard(
             icon: Icons.table_chart,
+            title: 'SandX Beast',
+            subtitle: 'SandX Beast manufacturer strapping chart',
+            onTap: () =>
+                _open(context, 'SandX Beast Tank Chart', sandXBeastChart),
+          ),
+          const SizedBox(height: 8),
+          ToolCard(
+            icon: Icons.table_chart,
             title: 'SandX Cyclone',
             subtitle: 'SandX Cyclone strapping chart',
             onTap: () =>
